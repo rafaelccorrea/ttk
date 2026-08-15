@@ -19,6 +19,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { tiktokProfileUrl } from '@/utils/tiktok';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { analyticsService, Overview } from '@/services/analytics.service';
@@ -203,7 +204,19 @@ export function DashboardPage() {
                 >
                   {v.caption}
                 </Typography>
-                <Typography variant="caption" sx={{ opacity: 0.85 }}>
+                <Typography
+                  component="a"
+                  href={tiktokProfileUrl(v.creatorHandle)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="caption"
+                  sx={{
+                    opacity: 0.85,
+                    color: 'inherit',
+                    textDecoration: 'none',
+                    '&:hover': { opacity: 1, textDecoration: 'underline' },
+                  }}
+                >
                   @{v.creatorHandle}
                 </Typography>
               </Box>
@@ -233,7 +246,21 @@ export function DashboardPage() {
                   {c.name}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" noWrap>
-                  @{c.handle} · {formatNumber(c.followers)} seguidores
+                  <Box
+                    component="a"
+                    href={tiktokProfileUrl(c.handle)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{
+                      color: 'inherit',
+                      textDecoration: 'none',
+                      '&:hover': { color: 'primary.main', textDecoration: 'underline' },
+                    }}
+                  >
+                    @{c.handle}
+                  </Box>
+                  {' · '}
+                  {formatNumber(c.followers)} seguidores
                 </Typography>
               </Box>
               <Typography fontWeight={700} color="secondary.main">

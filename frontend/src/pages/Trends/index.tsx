@@ -1,3 +1,4 @@
+import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded';
 import TrendingDownRoundedIcon from '@mui/icons-material/TrendingDownRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import {
@@ -18,6 +19,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TrendsOverview, trendsService } from '@/services/trends.service';
+import { tiktokHashtagUrl } from '@/utils/tiktok';
 import { formatCurrency, formatNumber } from '@/utils/format';
 
 function GrowthChip({ pct }: { pct: number | null }) {
@@ -80,6 +82,12 @@ export function TrendsPage() {
             {data.curated.map((t) => (
               <Chip
                 key={t.id}
+                component="a"
+                href={tiktokHashtagUrl(t.hashtag ?? t.title)}
+                target="_blank"
+                rel="noopener noreferrer"
+                clickable
+                icon={<OpenInNewRoundedIcon sx={{ fontSize: 15 }} />}
                 label={
                   <>
                     <Box component="span" fontWeight={700}>{t.hashtag ?? t.title}</Box>

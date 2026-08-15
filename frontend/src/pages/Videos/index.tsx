@@ -1,5 +1,6 @@
 import BookmarkIcon from '@mui/icons-material/Bookmark';
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
+import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import SubtitlesOutlinedIcon from '@mui/icons-material/SubtitlesOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
@@ -25,6 +26,7 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { FilterBar, SearchField } from '@/components/ui/Filters';
 import { videosService, ViralVideo } from '@/services/videos.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
+import { tiktokProfileUrl } from '@/utils/tiktok';
 
 const PAGE_SIZE = 24;
 
@@ -168,7 +170,21 @@ function VideoCard({
           {video.caption}
         </Typography>
         <Typography variant="caption" color="text.secondary" mt={0.5}>
-          {video.creatorHandle} · {video.category}
+          <Box
+            component="a"
+            href={tiktokProfileUrl(video.creatorHandle)}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{
+              color: 'inherit',
+              textDecoration: 'none',
+              '&:hover': { color: 'primary.main', textDecoration: 'underline' },
+            }}
+          >
+            {video.creatorHandle}
+          </Box>
+          {' · '}
+          {video.category}
         </Typography>
 
         <Box display="flex" gap={1} flexWrap="wrap" mt={1.5}>
@@ -208,6 +224,19 @@ function VideoCard({
               sx={{ textTransform: 'none', fontWeight: 700 }}
             >
               Transcrição
+            </Button>
+          )}
+          {video.videoUrl && (
+            <Button
+              size="small"
+              component="a"
+              href={video.videoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              startIcon={<OpenInNewRoundedIcon sx={{ fontSize: 15 }} />}
+              sx={{ textTransform: 'none', fontWeight: 700 }}
+            >
+              TikTok
             </Button>
           )}
           {video.productId && (
@@ -339,8 +368,21 @@ export function VideosPage() {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle sx={{ fontWeight: 800 }}>
+        <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {playingVideo?.creatorHandle}
+          {playingVideo?.videoUrl && (
+            <Button
+              size="small"
+              component="a"
+              href={playingVideo.videoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              endIcon={<OpenInNewRoundedIcon sx={{ fontSize: 15 }} />}
+              sx={{ fontWeight: 700 }}
+            >
+              Abrir no TikTok
+            </Button>
+          )}
         </DialogTitle>
         <DialogContent sx={{ p: 0, bgcolor: '#000' }}>
           {playingVideo && tiktokEmbedId(playingVideo.videoUrl) && (

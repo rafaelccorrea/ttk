@@ -17,6 +17,7 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { creatorsService, RankedCreator } from '@/services/creators.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
+import { tiktokProfileUrl } from '@/utils/tiktok';
 
 const PAGE_SIZE = 25;
 
@@ -158,7 +159,18 @@ export function CreatorsPage() {
                       <Typography fontWeight={700} fontSize={14}>
                         {creator.name}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography
+                        component="a"
+                        href={tiktokProfileUrl(creator.handle)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        variant="caption"
+                        sx={{
+                          color: 'text.secondary',
+                          textDecoration: 'none',
+                          '&:hover': { color: 'primary.main', textDecoration: 'underline' },
+                        }}
+                      >
                         @{creator.handle}
                       </Typography>
                     </Box>
