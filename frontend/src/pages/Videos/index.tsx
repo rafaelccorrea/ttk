@@ -74,7 +74,11 @@ function VideoCard({
   // `cover`. O fallback é foto de produto (quadrada) — aí `cover` cortaria o
   // produto, então mantemos `contain` com a cópia borrada preenchendo as bordas.
   const fillsCard = Boolean(video.thumbnailUrl);
-  const playable = Boolean(video.playbackUrl || tiktokEmbedId(video.videoUrl));
+  // Todo vídeo com id é tocável: o backend resolve o MP4 sob demanda e, se a
+  // cota do fornecedor estiver esgotada, cai no embed oficial do TikTok.
+  // Condicionar a `playbackUrl`/`videoUrl` deixava sem área de clique
+  // justamente os vídeos que ainda não tinham @handle resolvido.
+  const playable = Boolean(video.id);
   // "Destaque": pódio do ranking ou vídeo com audiência realmente viral.
   const isHot = rank <= 3 || video.views >= 1_000_000;
   // Skeleton no lugar da thumb até o `onLoad`.
@@ -334,8 +338,10 @@ function VideoCard({
           noWrap
           sx={{ display: 'block', color: 'rgba(255,255,255,0.72)', mt: 0.25 }}
         >
-          {/* Só linka o perfil quando o vídeo veio da ingestão real (handle existe no TikTok). */}
-          {video.playbackUrl || video.thumbnailUrl ? (
+          {/* Só linka o perfil quando temos o @handle de verdade. Enquanto o
+              oEmbed não resolve o autor, guardamos o user_id numérico — e
+              linkar isso levaria a um perfil inexistente. */}
+          {!/^\d+$/.test(video.creatorHandle) ? (
             <Box
               component="a"
               href={tiktokProfileUrl(video.creatorHandle)}

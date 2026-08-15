@@ -85,12 +85,15 @@ export const videosService = {
    * banco — pedir aqui é o que faz o player abrir. Quando o espelhamento no
    * S3 estiver ligado, `permanent` volta true e a URL não expira mais.
    */
-  async playback(id: string): Promise<string | null> {
+  async playback(
+    id: string,
+  ): Promise<{ playbackUrl: string | null; embedUrl: string | null }> {
     const { data } = await api.get<{
       playbackUrl: string | null;
       permanent: boolean;
+      embedUrl: string | null;
     }>(`/videos/${id}/playback`);
-    return data.playbackUrl;
+    return { playbackUrl: data.playbackUrl, embedUrl: data.embedUrl };
   },
 
   async toggleSave(id: string): Promise<boolean> {

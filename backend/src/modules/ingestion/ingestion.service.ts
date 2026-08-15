@@ -19,6 +19,7 @@ import { categoryOptions } from './product-categories';
 import { evaluateProduct, filterSourcedProducts } from './product-gate';
 import { ProductExtractorService } from './product-extractor.service';
 import { ImageSearchSource } from './image-search.source';
+import { TikTokOembedSource } from './tiktok-oembed.source';
 import { IngestionRun, IngestionTrigger } from './entities/ingestion-run.entity';
 import { IngestionSetting } from './entities/ingestion-setting.entity';
 
@@ -49,6 +50,7 @@ export class IngestionService implements OnModuleInit {
     private readonly externalData: ExternalDataProvider,
     private readonly extractor: ProductExtractorService,
     private readonly imageSearch: ImageSearchSource,
+    private readonly oembed: TikTokOembedSource,
     private readonly mirror: MediaMirrorService,
     private readonly scheduler: SchedulerRegistry,
   ) {}
@@ -566,6 +568,16 @@ export class IngestionService implements OnModuleInit {
     const authors = await this.externalData.fetchCreatorDetails(
       videos.map((v) => v.userId),
     );
+
+    // Complemento gratuito: o oEmbed do TikTok devolve @handle e uma capa que
+    // carrega sem assinatura. Cobre o que a cota não alcançou — e, quando ela
+    // acaba no meio da execução, é o que evita o card preto e sem link.
+    const missing = videos
+      .filter((v) => v.videoId && !authors.has(v.userId))
+      .map((v) => v.videoId);
+    const oembed = missing.length
+      ? await this.oembed.fetchMany(missing)
+      : new Map();
     const signed = await this.externalData.signImageUrls(
       videos.map((v) => v.coverUrl).filter((u): u is string => !!u),
     );
@@ -574,7 +586,8 @@ export class IngestionService implements OnModuleInit {
 
     for (const v of videos) {
       if (!v.videoId) continue;
-      const handle = authors.get(v.userId)?.handle ?? null;
+      const fallback = oembed.get(v.videoId);
+      const handle = authors.get(v.userId)?.handle ?? fallback?.handle ?? null;
       const externalId = `echotik-v-${v.videoId}`;
       const video =
         (await this.videos.findOne({ where: { externalId } })) ??
@@ -591,9 +604,12 @@ export class IngestionService implements OnModuleInit {
       video.videoUrl = handle
         ? `https://www.tiktok.com/@${handle}/video/${v.videoId}`
         : video.videoUrl;
+      // Prioriza a capa assinada do fornecedor; sem ela, a do oEmbed, que
+      // carrega sem assinatura. A crua do CDN é inútil (403 = card preto).
+      const rawCover = v.coverUrl ? signed.get(v.coverUrl) : undefined;
       video.thumbnailUrl =
         (await this.persistImage(
-          v.coverUrl ? (signed.get(v.coverUrl) ?? v.coverUrl) : null,
+          rawCover ?? fallback?.thumbnailUrl ?? null,
           'video-covers',
           v.videoId,
         )) ?? video.thumbnailUrl;

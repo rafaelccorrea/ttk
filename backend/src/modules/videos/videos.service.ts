@@ -67,17 +67,23 @@ export class VideosService {
   ): Promise<{
     sections: Array<{ category: string; total: number; items: VideoItem[] }>;
   }> {
-    const rows: Array<Video & { categoryTotal: string }> =
-      await this.videos.query(
+    const rows: Array<
+      Video & { categoryTotal: string; productImageUrl: string | null }
+    > = await this.videos.query(
         `
         WITH ranked AS (
           SELECT v.*,
+                 -- Foto do produto: é o fallback do card quando o vídeo não
+                 -- tem thumbnail própria. Sem este join o card cai no
+                 -- gradiente de categoria, que fica horrível na vitrine.
+                 p."imageUrl" AS "productImageUrl",
                  ROW_NUMBER() OVER (
                    PARTITION BY v.category ORDER BY v.views DESC, v.id ASC
                  ) AS rn,
                  COUNT(*) OVER (PARTITION BY v.category)   AS "categoryTotal",
                  SUM(v.views) OVER (PARTITION BY v.category) AS "categoryViews"
             FROM videos v
+            LEFT JOIN products p ON p.id = v."productId"
            WHERE v.kind = 'product' AND v.category IS NOT NULL
         )
         SELECT * FROM ranked
@@ -109,7 +115,12 @@ export class VideosService {
         };
         byCategory.set(row.category, section);
       }
-      section.items.push(this.toItem(row, savedIds));
+      // A query traz `productImageUrl` em coluna própria (não pela relação),
+      // então injeta no formato que o `toItem` espera.
+      section.items.push({
+        ...this.toItem(row, savedIds),
+        productImageUrl: row.productImageUrl ?? null,
+      });
     }
 
     return {
@@ -131,30 +142,47 @@ export class VideosService {
    *  2. resolve no fornecedor e espelha, passando a valer para sempre;
    *  3. resolve no fornecedor e devolve a URL temporária (sem S3 configurado).
    */
-  async resolvePlayback(
-    id: string,
-  ): Promise<{ playbackUrl: string | null; permanent: boolean }> {
+  async resolvePlayback(id: string): Promise<{
+    playbackUrl: string | null;
+    permanent: boolean;
+    /**
+     * Player oficial do TikTok. Sempre presente quando conhecemos o id, e é o
+     * que garante que o vídeo TOQUE mesmo sem cota no fornecedor — sem ele, o
+     * card fica preto quando a API paga não responde.
+     */
+    embedUrl: string | null;
+  }> {
     const video = await this.videos.findOneBy({ id });
     if (!video) throw new NotFoundException(`Vídeo ${id} não encontrado`);
-
-    // Espelhado no S3: permanente, nada a resolver.
-    if (video.playbackUrl && video.playbackExpiresAt === null) {
-      return { playbackUrl: video.playbackUrl, permanent: true };
-    }
-
-    // URL temporária ainda válida: evita os 6–17s da chamada ao fornecedor.
-    if (video.playbackUrl && (video.playbackExpiresAt?.getTime() ?? 0) > Date.now()) {
-      return { playbackUrl: video.playbackUrl, permanent: false };
-    }
 
     // `externalId` guarda "echotik-v-<video_id>".
     const tiktokId =
       video.externalId?.replace(/^echotik-v-/, '') ??
-      video.videoUrl?.match(/\/video\/(\d+)/)?.[1];
-    if (!tiktokId) return { playbackUrl: video.playbackUrl ?? null, permanent: false };
+      video.videoUrl?.match(/\/video\/(\d+)/)?.[1] ??
+      null;
+    const embedUrl = /^\d+$/.test(tiktokId ?? '')
+      ? `https://www.tiktok.com/embed/v2/${tiktokId}`
+      : null;
+
+    // Espelhado no S3: permanente, nada a resolver.
+    if (video.playbackUrl && video.playbackExpiresAt === null) {
+      return { playbackUrl: video.playbackUrl, permanent: true, embedUrl };
+    }
+
+    // URL temporária ainda válida: evita os 6–17s da chamada ao fornecedor.
+    if (video.playbackUrl && (video.playbackExpiresAt?.getTime() ?? 0) > Date.now()) {
+      return { playbackUrl: video.playbackUrl, permanent: false, embedUrl };
+    }
+
+    if (!tiktokId) {
+      return { playbackUrl: video.playbackUrl ?? null, permanent: false, embedUrl };
+    }
 
     const media = await this.externalData.resolveMedia(tiktokId);
-    if (!media) return { playbackUrl: video.playbackUrl ?? null, permanent: false };
+    if (!media) {
+      // Sem cota o MP4 não vem — o embed assume e o vídeo toca assim mesmo.
+      return { playbackUrl: video.playbackUrl ?? null, permanent: false, embedUrl };
+    }
 
     // Sem marca d'água quando o fornecedor entrega; senão o play normal.
     const source = media.playUrl;
@@ -168,7 +196,7 @@ export class VideosService {
         video.playbackUrl = mirrored;
         video.playbackExpiresAt = null; // nossa URL, não expira
         await this.videos.save(video);
-        return { playbackUrl: mirrored, permanent: true };
+        return { playbackUrl: mirrored, permanent: true, embedUrl };
       }
     }
 
@@ -178,7 +206,7 @@ export class VideosService {
     video.playbackExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
     await this.videos.save(video);
 
-    return { playbackUrl: source, permanent: false };
+    return { playbackUrl: source, permanent: false, embedUrl };
   }
 
   private toItem(video: Video, savedIds: Set<string>): VideoItem {

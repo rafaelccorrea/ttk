@@ -59,9 +59,19 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
   // O MP4 não vem do banco: a URL assinada da TikTok expira em horas, então é
   // resolvida aqui, no momento do play. Cache local por id evita repetir a
   // chamada ao navegar para frente e para trás no feed.
-  const [resolved, setResolved] = useState<Record<string, string>>({});
+  const [resolved, setResolved] = useState<
+    Record<string, { playbackUrl: string | null; embedUrl: string | null }>
+  >({});
   const [resolving, setResolving] = useState(false);
-  const src = video ? (video.playbackUrl ?? (video.id ? resolved[video.id] : undefined)) : undefined;
+
+  const entry = video?.id ? resolved[video.id] : undefined;
+  const src = video ? (video.playbackUrl ?? entry?.playbackUrl ?? undefined) : undefined;
+  /**
+   * Sem MP4 (cota do fornecedor esgotada, por exemplo), cai para o player
+   * oficial do TikTok. É gratuito, não expira e sempre toca — melhor do que
+   * mostrar um card preto.
+   */
+  const embed = !src ? entry?.embedUrl : undefined;
 
   useEffect(() => {
     if (!video?.id || video.playbackUrl || resolved[video.id]) return;
@@ -69,8 +79,8 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
     setResolving(true);
     videosService
       .playback(video.id)
-      .then((url) => {
-        if (!cancelled && url) setResolved((prev) => ({ ...prev, [video.id!]: url }));
+      .then((data) => {
+        if (!cancelled) setResolved((prev) => ({ ...prev, [video.id!]: data }));
       })
       .catch(() => undefined)
       .finally(() => !cancelled && setResolving(false));
@@ -88,8 +98,8 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
     let cancelled = false;
     videosService
       .playback(next.id)
-      .then((url) => {
-        if (!cancelled && url) setResolved((prev) => ({ ...prev, [next.id!]: url }));
+      .then((data) => {
+        if (!cancelled) setResolved((prev) => ({ ...prev, [next.id!]: data }));
       })
       .catch(() => undefined);
     return () => {
@@ -204,10 +214,24 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
               boxShadow: '0 30px 90px rgba(0,0,0,0.6)',
             }}
           >
+            {/* Fallback oficial: quando não há MP4, o embed do TikTok toca
+                o vídeo dentro do card. Os controles próprios do player não
+                se aplicam aqui — quem manda é o iframe. */}
+            {embed && (
+              <Box
+                component="iframe"
+                src={embed}
+                title={video.caption}
+                allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                sx={{ width: '100%', height: '100%', border: 0, display: 'block' }}
+              />
+            )}
+
             <Box
               component="video"
               ref={videoRef}
               src={src}
+              style={{ display: embed ? 'none' : 'block' }}
               poster={proxyImage(video.thumbnailUrl)}
               autoPlay
               playsInline

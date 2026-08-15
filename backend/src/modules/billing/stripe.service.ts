@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -28,14 +29,14 @@ import { CreditTransaction } from './entities/credit-transaction.entity';
  * id gravado em credit_transactions.reference.
  */
 @Injectable()
-export class StripeService {
+export class StripeService implements OnModuleInit {
   private readonly logger = new Logger(StripeService.name);
   private readonly stripe: Stripe | null;
   private readonly webhookSecret: string;
   private readonly appUrl: string;
 
   constructor(
-    config: ConfigService,
+    private readonly config: ConfigService,
     private readonly billing: BillingService,
     @InjectRepository(CreditTransaction)
     private readonly transactions: Repository<CreditTransaction>,
@@ -46,8 +47,90 @@ export class StripeService {
     this.appUrl = config.get<string>('APP_URL') ?? 'http://localhost:5173';
   }
 
+  /**
+   * O valor cobrado vem do Price cadastrado no Stripe, mas a vitrine (landing
+   * e /planos) lê o billing.config — se os dois divergirem, a página mente
+   * sobre o preço. Este check roda no boot e grita quando isso acontece.
+   * Não derruba o servidor: é falha de configuração externa, não de código.
+   */
+  async onModuleInit(): Promise<void> {
+    if (!this.stripe) return;
+    const expected: Array<[string, string | undefined, number]> = [
+      ...PLANS.flatMap((plan) => {
+        const rows: Array<[string, string | undefined, number]> = [];
+        if (plan.priceBrl > 0) {
+          rows.push([
+            `${plan.id}/mensal`,
+            this.priceIdFor(plan.id, 'month'),
+            plan.priceBrl,
+          ]);
+        }
+        if (plan.annual) {
+          rows.push([
+            `${plan.id}/anual`,
+            this.priceIdFor(plan.id, 'year'),
+            plan.annual.priceBrl,
+          ]);
+        }
+        return rows;
+      }),
+      ...CREDIT_PACKS.map(
+        (pack): [string, string | undefined, number] => [
+          pack.id,
+          this.packPriceIdFor(pack.id),
+          pack.priceBrl,
+        ],
+      ),
+    ];
+
+    let checked = 0;
+    for (const [label, priceId, priceBrl] of expected) {
+      if (!priceId) continue; // sem cadastro → cai no price_data inline
+      checked += 1;
+      try {
+        const price = await this.stripe.prices.retrieve(priceId);
+        const cents = Math.round(priceBrl * 100);
+        if (price.unit_amount !== cents) {
+          this.logger.error(
+            `Preço divergente em "${label}": Stripe cobra ${price.unit_amount} centavos, ` +
+              `o billing.config anuncia ${cents}. Alinhe os dois antes de vender.`,
+          );
+        } else if (!price.active) {
+          this.logger.error(`Price ${priceId} ("${label}") está arquivado no Stripe.`);
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Não consegui conferir o price de "${label}" (${priceId}): ${(err as Error).message}`,
+        );
+      }
+    }
+    this.logger.log(
+      `Stripe: ${checked} de ${expected.length} preços conferidos contra o billing.config.`,
+    );
+  }
+
   get enabled(): boolean {
     return this.stripe !== null;
+  }
+
+  /**
+   * Price id cadastrado no Stripe para o plano/ciclo, por convenção de env:
+   * `STRIPE_PRICE_PRO_MONTH`, `STRIPE_PRICE_PRO_YEAR`, `STRIPE_PRICE_BUSINESS_MONTH`.
+   * Sem a variável, o checkout cai no `price_data` inline (útil em dev, onde
+   * ninguém cadastrou o catálogo) — o preço então vem do billing.config.
+   */
+  private priceIdFor(planId: string, cycle: BillingCycle): string | undefined {
+    return this.envPrice(`${planId}_${cycle}`);
+  }
+
+  /** Idem para os pacotes avulsos: `STRIPE_PRICE_PACK_100`, ... */
+  private packPriceIdFor(packId: string): string | undefined {
+    return this.envPrice(packId);
+  }
+
+  private envPrice(suffix: string): string | undefined {
+    const key = `STRIPE_PRICE_${suffix.toUpperCase().replace(/-/g, '_')}`;
+    return this.config.get<string>(key)?.trim() || undefined;
   }
 
   private require(): Stripe {
@@ -83,17 +166,19 @@ export class StripeService {
         mode: 'payment',
         metadata: { userId, kind: 'pack', itemId: pack.id },
         line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: 'brl',
-              unit_amount: Math.round(pack.priceBrl * 100),
-              product_data: {
-                name: `PikPok — ${pack.name}`,
-                description: `${pack.credits} créditos de IA`,
+          this.packPriceIdFor(pack.id)
+            ? { price: this.packPriceIdFor(pack.id), quantity: 1 }
+            : {
+                quantity: 1,
+                price_data: {
+                  currency: 'brl',
+                  unit_amount: Math.round(pack.priceBrl * 100),
+                  product_data: {
+                    name: `PikPok — ${pack.name}`,
+                    description: `${pack.credits} créditos de IA`,
+                  },
+                },
               },
-            },
-          },
         ],
       });
     } else if (item.planId) {
@@ -111,24 +196,33 @@ export class StripeService {
       // `cycle` vai no metadata porque a renovação (invoice.paid) só tem isso
       // para saber quantos créditos liberar.
       const meta = { userId, kind: 'plan', itemId: plan.id, cycle };
+      const priceId = this.priceIdFor(plan.id, cycle);
+      if (!priceId) {
+        this.logger.warn(
+          `Sem price id para ${plan.id}/${cycle} — usando price_data inline. ` +
+            `Cadastre STRIPE_PRICE_${plan.id.toUpperCase()}_${cycle.toUpperCase()}.`,
+        );
+      }
       session = await stripe.checkout.sessions.create({
         ...common,
         mode: 'subscription',
         metadata: meta,
         subscription_data: { metadata: meta },
         line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: 'brl',
-              unit_amount: Math.round(planPrice(plan, cycle) * 100),
-              recurring: { interval: cycle },
-              product_data: {
-                name: `PikPok ${plan.name}`,
-                description: `${credits} créditos de IA por ${cycle === 'year' ? 'ano' : 'mês'}`,
+          priceId
+            ? { price: priceId, quantity: 1 }
+            : {
+                quantity: 1,
+                price_data: {
+                  currency: 'brl',
+                  unit_amount: Math.round(planPrice(plan, cycle) * 100),
+                  recurring: { interval: cycle },
+                  product_data: {
+                    name: `PikPok ${plan.name}`,
+                    description: `${credits} créditos de IA por ${cycle === 'year' ? 'ano' : 'mês'}`,
+                  },
+                },
               },
-            },
-          },
         ],
       });
     } else {

@@ -13,6 +13,7 @@ import { ExternalDataProvider } from './external-data.provider';
 import { ProductExtractorService } from './product-extractor.service';
 import { ProductMetricDaily } from '../products/entities/product-metric-daily.entity';
 import { ImageSearchSource } from './image-search.source';
+import { TikTokOembedSource } from './tiktok-oembed.source';
 import { IngestionRun } from './entities/ingestion-run.entity';
 import { IngestionSetting } from './entities/ingestion-setting.entity';
 import { IngestionController } from './ingestion.controller';
@@ -35,6 +36,7 @@ import { IngestionService } from './ingestion.service';
     ExternalDataProvider,
     ProductExtractorService,
     ImageSearchSource,
+    TikTokOembedSource,
   ],
 })
 export class IngestionModule {}
