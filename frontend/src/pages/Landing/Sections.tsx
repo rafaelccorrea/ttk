@@ -29,7 +29,7 @@ import {
 import { ReactNode, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { COMPARISON, FAQ, FEATURES, HIGHLIGHTS, NICHES, PRICING, STEPS, TESTIMONIALS, brl } from './data';
-import { Reveal, SectionHeading, cyan, glass, glowCard, gradientText, ink, inkSoft, line, lineStrong, red, textDim, textFaint } from './theme';
+import { Reveal, SectionHeading, cyan, glass, glowCard, gradientText, ink, inkSoft, line, lineStrong, page, pageNarrow, red, textDim, textFaint } from './theme';
 
 /* ---------------------------------------------------------------- marquee */
 
@@ -99,7 +99,7 @@ function FeatureCard({ icon, tag, title, desc, big = false }: { icon: ReactNode;
 
 export function Features() {
   return (
-    <Container id="recursos" maxWidth="lg" sx={{ py: { xs: 9, md: 13 }, scrollMarginTop: 88 }}>
+    <Container id="recursos" maxWidth={false} sx={{ ...page, py: { xs: 9, md: 13 }, scrollMarginTop: 88 }}>
       <Reveal>
         <SectionHeading
           eyebrow="TUDO EM UM SÓ LUGAR"
@@ -258,7 +258,7 @@ export function Showcase() {
 
   return (
     <Box sx={{ bgcolor: inkSoft, borderTop: `1px solid ${line}`, borderBottom: `1px solid ${line}` }}>
-      <Container maxWidth="lg" sx={{ py: { xs: 9, md: 12 } }}>
+      <Container maxWidth={false} sx={{ ...page, py: { xs: 9, md: 12 } }}>
         <Reveal>
           <SectionHeading
             eyebrow="POR DENTRO DA PLATAFORMA"
@@ -336,7 +336,7 @@ export function HowItWorks() {
   return (
     <Box id="como-funciona" sx={{ position: 'relative', overflow: 'hidden', scrollMarginTop: 72 }}>
       <Box aria-hidden sx={{ position: 'absolute', bottom: -160, left: '40%', width: 420, height: 420, borderRadius: '50%', filter: 'blur(130px)', background: `${red}1c`, pointerEvents: 'none' }} />
-      <Container maxWidth="lg" sx={{ py: { xs: 9, md: 12 } }}>
+      <Container maxWidth={false} sx={{ ...page, py: { xs: 9, md: 12 } }}>
         <Reveal>
           <SectionHeading
             eyebrow="COMO FUNCIONA"
@@ -381,7 +381,7 @@ export function HowItWorks() {
 export function Comparison() {
   return (
     <Box sx={{ bgcolor: inkSoft, borderTop: `1px solid ${line}`, borderBottom: `1px solid ${line}` }}>
-      <Container maxWidth="md" sx={{ py: { xs: 9, md: 12 } }}>
+      <Container maxWidth={false} sx={{ ...pageNarrow, py: { xs: 9, md: 12 } }}>
         <Reveal>
           <SectionHeading
             eyebrow="ANTES E DEPOIS"
@@ -436,7 +436,7 @@ export function Comparison() {
 
 export function Testimonials() {
   return (
-    <Container id="depoimentos" maxWidth="lg" sx={{ py: { xs: 9, md: 12 }, scrollMarginTop: 88 }}>
+    <Container id="depoimentos" maxWidth={false} sx={{ ...page, py: { xs: 9, md: 12 }, scrollMarginTop: 88 }}>
       <Reveal>
         <SectionHeading
           eyebrow="QUEM JÁ USA"
@@ -484,7 +484,7 @@ export function Testimonials() {
 export function Pricing() {
   return (
     <Box id="planos" sx={{ bgcolor: inkSoft, borderTop: `1px solid ${line}`, borderBottom: `1px solid ${line}`, scrollMarginTop: 72 }}>
-      <Container maxWidth="lg" sx={{ py: { xs: 9, md: 12 } }}>
+      <Container maxWidth={false} sx={{ ...page, py: { xs: 9, md: 12 } }}>
         <Reveal>
           <SectionHeading
             eyebrow="PLANOS"
@@ -563,7 +563,7 @@ export function Pricing() {
 
 export function Faq() {
   return (
-    <Container id="faq" maxWidth="md" sx={{ py: { xs: 9, md: 12 }, scrollMarginTop: 88 }}>
+    <Container id="faq" maxWidth={false} sx={{ ...pageNarrow, py: { xs: 9, md: 12 }, scrollMarginTop: 88 }}>
       <Reveal>
         <SectionHeading eyebrow="DÚVIDAS FREQUENTES" title="Perguntas que todo mundo faz" />
       </Reveal>
@@ -601,13 +601,13 @@ export function Faq() {
 
 export function FinalCta() {
   return (
-    <Container maxWidth="lg" sx={{ py: { xs: 9, md: 13 } }}>
+    <Container maxWidth={false} sx={{ ...page, py: { xs: 9, md: 13 } }}>
       <Reveal>
         <Box
           sx={{
             ...glass,
             position: 'relative', overflow: 'hidden', textAlign: 'center',
-            px: { xs: 3, md: 8 }, py: { xs: 7, md: 10 },
+            px: { xs: 3, md: 8, lg: 12 }, py: { xs: 7, md: 10, lg: 12 },
             borderColor: `${red}33`,
           }}
         >
@@ -678,7 +678,7 @@ const FOOTER_COLS = [
 export function Footer() {
   return (
     <Box component="footer" sx={{ borderTop: `1px solid ${line}`, bgcolor: ink }}>
-      <Container maxWidth="lg" sx={{ pt: 7, pb: 4 }}>
+      <Container maxWidth={false} sx={{ ...page, pt: 7, pb: 4 }}>
         <Grid container spacing={5}>
           <Grid item xs={12} md={5}>
             <Stack direction="row" spacing={1.25} alignItems="center" mb={2}>

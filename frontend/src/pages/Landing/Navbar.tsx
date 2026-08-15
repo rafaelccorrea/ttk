@@ -8,7 +8,7 @@ import { Box, Button, Container, Drawer, IconButton, Stack, Typography } from '@
 import { useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { NAV_LINKS } from './data';
-import { glass, line, red, textDim } from './theme';
+import { glass, line, page, red, textDim } from './theme';
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -59,7 +59,7 @@ export function Navbar() {
           background: `linear-gradient(90deg, ${red}, #25f4ee)`, transition: 'width .1s linear',
         }}
       />
-      <Container maxWidth="lg">
+      <Container maxWidth={false} sx={page}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" py={1.5}>
           <Box component={RouterLink} to="/" sx={{ textDecoration: 'none', color: 'inherit' }}>
             {logo()}

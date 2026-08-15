@@ -11,7 +11,7 @@ import { Box, Button, Chip, Container, Grid, Stack, Typography } from '@mui/mate
 import { ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { TICKER_WORDS } from './data';
-import { cyan, glass, gradientText, line, red, textDim, textFaint, useCountUp } from './theme';
+import { cyan, glass, gradientText, line, page, red, textDim, textFaint, useCountUp } from './theme';
 
 function MockRow({ name, growth, revenue, w, delay }: { name: string; growth: string; revenue: string; w: number; delay: number }) {
   return (
@@ -82,9 +82,9 @@ function HeroStat({ to, suffix, label, decimals = 0 }: { to: number; suffix: str
 export function Hero() {
   return (
     <Box sx={{ position: 'relative' }}>
-      <Container maxWidth="lg" sx={{ pt: { xs: 7, md: 11 }, pb: { xs: 8, md: 10 } }}>
-        <Grid container spacing={6} alignItems="center">
-          <Grid item xs={12} md={6}>
+      <Container maxWidth={false} sx={{ ...page, pt: { xs: 7, md: 11 }, pb: { xs: 8, md: 10 } }}>
+        <Grid container spacing={{ xs: 6, lg: 8 }} alignItems="center">
+          <Grid item xs={12} md={6} lg={5}>
             <Box sx={{ animation: 'lpFadeUp .7s ease both' }}>
               <Chip
                 icon={<BoltRounded sx={{ fontSize: 16, color: `${cyan} !important` }} />}
@@ -113,7 +113,7 @@ export function Hero() {
               <br />
               antes de todo mundo
             </Typography>
-            <Typography sx={{ color: textDim, fontSize: 18, mt: 3, maxWidth: 500, lineHeight: 1.65, animation: 'lpFadeUp .7s ease .2s both' }}>
+            <Typography sx={{ color: textDim, fontSize: 18, mt: 3, maxWidth: 540, lineHeight: 1.65, animation: 'lpFadeUp .7s ease .2s both' }}>
               O PikPok monitora produtos, vídeos e criadores do TikTok Shop todos os dias e transforma
               esses dados em roteiros prontos para gravar.
             </Typography>
@@ -174,7 +174,7 @@ export function Hero() {
           </Grid>
 
           {/* Mock do dashboard com badges flutuantes */}
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={6} lg={7}>
             <Box sx={{ position: 'relative', animation: 'lpFadeUp .8s ease .25s both' }}>
               <FloatingBadge sx={{ top: -26, right: 24 }} duration={5}>
                 <RocketLaunchRounded sx={{ fontSize: 18, color: cyan }} />

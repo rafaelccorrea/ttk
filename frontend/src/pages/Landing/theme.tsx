@@ -13,6 +13,24 @@ export const red = '#fe2c55';
 export const cyan = '#25f4ee';
 export const violet = '#8b5cf6';
 
+/**
+ * Largura útil da landing. O `maxWidth="lg"` do MUI (1200px) deixava margens
+ * enormes em telas grandes — aqui a página respira até 1480px e o padding
+ * lateral cresce junto com o viewport.
+ */
+export const page = {
+  maxWidth: 1480,
+  mx: 'auto',
+  px: { xs: 2.5, sm: 4, md: 6, lg: 8, xl: 10 },
+} as const;
+
+/** Variante estreita, para blocos de leitura (comparativo, FAQ). */
+export const pageNarrow = {
+  maxWidth: 1040,
+  mx: 'auto',
+  px: { xs: 2.5, sm: 4, md: 6 },
+} as const;
+
 export const gradientText = {
   background: `linear-gradient(92deg, ${red} 0%, #ff7a9c 45%, ${cyan} 100%)`,
   backgroundSize: '200% 100%',
