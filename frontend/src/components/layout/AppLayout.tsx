@@ -31,18 +31,51 @@ const DRAWER_WIDTH = 248;
 const red = '#fe2c55';
 const cyan = '#25f4ee';
 
-const NAV = [
-  { to: '/dashboard', label: 'Dashboard', icon: <DashboardRoundedIcon /> },
-  { to: '/produtos', label: 'Produtos', icon: <LocalFireDepartmentRoundedIcon /> },
-  { to: '/videos', label: 'Vídeos que Vendem', icon: <OndemandVideoRoundedIcon /> },
-  { to: '/criadores', label: 'Criadores', icon: <GroupsRoundedIcon /> },
-  { to: '/estudio', label: 'Estúdio IA', icon: <AutoFixHighRoundedIcon /> },
-  { to: '/multiplicador', label: 'Multiplicador', icon: <DynamicFeedRoundedIcon /> },
-  { to: '/prompts', label: 'Cofre de Prompts', icon: <StyleRoundedIcon /> },
-  { to: '/favoritos', label: 'Favoritos', icon: <StarRoundedIcon /> },
-  { to: '/academy', label: 'PikPok Educa', icon: <SchoolRoundedIcon /> },
-  { to: '/indique', label: 'Indique e Ganhe', icon: <CardGiftcardRoundedIcon /> },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: JSX.Element;
+}
+
+interface NavSection {
+  title: string | null;
+  items: NavItem[];
+}
+
+const NAV_SECTIONS: NavSection[] = [
+  {
+    title: null,
+    items: [
+      { to: '/dashboard', label: 'Dashboard', icon: <DashboardRoundedIcon /> },
+    ],
+  },
+  {
+    title: 'Descoberta',
+    items: [
+      { to: '/produtos', label: 'Produtos', icon: <LocalFireDepartmentRoundedIcon /> },
+      { to: '/videos', label: 'Vídeos que Vendem', icon: <OndemandVideoRoundedIcon /> },
+      { to: '/criadores', label: 'Criadores', icon: <GroupsRoundedIcon /> },
+      { to: '/favoritos', label: 'Favoritos', icon: <StarRoundedIcon /> },
+    ],
+  },
+  {
+    title: 'Estúdio',
+    items: [
+      { to: '/estudio', label: 'Roteirizar com IA', icon: <AutoFixHighRoundedIcon /> },
+      { to: '/multiplicador', label: 'Multiplicador', icon: <DynamicFeedRoundedIcon /> },
+      { to: '/prompts', label: 'Cofre de Prompts', icon: <StyleRoundedIcon /> },
+    ],
+  },
+  {
+    title: 'Programa',
+    items: [
+      { to: '/academy', label: 'PikPok Educa', icon: <SchoolRoundedIcon /> },
+      { to: '/indique', label: 'Indique e Ganhe', icon: <CardGiftcardRoundedIcon /> },
+    ],
+  },
 ];
+
+const NAV = NAV_SECTIONS.flatMap((section) => section.items);
 
 export function AppLayout() {
   const { email, signOut } = useAuth();
@@ -80,10 +113,33 @@ export function AppLayout() {
         </Box>
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
 
-        <List sx={{ px: 1.5, py: 2, flexGrow: 1 }}>
-          {NAV.map((item) => {
-            const selected = location.pathname.startsWith(item.to);
-            return (
+        <Box sx={{ flexGrow: 1, overflowY: 'auto', px: 1.5, py: 1 }}>
+          {NAV_SECTIONS.map((section, sectionIndex) => (
+            <List
+              key={section.title ?? sectionIndex}
+              disablePadding
+              sx={{ py: 1 }}
+              subheader={
+                section.title ? (
+                  <Typography
+                    variant="overline"
+                    sx={{
+                      display: 'block',
+                      px: 1.5,
+                      pb: 0.5,
+                      fontSize: 10.5,
+                      letterSpacing: '0.12em',
+                      color: 'rgba(255,255,255,0.38)',
+                    }}
+                  >
+                    {section.title}
+                  </Typography>
+                ) : undefined
+              }
+            >
+              {section.items.map((item) => {
+                const selected = location.pathname.startsWith(item.to);
+                return (
               <ListItemButton
                 key={item.to}
                 component={Link}
@@ -126,9 +182,11 @@ export function AppLayout() {
                   primaryTypographyProps={{ fontWeight: 600, fontSize: 14.5 }}
                 />
               </ListItemButton>
-            );
-          })}
-        </List>
+                );
+              })}
+            </List>
+          ))}
+        </Box>
 
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
         <Box
@@ -188,7 +246,7 @@ export function AppLayout() {
             position: 'sticky',
             top: 0,
             zIndex: 5,
-            px: { xs: 2.5, md: 4, xl: 6 },
+            px: { xs: 2, md: 3 },
             py: 2,
             display: 'flex',
             alignItems: 'center',
@@ -213,10 +271,9 @@ export function AppLayout() {
           />
         </Box>
 
-        <Box px={{ xs: 2.5, md: 4, xl: 6 }} py={{ xs: 3, md: 4 }} flexGrow={1}>
-          <Box maxWidth={1440} mx="auto">
-            <Outlet />
-          </Box>
+        {/* Sem maxWidth: o conteúdo ocupa toda a largura, colado às margens */}
+        <Box px={{ xs: 2, md: 3 }} py={{ xs: 2.5, md: 3 }} flexGrow={1}>
+          <Outlet />
         </Box>
       </Box>
       <SupportFab />
