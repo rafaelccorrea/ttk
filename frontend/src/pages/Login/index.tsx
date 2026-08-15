@@ -222,16 +222,10 @@ export function LoginPage() {
                 Você entrou na lista de espera!
               </Typography>
 
-              {waitlist.position != null && (
-                <Typography color="text.secondary" mb={1}>
-                  Você é o número{' '}
-                  <Box component="span" sx={{ color: 'primary.main', fontWeight: 800 }}>
-                    {waitlist.position}
-                  </Box>{' '}
-                  da fila.
-                </Typography>
-              )}
-
+              {/* A posição na fila NÃO é exibida: com a fila pequena, o
+                  número entrega o oposto do que a tela quer comunicar. O
+                  backend continua devolvendo em `position` para controle
+                  interno — só não vai para a tela. */}
               <Typography color="text.secondary" mb={3}>
                 A procura foi bem maior do que a gente esperava, então estamos
                 abrindo o acesso aos poucos para todo mundo ter uma boa
