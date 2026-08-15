@@ -2,6 +2,9 @@
 cc-session.json
 shop-session.json
 
+# Logs de execução local
+*.log
+
 # Segredos — nunca commitar
 .env
 .env.*
