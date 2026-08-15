@@ -14,6 +14,8 @@ import {
   TrendingProduct,
 } from './creative-center-products.source';
 import { ExternalDataProvider } from './external-data.provider';
+import { evaluateProduct } from './product-gate';
+import { ProductExtractorService } from './product-extractor.service';
 import { ImageSearchSource } from './image-search.source';
 import { IngestionRun, IngestionTrigger } from './entities/ingestion-run.entity';
 import { IngestionSetting } from './entities/ingestion-setting.entity';
@@ -43,6 +45,7 @@ export class IngestionService implements OnModuleInit {
     private readonly creativeCenter: CreativeCenterSource,
     private readonly ccProducts: CreativeCenterProductsSource,
     private readonly externalData: ExternalDataProvider,
+    private readonly extractor: ProductExtractorService,
     private readonly imageSearch: ImageSearchSource,
     private readonly scheduler: SchedulerRegistry,
   ) {}
@@ -225,6 +228,14 @@ export class IngestionService implements OnModuleInit {
         run.videosUpserted += 1;
       }
 
+      // 2c) PRODUTOS a partir dos anúncios: o vídeo diz o que vende.
+      //     Transcreve o áudio (Whisper) e extrai o produto da fala + legenda.
+      //     É a única fonte de produto BR que conseguimos sem afiliado — e é
+      //     derivada de anúncio real, não número inventado.
+      run.productsIngested += await this.extractProductsFromAds(
+        new Date().toISOString().slice(0, 10),
+      );
+
       // 3) Produtos → tabelas products + product_metrics_daily.
       //    IMPORTANTE: só ingerimos produto de fonte confiável. O Top Ads foi
       //    descartado como fonte (medição: 117 anúncios coletados, apenas 2 de
@@ -310,6 +321,89 @@ export class IngestionService implements OnModuleInit {
       'Nenhuma fonte confiável de produtos configurada (EXTERNAL_DATA_*). Nenhum produto ingerido.',
     );
     return count;
+  }
+
+  /**
+   * Para cada vídeo de anúncio ainda sem produto: transcreve, extrai o
+   * produto e vincula. Limitado por execução para controlar custo de API
+   * (Whisper ~US$0,006/min) — o cron cobre o resto nos dias seguintes.
+   */
+  private async extractProductsFromAds(today: string): Promise<number> {
+    if (!this.extractor.enabled) {
+      this.logger.warn('OPENAI_API_KEY ausente: extração de produto desligada.');
+      return 0;
+    }
+
+    const pending = await this.videos.find({
+      where: { productId: IsNull(), kind: 'product' },
+      order: { likes: 'DESC' },
+      take: 12,
+    });
+
+    let created = 0;
+    for (const video of pending) {
+      if (!video.playbackUrl) continue;
+
+      const transcript = video.transcript ?? (await this.extractor.transcribe(video.playbackUrl));
+      if (transcript) video.transcript = transcript;
+
+      const extracted = await this.extractor.extract({
+        caption: video.caption ?? '',
+        brand: video.creatorHandle ?? null,
+        transcript,
+      });
+
+      if (!extracted) {
+        // Marca como visto para não gastar API de novo no mesmo vídeo.
+        await this.videos.save(video);
+        continue;
+      }
+
+      // O portão de qualidade vale aqui também: nome extraído ainda pode ser
+      // frase de propaganda.
+      const gate = evaluateProduct({ title: extracted.name });
+      if (!gate.accepted || !gate.cleanTitle) {
+        this.logger.debug(`Extraído recusado: "${extracted.name}" (${gate.reason})`);
+        await this.videos.save(video);
+        continue;
+      }
+
+      const externalId = `ad-${this.slugify(gate.cleanTitle)}`;
+      const product = await this.upsertProduct({
+        externalId,
+        title: gate.cleanTitle,
+        category: extracted.category,
+        price: extracted.priceBrl ?? 0,
+        imageUrl: video.thumbnailUrl ?? null,
+        storeName: video.creatorHandle ?? null,
+        tiktokUrl: null,
+        radarScore: Math.round(extracted.confidence * 100),
+      });
+
+      // O engajamento do anúncio é o sinal que temos: vira métrica do dia.
+      await this.upsertDailyMetric(
+        product.id,
+        today,
+        video.likes ?? 0,
+        (video.likes ?? 0) * (extracted.priceBrl ?? 60),
+      );
+
+      video.productId = product.id;
+      await this.videos.save(video);
+      created += 1;
+      this.logger.log(`Produto extraído do anúncio: "${gate.cleanTitle}"`);
+    }
+    return created;
+  }
+
+  private slugify(text: string): string {
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 60);
   }
 
   private async upsertProduct(data: {

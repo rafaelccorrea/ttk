@@ -17,6 +17,8 @@ import TroubleshootRoundedIcon from '@mui/icons-material/TroubleshootRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import WorkspacePremiumRoundedIcon from '@mui/icons-material/WorkspacePremiumRounded';
 import BoltRoundedIcon from '@mui/icons-material/BoltRounded';
+import MenuOpenRoundedIcon from '@mui/icons-material/MenuOpenRounded';
+import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import {
   Avatar,
   Box,
@@ -39,6 +41,8 @@ import { api, CREDITS_CHANGED_EVENT } from '@/services/api';
 import { billingService } from '@/services/billing.service';
 
 const DRAWER_WIDTH = 248;
+const DRAWER_WIDTH_COLLAPSED = 76;
+const DRAWER_COLLAPSED_KEY = 'pikpok:drawer-collapsed';
 const red = '#fe2c55';
 const cyan = '#25f4ee';
 
@@ -118,6 +122,17 @@ export function AppLayout() {
     isRunning: boolean;
   } | null>(null);
   const [, forceTick] = useState(0);
+  // Drawer recolhível (só ícones) — preferência persistida no navegador.
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(DRAWER_COLLAPSED_KEY) === '1',
+  );
+  const drawerWidth = collapsed ? DRAWER_WIDTH_COLLAPSED : DRAWER_WIDTH;
+
+  const toggleDrawer = () =>
+    setCollapsed((c) => {
+      localStorage.setItem(DRAWER_COLLAPSED_KEY, c ? '0' : '1');
+      return !c;
+    });
 
   // Timer da próxima leva de análises (visível a todos os planos).
   useEffect(() => {
@@ -168,10 +183,13 @@ export function AppLayout() {
       <Drawer
         variant="permanent"
         sx={{
-          width: DRAWER_WIDTH,
+          width: drawerWidth,
           flexShrink: 0,
+          transition: 'width .22s ease',
           '& .MuiDrawer-paper': {
-            width: DRAWER_WIDTH,
+            width: drawerWidth,
+            overflowX: 'hidden',
+            transition: 'width .22s ease',
             boxSizing: 'border-box',
             color: '#fff',
             background: `radial-gradient(70% 30% at 0% 0%, ${red}26 0%, transparent 60%), radial-gradient(60% 24% at 100% 100%, ${cyan}1a 0%, transparent 60%), #12131b`,
@@ -181,24 +199,33 @@ export function AppLayout() {
           },
         }}
       >
-        <Box px={2.5} py={2.75} display="flex" alignItems="center" gap={1.5}>
+        <Box
+          px={collapsed ? 1.5 : 2.5}
+          py={2.75}
+          display="flex"
+          alignItems="center"
+          gap={1.5}
+          justifyContent={collapsed ? 'center' : undefined}
+        >
           <Box
             component="img"
             src="/icon-192.png"
             alt="PikPok"
-            sx={{ width: 40, height: 40, borderRadius: 2.5, boxShadow: `0 4px 14px ${red}44` }}
+            sx={{ width: 40, height: 40, borderRadius: 2.5, boxShadow: `0 4px 14px ${red}44`, flexShrink: 0 }}
           />
-          <Box>
-            <Typography variant="h6" fontWeight={800} letterSpacing="-0.02em" lineHeight={1.1}>
-              Pik
-              <Box component="span" sx={{ color: red }}>
-                Pok
-              </Box>
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-              Inteligência TikTok Shop
-            </Typography>
-          </Box>
+          {!collapsed && (
+            <Box minWidth={0}>
+              <Typography variant="h6" fontWeight={800} letterSpacing="-0.02em" lineHeight={1.1}>
+                Pik
+                <Box component="span" sx={{ color: red }}>
+                  Pok
+                </Box>
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                Inteligência TikTok Shop
+              </Typography>
+            </Box>
+          )}
         </Box>
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
 
@@ -219,7 +246,7 @@ export function AppLayout() {
               disablePadding
               sx={{ py: 0.75 }}
               subheader={
-                section.title ? (
+                section.title && !collapsed ? (
                   <Typography
                     variant="overline"
                     sx={{
@@ -242,8 +269,12 @@ export function AppLayout() {
                 const locked =
                   !!item.feature && features[item.feature] === false;
                 return (
-              <ListItemButton
+              <Tooltip
                 key={item.to}
+                title={collapsed ? item.label : ''}
+                placement="right"
+              >
+              <ListItemButton
                 component={Link}
                 to={item.to}
                 selected={selected}
@@ -251,6 +282,8 @@ export function AppLayout() {
                   borderRadius: 2.5,
                   mb: 0.25,
                   py: 0.65,
+                  justifyContent: collapsed ? 'center' : undefined,
+                  px: collapsed ? 1 : undefined,
                   color: 'rgba(255,255,255,0.62)',
                   position: 'relative',
                   transition: 'background-color .2s ease, color .2s ease, transform .15s ease',
@@ -277,18 +310,22 @@ export function AppLayout() {
                   },
                 }}
               >
-                <ListItemIcon sx={{ minWidth: 38, color: 'inherit' }}>
+                <ListItemIcon
+                  sx={{ minWidth: collapsed ? 0 : 38, color: 'inherit' }}
+                >
                   {item.icon}
                 </ListItemIcon>
-                <ListItemText
-                  primary={item.label}
-                  primaryTypographyProps={{
-                    fontWeight: 600,
-                    fontSize: 14.5,
-                    sx: locked ? { opacity: 0.55 } : undefined,
-                  }}
-                />
-                {locked && (
+                {!collapsed && (
+                  <ListItemText
+                    primary={item.label}
+                    primaryTypographyProps={{
+                      fontWeight: 600,
+                      fontSize: 14.5,
+                      sx: locked ? { opacity: 0.55 } : undefined,
+                    }}
+                  />
+                )}
+                {locked && !collapsed && (
                   <Tooltip title="Disponível em planos superiores — clique para ver">
                     <LockRoundedIcon
                       sx={{ fontSize: 15, color: 'rgba(255,255,255,0.45)' }}
@@ -296,6 +333,7 @@ export function AppLayout() {
                   </Tooltip>
                 )}
               </ListItemButton>
+              </Tooltip>
                 );
               })}
             </List>
@@ -304,10 +342,11 @@ export function AppLayout() {
 
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
         <Box
-          px={2}
+          px={collapsed ? 1 : 2}
           py={1.75}
           display="flex"
           alignItems="center"
+          justifyContent={collapsed ? 'center' : undefined}
           gap={1.25}
           component={Link}
           to="/perfil"
@@ -329,14 +368,17 @@ export function AppLayout() {
           >
             {(email ?? '?').slice(0, 1).toUpperCase()}
           </Avatar>
-          <Box flexGrow={1} minWidth={0}>
-            <Typography variant="body2" noWrap fontWeight={600}>
-              {email ?? '—'}
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-              plano {plan ?? '—'}
-            </Typography>
-          </Box>
+          {!collapsed && (
+            <Box flexGrow={1} minWidth={0}>
+              <Typography variant="body2" noWrap fontWeight={600}>
+                {email ?? '—'}
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                plano {plan ?? '—'}
+              </Typography>
+            </Box>
+          )}
+          {!collapsed && (
           <Tooltip title="Sair">
             <IconButton
               size="small"
@@ -350,6 +392,7 @@ export function AppLayout() {
               <LogoutRoundedIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+          )}
         </Box>
       </Drawer>
 
@@ -370,6 +413,15 @@ export function AppLayout() {
             backdropFilter: 'blur(10px)',
           }}
         >
+          <Tooltip title={collapsed ? 'Expandir menu' : 'Recolher menu'}>
+            <IconButton
+              size="small"
+              onClick={toggleDrawer}
+              aria-label={collapsed ? 'expandir menu lateral' : 'recolher menu lateral'}
+            >
+              {collapsed ? <MenuRoundedIcon /> : <MenuOpenRoundedIcon />}
+            </IconButton>
+          </Tooltip>
           <Typography variant="h6" fontWeight={800} letterSpacing="-0.01em">
             {current?.label ?? 'Perfil'}
           </Typography>

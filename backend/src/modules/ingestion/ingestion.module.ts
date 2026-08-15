@@ -9,6 +9,7 @@ import { Product } from '../products/entities/product.entity';
 import { CreativeCenterSource } from './creative-center.source';
 import { CreativeCenterProductsSource } from './creative-center-products.source';
 import { ExternalDataProvider } from './external-data.provider';
+import { ProductExtractorService } from './product-extractor.service';
 import { ProductMetricDaily } from '../products/entities/product-metric-daily.entity';
 import { ImageSearchSource } from './image-search.source';
 import { IngestionRun } from './entities/ingestion-run.entity';
@@ -29,6 +30,7 @@ import { IngestionService } from './ingestion.service';
     CreativeCenterSource,
     CreativeCenterProductsSource,
     ExternalDataProvider,
+    ProductExtractorService,
     ImageSearchSource,
   ],
 })
