@@ -2,11 +2,11 @@ import BookmarkIcon from '@mui/icons-material/Bookmark';
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
+import ShoppingBagRoundedIcon from '@mui/icons-material/ShoppingBagRounded';
 import SubtitlesOutlinedIcon from '@mui/icons-material/SubtitlesOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import {
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -18,6 +18,7 @@ import {
   Pagination,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
@@ -65,121 +66,239 @@ function VideoCard({
   onShowTranscript: (video: ViralVideo) => void;
   onPlay: (video: ViralVideo) => void;
 }) {
+  const thumb = video.thumbnailUrl ?? video.productImageUrl;
+  const playable = Boolean(video.playbackUrl || tiktokEmbedId(video.videoUrl));
+  // Botões flutuantes no canto direito, no estilo da barra de ações do TikTok.
+  const railButton = {
+    bgcolor: 'rgba(0,0,0,0.42)',
+    color: '#fff',
+    backdropFilter: 'blur(4px)',
+    '&:hover': { bgcolor: 'rgba(0,0,0,0.62)' },
+  } as const;
+
   return (
     <Card
       sx={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
+        position: 'relative',
+        // Formato "stories": card estreito e alto, thumb ocupando tudo.
+        aspectRatio: '9 / 16',
+        overflow: 'hidden',
+        bgcolor: '#12131b',
         '&:hover': { transform: 'translateY(-2px)' },
       }}
     >
-      {/* Topo "vertical" com proporção próxima de 9:16 (placeholder do vídeo). */}
+      {/* Fundo: gradiente da categoria quando não há thumb */}
       <Box
         sx={{
-          position: 'relative',
-          aspectRatio: '9 / 16',
-          maxHeight: 260,
-          // Thumbnail real quando a ingestão populou; gradiente como fallback.
-          background: video.thumbnailUrl ?? video.productImageUrl
-            ? `linear-gradient(180deg, rgba(0,0,0,0.05) 45%, rgba(0,0,0,0.6)), url(${proxyImage(
-                video.thumbnailUrl ?? video.productImageUrl,
-              )}) center/cover no-repeat`
-            : gradientFor(video.category),
+          position: 'absolute',
+          inset: 0,
+          background: thumb ? '#12131b' : gradientFor(video.category),
+        }}
+      />
+      {thumb && (
+        <>
+          {/* Cópia desfocada preenche as bordas sem cortar a thumb real */}
+          <Box
+            component="img"
+            src={proxyImage(thumb)}
+            alt=""
+            aria-hidden
+            loading="lazy"
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              filter: 'blur(24px) saturate(1.3)',
+              transform: 'scale(1.2)',
+              opacity: 0.5,
+            }}
+          />
+          <Box
+            component="img"
+            src={proxyImage(thumb)}
+            alt={video.caption}
+            loading="lazy"
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              transition: 'transform .35s ease',
+              '.MuiCard-root:hover &': { transform: 'scale(1.05)' },
+            }}
+          />
+        </>
+      )}
+
+      {/* Véu escuro para o texto sobreposto ficar legível */}
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.65) 30%, rgba(0,0,0,0.05) 56%, rgba(0,0,0,0.35) 100%)',
+        }}
+      />
+
+      {/* Toda a área da thumb dispara o player */}
+      {playable && (
+        <Box
+          onClick={() => onPlay(video)}
+          role="button"
+          aria-label="assistir vídeo"
+          sx={{ position: 'absolute', inset: 0, cursor: 'pointer' }}
+        />
+      )}
+
+      {/* Topo: posição no ranking + salvar */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 10,
+          left: 10,
+          right: 10,
           display: 'flex',
-          flexDirection: 'column',
+          alignItems: 'center',
           justifyContent: 'space-between',
-          p: 1.25,
+          zIndex: 2,
         }}
       >
-        <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-          <Chip
-            size="small"
-            label={`#${rank}`}
-            sx={{
-              bgcolor: 'rgba(0,0,0,0.45)',
-              color: '#fff',
-              fontWeight: 800,
-              backdropFilter: 'blur(4px)',
-            }}
-          />
-          <IconButton
-            size="small"
-            onClick={() => onToggleSave(video.id)}
-            aria-label="salvar vídeo"
-            sx={{
-              bgcolor: 'rgba(0,0,0,0.35)',
-              color: video.isSaved ? '#ffd54f' : '#fff',
-              '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' },
-            }}
-          >
-            {video.isSaved ? (
-              <BookmarkIcon fontSize="small" />
-            ) : (
-              <BookmarkBorderIcon fontSize="small" />
-            )}
-          </IconButton>
-        </Box>
+        <Chip
+          size="small"
+          label={`#${rank}`}
+          sx={{
+            bgcolor: 'rgba(0,0,0,0.5)',
+            color: '#fff',
+            fontWeight: 800,
+            backdropFilter: 'blur(4px)',
+          }}
+        />
+        <IconButton
+          size="small"
+          onClick={() => onToggleSave(video.id)}
+          aria-label="salvar vídeo"
+          sx={{ ...railButton, color: video.isSaved ? '#ffd54f' : '#fff' }}
+        >
+          {video.isSaved ? (
+            <BookmarkIcon fontSize="small" />
+          ) : (
+            <BookmarkBorderIcon fontSize="small" />
+          )}
+        </IconButton>
+      </Box>
 
-        {video.playbackUrl || tiktokEmbedId(video.videoUrl) ? (
-          <IconButton
-            onClick={() => onPlay(video)}
-            aria-label="assistir vídeo"
-            sx={{
-              alignSelf: 'center',
-              bgcolor: 'rgba(0,0,0,0.35)',
-              color: '#fff',
-              '&:hover': { bgcolor: 'rgba(254,44,85,0.85)', transform: 'scale(1.08)' },
-            }}
-          >
-            <PlayArrowRoundedIcon sx={{ fontSize: 40 }} />
-          </IconButton>
-        ) : (
-          <PlayArrowRoundedIcon
-            sx={{
-              alignSelf: 'center',
-              fontSize: 48,
-              color: 'rgba(255,255,255,0.85)',
-            }}
-          />
+      {/* Play centralizado */}
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          pointerEvents: 'none',
+        }}
+      >
+        <PlayArrowRoundedIcon
+          sx={{
+            fontSize: 46,
+            color: '#fff',
+            filter: 'drop-shadow(0 2px 10px rgba(0,0,0,0.6))',
+            opacity: playable ? 0.9 : 0.55,
+            transition: 'transform .2s ease',
+            '.MuiCard-root:hover &': playable ? { transform: 'scale(1.15)' } : undefined,
+          }}
+        />
+      </Box>
+
+      {/* Barra de ações lateral (estilo TikTok) */}
+      <Box
+        sx={{
+          position: 'absolute',
+          right: 8,
+          bottom: 132,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 0.75,
+          zIndex: 3,
+        }}
+      >
+        {video.transcript && (
+          <Tooltip title="Ver transcrição" placement="left">
+            <IconButton
+              size="small"
+              onClick={() => onShowTranscript(video)}
+              aria-label="ver transcrição"
+              sx={railButton}
+            >
+              <SubtitlesOutlinedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         )}
-
-        {/* Anúncio do Top Ads não expõe views: mostrar "0 views" passaria a
-            impressão de vídeo sem audiência. Sem o número, não exibimos. */}
-        {video.views > 0 && (
-          <Chip
-            size="small"
-            icon={<VisibilityOutlinedIcon sx={{ fontSize: 16, color: '#fff !important' }} />}
-            label={`${formatNumber(video.views)} views`}
-            sx={{
-              alignSelf: 'flex-start',
-              bgcolor: 'rgba(0,0,0,0.45)',
-              color: '#fff',
-              fontWeight: 700,
-              backdropFilter: 'blur(4px)',
-            }}
-          />
+        {video.videoUrl && (
+          <Tooltip title="Abrir no TikTok" placement="left">
+            <IconButton
+              size="small"
+              component="a"
+              href={video.videoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="abrir no TikTok"
+              sx={railButton}
+            >
+              <OpenInNewRoundedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+        {video.productId && (
+          <Tooltip title="Ver produto" placement="left">
+            <IconButton
+              size="small"
+              component={Link}
+              to={`/produtos/${video.productId}`}
+              aria-label="ver produto"
+              sx={railButton}
+            >
+              <ShoppingBagRoundedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         )}
       </Box>
 
+      {/* Rodapé: informações sobrepostas */}
       <CardContent
-        sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, pt: 1.5 }}
+        sx={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 2,
+          color: '#fff',
+          p: 1.5,
+          '&:last-child': { pb: 1.5 },
+        }}
       >
         <Typography
           sx={{
             fontWeight: 700,
-            fontSize: 14,
-            lineHeight: 1.4,
+            fontSize: 13.5,
+            lineHeight: 1.3,
             display: '-webkit-box',
             WebkitLineClamp: 2,
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
-            minHeight: '2.8em',
+            textShadow: '0 1px 6px rgba(0,0,0,0.6)',
           }}
         >
           {video.caption}
         </Typography>
-        <Typography variant="caption" color="text.secondary" mt={0.5}>
+        <Typography
+          variant="caption"
+          noWrap
+          sx={{ display: 'block', color: 'rgba(255,255,255,0.72)', mt: 0.25 }}
+        >
           {/* Só linka o perfil quando o vídeo veio da ingestão real (handle existe no TikTok). */}
           {video.playbackUrl || video.thumbnailUrl ? (
             <Box
@@ -187,10 +306,13 @@ function VideoCard({
               href={tiktokProfileUrl(video.creatorHandle)}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
               sx={{
                 color: 'inherit',
                 textDecoration: 'none',
-                '&:hover': { color: 'primary.main', textDecoration: 'underline' },
+                position: 'relative',
+                zIndex: 3,
+                '&:hover': { color: '#fff', textDecoration: 'underline' },
               }}
             >
               {displayHandle(video.creatorHandle)}
@@ -202,16 +324,20 @@ function VideoCard({
           {video.category}
         </Typography>
 
-        <Box display="flex" gap={1} flexWrap="wrap" mt={1.5}>
-          {/* Só mostramos faturamento quando existe estimativa de verdade. */}
-          {video.revenueEstimate > 0 && (
+        <Box display="flex" gap={0.75} flexWrap="wrap" mt={1}>
+          {/* Anúncio do Top Ads não expõe views: mostrar "0 views" passaria a
+              impressão de vídeo sem audiência. Sem o número, não exibimos. */}
+          {video.views > 0 && (
             <Chip
               size="small"
-              label={`Faturamento ~${formatCurrency(video.revenueEstimate)}`}
+              icon={<VisibilityOutlinedIcon sx={{ fontSize: 14, color: '#fff !important' }} />}
+              label={formatNumber(video.views)}
               sx={{
+                height: 22,
+                fontSize: 11.5,
+                bgcolor: 'rgba(255,255,255,0.16)',
+                color: '#fff',
                 fontWeight: 700,
-                bgcolor: 'rgba(0,194,187,0.12)',
-                color: 'secondary.main',
               }}
             />
           )}
@@ -219,53 +345,26 @@ function VideoCard({
             size="small"
             label={`♥ ${formatNumber(video.likes)}`}
             sx={{
+              height: 22,
+              fontSize: 11.5,
               fontWeight: 700,
-              bgcolor: 'rgba(254,44,85,0.10)',
-              color: 'primary.main',
+              bgcolor: 'rgba(254,44,85,0.24)',
+              color: '#ff8fa6',
             }}
           />
-        </Box>
-
-        <Box
-          display="flex"
-          alignItems="center"
-          gap={1}
-          mt={1.5}
-          pt={1.5}
-          borderTop="1px solid rgba(22,24,35,0.08)"
-        >
-          {video.transcript && (
-            <Button
+          {/* Só mostramos faturamento quando existe estimativa de verdade. */}
+          {video.revenueEstimate > 0 && (
+            <Chip
               size="small"
-              startIcon={<SubtitlesOutlinedIcon />}
-              onClick={() => onShowTranscript(video)}
-              sx={{ textTransform: 'none', fontWeight: 700 }}
-            >
-              Transcrição
-            </Button>
-          )}
-          {video.videoUrl && (
-            <Button
-              size="small"
-              component="a"
-              href={video.videoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              startIcon={<OpenInNewRoundedIcon sx={{ fontSize: 15 }} />}
-              sx={{ textTransform: 'none', fontWeight: 700 }}
-            >
-              TikTok
-            </Button>
-          )}
-          {video.productId && (
-            <Button
-              size="small"
-              component={Link}
-              to={`/produtos/${video.productId}`}
-              sx={{ textTransform: 'none', fontWeight: 700, ml: 'auto' }}
-            >
-              Ver produto
-            </Button>
+              label={`~${formatCurrency(video.revenueEstimate)}`}
+              sx={{
+                height: 22,
+                fontSize: 11.5,
+                fontWeight: 700,
+                bgcolor: 'rgba(37,244,238,0.2)',
+                color: '#25f4ee',
+              }}
+            />
           )}
         </Box>
       </CardContent>
@@ -351,7 +450,7 @@ export function VideosPage() {
       )}
       <Grid container spacing={2.5} sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}>
         {items.map((v, index) => (
-          <Grid item xs={12} sm={6} md={4} lg={3} key={v.id}>
+          <Grid item xs={6} sm={4} md={3} lg={2} key={v.id}>
             <VideoCard
               video={v}
               rank={(page - 1) * PAGE_SIZE + index + 1}
