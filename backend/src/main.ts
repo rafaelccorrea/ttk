@@ -55,11 +55,23 @@ async function bootstrap() {
   if (isProduction && !appUrl) {
     throw new Error('APP_URL é obrigatório em produção (origem do CORS).');
   }
+  // Origens extras aceitas no CORS, separadas por vírgula. Existe para a
+  // troca de domínio: enquanto o novo propaga, o antigo precisa continuar
+  // funcionando — sem isto, trocar APP_URL derruba o domínio em uso.
+  // Só CORS: os links de e-mail e os redirects do Stripe seguem em APP_URL.
+  const extraOrigins = (process.env.EXTRA_CORS_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
   const origins = isProduction
-    ? [appUrl as string]
-    : [appUrl, 'http://localhost:5173', 'http://localhost:4173'].filter(
-        (o): o is string => Boolean(o),
-      );
+    ? [appUrl as string, ...extraOrigins]
+    : [
+        appUrl,
+        ...extraOrigins,
+        'http://localhost:5173',
+        'http://localhost:4173',
+      ].filter((o): o is string => Boolean(o));
   app.enableCors({
     origin: origins,
     credentials: true,
