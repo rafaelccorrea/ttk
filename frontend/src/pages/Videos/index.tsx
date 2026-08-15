@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { videosService, ViralVideo } from '@/services/videos.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 
@@ -211,8 +212,10 @@ export function VideosPage() {
   const [transcriptVideo, setTranscriptVideo] = useState<ViralVideo | null>(
     null,
   );
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     // Debounce de 300ms para a busca.
     const timer = setTimeout(() => {
       videosService
@@ -226,7 +229,8 @@ export function VideosPage() {
           setItems(data.items);
           setTotal(data.total);
         })
-        .catch(console.error);
+        .catch(console.error)
+        .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(timer);
   }, [search, savedOnly, page]);
@@ -273,7 +277,10 @@ export function VideosPage() {
         />
       </Box>
 
-      <Grid container spacing={2.5}>
+      {loading && items.length === 0 && (
+        <BrandLoader label="Carregando vídeos..." />
+      )}
+      <Grid container spacing={2.5} sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}>
         {items.map((v, index) => (
           <Grid item xs={12} sm={6} md={4} lg={3} key={v.id}>
             <VideoCard
@@ -286,7 +293,7 @@ export function VideosPage() {
         ))}
       </Grid>
 
-      {items.length === 0 && (
+      {!loading && items.length === 0 && (
         <Typography color="text.secondary" textAlign="center" mt={6}>
           {savedOnly
             ? 'Você ainda não salvou nenhum vídeo.'

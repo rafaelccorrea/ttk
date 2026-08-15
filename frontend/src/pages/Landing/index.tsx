@@ -230,9 +230,17 @@ export function LandingPage() {
       >
         <Container maxWidth="lg">
           <Stack direction="row" alignItems="center" justifyContent="space-between" py={1.5}>
-            <Typography fontWeight={800} fontSize={20} letterSpacing="-0.02em">
-              Pik<Box component="span" sx={{ color: red }}>Pok</Box>
-            </Typography>
+            <Stack direction="row" spacing={1.25} alignItems="center">
+              <Box
+                component="img"
+                src="/icon-192.png"
+                alt="PikPok"
+                sx={{ width: 34, height: 34, borderRadius: 2, boxShadow: `0 4px 14px ${red}44` }}
+              />
+              <Typography fontWeight={800} fontSize={20} letterSpacing="-0.02em">
+                Pik<Box component="span" sx={{ color: red }}>Pok</Box>
+              </Typography>
+            </Stack>
             <Stack direction="row" spacing={1.5} alignItems="center">
               <Button
                 component={RouterLink}
@@ -572,9 +580,12 @@ export function LandingPage() {
             spacing={2}
             py={4}
           >
-            <Typography fontWeight={800}>
-              Pik<Box component="span" sx={{ color: red }}>Pok</Box>
-            </Typography>
+            <Stack direction="row" spacing={1.25} alignItems="center">
+              <Box component="img" src="/icon-192.png" alt="PikPok" sx={{ width: 28, height: 28, borderRadius: 1.5 }} />
+              <Typography fontWeight={800}>
+                Pik<Box component="span" sx={{ color: red }}>Pok</Box>
+              </Typography>
+            </Stack>
             <Typography fontSize={13} color={textDim}>
               © {new Date().getFullYear()} PikPok — inteligência de produtos para o TikTok Shop
             </Typography>

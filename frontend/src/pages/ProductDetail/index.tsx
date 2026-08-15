@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { StatCard } from '@/components/ui/StatCard';
 import { ProductDetail, productsService } from '@/services/products.service';
 import { videosService, ViralVideo } from '@/services/videos.service';
@@ -66,7 +67,7 @@ export function ProductDetailPage() {
   }, [id]);
 
   if (!product) {
-    return <Typography color="text.secondary">Carregando...</Typography>;
+    return <BrandLoader label="Carregando produto..." minHeight={420} />;
   }
 
   return (

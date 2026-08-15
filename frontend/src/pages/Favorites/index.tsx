@@ -6,13 +6,13 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   Grid,
   IconButton,
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import {
   FavoriteProduct,
   favoritesService,
@@ -167,9 +167,7 @@ export function FavoritesPage() {
       </Typography>
 
       {isLoading ? (
-        <Box display="flex" justifyContent="center" py={8}>
-          <CircularProgress />
-        </Box>
+        <BrandLoader label="Carregando favoritos..." />
       ) : items.length === 0 ? (
         <Box
           sx={{

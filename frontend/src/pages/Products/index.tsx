@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { productsService, RankedProduct } from '@/services/products.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 
@@ -189,12 +190,14 @@ export function ProductsPage() {
   const [category, setCategory] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     productsService.categories().then(setCategories).catch(console.error);
   }, []);
 
   useEffect(() => {
+    setLoading(true);
     const timer = setTimeout(() => {
       productsService
         .rank({
@@ -208,7 +211,8 @@ export function ProductsPage() {
           setItems(data.items);
           setTotal(data.total);
         })
-        .catch(console.error);
+        .catch(console.error)
+        .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(timer);
   }, [period, category, search, page]);
@@ -263,7 +267,10 @@ export function ProductsPage() {
         />
       </Box>
 
-      <Grid container spacing={2.5}>
+      {loading && items.length === 0 && (
+        <BrandLoader label="Carregando produtos..." />
+      )}
+      <Grid container spacing={2.5} sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}>
         {items.map((p, index) => (
           <Grid item xs={12} sm={6} md={4} key={p.id}>
             <ProductCard

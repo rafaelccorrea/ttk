@@ -7,13 +7,13 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   Divider,
   Snackbar,
   TextField,
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { usersService, UserProfile } from '@/services/users.service';
 
@@ -89,9 +89,7 @@ export function ProfilePage() {
       </Typography>
 
       {isLoading ? (
-        <Box display="flex" justifyContent="center" py={8}>
-          <CircularProgress />
-        </Box>
+        <BrandLoader label="Carregando perfil..." />
       ) : (
         <Card sx={{ maxWidth: 560 }}>
           <CardContent sx={{ p: 3 }}>

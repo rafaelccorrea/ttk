@@ -5,9 +5,9 @@ import {
   Button,
   Card,
   CardContent,
-  CircularProgress,
   Typography,
 } from '@mui/material';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiErrorMessage, useAuth } from '@/contexts/AuthContext';
@@ -58,7 +58,9 @@ export function ConfirmEmailPage() {
               Pok
             </Box>
           </Typography>
-          {status === 'loading' && <CircularProgress sx={{ my: 2 }} />}
+          {status === 'loading' && (
+            <BrandLoader label="Confirmando..." minHeight={140} />
+          )}
           {status === 'success' && (
             <CheckCircleRoundedIcon
               color="success"

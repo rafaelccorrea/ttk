@@ -104,15 +104,24 @@ export function LoginPage() {
           background: `radial-gradient(60% 50% at 20% 10%, ${red}30 0%, transparent 60%), radial-gradient(50% 45% at 90% 90%, ${cyan}26 0%, transparent 60%), #0d0e14`,
         }}
       >
-        <Typography
+        <Stack
           component={RouterLink}
           to="/"
-          fontWeight={800}
-          fontSize={22}
-          sx={{ color: '#fff', textDecoration: 'none', letterSpacing: '-0.02em' }}
+          direction="row"
+          spacing={1.25}
+          alignItems="center"
+          sx={{ textDecoration: 'none', width: 'fit-content' }}
         >
-          Pik<Box component="span" sx={{ color: red }}>Pok</Box>
-        </Typography>
+          <Box
+            component="img"
+            src="/icon-192.png"
+            alt="PikPok"
+            sx={{ width: 38, height: 38, borderRadius: 2, boxShadow: `0 4px 14px ${red}44` }}
+          />
+          <Typography fontWeight={800} fontSize={22} sx={{ color: '#fff', letterSpacing: '-0.02em' }}>
+            Pik<Box component="span" sx={{ color: red }}>Pok</Box>
+          </Typography>
+        </Stack>
 
         <Box maxWidth={440}>
           <Typography sx={{ fontSize: 36, fontWeight: 800, lineHeight: 1.15, letterSpacing: '-0.02em' }}>

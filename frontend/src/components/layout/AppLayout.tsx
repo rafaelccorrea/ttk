@@ -100,16 +100,24 @@ export function AppLayout() {
           },
         }}
       >
-        <Box px={2.5} py={2.75}>
-          <Typography variant="h6" fontWeight={800} letterSpacing="-0.02em">
-            Pik
-            <Box component="span" sx={{ color: red }}>
-              Pok
-            </Box>
-          </Typography>
-          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-            Inteligência TikTok Shop
-          </Typography>
+        <Box px={2.5} py={2.75} display="flex" alignItems="center" gap={1.5}>
+          <Box
+            component="img"
+            src="/icon-192.png"
+            alt="PikPok"
+            sx={{ width: 40, height: 40, borderRadius: 2.5, boxShadow: `0 4px 14px ${red}44` }}
+          />
+          <Box>
+            <Typography variant="h6" fontWeight={800} letterSpacing="-0.02em" lineHeight={1.1}>
+              Pik
+              <Box component="span" sx={{ color: red }}>
+                Pok
+              </Box>
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+              Inteligência TikTok Shop
+            </Typography>
+          </Box>
         </Box>
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
 

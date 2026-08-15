@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { analyticsService, Overview } from '@/services/analytics.service';
@@ -57,6 +58,10 @@ export function DashboardPage() {
   }, []);
 
   const firstName = email ? email.split('@')[0] : 'criador';
+
+  if (!overview) {
+    return <BrandLoader label="Carregando seu painel..." minHeight={480} />;
+  }
 
   return (
     <>
