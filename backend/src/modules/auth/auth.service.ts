@@ -10,7 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { compare, hash } from 'bcryptjs';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { sign } from 'jsonwebtoken';
-import { Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 import { AppUser } from '../users/entities/app-user.entity';
 import { MailService } from './mail.service';
 
@@ -53,7 +53,28 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  /** Cadastro com confirmação de e-mail via Nodemailer. */
+  /** Soft launch: cadastros entram em fila e o e-mail sai no release. */
+  private get waitlistMode(): boolean {
+    return this.config.get('WAITLIST_MODE') === 'true';
+  }
+
+  /**
+   * Posição real na fila — quantos entraram antes (ou junto) e ainda não
+   * foram liberados. É contagem de verdade, não número decorativo.
+   */
+  private async waitlistPosition(user: AppUser): Promise<number> {
+    return this.users
+      .createQueryBuilder('u')
+      .where('u."waitlistedAt" IS NOT NULL')
+      .andWhere('u."waitlistedAt" <= :mine', { mine: user.waitlistedAt })
+      .getCount();
+  }
+
+  /**
+   * Cadastro. Com WAITLIST_MODE=true a conta é criada e o token de
+   * confirmação fica guardado, mas o e-mail NÃO sai agora — ele é enviado
+   * quando a vez do usuário chegar (npm run waitlist:release).
+   */
   async register(email: string, password: string) {
     const normalized = email.toLowerCase().trim();
     const existing = await this.users.findOneBy({ email: normalized });
@@ -68,6 +89,22 @@ export class AuthService {
       this.users.create({ id: randomUUID(), email: normalized });
     user.passwordHash = passwordHash;
     user.confirmationToken = confirmationToken;
+
+    if (this.waitlistMode) {
+      // Recadastro do mesmo e-mail não reinicia a fila: quem já esperava
+      // mantém a posição conquistada.
+      user.waitlistedAt ??= new Date();
+      // confirmationSentAt fica nulo de propósito — nada foi enviado ainda.
+      await this.users.save(user);
+
+      return {
+        message: 'Você entrou na lista de espera!',
+        waitlisted: true,
+        position: await this.waitlistPosition(user),
+        total: await this.users.count({ where: { waitlistedAt: Not(IsNull()) } }),
+      };
+    }
+
     user.confirmationSentAt = new Date();
     await this.users.save(user);
 
@@ -78,7 +115,76 @@ export class AuthService {
     return {
       message:
         'Cadastro criado. Enviamos um link de confirmação para o seu e-mail.',
+      waitlisted: false,
       previewUrl: sent.previewUrl,
+    };
+  }
+
+  /** Config que o frontend pode ler sem autenticar. */
+  publicConfig() {
+    return { waitlist: this.waitlistMode };
+  }
+
+  /** Contagens da fila, para o script de gestão. */
+  async waitlistStatus() {
+    const [waiting, released, confirmed] = await Promise.all([
+      this.users.count({ where: { waitlistedAt: Not(IsNull()) } }),
+      this.users.count({
+        where: { waitlistReleasedAt: Not(IsNull()), emailConfirmedAt: IsNull() },
+      }),
+      this.users.count({ where: { emailConfirmedAt: Not(IsNull()) } }),
+    ]);
+    return { waiting, released, confirmed };
+  }
+
+  /**
+   * Libera os `limit` mais antigos da fila: envia o link de confirmação que
+   * ficou guardado desde o cadastro e tira a pessoa da fila.
+   *
+   * Envia um a um, de propósito. Se um e-mail falha, só ele volta para a fila
+   * — o lote inteiro não é perdido e ninguém recebe dois links.
+   */
+  async releaseWaitlist(
+    limit: number,
+    onEach?: (email: string, ok: boolean, erro?: string) => void,
+  ) {
+    const batch = await this.users.find({
+      where: { waitlistedAt: Not(IsNull()) },
+      order: { waitlistedAt: 'ASC' },
+      take: limit,
+    });
+
+    let sent = 0;
+    let failed = 0;
+
+    for (const user of batch) {
+      // Cadastro antigo sem token (ou já usado) ganha um novo.
+      user.confirmationToken ||= randomBytes(32).toString('hex');
+      try {
+        await this.mailService.sendConfirmationEmail(
+          user.email,
+          this.confirmationLink(user.confirmationToken),
+        );
+        user.waitlistedAt = null as unknown as Date;
+        user.waitlistReleasedAt = new Date();
+        user.confirmationSentAt = new Date();
+        await this.users.save(user);
+        sent += 1;
+        onEach?.(user.email, true);
+      } catch (err) {
+        // Continua na fila — entra no próximo lote.
+        failed += 1;
+        onEach?.(user.email, false, (err as Error).message);
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+
+    return {
+      sent,
+      failed,
+      remaining: await this.users.count({
+        where: { waitlistedAt: Not(IsNull()) },
+      }),
     };
   }
 
@@ -89,6 +195,13 @@ export class AuthService {
     });
     if (!user?.passwordHash || !(await compare(password, user.passwordHash))) {
       throw new UnauthorizedException('E-mail ou senha incorretos.');
+    }
+    // Quem está na fila ainda não recebeu link nenhum — mandar "confirme
+    // seu e-mail" faria a pessoa procurar uma mensagem que não existe.
+    if (user.waitlistedAt && !user.emailConfirmedAt) {
+      throw new ForbiddenException(
+        'Você está na lista de espera. Assim que chegar a sua vez, enviaremos o link de confirmação para o seu e-mail.',
+      );
     }
     if (!user.emailConfirmedAt) {
       throw new ForbiddenException(
@@ -131,6 +244,15 @@ export class AuthService {
     }
     if (user.emailConfirmedAt) {
       return { message: 'Este e-mail já está confirmado — pode entrar.' };
+    }
+    // Na fila não há link para reenviar: o primeiro ainda nem saiu.
+    if (user.waitlistedAt) {
+      return {
+        message:
+          'Você já está na lista de espera. O link de confirmação chega quando for a sua vez.',
+        waitlisted: true,
+        position: await this.waitlistPosition(user),
+      };
     }
     const elapsed = user.confirmationSentAt
       ? Date.now() - user.confirmationSentAt.getTime()

@@ -10,9 +10,21 @@ export interface RegisterResult {
   message: string;
   /** URL de preview do e-mail (apenas em dev, sem SMTP real). */
   previewUrl?: string;
+  /** true durante o soft launch: o cadastro entrou na fila, sem e-mail ainda. */
+  waitlisted?: boolean;
+  /** Posição real na fila (contagem de cadastros, não número decorativo). */
+  position?: number;
+  /** Total de pessoas aguardando. */
+  total?: number;
 }
 
 export const authService = {
+  /** Config pública: hoje só diz se o cadastro está em lista de espera. */
+  async config(): Promise<{ waitlist: boolean }> {
+    const { data } = await api.get<{ waitlist: boolean }>('/auth/config');
+    return data;
+  },
+
   async register(email: string, password: string): Promise<RegisterResult> {
     const { data } = await api.post<RegisterResult>('/auth/register', {
       email,

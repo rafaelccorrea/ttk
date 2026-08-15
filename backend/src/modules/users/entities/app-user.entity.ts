@@ -56,6 +56,19 @@ export class AppUser {
   @Column({ type: 'timestamptz', nullable: true })
   resetSentAt: Date;
 
+  // Lista de espera (soft launch). Preenchido no cadastro enquanto
+  // WAITLIST_MODE=true: a conta é criada e o token de confirmação fica
+  // guardado, mas o e-mail só sai quando a vez do usuário chega.
+  // Volta a null no release — quem já foi liberado não está mais na fila.
+  @Column({ type: 'timestamptz', nullable: true })
+  @Index()
+  waitlistedAt: Date;
+
+  // Quando o link de confirmação foi efetivamente enviado no release.
+  // Serve de trilha: distingue "nunca liberado" de "liberado e não confirmou".
+  @Column({ type: 'timestamptz', nullable: true })
+  waitlistReleasedAt: Date;
+
   @CreateDateColumn()
   createdAt: Date;
 

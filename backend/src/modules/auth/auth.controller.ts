@@ -15,6 +15,14 @@ import {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Get('config')
+  @ApiOperation({
+    summary: 'Config pública de auth (ex.: se o cadastro está em lista de espera)',
+  })
+  config() {
+    return this.authService.publicConfig();
+  }
+
   @Post('register')
   @ApiOperation({
     summary: 'Cadastro com confirmação de e-mail (Nodemailer)',

@@ -17,6 +17,10 @@ export interface SignUpResult {
   message: string;
   /** URL de preview do e-mail (apenas dev, sem SMTP real configurado). */
   previewUrl?: string;
+  /** Soft launch: entrou na fila e o e-mail de confirmação vem depois. */
+  waitlisted?: boolean;
+  position?: number;
+  total?: number;
 }
 
 interface AuthContextValue {
@@ -72,6 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         needsConfirmation: true,
         message: result.message,
         previewUrl: result.previewUrl,
+        waitlisted: result.waitlisted,
+        position: result.position,
+        total: result.total,
       };
     },
     [],

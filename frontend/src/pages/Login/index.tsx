@@ -1,7 +1,9 @@
 import {
   ArrowBackRounded,
   AutoFixHighRounded,
+  CelebrationRounded,
   LoginRounded,
+  MarkEmailUnreadRounded,
   PersonAddRounded,
   LocalFireDepartmentRounded,
   OndemandVideoRounded,
@@ -20,9 +22,10 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Link as RouterLink, Navigate, useNavigate } from 'react-router-dom';
 import { apiErrorMessage, useAuth } from '@/contexts/AuthContext';
+import { authService } from '@/services/auth.service';
 
 // Mensagens de erro de autenticação traduzidas para o usuário.
 function translateAuthError(err: unknown): string {
@@ -61,6 +64,23 @@ export function LoginPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Soft launch: quando o cadastro cai na fila, a coluna do formulário dá
+  // lugar à confirmação de entrada na lista.
+  const [waitlist, setWaitlist] = useState<{
+    position?: number;
+    total?: number;
+  } | null>(null);
+  // Modo lista de espera vindo do backend, para a tela avisar ANTES do envio
+  // em vez de prometer "conta grátis" e entregar uma fila.
+  const [waitlistMode, setWaitlistMode] = useState(false);
+
+  useEffect(() => {
+    authService
+      .config()
+      .then((c) => setWaitlistMode(c.waitlist))
+      // Config indisponível não pode travar o login: segue no fluxo normal.
+      .catch(() => undefined);
+  }, []);
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
@@ -74,8 +94,12 @@ export function LoginPage() {
     setBusy(true);
     try {
       if (isSignUp) {
-        // Cadastro exige confirmação de e-mail (link enviado via Nodemailer).
         const result = await signUp(email, password);
+        if (result.waitlisted) {
+          setWaitlist({ position: result.position, total: result.total });
+          return;
+        }
+        // Fluxo normal: confirmação por e-mail (link enviado via Nodemailer).
         setInfo(result.message);
         setPreviewUrl(result.previewUrl ?? null);
         setIsSignUp(false);
@@ -182,12 +206,70 @@ export function LoginPage() {
             Voltar para o início
           </Button>
 
+          {waitlist ? (
+            <Box>
+              <Box
+                sx={{
+                  width: 64, height: 64, borderRadius: '50%', mb: 3,
+                  display: 'grid', placeItems: 'center',
+                  background: `linear-gradient(135deg, ${red}, ${cyan})`,
+                }}
+              >
+                <CelebrationRounded sx={{ fontSize: 32, color: '#fff' }} />
+              </Box>
+
+              <Typography variant="h4" gutterBottom>
+                Você entrou na lista de espera!
+              </Typography>
+
+              {waitlist.position != null && (
+                <Typography color="text.secondary" mb={1}>
+                  Você é o número{' '}
+                  <Box component="span" sx={{ color: 'primary.main', fontWeight: 800 }}>
+                    {waitlist.position}
+                  </Box>{' '}
+                  da fila.
+                </Typography>
+              )}
+
+              <Typography color="text.secondary" mb={3}>
+                A procura foi bem maior do que a gente esperava, então estamos
+                abrindo o acesso aos poucos para todo mundo ter uma boa
+                experiência desde o primeiro dia.
+              </Typography>
+
+              <Alert severity="info" icon={<MarkEmailUnreadRounded />} sx={{ mb: 3 }}>
+                <strong>Quando chegar a sua vez</strong>, enviaremos o link de
+                confirmação para <strong>{email}</strong>. Só depois de abrir
+                esse link a sua conta fica ativa — não é preciso fazer mais nada
+                agora.
+              </Alert>
+
+              <Button
+                component={RouterLink}
+                to="/"
+                variant="contained"
+                size="large"
+                fullWidth
+                sx={{ py: 1.3 }}
+              >
+                Voltar para o início
+              </Button>
+            </Box>
+          ) : (
+          <>
           <Typography variant="h4" gutterBottom>
-            {isSignUp ? 'Crie sua conta' : 'Bem-vindo de volta'}
+            {isSignUp
+              ? waitlistMode
+                ? 'Entre na lista de espera'
+                : 'Crie sua conta'
+              : 'Bem-vindo de volta'}
           </Typography>
           <Typography color="text.secondary" mb={3}>
             {isSignUp
-              ? 'Comece grátis — sem cartão de crédito.'
+              ? waitlistMode
+                ? 'Estamos liberando o acesso aos poucos. Deixe seu e-mail e senha para garantir seu lugar na fila.'
+                : 'Comece grátis — sem cartão de crédito.'
               : 'Entre para acessar seu painel do TikTok Shop.'}
           </Typography>
 
@@ -293,7 +375,13 @@ export function LoginPage() {
                 '&:active': { transform: 'scale(0.98)' },
               }}
             >
-              {busy ? 'Aguarde…' : isSignUp ? 'Criar conta grátis' : 'Entrar'}
+              {busy
+                ? 'Aguarde…'
+                : isSignUp
+                  ? waitlistMode
+                    ? 'Garantir meu lugar'
+                    : 'Criar conta grátis'
+                  : 'Entrar'}
             </Button>
             {!isDemoMode && (
               <Typography textAlign="center" fontSize={14} color="text.secondary" mt={2.5}>
@@ -315,6 +403,8 @@ export function LoginPage() {
               </Typography>
             )}
           </form>
+          </>
+          )}
         </Box>
       </Box>
     </Box>
