@@ -14,6 +14,7 @@ import { Campaign } from './entities/campaign.entity';
 import { CampaignScene } from './entities/campaign-scene.entity';
 import { Persona } from './entities/persona.entity';
 import { UserProduct } from './entities/user-product.entity';
+import { VideoAssemblyService } from './video-assembly.service';
 
 /**
  * Fábrica de criativos: o vendedor traz o produto, escolhe quem apresenta,
@@ -34,6 +35,6 @@ import { UserProduct } from './entities/user-product.entity';
     VideogenModule,
   ],
   controllers: [CampaignsController],
-  providers: [SingleFlightInterceptor, CampaignsService],
+  providers: [SingleFlightInterceptor, CampaignsService, VideoAssemblyService],
 })
 export class CampaignsModule {}

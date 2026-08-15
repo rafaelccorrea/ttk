@@ -29,6 +29,8 @@
     "waitlist": "ts-node src/database/seeds/waitlist.ts",
     "waitlist:release": "ts-node src/database/seeds/waitlist.ts",
     "atualiza": "ts-node src/scripts/atualizar.ts",
+    "testar:campanhas": "ts-node src/scripts/testar-campanhas.ts",
+    "testar:campanhas:completo": "ts-node src/scripts/testar-campanhas.ts --com-ia",
     "atualiza:completo": "ts-node src/scripts/atualizar.ts --completo"
   },
   "dependencies": {

@@ -220,6 +220,43 @@ export class MediaMirrorService {
   }
 
   /**
+   * Guarda um MP4 produzido por nós (o vídeo montado da campanha).
+   *
+   * Sem validação por decodificação aqui, ao contrário das imagens: o arquivo
+   * não veio de fora, saiu do nosso próprio ffmpeg. A chave usa o hash do
+   * conteúdo, então remontar sem mudar nada não cria objeto novo.
+   */
+  async putVideo(
+    original: Buffer,
+    prefix: string,
+    id: string,
+  ): Promise<string | null> {
+    if (!this.client || !original?.length) return null;
+    if (original.byteLength > this.maxBytes) {
+      this.logger.warn(`Vídeo grande demais (${original.byteLength}b)`);
+      return null;
+    }
+
+    const digest = createHash('sha1').update(original).digest('hex').slice(0, 16);
+    const key = `${prefix}/${id}-${digest}.mp4`;
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: original,
+          ContentType: 'video/mp4',
+          CacheControl: 'public, max-age=31536000, immutable',
+        }),
+      );
+      return `${this.publicBase}/${key}`;
+    } catch (error) {
+      this.logger.warn(`Upload de vídeo falhou (${prefix}/${id}): ${error}`);
+      return null;
+    }
+  }
+
+  /**
    * Padroniza a imagem antes de guardar.
    *
    * As capas chegam com proporções e pesos muito diferentes — quadrada,

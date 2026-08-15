@@ -1,6 +1,7 @@
 import AddPhotoAlternateRoundedIcon from '@mui/icons-material/AddPhotoAlternateRounded';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
+import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import {
@@ -25,6 +26,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { SmartImage } from '@/components/ui/SmartImage';
+import { resolveApiUrl } from '@/services/api';
 import {
   AttributeGroup,
   Campaign,
@@ -450,6 +452,8 @@ function Storyboard({
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const personaPronta = detalhe.persona?.status === 'pronta';
+  const todasProntas =
+    detalhe.cenas.length > 0 && detalhe.cenas.every((c) => c.status === 'pronta');
 
   async function acao(fn: () => Promise<unknown>) {
     setOcupado(true);
@@ -475,6 +479,64 @@ function Storyboard({
       </Box>
 
       {erro && <Alert severity="error">{erro}</Alert>}
+
+      {/* O entregável fica no topo: quem abre uma campanha pronta veio buscar
+          o vídeo, não revisar as cenas. */}
+      {detalhe.finalVideoUrl && (
+        <Card>
+          <CardContent>
+            <Stack spacing={1.5} alignItems="center">
+              <Typography fontWeight={800} alignSelf="flex-start">
+                Vídeo pronto para publicar
+              </Typography>
+              <Box
+                component="video"
+                src={resolveApiUrl(detalhe.finalVideoUrl)}
+                controls
+                playsInline
+                sx={{
+                  width: '100%',
+                  maxWidth: 320,
+                  aspectRatio: '9 / 16',
+                  borderRadius: 2,
+                  bgcolor: '#000',
+                }}
+              />
+              <Button
+                variant="contained"
+                startIcon={<DownloadRoundedIcon />}
+                component="a"
+                href={resolveApiUrl(detalhe.finalVideoUrl)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Baixar vídeo
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      {todasProntas && !detalhe.finalVideoUrl && (
+        <Card variant="outlined">
+          <CardContent>
+            <Stack spacing={1.5} alignItems="flex-start">
+              <Typography variant="body2" color="text.secondary">
+                Todas as cenas estão prontas. A montagem junta tudo num único
+                vídeo 9:16 — não consome créditos.
+              </Typography>
+              <Button
+                variant="contained"
+                startIcon={<MovieFilterRoundedIcon />}
+                disabled={ocupado}
+                onClick={() => acao(() => campaignsService.assemble(detalhe.id))}
+              >
+                {ocupado ? 'Montando...' : 'Montar vídeo final'}
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
 
       {!detalhe.cenas.length && (
         <Card variant="outlined">
@@ -526,7 +588,7 @@ function Storyboard({
                   {cena.status === 'pronta' && cena.outputUrl ? (
                     <Box
                       component="video"
-                      src={cena.outputUrl}
+                      src={resolveApiUrl(cena.outputUrl)}
                       controls
                       loop
                       playsInline

@@ -40,13 +40,21 @@ interface SearchableSelectProps {
 const EMPTY = '';
 
 /** Miniatura quadrada da opção (ou o vazio alinhado, quando não há foto). */
-function Thumb({ src, alt }: { src?: string | null; alt: string }) {
+function Thumb({
+  src,
+  alt,
+  size = 34,
+}: {
+  src?: string | null;
+  alt: string;
+  size?: number;
+}) {
   return (
     <Box
       sx={{
         position: 'relative',
-        width: 34,
-        height: 34,
+        width: size,
+        height: size,
         flexShrink: 0,
         borderRadius: 1.5,
         overflow: 'hidden',
@@ -148,13 +156,23 @@ export function SearchableSelect({
           label={label}
           placeholder={placeholder}
           helperText={helperText}
+          // Depois de digitar, o input fica rolado no fim e o rótulo aparece
+          // cortado pela esquerda ("…das as categorias"). Volta ao início.
+          onBlur={(e) => {
+            e.currentTarget.scrollLeft = 0;
+          }}
           InputProps={{
             ...params.InputProps,
             // Miniatura do item escolhido dentro do próprio campo.
             startAdornment:
               comImagens && selecionada && selecionada.value !== EMPTY ? (
                 <Box sx={{ display: 'flex', pl: pill ? 0.75 : 0, mr: 0.25 }}>
-                  <Thumb src={selecionada.imageUrl} alt={selecionada.label} />
+                  {/* Menor que na lista: precisa caber na altura do input. */}
+                  <Thumb
+                    src={selecionada.imageUrl}
+                    alt={selecionada.label}
+                    size={size === 'small' ? 24 : 30}
+                  />
                 </Box>
               ) : (
                 params.InputProps.startAdornment
@@ -165,7 +183,9 @@ export function SearchableSelect({
       sx={{
         // No mobile o campo ocupa a linha inteira, como os demais filtros.
         width: pill ? { xs: '100%', sm: 'auto' } : undefined,
-        minWidth: pill ? { xs: 0, sm: 190 } : undefined,
+        // Um pouco mais largo que o select antigo: o Autocomplete gasta espaço
+        // com o botão de limpar ao lado da seta.
+        minWidth: pill ? { xs: 0, sm: 215 } : undefined,
         '& .MuiOutlinedInput-root': pill
           ? { borderRadius: 999, fontSize: 14, fontWeight: 500, pl: 1 }
           : { borderRadius: 2.5, fontSize: 14.5 },

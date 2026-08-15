@@ -54,6 +54,10 @@ export class Campaign {
   @Column({ nullable: true })
   model: string;
 
+  /** Vídeo final montado a partir das cenas, no S3. */
+  @Column({ type: 'text', nullable: true })
+  finalVideoUrl: string | null;
+
   /**
    * Quanto já foi debitado. Somado cena a cena no momento de submeter cada
    * uma: cobrar tudo na frente quebra quando o vendedor desiste no meio.

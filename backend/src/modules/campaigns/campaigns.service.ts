@@ -10,7 +10,7 @@ import { Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
 import { BillingService } from '../billing/billing.service';
 import { ACTION_PRICES } from '../billing/billing.config';
-import { MediaMirrorService } from '../media/media-mirror.service';
+import { MEDIA_ROUTE, MediaMirrorService } from '../media/media-mirror.service';
 import { Product } from '../products/entities/product.entity';
 import { AiService } from '../studio/ai.service';
 import { Video } from '../videos/entities/video.entity';
@@ -25,6 +25,7 @@ import { Campaign } from './entities/campaign.entity';
 import { CampaignScene } from './entities/campaign-scene.entity';
 import { Persona } from './entities/persona.entity';
 import { UserProduct } from './entities/user-product.entity';
+import { VideoAssemblyService } from './video-assembly.service';
 import {
   PERSONA_GROUPS,
   montarFragmento,
@@ -62,6 +63,7 @@ export class CampaignsService {
     private readonly videogen: VideogenService,
     private readonly mirror: MediaMirrorService,
     private readonly billing: BillingService,
+    private readonly assembly: VideoAssemblyService,
   ) {}
 
   // ------------------------------------------------------------------ preços
@@ -497,12 +499,101 @@ export class CampaignsService {
     }
 
     const atualizadas = await this.cenas.find({ where: { campaignId } });
-    if (atualizadas.length && atualizadas.every((c) => c.status === 'pronta')) {
-      campanha.status = 'pronta';
-    }
+    const todasProntas =
+      atualizadas.length > 0 && atualizadas.every((c) => c.status === 'pronta');
+    if (todasProntas) campanha.status = 'pronta';
     await this.campanhas.save(campanha);
 
+    /**
+     * Monta sozinho assim que a última cena fica pronta. É o que o vendedor
+     * quer: ele pediu um vídeo, não seis pedaços. Falha aqui não pode derrubar
+     * a consulta de status — as cenas continuam prontas e o botão de montar
+     * de novo fica disponível.
+     */
+    if (todasProntas && !campanha.finalVideoUrl && this.assembly.enabled) {
+      try {
+        return await this.montar(userId, campaignId);
+      } catch (error) {
+        this.logger.warn(`Montagem automática falhou (${campaignId}): ${error}`);
+      }
+    }
+
     return this.detalharCampanha(userId, campaignId);
+  }
+
+  /**
+   * Monta as cenas prontas num único MP4.
+   *
+   * Não cobra créditos: é processamento nosso, sem chamada de IA. Exige TODAS
+   * as cenas prontas de propósito — montar pela metade entrega um vídeo que
+   * corta no meio da frase, e o vendedor publicaria sem perceber.
+   */
+  async montar(userId: string, campaignId: string) {
+    const campanha = await this.campanhas.findOneBy({ id: campaignId, userId });
+    if (!campanha) throw new NotFoundException('Campanha não encontrada.');
+    if (!this.assembly.enabled) {
+      throw new ConflictException(
+        'A montagem não está disponível neste servidor (ffmpeg ausente).',
+      );
+    }
+
+    const cenas = await this.cenas.find({
+      where: { campaignId },
+      order: { ordem: 'ASC' },
+    });
+    if (!cenas.length) {
+      throw new ConflictException('Gere o roteiro antes de montar.');
+    }
+    const pendentes = cenas.filter((c) => c.status !== 'pronta');
+    if (pendentes.length) {
+      throw new ConflictException(
+        `Faltam ${pendentes.length} cena(s) para renderizar antes de montar.`,
+      );
+    }
+
+    // As cenas estão no nosso bucket: lê direto, sem passar pela rede pública.
+    const arquivos: Buffer[] = [];
+    for (const cena of cenas) {
+      const buffer = await this.lerCena(cena.outputUrl);
+      if (!buffer) {
+        throw new ConflictException(
+          `O vídeo da cena ${cena.ordem} não pôde ser lido. Renderize-a de novo.`,
+        );
+      }
+      arquivos.push(buffer);
+    }
+
+    const final = await this.assembly.juntar(arquivos);
+    const url = await this.mirror.putVideo(final, 'campaign-final', campanha.id);
+    if (!url) {
+      throw new ConflictException('O vídeo montado não pôde ser guardado.');
+    }
+
+    campanha.finalVideoUrl = url;
+    campanha.status = 'pronta';
+    await this.campanhas.save(campanha);
+    this.logger.log(
+      `Campanha ${campanha.id} montada: ${cenas.length} cenas, ${Math.round(final.byteLength / 1024)}KB`,
+    );
+
+    return this.detalharCampanha(userId, campaignId);
+  }
+
+  /** Lê o MP4 da cena — do bucket quando é nosso, da URL quando ainda não é. */
+  private async lerCena(url: string | null): Promise<Buffer | null> {
+    if (!url) return null;
+    const prefixo = `${MEDIA_ROUTE}/`;
+    if (url.startsWith(prefixo)) {
+      const objeto = await this.mirror.readObject(url.slice(prefixo.length));
+      return objeto?.body ?? null;
+    }
+    try {
+      const resposta = await fetch(url);
+      if (!resposta.ok) return null;
+      return Buffer.from(await resposta.arrayBuffer());
+    } catch {
+      return null;
+    }
   }
 
   async removerCampanha(userId: string, id: string): Promise<void> {

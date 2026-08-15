@@ -16,9 +16,32 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { formatCurrency, formatNumber } from '@/utils/format';
 import { proxyImage } from '@/utils/tiktok';
 import { productsService, RankedProduct } from '@/services/products.service';
 import { Script, studioService } from '@/services/studio.service';
+
+/**
+ * Ficha do produto montada com o que já temos em mãos.
+ *
+ * São os mesmos dados que alimentam o catálogo — nada de chamada extra nem
+ * de token gasto. Serve de ponto de partida para o usuário editar antes de
+ * gerar o roteiro, em vez de começar de um campo vazio.
+ */
+function detalhesDoProduto(p: RankedProduct): string {
+  const linhas = [
+    `Produto: ${p.title}`,
+    `Preço: ${formatCurrency(p.price)}`,
+    p.storeName ? `Loja: ${p.storeName}` : null,
+    `Categoria: ${p.category}`,
+    p.rating ? `Avaliação: ${p.rating} de 5` : null,
+    `Vendas nos últimos 30 dias: ${formatNumber(p.salesPeriod)}`,
+    p.growthPct !== null
+      ? `Crescimento no período: ${p.growthPct >= 0 ? '+' : ''}${p.growthPct}%`
+      : null,
+  ];
+  return linhas.filter(Boolean).join('\n');
+}
 
 export function StudioPage() {
   const [searchParams] = useSearchParams();
@@ -44,6 +67,21 @@ export function StudioPage() {
       .catch(console.error);
     studioService.listScripts().then(setScripts).catch(console.error);
   }, []);
+
+  // Último texto que este efeito escreveu. Só sobrescrevemos o que foi
+  // preenchido automaticamente — o que o usuário digitou fica intocado.
+  const autoDescricaoRef = useRef('');
+
+  useEffect(() => {
+    const produto = topProducts.find((p) => p.id === productId);
+    const texto = produto ? detalhesDoProduto(produto) : '';
+    setProductDescription((atual) => {
+      const foiAutomatico = atual === autoDescricaoRef.current;
+      if (!foiAutomatico && atual.trim() !== '') return atual;
+      autoDescricaoRef.current = texto;
+      return texto;
+    });
+  }, [productId, topProducts]);
 
   // Trava síncrona: `busy` só desabilita o botão no próximo render. Num
   // formulário isso é ainda mais fácil de disparar duas vezes (clique + Enter),
@@ -139,6 +177,11 @@ export function StudioPage() {
                   value={productDescription}
                   onChange={(e) => setProductDescription(e.target.value)}
                   margin="normal"
+                  helperText={
+                    productId
+                      ? 'Preenchido com os dados do catálogo — edite à vontade.'
+                      : undefined
+                  }
                 />
                 <TextField
                   fullWidth

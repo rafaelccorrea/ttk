@@ -56,7 +56,7 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (false) {
+    if (error.response?.status === 401 && window.location.pathname !== '/login') {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
       window.location.href = '/login';
     }

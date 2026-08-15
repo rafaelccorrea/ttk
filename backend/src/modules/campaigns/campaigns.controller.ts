@@ -154,6 +154,13 @@ export class CampaignsController {
     return this.campaigns.gerarRoteiro(user.id, id);
   }
 
+  @Post(':id/assemble')
+  @UseInterceptors(SingleFlightInterceptor)
+  @ApiOperation({ summary: 'Junta as cenas num único vídeo (não cobra créditos)' })
+  assemble(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.campaigns.montar(user.id, id);
+  }
+
   @Get(':id/refresh')
   @ApiOperation({ summary: 'Atualiza o status das cenas em renderização' })
   refresh(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {

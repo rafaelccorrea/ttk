@@ -50,6 +50,8 @@ export interface Campaign {
   durationSeconds: number;
   status: 'rascunho' | 'roteiro' | 'storyboard' | 'renderizando' | 'pronta';
   script: string | null;
+  /** Vídeo montado a partir das cenas — é o entregável da campanha. */
+  finalVideoUrl: string | null;
   creditsSpent: number;
   createdAt: string;
 }
@@ -163,6 +165,11 @@ export const campaignsService = {
 
   async generateScript(id: string): Promise<CampaignDetail> {
     const { data } = await api.post<CampaignDetail>(`/campaigns/${id}/script`);
+    return data;
+  },
+
+  async assemble(id: string): Promise<CampaignDetail> {
+    const { data } = await api.post<CampaignDetail>(`/campaigns/${id}/assemble`);
     return data;
   },
 
