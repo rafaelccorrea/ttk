@@ -15,6 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { creatorsService, RankedCreator } from '@/services/creators.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 
@@ -45,6 +46,7 @@ export function CreatorsPage() {
   const [category, setCategory] = useState('');
   const [sort, setSort] = useState<'gmv' | 'followers'>('gmv');
   const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     creatorsService.categories().then(setCategories).catch(console.error);
@@ -52,6 +54,7 @@ export function CreatorsPage() {
 
   // Busca com debounce para não disparar requisição a cada tecla.
   useEffect(() => {
+    setLoading(true);
     const timer = setTimeout(() => {
       creatorsService
         .list({
@@ -65,7 +68,8 @@ export function CreatorsPage() {
           setItems(data.items);
           setTotal(data.total);
         })
-        .catch(console.error);
+        .catch(console.error)
+        .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(timer);
   }, [search, category, sort, page]);
@@ -112,7 +116,10 @@ export function CreatorsPage() {
         </ToggleButtonGroup>
       </Box>
 
-      <Table size="small">
+      {loading && items.length === 0 && (
+        <BrandLoader label="Carregando criadores..." />
+      )}
+      <Table size="small" sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}>
         <TableHead>
           <TableRow>
             <TableCell width={64}>#</TableCell>

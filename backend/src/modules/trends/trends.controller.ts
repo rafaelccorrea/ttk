@@ -20,6 +20,12 @@ export class TrendsController {
     return this.trendsService.findAll();
   }
 
+  @Get('overview')
+  @ApiOperation({ summary: 'Tendências derivadas das métricas reais (7d vs 7d anteriores)' })
+  overview() {
+    return this.trendsService.overview();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Busca tendência por id' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {

@@ -1,14 +1,36 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ProductMetricDaily } from '../products/entities/product-metric-daily.entity';
 import { CreateTrendDto } from './dto/create-trend.dto';
 import { Trend } from './entities/trend.entity';
+
+export interface CategoryTrend {
+  category: string;
+  recentSales: number;
+  previousSales: number;
+  recentRevenue: number;
+  growthPct: number | null;
+  topProduct: string | null;
+}
+
+export interface RisingProduct {
+  id: string;
+  title: string;
+  category: string;
+  recentSales: number;
+  previousSales: number;
+  recentRevenue: number;
+  growthPct: number | null;
+}
 
 @Injectable()
 export class TrendsService {
   constructor(
     @InjectRepository(Trend)
     private readonly repository: Repository<Trend>,
+    @InjectRepository(ProductMetricDaily)
+    private readonly metrics: Repository<ProductMetricDaily>,
   ) {}
 
   create(dto: CreateTrendDto): Promise<Trend> {
@@ -25,5 +47,97 @@ export class TrendsService {
       throw new NotFoundException(`Trend ${id} não encontrada`);
     }
     return trend;
+  }
+
+  /**
+   * Tendências derivadas dos dados reais: compara os últimos 7 dias com os 7
+   * anteriores (relativo à data mais recente da série) por categoria e produto.
+   */
+  async overview() {
+    const latestRow = await this.metrics
+      .createQueryBuilder('m')
+      .select('MAX(m.date)', 'max')
+      .getRawOne<{ max: string | null }>();
+    const latest = latestRow?.max;
+    if (!latest) {
+      return { referenceDate: null, categories: [], risingProducts: [], curated: await this.findAll() };
+    }
+
+    const mid = this.shiftDate(latest, -7);
+    const start = this.shiftDate(latest, -14);
+
+    const categoriesRaw = await this.metrics
+      .createQueryBuilder('m')
+      .innerJoin('m.product', 'p')
+      .select('p.category', 'category')
+      .addSelect('SUM(CASE WHEN m.date > :mid THEN m.sales ELSE 0 END)', 'recentSales')
+      .addSelect('SUM(CASE WHEN m.date <= :mid THEN m.sales ELSE 0 END)', 'previousSales')
+      .addSelect('SUM(CASE WHEN m.date > :mid THEN m.revenue ELSE 0 END)', 'recentRevenue')
+      .where('m.date > :start', { start, mid })
+      .groupBy('p.category')
+      .getRawMany();
+
+    const productsRaw = await this.metrics
+      .createQueryBuilder('m')
+      .innerJoin('m.product', 'p')
+      .select('p.id', 'id')
+      .addSelect('p.title', 'title')
+      .addSelect('p.category', 'category')
+      .addSelect('SUM(CASE WHEN m.date > :mid THEN m.sales ELSE 0 END)', 'recentSales')
+      .addSelect('SUM(CASE WHEN m.date <= :mid THEN m.sales ELSE 0 END)', 'previousSales')
+      .addSelect('SUM(CASE WHEN m.date > :mid THEN m.revenue ELSE 0 END)', 'recentRevenue')
+      .where('m.date > :start', { start, mid })
+      .groupBy('p.id')
+      .addGroupBy('p.title')
+      .addGroupBy('p.category')
+      .getRawMany();
+
+    const risingProducts: RisingProduct[] = productsRaw
+      .map((r) => ({
+        id: r.id,
+        title: r.title,
+        category: r.category,
+        recentSales: Number(r.recentSales),
+        previousSales: Number(r.previousSales),
+        recentRevenue: Number(r.recentRevenue),
+        growthPct: this.growth(Number(r.recentSales), Number(r.previousSales)),
+      }))
+      .filter((r) => r.recentSales > 0)
+      .sort((a, b) => (b.growthPct ?? -Infinity) - (a.growthPct ?? -Infinity))
+      .slice(0, 10);
+
+    const topByCategory = new Map<string, string>();
+    for (const p of risingProducts) {
+      if (!topByCategory.has(p.category)) topByCategory.set(p.category, p.title);
+    }
+
+    const categories: CategoryTrend[] = categoriesRaw
+      .map((r) => ({
+        category: r.category,
+        recentSales: Number(r.recentSales),
+        previousSales: Number(r.previousSales),
+        recentRevenue: Number(r.recentRevenue),
+        growthPct: this.growth(Number(r.recentSales), Number(r.previousSales)),
+        topProduct: topByCategory.get(r.category) ?? null,
+      }))
+      .sort((a, b) => (b.growthPct ?? -Infinity) - (a.growthPct ?? -Infinity));
+
+    return {
+      referenceDate: latest,
+      categories,
+      risingProducts,
+      curated: await this.findAll(),
+    };
+  }
+
+  private growth(recent: number, previous: number): number | null {
+    if (previous <= 0) return null;
+    return Math.round(((recent - previous) / previous) * 1000) / 10;
+  }
+
+  private shiftDate(date: string, days: number): string {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
   }
 }
