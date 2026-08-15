@@ -11,6 +11,7 @@ import { GenerationsPage } from '@/pages/Generations';
 import { LandingPage } from '@/pages/Landing';
 import { LoginPage } from '@/pages/Login';
 import { MultiplierPage } from '@/pages/Multiplier';
+import { PlansPage } from '@/pages/Plans';
 import { ProfilePage } from '@/pages/Profile';
 import { ReferralPage } from '@/pages/Referral';
 import { ProductDetailPage } from '@/pages/ProductDetail';
@@ -50,6 +51,7 @@ export function AppRoutes() {
           <Route path="/prompts" element={<PromptsPage />} />
           <Route path="/geracoes" element={<GenerationsPage />} />
           <Route path="/analisar" element={<AnalyzePage />} />
+          <Route path="/planos" element={<PlansPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

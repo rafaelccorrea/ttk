@@ -12,6 +12,8 @@ import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import StyleRoundedIcon from '@mui/icons-material/StyleRounded';
 import TroubleshootRoundedIcon from '@mui/icons-material/TroubleshootRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
+import WorkspacePremiumRoundedIcon from '@mui/icons-material/WorkspacePremiumRounded';
+import BoltRoundedIcon from '@mui/icons-material/BoltRounded';
 import {
   Avatar,
   Box,
@@ -26,9 +28,11 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { SupportFab } from '@/components/ui/SupportFab';
 import { useAuth } from '@/contexts/AuthContext';
+import { billingService } from '@/services/billing.service';
 
 const DRAWER_WIDTH = 248;
 const red = '#fe2c55';
@@ -75,6 +79,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Programa',
     items: [
+      { to: '/planos', label: 'Planos & Créditos', icon: <WorkspacePremiumRoundedIcon /> },
       { to: '/academy', label: 'PikPok Educa', icon: <SchoolRoundedIcon /> },
       { to: '/indique', label: 'Indique e Ganhe', icon: <CardGiftcardRoundedIcon /> },
     ],
@@ -87,6 +92,15 @@ export function AppLayout() {
   const { email, signOut } = useAuth();
   const location = useLocation();
   const current = NAV.find((n) => location.pathname.startsWith(n.to));
+  const [credits, setCredits] = useState<number | null>(null);
+
+  // Atualiza o saldo a cada navegação (após usar IA, o valor reflete o gasto).
+  useEffect(() => {
+    billingService
+      .wallet()
+      .then((w) => setCredits(w.credits))
+      .catch(() => setCredits(null));
+  }, [location.pathname]);
 
   return (
     <Box display="flex" minHeight="100vh" bgcolor="background.default">
@@ -294,6 +308,24 @@ export function AppLayout() {
               height: 22,
             }}
           />
+          <Box flexGrow={1} />
+          {credits !== null && (
+            <Chip
+              component={Link}
+              to="/planos"
+              clickable
+              size="small"
+              icon={<BoltRoundedIcon sx={{ fontSize: 16 }} />}
+              label={`${credits} créditos`}
+              sx={{
+                bgcolor: 'rgba(254,44,85,0.10)',
+                color: red,
+                fontWeight: 700,
+                height: 26,
+                '& .MuiChip-icon': { color: red },
+              }}
+            />
+          )}
         </Box>
 
         {/* Sem maxWidth: o conteúdo ocupa toda a largura, colado às margens */}
