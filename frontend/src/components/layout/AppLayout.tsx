@@ -32,6 +32,7 @@ import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { SupportFab } from '@/components/ui/SupportFab';
 import { useAuth } from '@/contexts/AuthContext';
+import { CREDITS_CHANGED_EVENT } from '@/services/api';
 import { billingService } from '@/services/billing.service';
 
 const DRAWER_WIDTH = 248;
@@ -94,12 +95,17 @@ export function AppLayout() {
   const current = NAV.find((n) => location.pathname.startsWith(n.to));
   const [credits, setCredits] = useState<number | null>(null);
 
-  // Atualiza o saldo a cada navegação (após usar IA, o valor reflete o gasto).
+  // Atualiza o saldo a cada navegação E sempre que uma chamada gasta/compra
+  // créditos (evento disparado pelo interceptor do axios).
   useEffect(() => {
-    billingService
-      .wallet()
-      .then((w) => setCredits(w.credits))
-      .catch(() => setCredits(null));
+    const load = () =>
+      billingService
+        .wallet()
+        .then((w) => setCredits(w.credits))
+        .catch(() => setCredits(null));
+    load();
+    window.addEventListener(CREDITS_CHANGED_EVENT, load);
+    return () => window.removeEventListener(CREDITS_CHANGED_EVENT, load);
   }, [location.pathname]);
 
   return (
