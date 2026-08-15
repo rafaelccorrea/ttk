@@ -13,6 +13,9 @@ import sharp from 'sharp';
 const IMAGE_WIDTH = 540;
 const IMAGE_HEIGHT = 960;
 
+/** Quantos objetos manter em memória (imagens tratadas pesam ~40KB). */
+const OBJECT_CACHE_MAX = 600;
+
 /** Rota que serve os objetos quando o bucket é privado (opção padrão). */
 export const MEDIA_ROUTE = '/api/v1/media/s3';
 
@@ -29,6 +32,16 @@ export const MEDIA_ROUTE = '/api/v1/media/s3';
  */
 @Injectable()
 export class MediaMirrorService {
+  /**
+   * Objetos já lidos do S3, compartilhados entre requisições. São imutáveis
+   * (a chave contém o hash da origem), então não há risco de servir versão
+   * velha.
+   */
+  private static readonly objectCache = new Map<
+    string,
+    { body: Buffer; contentType: string }
+  >();
+
   private readonly logger = new Logger(MediaMirrorService.name);
   private readonly client: S3Client | null;
   private readonly bucket: string;
@@ -191,6 +204,20 @@ export class MediaMirrorService {
     key: string,
   ): Promise<{ body: Buffer; contentType: string } | null> {
     if (!this.client || !key) return null;
+
+    // Cache em memória. Cada leitura no S3 custa 300ms–1s, e uma tela de
+    // vitrine pede ~30 imagens de uma vez — como o navegador só abre ~6
+    // conexões por origem, isso virava fila e os cards ficavam sem foto.
+    // O objeto é imutável (a chave carrega o hash da origem), então guardar
+    // é seguro.
+    const cached = MediaMirrorService.objectCache.get(key);
+    if (cached) {
+      // Recoloca no fim: mantém o que está em uso e descarta o esquecido.
+      MediaMirrorService.objectCache.delete(key);
+      MediaMirrorService.objectCache.set(key, cached);
+      return cached;
+    }
+
     try {
       const result = await this.client.send(
         new GetObjectCommand({ Bucket: this.bucket, Key: key }),
@@ -199,10 +226,19 @@ export class MediaMirrorService {
       for await (const chunk of result.Body as AsyncIterable<Uint8Array>) {
         chunks.push(Buffer.from(chunk));
       }
-      return {
+      const objeto = {
         body: Buffer.concat(chunks),
         contentType: result.ContentType ?? 'application/octet-stream',
       };
+
+      MediaMirrorService.objectCache.set(key, objeto);
+      // Descarta o mais antigo quando estoura o teto (LRU simples).
+      while (MediaMirrorService.objectCache.size > OBJECT_CACHE_MAX) {
+        const maisAntigo = MediaMirrorService.objectCache.keys().next().value;
+        if (maisAntigo === undefined) break;
+        MediaMirrorService.objectCache.delete(maisAntigo);
+      }
+      return objeto;
     } catch (error) {
       this.logger.warn(`Leitura do S3 falhou (${key}): ${error}`);
       return null;
