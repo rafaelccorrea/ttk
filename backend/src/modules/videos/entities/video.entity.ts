@@ -63,14 +63,17 @@ export class Video {
   category: string;
 
   /**
-   * 'product'  = vídeo que vende um produto (é o que a tela Vídeos que Vendem
-   *              deve mostrar por padrão).
-   * 'trending' = viral genérico coletado do Creative Center — dado real, mas
-   *              sem produto atrelado. Fica separado para não poluir o radar.
+   * 'pending'  = anúncio recém-coletado, ainda não analisado. NÃO aparece em
+   *              Vídeos que Vendem até sabermos se vende produto.
+   * 'product'  = a análise confirmou produto físico anunciado. É o que a tela
+   *              mostra por padrão.
+   * 'other'    = anúncio de serviço/app/banco/institucional, ou de outro
+   *              idioma. Fica fora do radar de produto.
+   * 'trending' = viral genérico (fonte antiga, hoje desligada).
    */
   @Index()
-  @Column({ default: 'product' })
-  kind: 'product' | 'trending';
+  @Column({ default: 'pending' })
+  kind: 'pending' | 'product' | 'other' | 'trending';
 
   @CreateDateColumn()
   createdAt: Date;

@@ -38,6 +38,7 @@ import { formatCurrency, formatNumber } from '@/utils/format';
 import { proxyImage } from '@/utils/tiktok';
 
 const PAGE_SIZE = 24;
+const cyan = '#25f4ee';
 
 // Gradiente estável por categoria para o topo do card (sem imagens reais ainda).
 const GRADIENTS = [
@@ -63,13 +64,16 @@ function ProductCard({
   rank: number;
   onToggleFavorite: (id: string) => void;
 }) {
+  const growth = product.growthPct;
   return (
     <Card
       sx={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
+        position: 'relative',
+        // Formato "stories": card estreito e alto, foto ocupando tudo.
+        aspectRatio: '9 / 16',
+        overflow: 'hidden',
         cursor: 'pointer',
+        bgcolor: '#12131b',
         '&:hover': { transform: 'translateY(-3px)' },
       }}
     >
@@ -77,172 +81,200 @@ function ProductCard({
       <CardActionArea
         component={Link}
         to={`/produtos/${product.id}`}
-        sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
+        sx={{ height: '100%', display: 'block' }}
       >
-      {/* Foto grande e imersiva (cover) */}
-      <Box
-        sx={{
-          position: 'relative',
-          height: 220,
-          background: product.imageUrl ? '#f6f6f8' : gradientFor(product.category),
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          p: 1.25,
-          overflow: 'hidden',
-        }}
-      >
-        {product.imageUrl && (
-          <Box
-            component="img"
-            src={proxyImage(product.imageUrl)}
-            alt={product.title}
-            loading="lazy"
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              transition: 'transform .3s ease',
-              '.MuiCard-root:hover &': { transform: 'scale(1.06)' },
-            }}
-          />
-        )}
-        {/* Convite visível ao hover */}
-        <Chip
-          size="small"
-          label="Ver detalhes →"
+        {/* Fundo: gradiente da categoria quando não há foto */}
+        <Box
           sx={{
             position: 'absolute',
-            right: 10,
-            bottom: 10,
-            zIndex: 1,
-            fontWeight: 700,
-            color: '#fff',
-            bgcolor: 'rgba(254,44,85,0.92)',
-            opacity: 0,
-            transform: 'translateY(6px)',
-            transition: 'opacity .2s ease, transform .2s ease',
-            '.MuiCard-root:hover &': { opacity: 1, transform: 'translateY(0)' },
+            inset: 0,
+            background: product.imageUrl ? '#12131b' : gradientFor(product.category),
           }}
         />
-        <Chip
-          size="small"
-          label={`#${rank}`}
-          sx={{
-            bgcolor: 'rgba(0,0,0,0.45)',
-            color: '#fff',
-            fontWeight: 800,
-            backdropFilter: 'blur(4px)',
-            zIndex: 1,
-          }}
-        />
-        <IconButton
-          size="small"
-          onClick={(e) => {
-            // Impede que o clique no favorito navegue para o detalhe.
-            e.preventDefault();
-            e.stopPropagation();
-            onToggleFavorite(product.id);
-          }}
-          aria-label="favoritar"
-          sx={{
-            bgcolor: 'rgba(0,0,0,0.35)',
-            color: product.isFavorite ? '#ffd54f' : '#fff',
-            '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' },
-            zIndex: 1,
-          }}
-        >
-          {product.isFavorite ? (
-            <StarIcon fontSize="small" />
-          ) : (
-            <StarBorderIcon fontSize="small" />
-          )}
-        </IconButton>
-      </Box>
-
-      <CardContent
-        sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, pt: 1.5 }}
-      >
-        <Typography
-          sx={{
-            fontWeight: 700,
-            fontSize: 15,
-            lineHeight: 1.35,
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-            minHeight: '2.7em',
-            '.MuiCard-root:hover &': { color: 'primary.main' },
-          }}
-        >
-          {product.title}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" mt={0.5}>
-          {product.storeName ?? '—'} · {product.category}
-          {product.rating ? ` · ★ ${product.rating}` : ''}
-        </Typography>
-
-        <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          mt={1.5}
-        >
-          <Typography variant="h6">{formatCurrency(product.price)}</Typography>
-          {product.growthPct !== null && (
-            <Chip
-              size="small"
+        {product.imageUrl && (
+          <>
+            {/* Cópia desfocada preenche as bordas sem cortar a foto real */}
+            <Box
+              component="img"
+              src={proxyImage(product.imageUrl)}
+              alt=""
+              aria-hidden
+              loading="lazy"
               sx={{
-                fontWeight: 700,
-                bgcolor:
-                  product.growthPct >= 0
-                    ? 'rgba(74,222,128,0.14)'
-                    : 'rgba(248,113,113,0.14)',
-                color: product.growthPct >= 0 ? '#4ade80' : '#f87171',
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                filter: 'blur(24px) saturate(1.3)',
+                transform: 'scale(1.2)',
+                opacity: 0.5,
               }}
-              label={`${product.growthPct >= 0 ? '▲' : '▼'} ${Math.abs(product.growthPct)}%`}
             />
-          )}
+            <Box
+              component="img"
+              src={proxyImage(product.imageUrl)}
+              alt={product.title}
+              loading="lazy"
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                transition: 'transform .35s ease',
+                '.MuiCard-root:hover &': { transform: 'scale(1.05)' },
+              }}
+            />
+          </>
+        )}
+
+        {/* Véu escuro só na base, para o texto sobreposto ficar legível */}
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.62) 26%, rgba(0,0,0,0.05) 52%, rgba(0,0,0,0.35) 100%)',
+          }}
+        />
+
+        {/* Topo: posição no ranking + favorito */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 10,
+            left: 10,
+            right: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            zIndex: 2,
+          }}
+        >
+          <Chip
+            size="small"
+            label={`#${rank}`}
+            sx={{
+              bgcolor: 'rgba(0,0,0,0.5)',
+              color: '#fff',
+              fontWeight: 800,
+              backdropFilter: 'blur(4px)',
+            }}
+          />
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              // Impede que o clique no favorito navegue para o detalhe.
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleFavorite(product.id);
+            }}
+            aria-label="favoritar"
+            sx={{
+              bgcolor: 'rgba(0,0,0,0.4)',
+              color: product.isFavorite ? '#ffd54f' : '#fff',
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.6)' },
+            }}
+          >
+            {product.isFavorite ? (
+              <StarIcon fontSize="small" />
+            ) : (
+              <StarBorderIcon fontSize="small" />
+            )}
+          </IconButton>
         </Box>
 
-        <Box
-          display="flex"
-          gap={2}
-          mt={1.5}
-          pt={1.5}
-          borderTop="1px solid rgba(22,24,35,0.08)"
+        {/* Rodapé: informações sobrepostas à foto */}
+        <CardContent
+          sx={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 2,
+            color: '#fff',
+            p: 1.5,
+            '&:last-child': { pb: 1.5 },
+          }}
         >
-          <Box>
-            <Typography variant="caption" color="text.secondary">
-              Vendas
+          <Typography
+            sx={{
+              fontWeight: 700,
+              fontSize: 14,
+              lineHeight: 1.3,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              textShadow: '0 1px 6px rgba(0,0,0,0.6)',
+            }}
+          >
+            {product.title}
+          </Typography>
+          <Typography
+            variant="caption"
+            noWrap
+            sx={{ display: 'block', color: 'rgba(255,255,255,0.72)', mt: 0.25 }}
+          >
+            {product.storeName ?? '—'} · {product.category}
+            {product.rating ? ` · ★ ${product.rating}` : ''}
+          </Typography>
+
+          <Box display="flex" alignItems="center" gap={0.75} mt={1}>
+            <Typography fontWeight={800} fontSize={17}>
+              {formatCurrency(product.price)}
             </Typography>
-            <Typography fontWeight={700}>
-              {formatNumber(product.salesPeriod)}
-            </Typography>
+            {growth !== null && (
+              <Chip
+                size="small"
+                sx={{
+                  height: 20,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  bgcolor: growth >= 0 ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)',
+                  color: growth >= 0 ? '#4ade80' : '#f87171',
+                }}
+                label={`${growth >= 0 ? '▲' : '▼'} ${Math.abs(growth)}%`}
+              />
+            )}
           </Box>
-          <Box>
-            <Typography variant="caption" color="text.secondary">
-              Faturamento
-            </Typography>
-            <Typography fontWeight={700} color="primary.main">
-              {formatCurrency(product.revenuePeriod)}
-            </Typography>
-          </Box>
-          {product.radarScore !== null && (
-            <Box ml="auto" textAlign="right">
-              <Typography variant="caption" color="text.secondary">
-                Radar
+
+          <Box
+            display="flex"
+            gap={1.5}
+            mt={1}
+            pt={1}
+            borderTop="1px solid rgba(255,255,255,0.16)"
+          >
+            <Box minWidth={0}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                Vendas
               </Typography>
-              <Typography fontWeight={700} color="secondary.main">
-                {product.radarScore}
+              <Typography fontWeight={700} fontSize={13.5}>
+                {formatNumber(product.salesPeriod)}
               </Typography>
             </Box>
-          )}
-        </Box>
-      </CardContent>
+            <Box minWidth={0}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                Faturamento
+              </Typography>
+              <Typography fontWeight={700} fontSize={13.5} noWrap sx={{ color: '#ff6b8a' }}>
+                {formatCurrency(product.revenuePeriod)}
+              </Typography>
+            </Box>
+            {product.radarScore !== null && (
+              <Box ml="auto" textAlign="right">
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                  Radar
+                </Typography>
+                <Typography fontWeight={700} fontSize={13.5} sx={{ color: cyan }}>
+                  {product.radarScore}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </CardContent>
       </CardActionArea>
     </Card>
   );
@@ -514,10 +546,10 @@ export function ProductsPage() {
       )}
       <Grid container spacing={2.5} sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}>
         {items.map((p, index) => (
-          <Grid item xs={12} sm={6} md={4} key={p.id}>
+          <Grid item xs={6} sm={4} md={3} lg={2} key={p.id}>
             <ProductCard
               product={p}
-              rank={(page - 1) * PAGE_SIZE + index + 1}
+              rank={(page - 1) * pageSize + index + 1}
               onToggleFavorite={toggleFavorite}
             />
           </Grid>
@@ -526,7 +558,7 @@ export function ProductsPage() {
 
       <Box display="flex" justifyContent="center" mt={4}>
         <Pagination
-          count={Math.max(1, Math.ceil(total / PAGE_SIZE))}
+          count={Math.max(1, Math.ceil(total / pageSize))}
           page={page}
           onChange={(_e, value) => setPage(value)}
         />

@@ -216,7 +216,10 @@ export class IngestionService implements OnModuleInit {
             externalId: ad.externalId,
             postedAt: new Date().toISOString().slice(0, 10),
           });
-        video.kind = 'product';
+        // Entra como 'pending': só vira 'product' depois que a análise
+        // confirmar que vende produto físico. Assim "Vídeos que Vendem" nunca
+        // mostra anúncio de banco, app ou institucional.
+        if (!video.kind || video.kind === 'trending') video.kind = 'pending';
         video.caption = ad.caption || 'Anúncio em alta no TikTok Brasil';
         video.creatorHandle = ad.brand ?? 'anunciante';
         video.category = ad.category;
@@ -242,7 +245,7 @@ export class IngestionService implements OnModuleInit {
       //    venda de produto — o resto era publicidade sem produto, poluindo o
       //    catálogo). Enquanto não houver fonte real de catálogo, roda apenas
       //    com fornecedor externo configurado (EXTERNAL_DATA_*).
-      run.productsIngested = await this.ingestProducts();
+      run.productsIngested += await this.ingestProducts();
 
       // 4) Galeria de imagens reais. Cobre tanto quem não tem foto nenhuma
       //    quanto quem tem só uma — a tela de detalhe mostra várias.
@@ -335,9 +338,9 @@ export class IngestionService implements OnModuleInit {
     }
 
     const pending = await this.videos.find({
-      where: { productId: IsNull(), kind: 'product' },
+      where: { productId: IsNull(), kind: 'pending' },
       order: { likes: 'DESC' },
-      take: 12,
+      take: 30,
     });
 
     let created = 0;
@@ -347,6 +350,13 @@ export class IngestionService implements OnModuleInit {
       const transcript = video.transcript ?? (await this.extractor.transcribe(video.playbackUrl));
       if (transcript) video.transcript = transcript;
 
+      // Anúncio em inglês/espanhol não serve para o mercado BR.
+      if (transcript && !this.looksPortuguese(transcript)) {
+        video.kind = 'other';
+        await this.videos.save(video);
+        continue;
+      }
+
       const extracted = await this.extractor.extract({
         caption: video.caption ?? '',
         brand: video.creatorHandle ?? null,
@@ -354,7 +364,8 @@ export class IngestionService implements OnModuleInit {
       });
 
       if (!extracted) {
-        // Marca como visto para não gastar API de novo no mesmo vídeo.
+        // Serviço, app, banco ou institucional: sai do radar de produto.
+        video.kind = 'other';
         await this.videos.save(video);
         continue;
       }
@@ -364,6 +375,7 @@ export class IngestionService implements OnModuleInit {
       const gate = evaluateProduct({ title: extracted.name });
       if (!gate.accepted || !gate.cleanTitle) {
         this.logger.debug(`Extraído recusado: "${extracted.name}" (${gate.reason})`);
+        video.kind = 'other';
         await this.videos.save(video);
         continue;
       }
@@ -389,11 +401,33 @@ export class IngestionService implements OnModuleInit {
       );
 
       video.productId = product.id;
+      video.kind = 'product'; // confirmado: este anúncio vende produto
       await this.videos.save(video);
       created += 1;
       this.logger.log(`Produto extraído do anúncio: "${gate.cleanTitle}"`);
     }
     return created;
+  }
+
+  /**
+   * Heurística de idioma: conta palavras funcionais do português contra as do
+   * inglês/espanhol. Simples de propósito — só precisa separar mercado BR do
+   * resto, não classificar idioma com precisão.
+   */
+  private looksPortuguese(text: string): boolean {
+    const sample = text.toLowerCase().slice(0, 600);
+    const pt = (
+      sample.match(
+        /\b(você|voce|não|nao|com|para|isso|aqui|muito|tem|uma|que|por|mais|seu|sua|está|esta|vai|agora|gente)\b/g,
+      ) ?? []
+    ).length;
+    const other = (
+      sample.match(
+        /\b(the|you|your|and|with|this|that|for|are|have|will|from|what|when|como está|muy|pero|todo|esto)\b/g,
+      ) ?? []
+    ).length;
+    if (pt === 0 && other === 0) return true; // sem fala: não descarta
+    return pt >= other;
   }
 
   private slugify(text: string): string {

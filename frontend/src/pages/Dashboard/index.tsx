@@ -163,7 +163,7 @@ export function DashboardPage() {
                       src={proxyImage(p.imageUrl)}
                       alt={p.title}
                       loading="lazy"
-                      sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
                     />
                   ) : (
                     <ShoppingBagRoundedIcon sx={{ color: 'rgba(22,24,35,0.25)' }} />

@@ -88,6 +88,11 @@ export class VideosService {
     }
     if (query.kind) {
       qb.andWhere('v.kind = :kind', { kind: query.kind });
+    } else if (!query.saved && !query.productId) {
+      // Vídeos que Vendem = só anúncio confirmado como venda de produto.
+      // 'pending' (ainda não analisado) e 'other' (serviço/app/outro idioma)
+      // ficam de fora — era o que trazia "Ton", "Inverno" e anúncio em inglês.
+      qb.andWhere('v.kind = :defaultKind', { defaultKind: 'product' });
     }
     // Vídeo sem mídia não abre e frustra o usuário ("não consigo executar
     // nenhum vídeo"). Por padrão listamos só o que realmente reproduz.
