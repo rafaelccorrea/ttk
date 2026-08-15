@@ -20,13 +20,38 @@ export interface ProductDetail extends Omit<RankedProduct, 'growthPct'> {
   series: Array<{ date: string; sales: number; revenue: number }>;
 }
 
+export type ProductSort =
+  | 'sales'
+  | 'revenue'
+  | 'growth'
+  | 'price'
+  | 'rating'
+  | 'radar';
+
 export interface RankQuery {
   period?: number;
   category?: string;
   search?: string;
-  sort?: 'sales' | 'revenue';
+  store?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  minSales?: number;
+  minRevenue?: number;
+  minGrowth?: number;
+  minRating?: number;
+  onlyFavorites?: boolean;
+  withImage?: boolean;
+  sort?: ProductSort;
+  order?: 'asc' | 'desc';
   page?: number;
   limit?: number;
+}
+
+export interface ProductFilterOptions {
+  categories: string[];
+  stores: string[];
+  priceRange: { min: number; max: number };
+  sorts: Array<{ value: ProductSort; label: string }>;
 }
 
 export const productsService = {
@@ -36,6 +61,11 @@ export const productsService = {
       total: number;
       page: number;
     }>('/products', { params: query });
+    return data;
+  },
+
+  async filterOptions(): Promise<ProductFilterOptions> {
+    const { data } = await api.get<ProductFilterOptions>('/products/filters');
     return data;
   },
 

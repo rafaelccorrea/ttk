@@ -112,6 +112,7 @@ export function AppLayout() {
   const current = NAV.find((n) => location.pathname.startsWith(n.to));
   const [credits, setCredits] = useState<number | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
+  const [plan, setPlan] = useState<string | null>(null);
   const [nextUpdate, setNextUpdate] = useState<{
     nextRunAt: string | null;
     isRunning: boolean;
@@ -154,6 +155,7 @@ export function AppLayout() {
         .then((w) => {
           setCredits(w.credits);
           setFeatures(w.features ?? {});
+          setPlan(w.plan);
         })
         .catch(() => setCredits(null));
     load();
@@ -332,7 +334,7 @@ export function AppLayout() {
               {email ?? '—'}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-              plano free
+              plano {plan ?? '—'}
             </Typography>
           </Box>
           <Tooltip title="Sair">

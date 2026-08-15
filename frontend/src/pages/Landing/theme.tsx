@@ -145,6 +145,63 @@ export function useCountUp(to: number, duration = 1400) {
   return { ref, value };
 }
 
+/**
+ * Moldura de navegador em volta das capturas reais do app — dá contexto de
+ * "isso é um produto de verdade" sem precisar de chrome falso demais.
+ */
+export function BrowserFrame({
+  src,
+  alt,
+  caption,
+  priority = false,
+}: {
+  src: string;
+  alt: string;
+  caption?: string;
+  priority?: boolean;
+}) {
+  return (
+    <Box
+      sx={{
+        ...glass,
+        p: 0,
+        overflow: 'hidden',
+        boxShadow: '0 30px 80px rgba(0,0,0,0.55)',
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.25,
+          borderBottom: `1px solid ${line}`, bgcolor: 'rgba(255,255,255,0.03)',
+        }}
+      >
+        <Box sx={{ display: 'flex', gap: 0.75 }} aria-hidden>
+          {['#ff5f57', '#febc2e', '#28c840'].map((c) => (
+            <Box key={c} sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: c, opacity: 0.85 }} />
+          ))}
+        </Box>
+        <Box
+          sx={{
+            flex: 1, maxWidth: 320, borderRadius: 999, px: 1.5, py: 0.4,
+            bgcolor: 'rgba(255,255,255,0.06)', fontSize: 11.5, color: textFaint,
+            overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+          }}
+        >
+          {caption ?? 'app.pikpok.com.br'}
+        </Box>
+      </Box>
+      <Box
+        component="img"
+        src={src}
+        alt={alt}
+        loading={priority ? 'eager' : 'lazy'}
+        decoding="async"
+        sx={{ display: 'block', width: '100%', height: 'auto' }}
+      />
+    </Box>
+  );
+}
+
 /** Título de seção padronizado (eyebrow + headline + subtítulo). */
 export function SectionHeading({
   eyebrow,
