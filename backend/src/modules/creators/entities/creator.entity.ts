@@ -48,7 +48,7 @@ export class Creator {
    * 'seed'    = dado de demonstração. Separar evita apresentar como real algo
    *             que não é — os reais vêm primeiro na listagem.
    */
-  @Index()
+  @Index('IDX_creators_source')
   @Column({ default: 'seed' })
   source: 'echotik' | 'tiktok' | 'seed';
 

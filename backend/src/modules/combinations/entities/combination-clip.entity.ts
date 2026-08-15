@@ -24,7 +24,7 @@ export class CombinationClip {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index()
+  @Index('IDX_combination_clips_user')
   @Column('uuid')
   userId: string;
 

@@ -54,7 +54,7 @@ export class Product {
   @Column({ type: 'int', default: 0 })
   sales7d: number;
 
-  @Index()
+  @Index('IDX_products_sales30d')
   @Column({ type: 'int', default: 0 })
   sales30d: number;
 
@@ -80,7 +80,7 @@ export class Product {
    * Assinatura normalizada do título, usada para achar o mesmo produto
    * anunciado por vendedores ou variações diferentes.
    */
-  @Index()
+  @Index('IDX_products_dedupKey')
   @Column({ type: 'varchar', nullable: true })
   dedupKey: string | null;
 
@@ -88,7 +88,7 @@ export class Product {
    * Cópia de outro produto já listado. Fica no banco (o histórico de métricas
    * importa) mas sai das listagens, senão a vitrine repete o mesmo item.
    */
-  @Index()
+  @Index('IDX_products_isDuplicate')
   @Column({ type: 'boolean', default: false })
   isDuplicate: boolean;
 
@@ -97,7 +97,7 @@ export class Product {
   // Estas colunas dizem o que já foi feito e quando, para priorizar.
 
   /** Id do produto na TikTok Shop, sem prefixo — chave para a API do fornecedor. */
-  @Index()
+  @Index('IDX_products_tiktokProductId')
   @Column({ type: 'varchar', nullable: true })
   tiktokProductId: string | null;
 

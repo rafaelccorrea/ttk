@@ -21,11 +21,11 @@ export class CombinationVideo {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index()
+  @Index('IDX_combination_videos_user')
   @Column('uuid')
   userId: string;
 
-  @Index()
+  @Index('IDX_combination_videos_plan')
   @Column('uuid')
   planId: string;
 

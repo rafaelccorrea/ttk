@@ -19,7 +19,7 @@ export class UserProduct {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index()
+  @Index('IDX_user_products_userId')
   @Column('uuid')
   userId: string;
 

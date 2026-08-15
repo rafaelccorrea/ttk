@@ -27,7 +27,7 @@ export class Persona {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index()
+  @Index('IDX_personas_userId')
   @Column('uuid')
   userId: string;
 

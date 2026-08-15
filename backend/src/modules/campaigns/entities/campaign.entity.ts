@@ -3,11 +3,15 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { CampaignScene } from './campaign-scene.entity';
+import { Persona } from './persona.entity';
+import { UserProduct } from './user-product.entity';
 
 /**
  * Status na ordem em que acontecem — cada um exige a aprovação do anterior.
@@ -27,7 +31,7 @@ export class Campaign {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index()
+  @Index('IDX_campaigns_userId')
   @Column('uuid')
   userId: string;
 
@@ -36,6 +40,27 @@ export class Campaign {
 
   @Column('uuid')
   personaId: string;
+
+  /**
+   * Relações declaradas só para o banco: nada no código carrega a campanha
+   * com `relations`, mas as chaves estrangeiras existem desde a migração —
+   * apagar um produto ou uma persona em uso deixaria a campanha órfã. Sem
+   * declará-las aqui, o TypeORM não sabe que elas existem e a checagem de
+   * drift do CI pede para removê-las a cada build.
+   */
+  @ManyToOne(() => UserProduct, { onDelete: 'RESTRICT' })
+  @JoinColumn({
+    name: 'userProductId',
+    foreignKeyConstraintName: 'FK_campaigns_product',
+  })
+  userProduct?: UserProduct;
+
+  @ManyToOne(() => Persona, { onDelete: 'RESTRICT' })
+  @JoinColumn({
+    name: 'personaId',
+    foreignKeyConstraintName: 'FK_campaigns_persona',
+  })
+  persona?: Persona;
 
   @Column()
   title: string;

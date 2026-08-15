@@ -15,7 +15,7 @@ export class AppUser {
 
   // Único: uma conta por e-mail. Sem isso, tokens com sub diferente criavam
   // contas duplicadas e o login encontrava a errada.
-  @Index({ unique: true })
+  @Index('IDX_app_users_email', { unique: true })
   @Column()
   email: string;
 
@@ -47,7 +47,7 @@ export class AppUser {
   // o valor cru só existe no link enviado por e-mail, então um vazamento do
   // banco não permite redefinir a senha de ninguém.
   @Column({ nullable: true })
-  @Index()
+  @Index('IDX_app_users_resetTokenHash')
   resetTokenHash: string;
 
   @Column({ type: 'timestamptz', nullable: true })
@@ -61,7 +61,7 @@ export class AppUser {
   // guardado, mas o e-mail só sai quando a vez do usuário chega.
   // Volta a null no release — quem já foi liberado não está mais na fila.
   @Column({ type: 'timestamptz', nullable: true })
-  @Index()
+  @Index('IDX_app_users_waitlistedAt')
   waitlistedAt: Date;
 
   // Quando o link de confirmação foi efetivamente enviado no release.

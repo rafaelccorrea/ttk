@@ -47,7 +47,7 @@ export class PromptTemplate {
   @Column({ nullable: true })
   previewUrl: string;
 
-  @Index()
+  @Index('IDX_prompt_templates_source')
   @Column({ type: 'varchar', default: 'seed' })
   source: PromptSource;
 
@@ -58,7 +58,7 @@ export class PromptTemplate {
    * três meses o Cofre viraria uma lista de duplicatas quase idênticas. Com
    * ela, rodar de novo ATUALIZA o prompt existente em vez de empilhar.
    */
-  @Index({ unique: true })
+  @Index('IDX_prompt_templates_source_key', { unique: true })
   @Column({ type: 'varchar', nullable: true })
   sourceKey: string | null;
 

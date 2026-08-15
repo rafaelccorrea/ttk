@@ -82,7 +82,7 @@ export class Video {
    *              idioma. Fica fora do radar de produto.
    * 'trending' = viral genérico (fonte antiga, hoje desligada).
    */
-  @Index()
+  @Index('IDX_videos_kind')
   @Column({ default: 'pending' })
   kind: 'pending' | 'product' | 'other' | 'trending';
 

@@ -27,18 +27,25 @@ export type SceneKind = 'apresentador' | 'produto';
 
 /** Uma cena = uma geração de vídeo de ~5s. */
 @Entity('campaign_scenes')
+// Duas cenas na mesma posição do roteiro deixariam a ordem do vídeo ambígua.
+@Index('UQ_campaign_scenes_ordem', ['campaignId', 'ordem'], { unique: true })
 export class CampaignScene {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index()
+  @Index('IDX_campaign_scenes_campaignId')
   @Column('uuid')
   campaignId: string;
 
   @ManyToOne(() => Campaign, (campaign) => campaign.scenes, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'campaignId' })
+  // Nome explícito: é o mesmo que a migração cria. Sem ele o TypeORM espera o
+  // nome em hash, e a checagem de drift do CI acusa diferença a cada build.
+  @JoinColumn({
+    name: 'campaignId',
+    foreignKeyConstraintName: 'FK_campaign_scenes_campaign',
+  })
   campaign: Campaign;
 
   @Column({ type: 'int' })
