@@ -26,12 +26,27 @@ export class AuthService {
     private readonly users: Repository<AppUser>,
   ) {}
 
+  /**
+   * Sem fallback de propósito. Um default tipo "change-me" faz o app subir
+   * feliz e assinar tokens com um segredo público — qualquer um forjaria um
+   * JWT com o `sub` de outra pessoa. Melhor a requisição falhar.
+   */
+  private get jwtSecret(): string {
+    const secret = this.config.get<string>('JWT_SECRET');
+    if (!secret || secret.length < 32) {
+      throw new Error('JWT_SECRET ausente ou fraco (mínimo 32 caracteres).');
+    }
+    return secret;
+  }
+
   private issueToken(user: Pick<AppUser, 'id' | 'email'>): string {
-    return sign(
-      { sub: user.id, email: user.email },
-      this.config.get<string>('JWT_SECRET', 'change-me'),
-      { expiresIn: this.config.get('JWT_EXPIRES_IN', '7d') },
-    );
+    return sign({ sub: user.id, email: user.email }, this.jwtSecret, {
+      expiresIn: this.config.get('JWT_EXPIRES_IN', '7d'),
+      algorithm: 'HS256',
+      // Marca a origem do token: o guard só aceita HS256 emitido por nós.
+      issuer: 'pikpok-api',
+      audience: 'pikpok-app',
+    });
   }
 
   private confirmationLink(token: string): string {
@@ -350,6 +365,12 @@ export class AuthService {
    * O id é derivado do e-mail — cada e-mail é um usuário distinto.
    */
   devLogin(email: string): { accessToken: string; userId: string } {
+    // Duas travas, não uma. A rota emite um token válido para QUALQUER e-mail
+    // sem senha: uma variável de ambiente marcada por engano em produção seria
+    // account takeover de todo mundo. NODE_ENV desliga isso incondicionalmente.
+    if (this.config.get('NODE_ENV') === 'production') {
+      throw new ForbiddenException('dev-login desabilitado');
+    }
     if (this.config.get('ALLOW_DEV_LOGIN') !== 'true') {
       throw new ForbiddenException('dev-login desabilitado');
     }

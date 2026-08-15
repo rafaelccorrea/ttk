@@ -13,7 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import { FilterBar, SearchField } from '@/components/ui/Filters';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiErrorMessage } from '@/contexts/AuthContext';
 import { PromptTemplate, studioService } from '@/services/studio.service';
@@ -37,8 +37,15 @@ function PromptCard({ prompt }: { prompt: PromptTemplate }) {
     setTimeout(() => setCopied(false), 1500);
   }
 
+  // Trava síncrona:  só desabilita o botão no próximo render, e
+  // um duplo-clique cabe nessa janela — cada disparo extra é crédito do
+  // usuário queimado numa geração idêntica.
+  const generatingRef = useRef(false);
+
   // Gera a mídia com IA (Higgsfield) e leva o usuário para a galeria.
   async function generate() {
+    if (generatingRef.current) return;
+    generatingRef.current = true;
     setGenError(null);
     setGenerating(true);
     try {
@@ -51,6 +58,7 @@ function PromptCard({ prompt }: { prompt: PromptTemplate }) {
     } catch (err) {
       setGenError(apiErrorMessage(err));
     } finally {
+      generatingRef.current = false;
       setGenerating(false);
     }
   }

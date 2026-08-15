@@ -34,7 +34,7 @@ function translateAuthError(err: unknown): string {
     [/email not confirmed/i, 'Confirme seu e-mail antes de entrar — enviamos um link de confirmação para sua caixa de entrada.'],
     [/invalid login credentials/i, 'E-mail ou senha incorretos.'],
     [/user already registered/i, 'Este e-mail já tem conta — use "Já tenho conta".'],
-    [/password should be at least/i, 'A senha precisa ter pelo menos 6 caracteres.'],
+    [/password should be at least/i, 'A senha precisa ter pelo menos 10 caracteres.'],
     [/rate limit/i, 'Muitas tentativas — aguarde um instante e tente de novo.'],
   ];
   for (const [pattern, text] of map) {

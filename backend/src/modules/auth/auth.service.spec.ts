@@ -29,9 +29,13 @@ describe('AuthService — recuperação de senha', () => {
   };
 
   const config = {
-    get: jest.fn((key: string, fallback?: unknown) =>
-      key === 'APP_URL' ? 'https://app.pikpok.test' : fallback,
-    ),
+    get: jest.fn((key: string, fallback?: unknown) => {
+      if (key === 'APP_URL') return 'https://app.pikpok.test';
+      // O serviço recusa segredo curto/ausente de propósito; o teste precisa
+      // de um que passe nessa regra.
+      if (key === 'JWT_SECRET') return 'x'.repeat(64);
+      return fallback;
+    }),
   };
 
   /** Extrai o token cru do link passado ao MailService. */

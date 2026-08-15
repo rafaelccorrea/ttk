@@ -1,9 +1,22 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { CreateTrendDto } from './dto/create-trend.dto';
 import { TrendsService } from './trends.service';
 
+// Era o único controller sem guard: POST /trends aceitava escrita anônima e
+// os GETs entregavam dados do produto sem login.
 @ApiTags('trends')
+@ApiBearerAuth()
+@UseGuards(SupabaseAuthGuard)
 @Controller('trends')
 export class TrendsController {
   constructor(private readonly trendsService: TrendsService) {}

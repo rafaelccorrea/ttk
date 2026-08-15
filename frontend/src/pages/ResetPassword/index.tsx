@@ -94,7 +94,7 @@ export function ResetPasswordPage() {
                 Criar nova senha
               </Typography>
               <Typography color="text.secondary" mb={2}>
-                Escolha uma senha com pelo menos 6 caracteres.
+                Escolha uma senha com pelo menos 10 caracteres.
               </Typography>
               <form onSubmit={handleSubmit}>
                 <TextField
@@ -103,7 +103,7 @@ export function ResetPasswordPage() {
                   fullWidth
                   required
                   autoFocus
-                  inputProps={{ minLength: 6 }}
+                  inputProps={{ minLength: 10 }}
                   autoComplete="new-password"
                   margin="normal"
                   value={password}

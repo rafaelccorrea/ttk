@@ -23,6 +23,7 @@ import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { BillingService } from '../billing/billing.service';
 import { AnalyzeDto } from './dto/analyze.dto';
 import { GenerateScriptDto } from './dto/generate-script.dto';
+import { SingleFlightInterceptor } from '../../common/interceptors/single-flight.interceptor';
 import { StudioService } from './studio.service';
 import { TranscriptionService } from './transcription.service';
 
@@ -38,7 +39,7 @@ export class StudioController {
   ) {}
 
   @Post('transcribe')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), SingleFlightInterceptor)
   @ApiOperation({ summary: 'Transcreve um vídeo/áudio (Whisper, máx. 25MB)' })
   transcribe(
     @CurrentUser() user: AuthUser,
@@ -58,6 +59,7 @@ export class StudioController {
     );
   }
 
+  @UseInterceptors(SingleFlightInterceptor)
   @Post('analyze')
   @ApiOperation({
     summary: 'Decompõe a transcrição de um vídeo viral e adapta ao produto',
@@ -66,6 +68,7 @@ export class StudioController {
     return this.studioService.analyze(user.id, dto.transcript, dto.productId);
   }
 
+  @UseInterceptors(SingleFlightInterceptor)
   @Post('scripts/generate')
   @ApiOperation({ summary: 'Gera um roteiro de live ou vídeo com IA' })
   generate(@CurrentUser() user: AuthUser, @Body() dto: GenerateScriptDto) {

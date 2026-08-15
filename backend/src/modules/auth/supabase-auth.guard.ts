@@ -76,17 +76,33 @@ export class SupabaseAuthGuard implements CanActivate {
       }
     }
 
-    // 2/3. Secrets HS256 (Supabase legado e dev-login)
-    const secrets = [
-      this.config.get<string>('SUPABASE_JWT_SECRET'),
-      this.config.get<string>('JWT_SECRET'),
-    ].filter((s): s is string => Boolean(s));
-
-    for (const secret of secrets) {
+    // 2. Supabase legado (HS256 com o secret do projeto).
+    const supabaseSecret = this.config.get<string>('SUPABASE_JWT_SECRET');
+    if (supabaseSecret) {
       try {
-        return verify(token, secret) as JwtPayload;
+        // `algorithms` fixo: sem ele, a lista aceita é inferida do formato da
+        // chave, e um token com header "alg" escolhido pelo atacante decide
+        // como é validado. A escolha do algoritmo é nossa, não do token.
+        return verify(token, supabaseSecret, {
+          algorithms: ['HS256'],
+          audience: 'authenticated',
+        }) as JwtPayload;
       } catch {
-        // tenta o próximo secret
+        // tenta o token local
+      }
+    }
+
+    // 3. Token emitido pela própria API (login por senha e dev-login).
+    const localSecret = this.config.get<string>('JWT_SECRET');
+    if (localSecret) {
+      try {
+        return verify(token, localSecret, {
+          algorithms: ['HS256'],
+          issuer: 'pikpok-api',
+          audience: 'pikpok-app',
+        }) as JwtPayload;
+      } catch {
+        // cai no erro genérico abaixo
       }
     }
     throw new UnauthorizedException('Token inválido ou expirado');

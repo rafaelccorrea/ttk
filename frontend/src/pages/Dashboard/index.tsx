@@ -6,7 +6,6 @@ import PaymentsRoundedIcon from '@mui/icons-material/PaymentsRounded';
 import RadarRoundedIcon from '@mui/icons-material/RadarRounded';
 import ShoppingBagRoundedIcon from '@mui/icons-material/ShoppingBagRounded';
 import {
-  Avatar,
   Box,
   Button,
   Card,
@@ -27,6 +26,7 @@ import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { TikTokPlayer } from '@/components/ui/TikTokPlayer';
 import { displayHandle, proxyImage, tiktokProfileUrl, tiktokSearchUrl } from '@/utils/tiktok';
+import { SmartImage } from '@/components/ui/SmartImage';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { analyticsService, Overview, TopVideo } from '@/services/analytics.service';
@@ -147,6 +147,7 @@ export function DashboardPage() {
                 {/* Miniatura real do produto */}
                 <Box
                   sx={{
+                    position: 'relative',
                     width: 56,
                     height: 56,
                     borderRadius: 2.5,
@@ -158,17 +159,14 @@ export function DashboardPage() {
                     border: '1px solid rgba(22,24,35,0.06)',
                   }}
                 >
-                  {p.imageUrl ? (
-                    <Box
-                      component="img"
-                      src={proxyImage(p.imageUrl)}
-                      alt={p.title}
-                      loading="lazy"
-                      sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                    />
-                  ) : (
-                    <ShoppingBagRoundedIcon sx={{ color: 'rgba(22,24,35,0.25)' }} />
-                  )}
+                  <SmartImage
+                    src={p.imageUrl ? proxyImage(p.imageUrl) : null}
+                    alt={p.title}
+                    objectFit="contain"
+                    fallback={
+                      <ShoppingBagRoundedIcon sx={{ color: 'rgba(22,24,35,0.25)' }} />
+                    }
+                  />
                 </Box>
                 <Box minWidth={0} flex={1}>
                   <Typography fontWeight={600} noWrap>
@@ -230,15 +228,15 @@ export function DashboardPage() {
                   : undefined
               }
               sx={{
+                position: 'relative',
+                overflow: 'hidden',
                 cursor: 'pointer',
                 borderRadius: 3,
                 aspectRatio: '3 / 4',
-                // Thumbnail real quando a ingestão populou; gradiente como fallback.
-                background: v.thumbnailUrl ?? v.productImageUrl
-                  ? `linear-gradient(180deg, rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.72)), url(${proxyImage(
-                      v.thumbnailUrl ?? v.productImageUrl,
-                    )}) center/cover no-repeat`
-                  : gradientFor(v.category),
+                // A thumb entrou como <SmartImage> (abaixo) em vez de
+                // background-image: só assim dá para saber quando carregou.
+                // O gradiente fica como fundo e como fallback.
+                background: gradientFor(v.category),
                 color: '#fff',
                 display: 'flex',
                 flexDirection: 'column',
@@ -249,17 +247,40 @@ export function DashboardPage() {
                 '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 12px 30px rgba(22,24,35,0.25)' },
               }}
             >
+              <SmartImage
+                src={
+                  v.thumbnailUrl ?? v.productImageUrl
+                    ? proxyImage(v.thumbnailUrl ?? v.productImageUrl)
+                    : null
+                }
+                alt={v.caption ?? ''}
+                tone="dark"
+              />
+              {/* Escurece o pé do card para o texto branco ter contraste sobre
+                  a thumb. Fica acima da imagem e abaixo do conteúdo. */}
+              <Box
+                aria-hidden
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  background:
+                    'linear-gradient(180deg, rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.72))',
+                  pointerEvents: 'none',
+                }}
+              />
+
               <Chip
                 size="small"
                 label={v.category}
                 sx={{
+                  position: 'relative',
                   alignSelf: 'flex-start',
                   bgcolor: 'rgba(255,255,255,0.2)',
                   color: '#fff',
                   fontWeight: 600,
                 }}
               />
-              <Box>
+              <Box sx={{ position: 'relative' }}>
                 <Typography variant="h6" fontWeight={800} lineHeight={1.1}>
                   {formatNumber(v.views)}
                 </Typography>
@@ -339,24 +360,37 @@ export function DashboardPage() {
                     </IconButton>
                   </Tooltip>
                 )}
-                <Avatar
-                  src={proxyImage(c.avatarUrl)}
+                {/* Antes era um <Avatar>: ele já caía na inicial quando a foto
+                    falhava, mas não sinalizava o carregamento. Aqui o
+                    SmartImage cuida dos três estados e a inicial vira o
+                    fallback. */}
+                <Box
                   sx={{
+                    position: 'relative',
                     width: 76,
                     height: 76,
-                    fontSize: 30,
-                    fontWeight: 800,
+                    borderRadius: '50%',
+                    overflow: 'hidden',
                     background: 'linear-gradient(135deg, #fe2c55, #00c2bb)',
-                    color: '#fff',
-                    textDecoration: 'none',
                     border: '3px solid #fff',
                     boxShadow: '0 6px 18px rgba(22,24,35,0.14)',
                     transition: 'transform .2s ease',
                     '&:hover': { transform: 'scale(1.06)' },
                   }}
                 >
-                  {c.name.charAt(0).toUpperCase()}
-                </Avatar>
+                  <SmartImage
+                    src={c.avatarUrl ? proxyImage(c.avatarUrl) : null}
+                    alt={c.name}
+                    tone="dark"
+                    fallback={
+                      <Box
+                        sx={{ fontSize: 30, fontWeight: 800, color: '#fff' }}
+                      >
+                        {c.name.charAt(0).toUpperCase()}
+                      </Box>
+                    }
+                  />
+                </Box>
                 <Typography fontWeight={700} mt={1.5} noWrap maxWidth="100%">
                   {c.name}
                 </Typography>

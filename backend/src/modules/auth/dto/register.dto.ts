@@ -1,14 +1,17 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ example: 'voce@email.com' })
   @IsEmail()
   email: string;
 
-  @ApiProperty({ example: 'minha-senha-123', minLength: 6 })
+  @ApiProperty({ example: 'minha-senha-123', minLength: 10 })
   @IsString()
-  @MinLength(6)
+  // 6 caracteres cai em ataque de dicionário offline; 10 é o mínimo que ainda
+  // é fácil de digitar. O teto evita o DoS do bcrypt com senha gigante.
+  @MinLength(10)
+  @MaxLength(128)
   password: string;
 }
 
@@ -19,6 +22,7 @@ export class LoginDto {
 
   @ApiProperty({ example: 'minha-senha-123' })
   @IsString()
+  @MaxLength(128)
   password: string;
 }
 
@@ -39,8 +43,9 @@ export class ResetPasswordDto {
   @IsString()
   token: string;
 
-  @ApiProperty({ example: 'minha-nova-senha-123', minLength: 6 })
+  @ApiProperty({ example: 'minha-nova-senha-123', minLength: 10 })
   @IsString()
-  @MinLength(6)
+  @MinLength(10)
+  @MaxLength(128)
   password: string;
 }
