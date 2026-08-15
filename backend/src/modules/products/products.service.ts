@@ -336,7 +336,9 @@ export class ProductsService {
 
     return {
       sections: [...byCategory.values()]
-        .filter((s) => s.items.length >= minItems)
+        // Compara com o TOTAL da categoria, não com a lista truncada: senão
+        // pedir `perSection` menor que `minItems` zera todas as seções.
+        .filter((s) => s.total >= minItems)
         .slice(0, maxSections),
     };
   }

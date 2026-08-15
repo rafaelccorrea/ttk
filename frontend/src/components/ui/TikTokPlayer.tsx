@@ -247,7 +247,7 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
 
             {/* Enquanto a URL do MP4 não chega, mostra que está carregando —
                 sem isso a tela fica parada no poster e parece travada. */}
-            {resolving && !src && (
+            {resolving && !src && !embed && (
               <Box
                 sx={{
                   position: 'absolute',
@@ -270,7 +270,7 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
             )}
 
             {/* Pulso play/pause ao tocar */}
-            {showPulse && (
+            {!embed && showPulse && (
               <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}>
                 <Box
                   sx={{
@@ -289,7 +289,7 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
             )}
 
             {/* Aviso para ativar o som quando o navegador bloqueou o autoplay com áudio */}
-            {needsUnmute && (
+            {!embed && needsUnmute && (
               <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}>
                 <Button
                   onClick={(e) => {
@@ -309,7 +309,8 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
               </Box>
             )}
 
-            {/* Gradiente + legenda inferior */}
+            {/* Gradiente + legenda inferior (o embed já tem a sua) */}
+            {!embed && (
             <Box
               sx={{
                 position: 'absolute', left: 0, right: 0, bottom: 0, px: 2, pb: 3, pt: 6,
@@ -328,7 +329,10 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
               )}
             </Box>
 
-            {/* Barra de progresso contida dentro do vídeo */}
+            )}
+
+            {/* Barra de progresso: só faz sentido com <video> nosso */}
+            {!embed && (
             <Box
               onClick={seek}
               sx={{
@@ -341,7 +345,10 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
               </Box>
             </Box>
 
+            )}
+
             {/* Mute + contador do feed */}
+            {!embed && (
             <IconButton
               onClick={() => {
                 const el = videoRef.current;
@@ -355,6 +362,9 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
             >
               {muted ? <VolumeOffRoundedIcon fontSize="small" /> : <VolumeUpRoundedIcon fontSize="small" />}
             </IconButton>
+            )}
+
+            {/* Contador do feed vale nos dois modos. */}
             <Typography
               sx={{
                 position: 'absolute', top: 16, right: 12, color: '#fff', fontSize: 12,
