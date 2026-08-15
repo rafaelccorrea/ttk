@@ -15,7 +15,6 @@ import {
   Grid,
   IconButton,
   Pagination,
-  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
@@ -23,6 +22,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { FilterBar, SearchField } from '@/components/ui/Filters';
 import { videosService, ViralVideo } from '@/services/videos.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 
@@ -43,16 +43,24 @@ function gradientFor(category: string): string {
   return GRADIENTS[hash % GRADIENTS.length];
 }
 
+// Extrai o id numérico de uma URL pública do TikTok para o player embed.
+export function tiktokEmbedId(videoUrl: string | null): string | null {
+  const match = videoUrl?.match(/\/video\/(\d+)/);
+  return match ? match[1] : null;
+}
+
 function VideoCard({
   video,
   rank,
   onToggleSave,
   onShowTranscript,
+  onPlay,
 }: {
   video: ViralVideo;
   rank: number;
   onToggleSave: (id: string) => void;
   onShowTranscript: (video: ViralVideo) => void;
+  onPlay: (video: ViralVideo) => void;
 }) {
   return (
     <Card
@@ -105,13 +113,28 @@ function VideoCard({
           </IconButton>
         </Box>
 
-        <PlayArrowRoundedIcon
-          sx={{
-            alignSelf: 'center',
-            fontSize: 48,
-            color: 'rgba(255,255,255,0.85)',
-          }}
-        />
+        {tiktokEmbedId(video.videoUrl) ? (
+          <IconButton
+            onClick={() => onPlay(video)}
+            aria-label="assistir vídeo"
+            sx={{
+              alignSelf: 'center',
+              bgcolor: 'rgba(0,0,0,0.35)',
+              color: '#fff',
+              '&:hover': { bgcolor: 'rgba(254,44,85,0.85)', transform: 'scale(1.08)' },
+            }}
+          >
+            <PlayArrowRoundedIcon sx={{ fontSize: 40 }} />
+          </IconButton>
+        ) : (
+          <PlayArrowRoundedIcon
+            sx={{
+              alignSelf: 'center',
+              fontSize: 48,
+              color: 'rgba(255,255,255,0.85)',
+            }}
+          />
+        )}
 
         <Chip
           size="small"
@@ -209,6 +232,7 @@ export function VideosPage() {
   const [search, setSearch] = useState('');
   const [savedOnly, setSavedOnly] = useState(false);
   const [page, setPage] = useState(1);
+  const [playingVideo, setPlayingVideo] = useState<ViralVideo | null>(null);
   const [transcriptVideo, setTranscriptVideo] = useState<ViralVideo | null>(
     null,
   );
@@ -253,7 +277,7 @@ export function VideosPage() {
         faturamento estimado para você se inspirar.
       </Typography>
 
-      <Box display="flex" gap={2} flexWrap="wrap" mb={3}>
+      <FilterBar>
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -268,14 +292,12 @@ export function VideosPage() {
           <ToggleButton value="trending">Em alta</ToggleButton>
           <ToggleButton value="saved">Salvos</ToggleButton>
         </ToggleButtonGroup>
-        <TextField
-          size="small"
-          label="Buscar legenda ou criador"
+        <SearchField
           value={search}
-          onChange={(e) => (setSearch(e.target.value), setPage(1))}
-          sx={{ minWidth: 240 }}
+          onChange={(value) => (setSearch(value), setPage(1))}
+          placeholder="Buscar legenda ou criador"
         />
-      </Box>
+      </FilterBar>
 
       {loading && items.length === 0 && (
         <BrandLoader label="Carregando vídeos..." />
@@ -288,6 +310,7 @@ export function VideosPage() {
               rank={(page - 1) * PAGE_SIZE + index + 1}
               onToggleSave={toggleSave}
               onShowTranscript={setTranscriptVideo}
+              onPlay={setPlayingVideo}
             />
           </Grid>
         ))}
@@ -308,6 +331,29 @@ export function VideosPage() {
           onChange={(_e, value) => setPage(value)}
         />
       </Box>
+
+      {/* Player embed oficial do TikTok */}
+      <Dialog
+        open={Boolean(playingVideo)}
+        onClose={() => setPlayingVideo(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 800 }}>
+          {playingVideo?.creatorHandle}
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, bgcolor: '#000' }}>
+          {playingVideo && tiktokEmbedId(playingVideo.videoUrl) && (
+            <Box
+              component="iframe"
+              src={`https://www.tiktok.com/embed/v2/${tiktokEmbedId(playingVideo.videoUrl)}`}
+              title={playingVideo.caption}
+              allow="autoplay; encrypted-media; fullscreen"
+              sx={{ width: '100%', aspectRatio: '9 / 16', border: 0, display: 'block' }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={Boolean(transcriptVideo)}

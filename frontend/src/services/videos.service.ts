@@ -12,6 +12,7 @@ export interface ViralVideo {
   productId: string | null;
   category: string;
   isSaved: boolean;
+  videoUrl: string | null;
 }
 
 export interface VideoDetail extends ViralVideo {

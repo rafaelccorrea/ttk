@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { ProductMetricDaily } from '../products/entities/product-metric-daily.entity';
 import { Trend } from './entities/trend.entity';
 import { TrendsService } from './trends.service';
 
@@ -19,6 +20,7 @@ describe('TrendsService', () => {
       providers: [
         TrendsService,
         { provide: getRepositoryToken(Trend), useValue: repositoryMock },
+        { provide: getRepositoryToken(ProductMetricDaily), useValue: {} },
       ],
     }).compile();
 

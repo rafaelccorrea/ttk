@@ -7,9 +7,7 @@ import {
   Chip,
   Grid,
   IconButton,
-  MenuItem,
   Pagination,
-  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
@@ -17,6 +15,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { productsService, RankedProduct } from '@/services/products.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 
@@ -232,7 +231,7 @@ export function ProductsPage() {
         de vendas.
       </Typography>
 
-      <Box display="flex" gap={2} flexWrap="wrap" mb={3}>
+      <FilterBar>
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -243,29 +242,20 @@ export function ProductsPage() {
           <ToggleButton value={30}>30 dias</ToggleButton>
           <ToggleButton value={90}>90 dias</ToggleButton>
         </ToggleButtonGroup>
-        <TextField
-          select
-          size="small"
-          label="Categoria"
+        <SelectField
           value={category}
-          onChange={(e) => (setCategory(e.target.value), setPage(1))}
-          sx={{ minWidth: 180 }}
-        >
-          <MenuItem value="">Todas</MenuItem>
-          {categories.map((c) => (
-            <MenuItem key={c} value={c}>
-              {c}
-            </MenuItem>
-          ))}
-        </TextField>
-        <TextField
-          size="small"
-          label="Buscar produto ou loja"
-          value={search}
-          onChange={(e) => (setSearch(e.target.value), setPage(1))}
-          sx={{ minWidth: 220 }}
+          onChange={(value) => (setCategory(value), setPage(1))}
+          options={[
+            { value: '', label: 'Todas as categorias' },
+            ...categories.map((c) => ({ value: c, label: c })),
+          ]}
         />
-      </Box>
+        <SearchField
+          value={search}
+          onChange={(value) => (setSearch(value), setPage(1))}
+          placeholder="Buscar produto ou loja"
+        />
+      </FilterBar>
 
       {loading && items.length === 0 && (
         <BrandLoader label="Carregando produtos..." />

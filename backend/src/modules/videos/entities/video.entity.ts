@@ -36,6 +36,10 @@ export class Video {
   @Column({ type: 'date' })
   postedAt: string;
 
+  // URL pública do vídeo no TikTok (usada para embed no frontend).
+  @Column({ nullable: true })
+  videoUrl: string;
+
   @Column({ type: 'text', nullable: true })
   transcript: string | null;
 

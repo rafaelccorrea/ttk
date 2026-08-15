@@ -1,3 +1,4 @@
+import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import {
   Box,
@@ -11,12 +12,19 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
+import { FilterBar, SearchField } from '@/components/ui/Filters';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { apiErrorMessage } from '@/contexts/AuthContext';
 import { PromptTemplate, studioService } from '@/services/studio.service';
+import { videogenService } from '@/services/videogen.service';
 
 function PromptCard({ prompt }: { prompt: PromptTemplate }) {
+  const navigate = useNavigate();
   const [values, setValues] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
 
   const filled = prompt.fields.reduce(
     (text, field) => text.replaceAll(`{{${field}}}`, values[field] || `{{${field}}}`),
@@ -27,6 +35,24 @@ function PromptCard({ prompt }: { prompt: PromptTemplate }) {
     await navigator.clipboard.writeText(filled);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  // Gera a mídia com IA (Higgsfield) e leva o usuário para a galeria.
+  async function generate() {
+    setGenError(null);
+    setGenerating(true);
+    try {
+      await videogenService.generate({
+        kind: prompt.mediaType,
+        prompt: filled,
+        aspectRatio: '9:16',
+      });
+      navigate('/geracoes');
+    } catch (err) {
+      setGenError(apiErrorMessage(err));
+    } finally {
+      setGenerating(false);
+    }
   }
 
   return (
@@ -74,6 +100,26 @@ function PromptCard({ prompt }: { prompt: PromptTemplate }) {
         >
           {copied ? 'Copiado!' : 'Copiar prompt'}
         </Button>
+        <Button
+          fullWidth
+          variant="outlined"
+          size="small"
+          startIcon={<AutoAwesomeRoundedIcon />}
+          onClick={generate}
+          disabled={generating}
+          sx={{ mt: 1 }}
+        >
+          {generating
+            ? 'Enviando...'
+            : prompt.mediaType === 'video'
+              ? 'Gerar vídeo com IA'
+              : 'Gerar imagem com IA'}
+        </Button>
+        {genError && (
+          <Typography variant="caption" color="error" display="block" mt={0.5}>
+            {genError}
+          </Typography>
+        )}
       </CardContent>
     </Card>
   );
@@ -106,7 +152,7 @@ export function PromptsPage() {
         Prompts prontos de vídeo e imagem IA — preencha os campos e copie.
       </Typography>
 
-      <Box display="flex" gap={2} my={2} flexWrap="wrap">
+      <FilterBar sx={{ my: 2 }}>
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -117,13 +163,12 @@ export function PromptsPage() {
           <ToggleButton value="video">Vídeo</ToggleButton>
           <ToggleButton value="image">Imagem</ToggleButton>
         </ToggleButtonGroup>
-        <TextField
-          size="small"
-          label="Buscar"
+        <SearchField
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
+          placeholder="Buscar prompt"
         />
-      </Box>
+      </FilterBar>
 
       <Grid container spacing={2}>
         {prompts.map((p) => (

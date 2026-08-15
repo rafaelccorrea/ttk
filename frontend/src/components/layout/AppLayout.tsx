@@ -7,8 +7,10 @@ import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import LocalFireDepartmentRoundedIcon from '@mui/icons-material/LocalFireDepartmentRounded';
 import OndemandVideoRoundedIcon from '@mui/icons-material/OndemandVideoRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
+import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import StyleRoundedIcon from '@mui/icons-material/StyleRounded';
+import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import {
   Avatar,
   Box,
@@ -54,6 +56,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/produtos', label: 'Produtos', icon: <LocalFireDepartmentRoundedIcon /> },
       { to: '/videos', label: 'Vídeos que Vendem', icon: <OndemandVideoRoundedIcon /> },
+      { to: '/tendencias', label: 'Tendências', icon: <TrendingUpRoundedIcon /> },
       { to: '/criadores', label: 'Criadores', icon: <GroupsRoundedIcon /> },
       { to: '/favoritos', label: 'Favoritos', icon: <StarRoundedIcon /> },
     ],
@@ -64,6 +67,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/estudio', label: 'Roteirizar com IA', icon: <AutoFixHighRoundedIcon /> },
       { to: '/multiplicador', label: 'Multiplicador', icon: <DynamicFeedRoundedIcon /> },
       { to: '/prompts', label: 'Cofre de Prompts', icon: <StyleRoundedIcon /> },
+      { to: '/geracoes', label: 'Minhas Gerações', icon: <MovieFilterRoundedIcon /> },
     ],
   },
   {

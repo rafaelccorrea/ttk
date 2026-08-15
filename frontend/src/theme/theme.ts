@@ -56,9 +56,60 @@ export const theme = createTheme({
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
-          borderRadius: 10,
-          transition: 'box-shadow .2s ease',
-          '&.Mui-focused': { boxShadow: '0 0 0 4px rgba(254,44,85,0.10)' },
+          borderRadius: 12,
+          backgroundColor: 'rgba(22,24,35,0.03)',
+          transition: 'background-color .2s ease, box-shadow .2s ease, border-color .2s ease',
+          '& .MuiOutlinedInput-notchedOutline': {
+            borderColor: 'rgba(22,24,35,0.10)',
+            transition: 'border-color .2s ease',
+          },
+          '&:hover': { backgroundColor: 'rgba(22,24,35,0.05)' },
+          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(22,24,35,0.18)' },
+          '&.Mui-focused': {
+            backgroundColor: '#ffffff',
+            boxShadow: '0 0 0 4px rgba(254,44,85,0.12)',
+          },
+          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderWidth: 1.5 },
+          '&.Mui-disabled': { backgroundColor: 'rgba(22,24,35,0.02)' },
+        },
+        input: {
+          '&::placeholder': { color: '#9a9ba1', opacity: 1 },
+        },
+      },
+    },
+    MuiInputLabel: {
+      styleOverrides: {
+        root: {
+          fontWeight: 600,
+          color: '#73747b',
+          '&.Mui-focused': { color: '#fe2c55' },
+        },
+      },
+    },
+    MuiMenu: {
+      styleOverrides: {
+        paper: {
+          borderRadius: 14,
+          marginTop: 6,
+          border: '1px solid rgba(22,24,35,0.08)',
+          boxShadow: '0 12px 32px rgba(22,24,35,0.12)',
+        },
+        list: { padding: 6 },
+      },
+    },
+    MuiMenuItem: {
+      styleOverrides: {
+        root: {
+          borderRadius: 9,
+          fontSize: 14,
+          fontWeight: 500,
+          minHeight: 38,
+          '&.Mui-selected': {
+            backgroundColor: 'rgba(254,44,85,0.10)',
+            color: '#fe2c55',
+            fontWeight: 700,
+            '&:hover': { backgroundColor: 'rgba(254,44,85,0.16)' },
+          },
         },
       },
     },
@@ -84,17 +135,40 @@ export const theme = createTheme({
         root: { fontWeight: 600 },
       },
     },
+    // Segmented control: o grupo vira a "pílula" e cada botão é uma aba interna.
+    MuiToggleButtonGroup: {
+      styleOverrides: {
+        root: {
+          backgroundColor: 'rgba(22,24,35,0.04)',
+          borderRadius: 999,
+          padding: 3,
+          gap: 2,
+          '& .MuiToggleButtonGroup-grouped': {
+            border: 0,
+            margin: 0, // MUI aplica margin negativa p/ colar as bordas; aqui não há bordas.
+            borderRadius: '999px !important',
+          },
+        },
+      },
+    },
     MuiToggleButton: {
       styleOverrides: {
         root: {
           textTransform: 'none',
           fontWeight: 600,
-          border: '1px solid rgba(22,24,35,0.12)',
+          fontSize: 13.5,
           color: '#73747b',
+          border: 0,
+          borderRadius: 999,
+          padding: '6px 16px',
+          transition: 'background-color .18s ease, color .18s ease, box-shadow .18s ease',
+          '&:hover': { backgroundColor: 'rgba(22,24,35,0.06)' },
           '&.Mui-selected': {
-            backgroundColor: 'rgba(254,44,85,0.10)',
+            backgroundColor: '#ffffff',
             color: '#fe2c55',
-            '&:hover': { backgroundColor: 'rgba(254,44,85,0.16)' },
+            fontWeight: 700,
+            boxShadow: '0 1px 3px rgba(22,24,35,0.12)',
+            '&:hover': { backgroundColor: '#ffffff' },
           },
         },
       },

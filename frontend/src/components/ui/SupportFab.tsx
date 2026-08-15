@@ -15,78 +15,70 @@ import {
   Typography,
 } from '@mui/material';
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+import { SupportMessage, supportService } from '@/services/support.service';
 
 const red = '#fe2c55';
 const cyan = '#25f4ee';
-const STORAGE_KEY = 'pikpok:support-chat';
 
-interface ChatMessage {
-  id: string;
-  from: 'user' | 'agent';
-  text: string;
-  at: number;
-}
-
-const WELCOME: ChatMessage = {
+const WELCOME: SupportMessage = {
   id: 'welcome',
-  from: 'agent',
+  sender: 'agent',
   text: 'Oi! 👋 Sou o suporte do PikPok. Conta pra gente o que você precisa — respondemos por aqui mesmo.',
-  at: 0,
+  createdAt: '',
 };
 
-function loadMessages(): ChatMessage[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as ChatMessage[]) : [];
-    return parsed.length ? parsed : [WELCOME];
-  } catch {
-    return [WELCOME];
-  }
-}
-
 export function SupportFab() {
-  const { email } = useAuth();
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
+  const [messages, setMessages] = useState<SupportMessage[]>([WELCOME]);
+  const [loaded, setLoaded] = useState(false);
   const [draft, setDraft] = useState('');
-  const [agentTyping, setAgentTyping] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [unread, setUnread] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Carrega o histórico real na primeira abertura.
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-100)));
-    } catch {
-      // storage cheio/indisponível: o chat segue funcionando em memória
-    }
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, open, agentTyping]);
+    if (!open || loaded) return;
+    supportService
+      .list()
+      .then((history) => {
+        setMessages(history.length ? history : [WELCOME]);
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, [open, loaded]);
 
-  function send(event: FormEvent) {
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, open, sending]);
+
+  async function send(event: FormEvent) {
     event.preventDefault();
     const text = draft.trim();
-    if (!text) return;
+    if (!text || sending) return;
     setDraft('');
-    setMessages((m) => [
-      ...m,
-      { id: crypto.randomUUID(), from: 'user', text, at: Date.now() },
-    ]);
-    // Confirmação automática enquanto não há atendente conectado.
-    setAgentTyping(true);
-    window.setTimeout(() => {
-      setAgentTyping(false);
-      setMessages((m) => [
-        ...m,
-        {
-          id: crypto.randomUUID(),
-          from: 'agent',
-          text: `Recebemos sua mensagem! 🙌 Nossa equipe vai responder por aqui${email ? ` e avisar em ${email}` : ''} em até 1 dia útil.`,
-          at: Date.now(),
-        },
-      ]);
+    setFailed(false);
+    setSending(true);
+    // Mostra a mensagem imediatamente; o backend confirma na sequência.
+    const optimistic: SupportMessage = {
+      id: `local-${Date.now()}`,
+      sender: 'user',
+      text,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((m) => [...m, optimistic]);
+    try {
+      const saved = await supportService.send(text);
+      setMessages((m) => [...m.filter((msg) => msg.id !== optimistic.id), ...saved]);
       setUnread(true);
-    }, 1400);
+    } catch {
+      setMessages((m) => m.filter((msg) => msg.id !== optimistic.id));
+      setDraft(text);
+      setFailed(true);
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -147,25 +139,25 @@ export function SupportFab() {
                 <Box
                   key={m.id}
                   sx={{
-                    alignSelf: m.from === 'user' ? 'flex-end' : 'flex-start',
+                    alignSelf: m.sender === 'user' ? 'flex-end' : 'flex-start',
                     maxWidth: '82%',
                     px: 1.75,
                     py: 1,
                     fontSize: 14,
                     lineHeight: 1.5,
                     borderRadius: 3,
-                    borderBottomRightRadius: m.from === 'user' ? 6 : 12,
-                    borderBottomLeftRadius: m.from === 'user' ? 12 : 6,
-                    color: m.from === 'user' ? '#fff' : 'text.primary',
-                    bgcolor: m.from === 'user' ? red : '#fff',
-                    border: m.from === 'user' ? 'none' : '1px solid rgba(22,24,35,0.08)',
+                    borderBottomRightRadius: m.sender === 'user' ? 6 : 12,
+                    borderBottomLeftRadius: m.sender === 'user' ? 12 : 6,
+                    color: m.sender === 'user' ? '#fff' : 'text.primary',
+                    bgcolor: m.sender === 'user' ? red : '#fff',
+                    border: m.sender === 'user' ? 'none' : '1px solid rgba(22,24,35,0.08)',
                     boxShadow: '0 1px 2px rgba(22,24,35,0.05)',
                   }}
                 >
                   {m.text}
                 </Box>
               ))}
-              {agentTyping && (
+              {sending && (
                 <Stack direction="row" spacing={0.5} sx={{ alignSelf: 'flex-start', px: 1.75, py: 1.2, bgcolor: '#fff', borderRadius: 3, border: '1px solid rgba(22,24,35,0.08)' }}>
                   {[0, 1, 2].map((i) => (
                     <Box
@@ -185,6 +177,11 @@ export function SupportFab() {
                     />
                   ))}
                 </Stack>
+              )}
+              {failed && (
+                <Typography fontSize={12.5} color="error.main" sx={{ alignSelf: 'center' }}>
+                  Não conseguimos enviar — verifique a conexão e tente de novo.
+                </Typography>
               )}
             </Stack>
             <div ref={bottomRef} />
@@ -214,7 +211,7 @@ export function SupportFab() {
             />
             <IconButton
               type="submit"
-              disabled={!draft.trim()}
+              disabled={!draft.trim() || sending}
               aria-label="Enviar"
               sx={{
                 bgcolor: red,

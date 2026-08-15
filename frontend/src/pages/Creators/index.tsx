@@ -2,20 +2,19 @@ import {
   Avatar,
   Box,
   Chip,
-  MenuItem,
   Pagination,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { creatorsService, RankedCreator } from '@/services/creators.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 
@@ -82,29 +81,20 @@ export function CreatorsPage() {
         GMV.
       </Typography>
 
-      <Box display="flex" gap={2} flexWrap="wrap" mb={3}>
-        <TextField
-          size="small"
-          label="Buscar criador ou @handle"
+      <FilterBar>
+        <SearchField
           value={search}
-          onChange={(e) => (setSearch(e.target.value), setPage(1))}
-          sx={{ minWidth: 220 }}
+          onChange={(value) => (setSearch(value), setPage(1))}
+          placeholder="Buscar criador ou @handle"
         />
-        <TextField
-          select
-          size="small"
-          label="Categoria"
+        <SelectField
           value={category}
-          onChange={(e) => (setCategory(e.target.value), setPage(1))}
-          sx={{ minWidth: 180 }}
-        >
-          <MenuItem value="">Todas</MenuItem>
-          {categories.map((c) => (
-            <MenuItem key={c} value={c}>
-              {c}
-            </MenuItem>
-          ))}
-        </TextField>
+          onChange={(value) => (setCategory(value), setPage(1))}
+          options={[
+            { value: '', label: 'Todas as categorias' },
+            ...categories.map((c) => ({ value: c, label: c })),
+          ]}
+        />
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -114,7 +104,7 @@ export function CreatorsPage() {
           <ToggleButton value="gmv">GMV</ToggleButton>
           <ToggleButton value="followers">Seguidores</ToggleButton>
         </ToggleButtonGroup>
-      </Box>
+      </FilterBar>
 
       {loading && items.length === 0 && (
         <BrandLoader label="Carregando criadores..." />

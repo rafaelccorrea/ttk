@@ -6,6 +6,7 @@ import { ConfirmEmailPage } from '@/pages/ConfirmEmail';
 import { CreatorsPage } from '@/pages/Creators';
 import { DashboardPage } from '@/pages/Dashboard';
 import { FavoritesPage } from '@/pages/Favorites';
+import { GenerationsPage } from '@/pages/Generations';
 import { LandingPage } from '@/pages/Landing';
 import { LoginPage } from '@/pages/Login';
 import { MultiplierPage } from '@/pages/Multiplier';
@@ -15,6 +16,7 @@ import { ProductDetailPage } from '@/pages/ProductDetail';
 import { ProductsPage } from '@/pages/Products';
 import { PromptsPage } from '@/pages/Prompts';
 import { StudioPage } from '@/pages/Studio';
+import { TrendsPage } from '@/pages/Trends';
 import { VideosPage } from '@/pages/Videos';
 
 function ProtectedRoutes() {
@@ -36,6 +38,7 @@ export function AppRoutes() {
           <Route path="/produtos" element={<ProductsPage />} />
           <Route path="/produtos/:id" element={<ProductDetailPage />} />
           <Route path="/videos" element={<VideosPage />} />
+          <Route path="/tendencias" element={<TrendsPage />} />
           <Route path="/criadores" element={<CreatorsPage />} />
           <Route path="/favoritos" element={<FavoritesPage />} />
           <Route path="/perfil" element={<ProfilePage />} />
@@ -44,6 +47,7 @@ export function AppRoutes() {
           <Route path="/academy" element={<AcademyPage />} />
           <Route path="/indique" element={<ReferralPage />} />
           <Route path="/prompts" element={<PromptsPage />} />
+          <Route path="/geracoes" element={<GenerationsPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
