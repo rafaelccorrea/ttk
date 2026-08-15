@@ -8,6 +8,8 @@ import { ConfirmEmailPage } from '@/pages/ConfirmEmail';
 import { CreatorsPage } from '@/pages/Creators';
 import { DashboardPage } from '@/pages/Dashboard';
 import { FavoritesPage } from '@/pages/Favorites';
+import { ForgotPasswordPage } from '@/pages/ForgotPassword';
+import { ResetPasswordPage } from '@/pages/ResetPassword';
 import { GenerationsPage } from '@/pages/Generations';
 import { IngestionPage } from '@/pages/Ingestion';
 import { LandingPage } from '@/pages/Landing';
@@ -36,6 +38,8 @@ export function AppRoutes() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/confirmar-email" element={<ConfirmEmailPage />} />
+      <Route path="/esqueci-a-senha" element={<ForgotPasswordPage />} />
+      <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
       <Route element={<ProtectedRoutes />}>
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />

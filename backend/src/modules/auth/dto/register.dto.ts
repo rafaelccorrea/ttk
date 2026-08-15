@@ -27,3 +27,20 @@ export class ResendDto {
   @IsEmail()
   email: string;
 }
+
+export class ForgotPasswordDto {
+  @ApiProperty({ example: 'voce@email.com' })
+  @IsEmail()
+  email: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty({ description: 'Token recebido no link do e-mail' })
+  @IsString()
+  token: string;
+
+  @ApiProperty({ example: 'minha-nova-senha-123', minLength: 6 })
+  @IsString()
+  @MinLength(6)
+  password: string;
+}

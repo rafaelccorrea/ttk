@@ -20,7 +20,12 @@ import { VideogenModule } from './modules/videogen/videogen.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    // .env.<NODE_ENV> tem precedência sobre .env (o primeiro que define a
+    // chave vence), então .env.production sobrescreve os valores de dev.
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: [`.env.${process.env.NODE_ENV ?? 'development'}`, '.env'],
+    }),
     ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],

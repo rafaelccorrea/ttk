@@ -15,6 +15,7 @@ import { AppUser } from '../users/entities/app-user.entity';
 import { MailService } from './mail.service';
 
 const RESEND_COOLDOWN_MS = 60_000;
+const RESET_TOKEN_TTL_MS = 60 * 60_000; // 1 hora
 
 @Injectable()
 export class AuthService {
@@ -38,6 +39,18 @@ export class AuthService {
       .get('APP_URL', 'http://localhost:5173')
       .replace(/\/$/, '');
     return `${appUrl}/confirmar-email?token=${token}`;
+  }
+
+  private resetLink(token: string): string {
+    const appUrl = this.config
+      .get('APP_URL', 'http://localhost:5173')
+      .replace(/\/$/, '');
+    return `${appUrl}/redefinir-senha?token=${token}`;
+  }
+
+  /** O banco guarda só o hash; o token cru vive apenas no link do e-mail. */
+  private hashResetToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
   }
 
   /** Cadastro com confirmação de e-mail via Nodemailer. */
@@ -135,6 +148,79 @@ export class AuthService {
       this.confirmationLink(user.confirmationToken),
     );
     return { message: 'Novo link enviado.', previewUrl: sent.previewUrl };
+  }
+
+  /**
+   * Pedido de redefinição de senha. A resposta é sempre a mesma, exista o
+   * e-mail ou não — senão a rota vira um enumerador de contas cadastradas.
+   */
+  async forgotPassword(email: string) {
+    const generic = {
+      message:
+        'Se este e-mail tiver uma conta, enviamos um link para redefinir a senha.',
+    };
+    const user = await this.users.findOneBy({
+      email: email.toLowerCase().trim(),
+    });
+    // Conta sem senha (criada só via Supabase/dev-login) não tem o que redefinir.
+    if (!user?.passwordHash) {
+      return generic;
+    }
+    // Mesmo cooldown do reenvio de confirmação, para não virar canhão de spam.
+    const elapsed = user.resetSentAt
+      ? Date.now() - user.resetSentAt.getTime()
+      : Infinity;
+    if (elapsed < RESEND_COOLDOWN_MS) {
+      throw new BadRequestException(
+        'Aguarde um minuto antes de pedir outro link.',
+      );
+    }
+
+    const token = randomBytes(32).toString('hex');
+    user.resetTokenHash = this.hashResetToken(token);
+    user.resetTokenExpiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+    user.resetSentAt = new Date();
+    await this.users.save(user);
+
+    const sent = await this.mailService.sendPasswordResetEmail(
+      user.email,
+      this.resetLink(token),
+    );
+    return { ...generic, previewUrl: sent.previewUrl };
+  }
+
+  /** Troca a senha a partir do token do link. Token é de uso único. */
+  async resetPassword(token: string, password: string) {
+    if (!token) {
+      throw new BadRequestException('Token ausente.');
+    }
+    const user = await this.users.findOneBy({
+      resetTokenHash: this.hashResetToken(token),
+    });
+    if (!user) {
+      throw new BadRequestException(
+        'Link inválido ou já utilizado. Peça um novo.',
+      );
+    }
+    if (
+      !user.resetTokenExpiresAt ||
+      user.resetTokenExpiresAt.getTime() < Date.now()
+    ) {
+      throw new BadRequestException('Este link expirou. Peça um novo.');
+    }
+
+    user.passwordHash = await hash(password, 10);
+    user.resetTokenHash = null as unknown as string;
+    user.resetTokenExpiresAt = null as unknown as Date;
+    // Quem provou ter acesso à caixa de entrada confirmou o e-mail na prática.
+    user.emailConfirmedAt ??= new Date();
+    await this.users.save(user);
+
+    return {
+      message: 'Senha alterada! Você já está conectado.',
+      accessToken: this.issueToken(user),
+      user: { id: user.id, email: user.email },
+    };
   }
 
   /**

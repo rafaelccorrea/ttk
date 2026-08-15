@@ -43,6 +43,19 @@ export class AppUser {
   @Column({ type: 'timestamptz', nullable: true })
   confirmationSentAt: Date;
 
+  // Recuperação de senha. Guardamos o SHA-256 do token, não o token em si —
+  // o valor cru só existe no link enviado por e-mail, então um vazamento do
+  // banco não permite redefinir a senha de ninguém.
+  @Column({ nullable: true })
+  @Index()
+  resetTokenHash: string;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  resetTokenExpiresAt: Date;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  resetSentAt: Date;
+
   @CreateDateColumn()
   createdAt: Date;
 

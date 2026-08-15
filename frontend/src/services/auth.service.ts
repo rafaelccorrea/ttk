@@ -42,4 +42,21 @@ export const authService = {
     const { data } = await api.post<RegisterResult>('/auth/resend', { email });
     return data;
   },
+
+  /** Pede o link de redefinição. A resposta não revela se o e-mail existe. */
+  async forgotPassword(email: string): Promise<RegisterResult> {
+    const { data } = await api.post<RegisterResult>('/auth/forgot-password', {
+      email,
+    });
+    return data;
+  },
+
+  async resetPassword(token: string, password: string) {
+    const { data } = await api.post<{
+      message: string;
+      accessToken: string;
+      user: AuthUserInfo;
+    }>('/auth/reset-password', { token, password });
+    return data;
+  },
 };

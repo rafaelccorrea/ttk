@@ -118,4 +118,19 @@ export class MailService {
       footer: 'Se você não criou esta conta, ignore esta mensagem.',
     });
   }
+
+  async sendPasswordResetEmail(to: string, link: string): Promise<SentMail> {
+    return this.send({
+      to,
+      subject: 'Redefinir sua senha — PikPok',
+      text: `Recebemos um pedido para redefinir a senha da sua conta PikPok.\n\nAbra o link abaixo para escolher uma nova senha (vale por 1 hora):\n${link}\n\nSe não foi você, ignore esta mensagem — sua senha continua a mesma.`,
+      body: `
+        <h2 style="font-size:18px;margin:0 0 8px">Redefinir sua senha</h2>
+        <p style="margin:0 0 24px">Recebemos um pedido para redefinir a senha da sua conta. Clique no botão abaixo para escolher uma nova — o link vale por <strong>1 hora</strong>.</p>
+        <a href="${link}" style="display:inline-block;background:#fe2c55;color:#fff;text-decoration:none;font-weight:700;padding:12px 28px;border-radius:10px">Criar nova senha</a>
+        <p style="color:#73747b;font-size:13px;margin:24px 0 0">Se o botão não funcionar, copie e cole este link no navegador:<br><a href="${link}" style="color:#fe2c55">${link}</a></p>`,
+      footer:
+        'Se não foi você que pediu, ignore esta mensagem — sua senha continua a mesma.',
+    });
+  }
 }

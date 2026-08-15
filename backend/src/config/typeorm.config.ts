@@ -5,10 +5,15 @@ export const typeOrmConfig = (
   config: ConfigService,
 ): TypeOrmModuleOptions => {
   const url = config.get<string>('DATABASE_URL');
+  const isProduction = config.get('NODE_ENV') === 'production';
   const common = {
     autoLoadEntities: true,
-    synchronize: config.get('NODE_ENV') === 'development',
+    synchronize: !isProduction && config.get('NODE_ENV') === 'development',
     migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
+    // Em produção o schema não é sincronizado, e o host não tem etapa de
+    // release para rodar `migration:run` — então aplicamos as migrations
+    // pendentes ao conectar.
+    migrationsRun: isProduction,
   };
 
   if (url) {

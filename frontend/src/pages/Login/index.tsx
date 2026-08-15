@@ -237,6 +237,22 @@ export function LoginPage() {
                 }}
               />
             )}
+            {!isDemoMode && !isSignUp && (
+              <Box display="flex" justifyContent="flex-end" mt={0.5}>
+                <Box
+                  component={RouterLink}
+                  to="/esqueci-a-senha"
+                  sx={{
+                    color: 'text.secondary',
+                    fontSize: 14,
+                    textDecoration: 'none',
+                    '&:hover': { color: 'primary.main', textDecoration: 'underline' },
+                  }}
+                >
+                  Esqueceu a senha?
+                </Box>
+              </Box>
+            )}
             {info && (
               <Alert severity="success" sx={{ mt: 1 }}>
                 {info}

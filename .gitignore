@@ -1,3 +1,9 @@
 .history/
 cc-session.json
 shop-session.json
+
+# Segredos — nunca commitar
+.env
+.env.*
+!.env.example
+*.supabase-backup

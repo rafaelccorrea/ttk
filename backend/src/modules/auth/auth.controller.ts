@@ -2,7 +2,13 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { DevLoginDto } from './dto/dev-login.dto';
-import { LoginDto, RegisterDto, ResendDto } from './dto/register.dto';
+import {
+  ForgotPasswordDto,
+  LoginDto,
+  RegisterDto,
+  ResendDto,
+  ResetPasswordDto,
+} from './dto/register.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -33,6 +39,20 @@ export class AuthController {
   @ApiOperation({ summary: 'Reenvia o link de confirmação' })
   resend(@Body() dto: ResendDto) {
     return this.authService.resend(dto.email);
+  }
+
+  @Post('forgot-password')
+  @ApiOperation({
+    summary: 'Envia o link de redefinição de senha (resposta sempre genérica)',
+  })
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Define a nova senha a partir do token do link' })
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.token, dto.password);
   }
 
   @Post('dev-login')
