@@ -52,6 +52,35 @@ export class ProductsService {
     return d.toISOString().slice(0, 10);
   }
 
+  /**
+   * Colunas de período do produto.
+   *
+   * O ranking somava `product_metrics_daily`, mas a ingestão só grava o dia
+   * corrente — todo produto tinha 1 dia de dado e 7/30/90 devolviam o mesmo
+   * resultado. Estas colunas vêm prontas do fornecedor e são reais.
+   */
+  private colunasDoPeriodo(period: number): {
+    sales: string;
+    revenue: string;
+    /** Base de comparação para crescimento, ou null quando não existe. */
+    salesAnterior: string | null;
+  } {
+    if (period <= 7) {
+      // Não temos 14 dias para comparar; estimar aqui seria inventar número.
+      return { sales: 'sales7d', revenue: 'revenue7d', salesAnterior: null };
+    }
+    if (period >= 90) {
+      // Faltaria o acumulado de 180 dias para a janela anterior.
+      return { sales: 'sales90d', revenue: 'revenue90d', salesAnterior: null };
+    }
+    // 30 dias: a janela anterior é o que sobra entre 60 e 30.
+    return {
+      sales: 'sales30d',
+      revenue: 'revenue30d',
+      salesAnterior: '("sales60d" - "sales30d")',
+    };
+  }
+
   async rank(
     query: QueryProductsDto,
     userId?: string,
@@ -59,17 +88,10 @@ export class ProductsService {
     const period = query.period ?? 30;
     const page = query.page ?? 1;
     const limit = query.limit ?? 24;
-    const current = this.isoDaysAgo(period);
-    const previous = this.isoDaysAgo(period * 2);
+    const col = this.colunasDoPeriodo(period);
 
     const qb = this.products
       .createQueryBuilder('p')
-      .leftJoin(
-        ProductMetricDaily,
-        'm',
-        'm."productId" = p.id AND m.date >= :previous',
-        { previous },
-      )
       .select('p.id', 'id')
       .addSelect('p.title', 'title')
       .addSelect('p.storeName', 'storeName')
@@ -80,20 +102,12 @@ export class ProductsService {
       .addSelect('p.rating', 'rating')
       .addSelect('p.radarScore', 'radarScore')
       .addSelect('p.tiktokUrl', 'tiktokUrl')
+      .addSelect(`p."${col.sales}"`, 'salesPeriod')
+      .addSelect(`p."${col.revenue}"`, 'revenuePeriod')
       .addSelect(
-        'COALESCE(SUM(CASE WHEN m.date >= :current THEN m.sales END), 0)',
-        'salesPeriod',
-      )
-      .addSelect(
-        'COALESCE(SUM(CASE WHEN m.date >= :current THEN m.revenue END), 0)',
-        'revenuePeriod',
-      )
-      .addSelect(
-        'COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0)',
+        col.salesAnterior ? `p.${col.salesAnterior}` : '0',
         'salesPrevious',
-      )
-      .setParameter('current', current)
-      .groupBy('p.id');
+      );
 
     const favoriteIds = userId
       ? new Set(
@@ -145,57 +159,43 @@ export class ProductsService {
       return target;
     };
 
-    applyWhere(qb);
-
-    // Filtros sobre agregados do período (HAVING).
+    // Filtros de período agora são WHERE simples: os números já estão na
+    // linha do produto, não precisam de agregação.
     if (query.minSales !== undefined) {
-      qb.andHaving(
-        'COALESCE(SUM(CASE WHEN m.date >= :current THEN m.sales END), 0) >= :minSales',
-        { minSales: query.minSales },
-      );
+      qb.andWhere(`p."${col.sales}" >= :minSales`, { minSales: query.minSales });
     }
     if (query.minRevenue !== undefined) {
-      qb.andHaving(
-        'COALESCE(SUM(CASE WHEN m.date >= :current THEN m.revenue END), 0) >= :minRevenue',
-        { minRevenue: query.minRevenue },
-      );
+      qb.andWhere(`p."${col.revenue}" >= :minRevenue`, {
+        minRevenue: query.minRevenue,
+      });
     }
     if (query.minGrowth !== undefined) {
-      // Crescimento = (atual - anterior) / anterior. Sem base anterior não dá
-      // para calcular percentual, então esses produtos ficam de fora do filtro.
-      qb.andHaving(
-        `COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0) > 0
-         AND ((COALESCE(SUM(CASE WHEN m.date >= :current THEN m.sales END), 0)
-               - COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0))
-              * 100.0
-              / NULLIF(COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0), 0)
-             ) >= :minGrowth`,
-        { minGrowth: query.minGrowth },
-      );
+      if (col.salesAnterior) {
+        // Crescimento = (atual − anterior) / anterior.
+        qb.andWhere(
+          `p.${col.salesAnterior} > 0
+           AND ((p."${col.sales}" - p.${col.salesAnterior}) * 100.0
+                / NULLIF(p.${col.salesAnterior}, 0)) >= :minGrowth`,
+          { minGrowth: query.minGrowth },
+        );
+      } else {
+        // Sem janela anterior para este período, o filtro não tem base —
+        // devolver tudo seria enganoso.
+        qb.andWhere('1 = 0');
+      }
     }
 
+    applyWhere(qb);
+
     const direction = query.order === 'asc' ? 'ASC' : 'DESC';
-    const sortExpression = this.sortExpression(query.sort);
+    const sortExpression = this.sortExpression(query.sort, col);
     // Desempate por id: sem ele, linhas empatadas trocam de posição entre
     // requisições (sort instável do Postgres) e podem duplicar/sumir na paginação.
     qb.orderBy(sortExpression, direction).addOrderBy('p.id', 'ASC');
 
-    // Total: com filtros de agregado, contar linhas do produto não basta —
-    // é preciso contar o resultado agrupado já filtrado.
-    const hasAggregateFilter =
-      query.minSales !== undefined ||
-      query.minRevenue !== undefined ||
-      query.minGrowth !== undefined;
-
-    let total: number;
-    if (hasAggregateFilter) {
-      const countRows = await qb.clone().getRawMany();
-      total = countRows.length;
-    } else {
-      const countQb = this.products.createQueryBuilder('p');
-      applyWhere(countQb as unknown as typeof qb);
-      total = await countQb.getCount();
-    }
+ // Sem agregação, o total é uma contagem direta da mesma query — não
+    // precisa mais materializar todas as linhas só para contá-las.
+    const total = await qb.clone().getCount();
 
     const rows = await qb
       .offset((page - 1) * limit)
@@ -245,10 +245,13 @@ export class ProductsService {
   }
 
   /** Coluna/expressão de ordenação para cada opção de sort. */
-  private sortExpression(sort: QueryProductsDto['sort']): string {
+  private sortExpression(
+    sort: QueryProductsDto['sort'],
+    col: { sales: string; revenue: string; salesAnterior: string | null },
+  ): string {
     switch (sort) {
       case 'revenue':
-        return '"revenuePeriod"';
+        return `p."${col.revenue}"`;
       case 'price':
         return 'p.price';
       case 'rating':
@@ -257,15 +260,16 @@ export class ProductsService {
       case 'radar':
         return 'COALESCE(p."radarScore", 0)';
       case 'growth':
+        // Sem janela anterior (7 e 90 dias), não há crescimento a ordenar:
+        // cai para vendas em vez de fingir uma ordem que não existe.
+        if (!col.salesAnterior) return `p."${col.sales}"`;
         return `CASE
-          WHEN COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0) = 0 THEN NULL
-          ELSE (COALESCE(SUM(CASE WHEN m.date >= :current THEN m.sales END), 0)
-                - COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0))
-               * 100.0
-               / COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0)
+          WHEN p.${col.salesAnterior} <= 0 THEN NULL
+          ELSE (p."${col.sales}" - p.${col.salesAnterior}) * 100.0
+               / p.${col.salesAnterior}
         END`;
       default:
-        return '"salesPeriod"';
+        return `p."${col.sales}"`;
     }
   }
 
@@ -295,8 +299,7 @@ export class ProductsService {
     /** Há mais seções depois desta página — o scroll infinito usa isto. */
     hasMore: boolean;
   }> {
-    const current = this.isoDaysAgo(period);
-    const previous = this.isoDaysAgo(period * 2);
+    const col = this.colunasDoPeriodo(period);
 
     // Mesma razão do lado dos vídeos: a janela do ROW_NUMBER varre a tabela
     // inteira (~0,7s) e o scroll infinito repete a chamada só mudando o
@@ -311,14 +314,14 @@ export class ProductsService {
       WITH agg AS (
         SELECT p.id, p.title, p."storeName", p.category, p.price, p."imageUrl",
                p.images, p.rating, p."radarScore", p."tiktokUrl",
-               COALESCE(SUM(CASE WHEN m.date >= $1 THEN m.sales END), 0)   AS "salesPeriod",
-               COALESCE(SUM(CASE WHEN m.date >= $1 THEN m.revenue END), 0) AS "revenuePeriod",
-               COALESCE(SUM(CASE WHEN m.date <  $1 THEN m.sales END), 0)   AS "salesPrevious"
+               -- Números reais do fornecedor, direto na linha do produto.
+               -- Antes isto somava a série diária, que só tem o dia corrente:
+               -- 7, 30 e 90 dias devolviam exatamente o mesmo resultado.
+               p."${col.sales}"   AS "salesPeriod",
+               p."${col.revenue}" AS "revenuePeriod",
+               ${col.salesAnterior ? `p.${col.salesAnterior}` : '0'} AS "salesPrevious"
           FROM products p
-          LEFT JOIN product_metrics_daily m
-                 ON m."productId" = p.id AND m.date >= $2
          WHERE p."isDuplicate" = false
-         GROUP BY p.id
       ), ranked AS (
         SELECT *,
                ROW_NUMBER() OVER (
@@ -329,10 +332,10 @@ export class ProductsService {
           FROM agg
       )
       SELECT * FROM ranked
-       WHERE rn <= $3
+       WHERE rn <= $1
        ORDER BY "categorySales" DESC, category ASC, rn ASC
       `,
-      [current, previous, perSection],
+      [perSection],
     );
 
     if (!cached || cached.expiresAt <= Date.now()) {
