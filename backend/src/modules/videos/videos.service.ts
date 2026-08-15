@@ -34,6 +34,14 @@ export interface VideoItem {
  */
 const MAX_VIDEOS_POR_PRODUTO = 2;
 
+/**
+ * Quantos vídeos do MESMO criador numa seção.
+ *
+ * Um perfil que produz muito sobre o mesmo tema (@maxwilliam.oficial em
+ * automotivo) enchia a categoria sozinho, e a vitrine virava o feed dele.
+ */
+const MAX_VIDEOS_POR_CRIADOR = 2;
+
 /** Validade do cache da vitrine — curto o bastante para não servir dado velho. */
 const SECTIONS_TTL_MS = 60 * 1000;
 
@@ -95,7 +103,7 @@ export class VideosService {
     // infinito pede lote após lote com os MESMOS parâmetros (só muda o
     // offset), guardamos o resultado por pouco tempo: a primeira rolagem paga,
     // as seguintes vêm de memória.
-    const cacheKey = `sections:${perSection}:${MAX_VIDEOS_POR_PRODUTO}`;
+    const cacheKey = `sections:${perSection}:${MAX_VIDEOS_POR_PRODUTO}:${MAX_VIDEOS_POR_CRIADOR}`;
     const cached = VideosService.sectionsCache.get(cacheKey);
     const rows: Array<
       Video & { categoryTotal: string; productImageUrl: string | null }
@@ -114,7 +122,13 @@ export class VideosService {
                  -- seção com 6 vídeos quase iguais.
                  ROW_NUMBER() OVER (
                    PARTITION BY v."productId" ORDER BY v.views DESC, v.id ASC
-                 ) AS rnProduto
+                 ) AS rnProduto,
+                 -- Mesma ideia aplicada ao criador: um perfil sozinho não
+                 -- pode ocupar metade da seção com o mesmo assunto.
+                 ROW_NUMBER() OVER (
+                   PARTITION BY v.category, v."creatorHandle"
+                   ORDER BY v.views DESC, v.id ASC
+                 ) AS rnCriador
             FROM videos v
             LEFT JOIN products p ON p.id = v."productId"
            WHERE v.kind = 'product' AND v.category IS NOT NULL
@@ -123,18 +137,23 @@ export class VideosService {
         ), ranked AS (
           SELECT *,
                  ROW_NUMBER() OVER (
-                   PARTITION BY category ORDER BY views DESC, id ASC
+                   PARTITION BY category
+                   -- Intercala: primeiro o melhor vídeo de CADA produto,
+                   -- depois o segundo de cada. Sem isso, os dois vídeos do
+                   -- fatiador saem colados e a seção parece repetida mesmo
+                   -- respeitando o teto.
+                   ORDER BY rnProduto ASC, views DESC, id ASC
                  ) AS rn,
                  COUNT(*)  OVER (PARTITION BY category) AS "categoryTotal",
                  SUM(views) OVER (PARTITION BY category) AS "categoryViews"
             FROM porProduto
-           WHERE rnProduto <= $2
+           WHERE rnProduto <= $2 AND rnCriador <= $3
         )
         SELECT * FROM ranked
          WHERE rn <= $1
          ORDER BY "categoryViews" DESC, category ASC, rn ASC
         `,
-        [perSection, MAX_VIDEOS_POR_PRODUTO],
+        [perSection, MAX_VIDEOS_POR_PRODUTO, MAX_VIDEOS_POR_CRIADOR],
       );
 
     if (!cached || cached.expiresAt <= Date.now()) {

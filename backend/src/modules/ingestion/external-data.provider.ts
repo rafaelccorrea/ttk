@@ -588,12 +588,21 @@ export class ExternalDataProvider {
       const response = await fetch(url, {
         headers: { accept: 'application/json', Authorization: this.authValue },
       });
-      if (!response.ok) {
+      // O corpo é lido MESMO em erro HTTP: o EchoTik devolve o aviso de cota
+      // dentro de um 500 com JSON. Sair antes de ler impedia o disjuntor de
+      // armar, e cada play voltava a pagar ~7s esperando o mesmo erro.
+      let body: EchoTikEnvelope<T> | null = null;
+      try {
+        body = (await response.json()) as EchoTikEnvelope<T>;
+      } catch {
+        body = null;
+      }
+
+      if (!body) {
         this.logger.warn(`EchoTik ${path} respondeu HTTP ${response.status}`);
         return null;
       }
-      const body = (await response.json()) as EchoTikEnvelope<T>;
-      if (body.code !== 0) {
+      if (!response.ok || body.code !== 0) {
         if (/usage limit/i.test(body.message ?? '')) {
           this.quotaBlockedUntil = Date.now() + QUOTA_COOLDOWN_MS;
           this.logger.warn(
