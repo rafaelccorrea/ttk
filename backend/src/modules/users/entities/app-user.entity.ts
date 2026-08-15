@@ -22,6 +22,10 @@ export class AppUser {
   @Column({ default: 'free' })
   plan: string;
 
+  // Saldo de créditos de IA. Todo débito/crédito é registrado em credit_transactions.
+  @Column('int', { default: 0 })
+  credits: number;
+
   // Auth local (cadastro por senha com confirmação de e-mail via Nodemailer).
   @Column({ nullable: true })
   passwordHash: string;

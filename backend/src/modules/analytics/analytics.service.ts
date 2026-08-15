@@ -56,6 +56,8 @@ export class AnalyticsService {
         views: v.views,
         revenueEstimate: Number(v.revenueEstimate),
         category: v.category,
+        thumbnailUrl: v.thumbnailUrl ?? null,
+        videoUrl: v.videoUrl ?? null,
       })),
       topCreators: topCreators.map((c) => ({
         id: c.id,
@@ -63,6 +65,7 @@ export class AnalyticsService {
         handle: c.handle,
         followers: c.followers,
         gmvPeriod: Number(c.gmvPeriod),
+        avatarUrl: c.avatarUrl ?? null,
       })),
     };
   }

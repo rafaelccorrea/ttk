@@ -9,6 +9,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
@@ -16,6 +17,7 @@ import { StatCard } from '@/components/ui/StatCard';
 import { ProductDetail, productsService } from '@/services/products.service';
 import { videosService, ViralVideo } from '@/services/videos.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
+import { tiktokSearchUrl } from '@/utils/tiktok';
 
 // Sparkline simples em SVG a partir da série diária de vendas.
 function Sparkline({ values }: { values: number[] }) {
@@ -196,25 +198,17 @@ export function ProductDetailPage() {
         >
           Roteirizar vídeo
         </Button>
-        {product.tiktokUrl ? (
-          <Button
-            variant="outlined"
-            color="secondary"
-            href={product.tiktokUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Ver no TikTok Shop
-          </Button>
-        ) : (
-          <Tooltip title="Em breve">
-            <span>
-              <Button variant="outlined" color="secondary" disabled>
-                Ver no TikTok Shop
-              </Button>
-            </span>
-          </Tooltip>
-        )}
+        {/* Sem tiktokUrl próprio, cai para a busca real do TikTok pelo produto. */}
+        <Button
+          variant="outlined"
+          color="secondary"
+          href={product.tiktokUrl ?? tiktokSearchUrl(product.title)}
+          target="_blank"
+          rel="noopener noreferrer"
+          endIcon={<OpenInNewRoundedIcon sx={{ fontSize: 16 }} />}
+        >
+          {product.tiktokUrl ? 'Ver no TikTok Shop' : 'Buscar no TikTok'}
+        </Button>
       </Box>
     </>
   );

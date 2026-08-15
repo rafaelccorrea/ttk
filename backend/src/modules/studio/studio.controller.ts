@@ -20,6 +20,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
+import { BillingService } from '../billing/billing.service';
 import { AnalyzeDto } from './dto/analyze.dto';
 import { GenerateScriptDto } from './dto/generate-script.dto';
 import { StudioService } from './studio.service';
@@ -33,12 +34,14 @@ export class StudioController {
   constructor(
     private readonly studioService: StudioService,
     private readonly transcriptionService: TranscriptionService,
+    private readonly billing: BillingService,
   ) {}
 
   @Post('transcribe')
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ summary: 'Transcreve um vídeo/áudio (Whisper, máx. 25MB)' })
   transcribe(
+    @CurrentUser() user: AuthUser,
     @UploadedFile(
       new ParseFilePipe({
         validators: [new MaxFileSizeValidator({ maxSize: 25 * 1024 * 1024 })],
@@ -49,7 +52,10 @@ export class StudioController {
     if (!file?.buffer?.length) {
       throw new BadRequestException('Envie um arquivo de vídeo ou áudio.');
     }
-    return this.transcriptionService.transcribe(file);
+    // Whisper custa dinheiro real → cobra créditos; estorna se a API falhar.
+    return this.billing.withCharge(user.id, 'transcribe', () =>
+      this.transcriptionService.transcribe(file),
+    );
   }
 
   @Post('analyze')

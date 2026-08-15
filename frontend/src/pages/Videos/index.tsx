@@ -79,7 +79,10 @@ function VideoCard({
           position: 'relative',
           aspectRatio: '9 / 16',
           maxHeight: 260,
-          background: gradientFor(video.category),
+          // Thumbnail real quando a ingestão populou; gradiente como fallback.
+          background: video.thumbnailUrl
+            ? `linear-gradient(180deg, rgba(0,0,0,0.05) 45%, rgba(0,0,0,0.6)), url(${video.thumbnailUrl}) center/cover no-repeat`
+            : gradientFor(video.category),
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',

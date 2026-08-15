@@ -143,6 +143,10 @@ export function CreatorsPage() {
                 <TableCell>
                   <Box display="flex" alignItems="center" gap={1.5}>
                     <Avatar
+                      component="a"
+                      href={tiktokProfileUrl(creator.handle)}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       src={creator.avatarUrl ?? undefined}
                       sx={{
                         width: 36,
@@ -151,6 +155,9 @@ export function CreatorsPage() {
                         fontWeight: 700,
                         bgcolor: avatarColorFor(creator.handle),
                         color: '#fff',
+                        textDecoration: 'none',
+                        transition: 'transform .15s ease',
+                        '&:hover': { transform: 'scale(1.1)' },
                       }}
                     >
                       {creator.name.charAt(0).toUpperCase()}

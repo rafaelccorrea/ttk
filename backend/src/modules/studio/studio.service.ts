@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { BillingService } from '../billing/billing.service';
 import { Product } from '../products/entities/product.entity';
 import { AiService } from './ai.service';
 import { GenerateScriptDto } from './dto/generate-script.dto';
@@ -20,6 +21,7 @@ export class StudioService {
     @InjectRepository(Product)
     private readonly products: Repository<Product>,
     private readonly aiService: AiService,
+    private readonly billing: BillingService,
   ) {}
 
   async generate(userId: string, dto: GenerateScriptDto): Promise<Script> {
@@ -39,13 +41,18 @@ export class StudioService {
         `Categoria: ${product.category}. Loja: ${product.storeName ?? 'n/d'}.`;
     }
 
-    const result = await this.aiService.generateScript({
-      type: dto.type,
-      productName,
-      productDescription,
-      price,
-      tone: dto.tone,
-    });
+    // Gerador local (sem chave de IA) é gratuito; Claude real cobra créditos.
+    const run = () =>
+      this.aiService.generateScript({
+        type: dto.type,
+        productName,
+        productDescription,
+        price,
+        tone: dto.tone,
+      });
+    const result = this.aiService.enabled
+      ? await this.billing.withCharge(userId, 'script', run)
+      : await run();
 
     return this.scripts.save(
       this.scripts.create({
@@ -76,11 +83,11 @@ export class StudioService {
       price = Number(product.price);
     }
 
-    const result = await this.aiService.analyzeTranscript(
-      transcript,
-      productName,
-      price,
-    );
+    const run = () =>
+      this.aiService.analyzeTranscript(transcript, productName, price);
+    const result = this.aiService.enabled
+      ? await this.billing.withCharge(userId, 'analyze', run)
+      : await run();
     return this.scripts.save(
       this.scripts.create({
         userId,

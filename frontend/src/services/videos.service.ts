@@ -13,6 +13,7 @@ export interface ViralVideo {
   category: string;
   isSaved: boolean;
   videoUrl: string | null;
+  thumbnailUrl: string | null;
 }
 
 export interface VideoDetail extends ViralVideo {

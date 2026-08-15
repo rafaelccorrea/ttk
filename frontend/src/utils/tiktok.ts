@@ -7,4 +7,8 @@ export function tiktokHashtagUrl(hashtag: string): string {
   return `https://www.tiktok.com/tag/${encodeURIComponent(hashtag.replace(/^#/, ''))}`;
 }
 
+export function tiktokSearchUrl(query: string): string {
+  return `https://www.tiktok.com/search?q=${encodeURIComponent(query)}`;
+}
+
 export const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;

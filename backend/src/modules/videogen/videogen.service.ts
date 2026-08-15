@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { BillingService } from '../billing/billing.service';
 import { GenerateMediaDto } from './dto/generate-media.dto';
 import { GeneratedMedia } from './entities/generated-media.entity';
 import { HiggsfieldService } from './higgsfield.service';
@@ -13,6 +14,7 @@ export class VideogenService {
     @InjectRepository(GeneratedMedia)
     private readonly media: Repository<GeneratedMedia>,
     private readonly higgsfield: HiggsfieldService,
+    private readonly billing: BillingService,
   ) {}
 
   /**
@@ -21,9 +23,9 @@ export class VideogenService {
    * imagem fica pronta.
    */
   async generate(userId: string, dto: GenerateMediaDto): Promise<GeneratedMedia> {
-    const submitted = await this.higgsfield.submitImage(
-      dto.prompt,
-      dto.aspectRatio ?? '9:16',
+    // Cobra antes de submeter; se a Higgsfield recusar, o estorno é automático.
+    const submitted = await this.billing.withCharge(userId, dto.kind, () =>
+      this.higgsfield.submitImage(dto.prompt, dto.aspectRatio ?? '9:16'),
     );
     return this.media.save(
       this.media.create({
@@ -86,6 +88,19 @@ export class VideogenService {
       item.error = status.error ?? item.error;
     } else {
       item.status = status.status as GeneratedMedia['status'];
+    }
+
+    // Falhou depois de cobrado → devolve os créditos (uma única vez).
+    if (
+      ['failed', 'nsfw', 'canceled'].includes(item.status) &&
+      !item.refunded
+    ) {
+      await this.billing.refund(
+        userId,
+        item.kind,
+        `Estorno: geração de ${item.kind === 'video' ? 'vídeo' : 'imagem'} falhou`,
+      );
+      item.refunded = true;
     }
 
     return this.media.save(item);

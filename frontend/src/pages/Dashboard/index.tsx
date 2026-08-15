@@ -164,15 +164,25 @@ export function DashboardPage() {
         {overview?.topVideos.map((v) => (
           <Grid item xs={12} sm={6} md={2.4} key={v.id}>
             <Box
+              component={v.videoUrl || v.creatorHandle ? 'a' : 'div'}
+              href={v.videoUrl ?? tiktokProfileUrl(v.creatorHandle)}
+              target="_blank"
+              rel="noopener noreferrer"
               sx={{
                 borderRadius: 3,
                 aspectRatio: '3 / 4',
-                background: gradientFor(v.category),
+                // Thumbnail real quando a ingestão populou; gradiente como fallback.
+                background: v.thumbnailUrl
+                  ? `linear-gradient(180deg, rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.72)), url(${v.thumbnailUrl}) center/cover no-repeat`
+                  : gradientFor(v.category),
                 color: '#fff',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
                 p: 1.5,
+                textDecoration: 'none',
+                transition: 'transform .2s ease, box-shadow .2s ease',
+                '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 12px 30px rgba(22,24,35,0.25)' },
               }}
             >
               <Chip
@@ -204,19 +214,7 @@ export function DashboardPage() {
                 >
                   {v.caption}
                 </Typography>
-                <Typography
-                  component="a"
-                  href={tiktokProfileUrl(v.creatorHandle)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  variant="caption"
-                  sx={{
-                    opacity: 0.85,
-                    color: 'inherit',
-                    textDecoration: 'none',
-                    '&:hover': { opacity: 1, textDecoration: 'underline' },
-                  }}
-                >
+                <Typography variant="caption" sx={{ opacity: 0.85 }}>
                   @{v.creatorHandle}
                 </Typography>
               </Box>
@@ -231,12 +229,21 @@ export function DashboardPage() {
           {overview?.topCreators.map((c) => (
             <Box key={c.id} display="flex" alignItems="center" gap={2} px={2} py={1.25}>
               <Avatar
+                component="a"
+                href={tiktokProfileUrl(c.handle)}
+                target="_blank"
+                rel="noopener noreferrer"
+                src={c.avatarUrl ?? undefined}
                 sx={{
                   width: 36,
                   height: 36,
                   fontSize: 15,
                   fontWeight: 700,
                   background: 'linear-gradient(135deg, #fe2c55, #00c2bb)',
+                  color: '#fff',
+                  textDecoration: 'none',
+                  transition: 'transform .15s ease',
+                  '&:hover': { transform: 'scale(1.1)' },
                 }}
               >
                 {c.name.charAt(0).toUpperCase()}

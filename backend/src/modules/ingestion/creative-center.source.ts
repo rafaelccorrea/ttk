@@ -1,5 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+export interface TrendingCreator {
+  handle: string;
+  name: string;
+  followers: number;
+  videoViews: number;
+  topic: string | null;
+  avatarUrl: string | null;
+  thumbnailUrl: string | null;
+  rank: number;
+}
+
 export interface TrendingHashtag {
   hashtag: string;
   title: string;
@@ -115,6 +126,93 @@ export class CreativeCenterSource {
         });
         return out;
       });
+  }
+
+  /**
+   * Criadores/vídeos em alta (aba "Video" do Creative Center). Sem login a
+   * página expõe os 4 primeiros; o handle real vem do modal "View details".
+   * Limitação atual: anônimo, essa aba só oferece a região US.
+   */
+  async fetchTrendingCreators(limit = 4): Promise<TrendingCreator[]> {
+    const { chromium } = await import('playwright');
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage({
+        userAgent: HEADERS['user-agent'],
+        locale: 'pt-BR',
+        viewport: { width: 1366, height: 2000 },
+      });
+      await page.goto(
+        'https://ads.tiktok.com/creative/creativeCenter/trends/video?period=7',
+        { waitUntil: 'domcontentloaded', timeout: 60_000 },
+      );
+      await page.waitForTimeout(9_000);
+
+      // Cards visíveis: nome, seguidores, views, tópico e thumbnail (em ordem).
+      const cards = await page.evaluate(() => {
+        const text = document.body.innerText;
+        const section = text.match(/Highest video views[\s\S]*?(View more|$)/)?.[0] ?? '';
+        const rows = [...section.matchAll(
+          /(?:([A-Za-zÀ-ÿ&' ]+)\n)?([^\n]+)\n([\d.,]+[KMB]?) followers\nVideo views\n([\d.,]+[KMB]?)/g,
+        )].map((m) => {
+          const topic = m[1]?.trim() ?? null;
+          return {
+            // O regex às vezes captura o rótulo do botão como "tópico".
+            topic: topic && !/view details|view more/i.test(topic) ? topic : null,
+            name: m[2].trim(),
+            followers: m[3],
+            views: m[4],
+          };
+        });
+        const thumbs = [...document.querySelectorAll('img')]
+          .map((i) => i.src)
+          .filter((s) => s.includes('photomode-zoomcover') || s.includes('p16-common-sign'));
+        return { rows, thumbs };
+      });
+
+      const detailButtons = page.getByText('View details');
+      const total = Math.min(await detailButtons.count(), limit, cards.rows.length);
+      const creators: TrendingCreator[] = [];
+
+      for (let i = 0; i < total; i++) {
+        const row = cards.rows[i];
+        let handle: string | null = null;
+        let avatarUrl: string | null = null;
+        try {
+          await detailButtons.nth(i).scrollIntoViewIfNeeded();
+          await detailButtons.nth(i).click({ force: true });
+          await page.waitForTimeout(4_000);
+          const modal = await page.evaluate(() => {
+            const el = document.querySelector('.byted-modal-body, [class*=modal]');
+            const text = (el as HTMLElement | null)?.innerText ?? '';
+            const avatar = el
+              ? [...el.querySelectorAll('img')].map((im) => im.src).find((s) => /avt|cropcenter/.test(s)) ?? null
+              : null;
+            return { firstLine: text.split('\n')[0]?.trim() ?? '', avatar };
+          });
+          if (/^[\w.]+$/.test(modal.firstLine)) handle = modal.firstLine;
+          avatarUrl = modal.avatar;
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(1_200);
+        } catch {
+          // modal falhou: segue sem handle (registro é descartado abaixo)
+        }
+        if (!handle) continue;
+        creators.push({
+          handle,
+          name: row.name,
+          followers: this.parseCompactNumber(row.followers),
+          videoViews: this.parseCompactNumber(row.views),
+          topic: row.topic,
+          avatarUrl,
+          thumbnailUrl: cards.thumbs[i] ?? null,
+          rank: i + 1,
+        });
+      }
+      return creators;
+    } finally {
+      await browser.close();
+    }
   }
 
   // Linha vinda do DOM: "1|#tag|Categoria|29K|Posts|25.5M|Views|See analytics".

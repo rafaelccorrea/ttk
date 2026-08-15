@@ -18,6 +18,7 @@ export interface VideoItem {
   category: string;
   isSaved: boolean;
   videoUrl: string | null;
+  thumbnailUrl: string | null;
 }
 
 @Injectable()
@@ -43,6 +44,7 @@ export class VideosService {
       category: video.category,
       isSaved: savedIds.has(video.id),
       videoUrl: video.videoUrl ?? null,
+      thumbnailUrl: video.thumbnailUrl ?? null,
     };
   }
 

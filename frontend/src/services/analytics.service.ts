@@ -8,6 +8,8 @@ export interface TopVideo {
   views: number;
   revenueEstimate: number;
   category: string;
+  thumbnailUrl: string | null;
+  videoUrl: string | null;
 }
 
 export interface TopCreator {
@@ -16,6 +18,7 @@ export interface TopCreator {
   handle: string;
   followers: number;
   gmvPeriod: number;
+  avatarUrl: string | null;
 }
 
 export interface Overview {

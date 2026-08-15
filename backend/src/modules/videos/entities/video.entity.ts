@@ -40,6 +40,10 @@ export class Video {
   @Column({ nullable: true })
   videoUrl: string;
 
+  // Thumbnail real (CDN do TikTok; renovada a cada ingestão).
+  @Column({ nullable: true })
+  thumbnailUrl: string;
+
   @Column({ type: 'text', nullable: true })
   transcript: string | null;
 

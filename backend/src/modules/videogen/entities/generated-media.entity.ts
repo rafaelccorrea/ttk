@@ -60,6 +60,10 @@ export class GeneratedMedia {
   @Column({ nullable: true })
   error: string;
 
+  // Créditos já estornados por falha (evita estorno duplo no refresh).
+  @Column({ default: false })
+  refunded: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

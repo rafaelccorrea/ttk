@@ -49,6 +49,11 @@ export class AiService {
     this.client = apiKey ? new Anthropic({ apiKey }) : null;
   }
 
+  /** true quando a API real está configurada (senão, gerador local gratuito). */
+  get enabled(): boolean {
+    return this.client !== null;
+  }
+
   async generateScript(request: ScriptRequest): Promise<ScriptResult> {
     if (!this.client) {
       return this.templateFallback(request);
