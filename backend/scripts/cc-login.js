@@ -34,14 +34,27 @@ const STATE_FILE = path.join(__dirname, '..', 'cc-session.json');
   console.log('>> Detecto o login automaticamente e salvo a sessão.');
   console.log('');
 
-  // Espera até existir cookie de sessão logada (checa a cada 3s, até 5 min).
-  const deadline = Date.now() + 5 * 60_000;
+  // Espera o login valer NO Creative Center (user/info code=0), não só um
+  // cookie do tiktok.com. Checa a cada 4s, até 8 min.
+  const deadline = Date.now() + 8 * 60_000;
   let logged = false;
   while (Date.now() < deadline) {
-    const cookies = await context.cookies('https://ads.tiktok.com');
-    logged = cookies.some((c) => /sessionid/i.test(c.name) && c.value.length > 8);
+    logged = await page
+      .evaluate(async () => {
+        try {
+          const res = await fetch(
+            'https://ads.tiktok.com/creative_radar_api/v1/user/info',
+            { credentials: 'include', headers: { accept: 'application/json' } },
+          );
+          const body = await res.json();
+          return body?.code === 0;
+        } catch {
+          return false;
+        }
+      })
+      .catch(() => false);
     if (logged) break;
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
   }
 
   if (!logged) {
