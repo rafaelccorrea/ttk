@@ -69,6 +69,44 @@ const START_URL = 'https://seller-br.tiktok.com/';
 
   await context.storageState({ path: STATE_FILE });
   console.log(`Sessão salva em ${STATE_FILE}`);
-  console.log('Pronto! Agora dá para coletar produtos reais do Shop.');
+
+  // Login não basta: a conta precisa estar habilitada como vendedor ou
+  // afiliado. Sem isso, nenhuma tela de produto abre — melhor avisar agora
+  // do que descobrir depois com o catálogo vazio.
+  console.log('');
+  console.log('Verificando o que esta conta libera...');
+  const checks = [
+    { name: 'Seller Center (produtos da sua loja)', url: 'https://seller-br.tiktok.com/product/manage' },
+    { name: 'Afiliados (catálogo de todas as lojas)', url: 'https://affiliate.tiktok.com/connection/creator' },
+  ];
+  const unlocked = [];
+  for (const check of checks) {
+    try {
+      await page.goto(check.url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      await page.waitForTimeout(6000);
+      const url = page.url();
+      const blocked =
+        /settle\/verification|errorpage|login|register/i.test(url) ||
+        /quebra-cabeça|Verify to continue|Algo deu errado/i.test(
+          await page.evaluate(() => document.body.innerText.slice(0, 400)),
+        );
+      console.log(`  ${blocked ? '[X]' : '[OK]'} ${check.name}`);
+      if (!blocked) unlocked.push(check.name);
+    } catch {
+      console.log(`  [X] ${check.name} (falhou ao abrir)`);
+    }
+  }
+
+  console.log('');
+  if (unlocked.length === 0) {
+    console.log('Nenhuma área de produto liberada para esta conta.');
+    console.log('Para coletar produtos reais é preciso UMA destas:');
+    console.log('  1) Concluir o cadastro de vendedor em seller-br.tiktok.com');
+    console.log('  2) Ser aprovado no programa de afiliados do TikTok Shop');
+    console.log('A sessão foi salva mesmo assim: assim que a conta for');
+    console.log('habilitada, a coleta passa a funcionar sem novo login.');
+  } else {
+    console.log('Áreas liberadas:', unlocked.join(' e '));
+  }
   await browser.close();
 })();
