@@ -95,6 +95,9 @@ export class ProductsService {
     // Filtros sobre colunas do produto (WHERE). Aplicados igualmente na
     // query principal e na de contagem, para o total bater com a lista.
     const applyWhere = (target: typeof qb) => {
+      // Duplicado continua no banco (histórico de métricas), mas fora da lista:
+      // senão a vitrine repete o mesmo produto anunciado por vários vendedores.
+      target.andWhere('p."isDuplicate" = false');
       if (query.category) {
         target.andWhere('p.category = :category', { category: query.category });
       }
@@ -295,6 +298,7 @@ export class ProductsService {
           FROM products p
           LEFT JOIN product_metrics_daily m
                  ON m."productId" = p.id AND m.date >= $2
+         WHERE p."isDuplicate" = false
          GROUP BY p.id
       ), ranked AS (
         SELECT *,

@@ -46,6 +46,22 @@ export class Product {
   @Column({ nullable: true })
   tiktokUrl: string;
 
+  /**
+   * Assinatura normalizada do título, usada para achar o mesmo produto
+   * anunciado por vendedores ou variações diferentes.
+   */
+  @Index()
+  @Column({ type: 'varchar', nullable: true })
+  dedupKey: string | null;
+
+  /**
+   * Cópia de outro produto já listado. Fica no banco (o histórico de métricas
+   * importa) mas sai das listagens, senão a vitrine repete o mesmo item.
+   */
+  @Index()
+  @Column({ type: 'boolean', default: false })
+  isDuplicate: boolean;
+
   // ------------------------------------------------- controle de ingestão
   // A cota do fornecedor é mensal, então o catálogo é revisitado em rodízio.
   // Estas colunas dizem o que já foi feito e quando, para priorizar.

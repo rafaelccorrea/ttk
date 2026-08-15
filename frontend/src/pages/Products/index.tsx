@@ -25,7 +25,7 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
@@ -360,42 +360,50 @@ export function ProductsPage() {
     page === 1;
 
   // Vitrine em lotes de 4 categorias — o scroll pede as próximas.
+  //
+  // O cursor e a trava ficam em `ref`, não em `state`: o scroll dispara várias
+  // vezes por segundo e o `state` só chega no próximo render, o que deixava
+  // passar chamadas duplicadas com o mesmo offset.
+  const offsetRef = useRef(0);
+  const carregandoRef = useRef(false);
+
+  const carregarSecoes = useCallback(
+    async (reiniciar: boolean) => {
+      if (carregandoRef.current) return;
+      carregandoRef.current = true;
+      setLoadingSections(true);
+      try {
+        const offset = reiniciar ? 0 : offsetRef.current;
+        const data = await productsService.sections(period, 12, offset);
+        offsetRef.current = offset + data.sections.length;
+        setSections((prev) => {
+          if (reiniciar) return data.sections;
+          const vistos = new Set(prev.map((s) => s.category));
+          return [...prev, ...data.sections.filter((s) => !vistos.has(s.category))];
+        });
+        setSectionsMore(data.hasMore);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        carregandoRef.current = false;
+        setLoadingSections(false);
+      }
+    },
+    [period],
+  );
+
   useEffect(() => {
     if (!showSections) return;
+    offsetRef.current = 0;
     setSections([]);
     setSectionsMore(true);
-    setLoadingSections(true);
-    productsService
-      .sections(period, 12, 0)
-      .then((d) => {
-        setSections(d.sections);
-        setSectionsMore(d.hasMore);
-      })
-      .catch(console.error)
-      .finally(() => setLoadingSections(false));
-  }, [showSections, period]);
-
-  function loadMoreSections() {
-    if (loadingSections || !sectionsMore) return;
-    setLoadingSections(true);
-    productsService
-      .sections(period, 12, sections.length)
-      .then((d) => {
-        // Evita duplicar categoria se duas chamadas se cruzarem.
-        setSections((prev) => {
-          const vistos = new Set(prev.map((s) => s.category));
-          return [...prev, ...d.sections.filter((s) => !vistos.has(s.category))];
-        });
-        setSectionsMore(d.hasMore);
-      })
-      .catch(console.error)
-      .finally(() => setLoadingSections(false));
-  }
+    void carregarSecoes(true);
+  }, [showSections, carregarSecoes]);
 
   useInfiniteScroll({
     hasMore: showSections && sectionsMore,
     loading: loadingSections,
-    onLoadMore: loadMoreSections,
+    onLoadMore: () => void carregarSecoes(false),
   });
 
   useEffect(() => {
