@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { filterProducts } from './product-gate';
 
 export interface TrendingProduct {
   /** Chave estável para upsert (id do anúncio no Top Ads). */
@@ -38,6 +39,8 @@ interface TopAdMaterial {
   ctr: number;
   like: number;
   industry_key: string;
+  /** Objetivo da campanha — sinal de que o anúncio vende produto. */
+  objective_key: string;
   video_info?: { cover?: string };
 }
 
@@ -51,6 +54,137 @@ interface TopAdMaterial {
 @Injectable()
 export class CreativeCenterProductsSource {
   private readonly logger = new Logger(CreativeCenterProductsSource.name);
+
+  /**
+   * Varre o Top Ads em vários períodos (feeds diferentes), fica só com os
+   * anúncios de VENDA DE PRODUTO e passa cada um pelo portão de qualidade.
+   * O rendimento é baixo de propósito: preferimos 5 produtos de verdade a
+   * 40 linhas de publicidade genérica.
+   */
+  async fetchProductAds(limitPerPeriod = 60): Promise<TrendingProduct[]> {
+    if (!existsSync(SESSION_FILE)) {
+      this.logger.warn(
+        'Sem sessão do Creative Center (cc-session.json). Rode `npm run cc:login`.',
+      );
+      return [];
+    }
+    const { chromium } = await import('playwright');
+    const browser = await chromium.launch({
+      headless: true,
+      args: ['--disable-blink-features=AutomationControlled'],
+    });
+    try {
+      const context = await browser.newContext({
+        userAgent: UA,
+        locale: 'pt-BR',
+        viewport: { width: 1440, height: 2400 },
+        storageState: SESSION_FILE,
+      });
+      const page = await context.newPage();
+      const materials = new Map<string, TopAdMaterial>();
+      const industryNames = new Map<string, string>();
+      this.attachCollectors(page, materials, industryNames);
+
+      // Períodos diferentes = feeds diferentes = mais candidatos.
+      for (const period of [7, 30, 180]) {
+        await page.goto(
+          `https://ads.tiktok.com/business/creativecenter/inspiration/topads/pc/pt?period=${period}&region=BR`,
+          { waitUntil: 'domcontentloaded', timeout: 90_000 },
+        );
+        await page.waitForTimeout(9_000);
+        for (let i = 0; i < 8; i++) {
+          await page.mouse.wheel(0, 4000);
+          await page.waitForTimeout(2_500);
+          if (materials.size >= limitPerPeriod * 3) break;
+        }
+      }
+
+      const all = [...materials.values()];
+      // 1) Filtro estrutural: só anúncio de venda de produto.
+      const productAds = all.filter(
+        (m) => m.objective_key === 'campaign_objective_product_sales',
+      );
+      // 2) Portão de qualidade sobre o título.
+      const { accepted, rejected } = filterProducts(
+        productAds.map((m) => ({
+          title: m.ad_title,
+          objectiveKey: m.objective_key,
+          material: m,
+        })),
+      );
+      this.logger.log(
+        `Top Ads BR: ${all.length} anúncios → ${productAds.length} de venda de produto → ${accepted.length} aprovados no portão`,
+      );
+      for (const r of rejected.slice(0, 5)) {
+        this.logger.debug(`recusado: "${r.title}" (${r.reason})`);
+      }
+
+      return accepted.map((item, index) => {
+        const m = item.material;
+        const likes = Number(m.like ?? 0);
+        return {
+          externalId: `topads-${m.id}`,
+          title: item.cleanTitle,
+          category: industryNames.get(m.industry_key) || 'geral',
+          price: 0,
+          imageUrl: m.video_info?.cover ?? null,
+          popularity: this.popularityScore(Number(m.ctr ?? 0), likes),
+          rank: index + 1,
+          likes,
+        };
+      });
+    } finally {
+      await browser.close();
+    }
+  }
+
+  /** Coleta as respostas assinadas que a própria página baixa. */
+  private attachCollectors(
+    page: {
+      on: (
+        event: 'response',
+        handler: (res: { url: () => string; json: () => Promise<unknown> }) => void,
+      ) => void;
+    },
+    materials: Map<string, TopAdMaterial>,
+    industryNames: Map<string, string>,
+  ) {
+    page.on('response', (res) => {
+      const url = res.url();
+      if (url.includes('top_ads/v2/list')) {
+        void res
+          .json()
+          .then((body) => {
+            const list =
+              (body as { data?: { materials?: TopAdMaterial[] } })?.data
+                ?.materials ?? [];
+            for (const m of list) {
+              if (m?.id && m?.ad_title) materials.set(m.id, m);
+            }
+          })
+          .catch(() => undefined);
+      } else if (url.includes('top_ads/v2/filters')) {
+        void res
+          .json()
+          .then((body) => {
+            const walk = (node: unknown): void => {
+              if (Array.isArray(node)) return node.forEach(walk);
+              if (node && typeof node === 'object') {
+                const obj = node as Record<string, unknown>;
+                const key = (obj.value ?? obj.key) as string | undefined;
+                const label = (obj.label ?? obj.name) as string | undefined;
+                if (typeof key === 'string' && key.startsWith('label_') && label) {
+                  industryNames.set(key, label);
+                }
+                Object.values(obj).forEach(walk);
+              }
+            };
+            walk(body);
+          })
+          .catch(() => undefined);
+      }
+    });
+  }
 
   async fetchTrendingProducts(limit = 40): Promise<TrendingProduct[]> {
     if (!existsSync(SESSION_FILE)) {
