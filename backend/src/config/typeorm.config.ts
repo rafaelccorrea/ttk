@@ -26,13 +26,22 @@ export const typeOrmConfig = (
     };
   }
 
+  // Parâmetros separados. Preferido quando a senha tem caracteres que
+  // precisariam de escape na URL (o '@' de picpok@2026 vira %40, e esse '%'
+  // não sobrevive a toda cadeia de env do host) — aqui a senha vai crua.
+  const host = config.get('DB_HOST', 'localhost');
   return {
     type: 'postgres',
-    host: config.get('DB_HOST', 'localhost'),
+    host,
     port: config.get<number>('DB_PORT', 5432),
     username: config.get('DB_USERNAME', 'postgres'),
     password: config.get('DB_PASSWORD', 'postgres'),
     database: config.get('DB_DATABASE', 'pikpok'),
+    // Postgres local (docker) não fala TLS; qualquer host remoto exige.
+    ssl: isLocalHost(host) ? undefined : { rejectUnauthorized: false },
     ...common,
   };
 };
+
+const isLocalHost = (host: string): boolean =>
+  host === 'localhost' || host === '127.0.0.1' || host === '::1';
