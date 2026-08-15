@@ -14,10 +14,12 @@ import {
   ACTION_PRICES,
   assertProfitability,
   BillableAction,
+  BillingCycle,
   CREDIT_PACKS,
   FEATURE_MIN_PLAN,
   PLAN_RANK,
   planAllows,
+  planCredits,
   PlanFeature,
   PLANS,
   SIGNUP_BONUS_CREDITS,
@@ -213,11 +215,14 @@ export class BillingService implements OnModuleInit {
   }
 
   /** Assinatura de plano (mesma regra: dev-only até o gateway entrar). */
-  async subscribe(userId: string, planId: string) {
+  async subscribe(userId: string, planId: string, cycle: BillingCycle = 'month') {
     const plan = PLANS.find((p) => p.id === planId);
     if (!plan) throw new NotFoundException(`Plano ${planId} não existe`);
     if (plan.id === 'free') {
       throw new BadRequestException('O plano Free é o padrão.');
+    }
+    if (cycle === 'year' && !plan.annual) {
+      throw new BadRequestException(`O plano ${plan.name} não tem opção anual.`);
     }
     if (process.env.ALLOW_DEV_CHECKOUT !== 'true') {
       throw new BadRequestException(
@@ -227,10 +232,10 @@ export class BillingService implements OnModuleInit {
     await this.users.update({ id: userId }, { plan: plan.id });
     await this.addCredits(
       userId,
-      plan.monthlyCredits,
+      planCredits(plan, cycle),
       'plan_grant',
       plan.id,
-      `Créditos mensais do plano ${plan.name}`,
+      `Créditos ${cycle === 'year' ? 'anuais' : 'mensais'} do plano ${plan.name}`,
     );
     return this.getWallet(userId);
   }

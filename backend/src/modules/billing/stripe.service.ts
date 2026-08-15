@@ -9,7 +9,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 // Sem esModuleInterop no tsconfig, o default import do stripe vira undefined.
 import Stripe = require('stripe');
 import { Repository } from 'typeorm';
-import { CREDIT_PACKS, PLANS, findPlan } from './billing.config';
+import {
+  BillingCycle,
+  CREDIT_PACKS,
+  PLANS,
+  findPlan,
+  planCredits,
+  planPrice,
+} from './billing.config';
 import { BillingService } from './billing.service';
 import { CreditTransaction } from './entities/credit-transaction.entity';
 
@@ -56,7 +63,7 @@ export class StripeService {
   async createCheckout(
     userId: string,
     email: string | undefined,
-    item: { packId?: string; planId?: string },
+    item: { packId?: string; planId?: string; cycle?: BillingCycle },
   ): Promise<{ url: string }> {
     const stripe = this.require();
 
@@ -94,23 +101,31 @@ export class StripeService {
       if (!plan || plan.priceBrl === 0) {
         throw new NotFoundException(`Plano ${item.planId} não existe`);
       }
+      const cycle: BillingCycle = item.cycle === 'year' ? 'year' : 'month';
+      if (cycle === 'year' && !plan.annual) {
+        throw new BadRequestException(
+          `O plano ${plan.name} não tem opção anual.`,
+        );
+      }
+      const credits = planCredits(plan, cycle);
+      // `cycle` vai no metadata porque a renovação (invoice.paid) só tem isso
+      // para saber quantos créditos liberar.
+      const meta = { userId, kind: 'plan', itemId: plan.id, cycle };
       session = await stripe.checkout.sessions.create({
         ...common,
         mode: 'subscription',
-        metadata: { userId, kind: 'plan', itemId: plan.id },
-        subscription_data: {
-          metadata: { userId, kind: 'plan', itemId: plan.id },
-        },
+        metadata: meta,
+        subscription_data: { metadata: meta },
         line_items: [
           {
             quantity: 1,
             price_data: {
               currency: 'brl',
-              unit_amount: Math.round(plan.priceBrl * 100),
-              recurring: { interval: 'month' },
+              unit_amount: Math.round(planPrice(plan, cycle) * 100),
+              recurring: { interval: cycle },
               product_data: {
                 name: `PikPok ${plan.name}`,
-                description: `${plan.monthlyCredits} créditos de IA por mês`,
+                description: `${credits} créditos de IA por ${cycle === 'year' ? 'ano' : 'mês'}`,
               },
             },
           },
@@ -144,6 +159,7 @@ export class StripeService {
       session.metadata.kind,
       session.metadata.itemId,
       session.id,
+      session.metadata.cycle === 'year' ? 'year' : 'month',
     );
     return this.billing.getWallet(userId);
   }
@@ -168,10 +184,11 @@ export class StripeService {
           session.metadata.kind,
           session.metadata.itemId,
           session.id,
+          session.metadata.cycle === 'year' ? 'year' : 'month',
         );
       }
     } else if (event.type === 'invoice.paid') {
-      // Renovação mensal da assinatura → novo lote de créditos.
+      // Renovação da assinatura (mensal ou anual) → novo lote de créditos.
       const invoice = event.data.object as Stripe.Invoice;
       const meta = (invoice as any).subscription_details?.metadata ?? {};
       if (
@@ -179,7 +196,13 @@ export class StripeService {
         meta.kind === 'plan' &&
         invoice.billing_reason === 'subscription_cycle'
       ) {
-        await this.grantForSession(meta.userId, 'plan', meta.itemId, invoice.id!);
+        await this.grantForSession(
+          meta.userId,
+          'plan',
+          meta.itemId,
+          invoice.id!,
+          meta.cycle === 'year' ? 'year' : 'month',
+        );
       }
     }
     return { received: true };
@@ -191,6 +214,7 @@ export class StripeService {
     kind: string | undefined,
     itemId: string | undefined,
     stripeRef: string,
+    cycle: BillingCycle = 'month',
   ) {
     const already = await this.transactions.findOneBy({
       userId,
@@ -217,10 +241,10 @@ export class StripeService {
       await this.billing.setPlan(userId, plan.id);
       await this.billing.grantPaid(
         userId,
-        plan.monthlyCredits,
+        planCredits(plan, cycle),
         'plan_grant',
         stripeRef,
-        `Plano ${plan.name} — pago via Stripe`,
+        `Plano ${plan.name} ${cycle === 'year' ? 'anual' : 'mensal'} — pago via Stripe`,
       );
       this.logger.log(`Plano ${itemId} ativado para ${userId} (${stripeRef})`);
     }

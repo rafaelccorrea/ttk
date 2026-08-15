@@ -19,6 +19,8 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
@@ -26,6 +28,7 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { apiErrorMessage } from '@/contexts/AuthContext';
 import {
   billingService,
+  BillingCycle,
   CreditPack,
   Plan,
   Wallet,
@@ -44,6 +47,7 @@ export function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [packs, setPacks] = useState<CreditPack[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [cycle, setCycle] = useState<BillingCycle>('month');
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,7 +85,11 @@ export function PlansPage() {
       .catch((err) => setError(apiErrorMessage(err)));
   }, []);
 
-  async function goToCheckout(item: { packId?: string; planId?: string }) {
+  async function goToCheckout(item: {
+    packId?: string;
+    planId?: string;
+    cycle?: BillingCycle;
+  }) {
     const id = item.packId ?? item.planId!;
     setBusy(id);
     setError(null);
@@ -95,7 +103,7 @@ export function PlansPage() {
   }
 
   const buyPack = (packId: string) => goToCheckout({ packId });
-  const subscribe = (planId: string) => goToCheckout({ planId });
+  const subscribe = (planId: string) => goToCheckout({ planId, cycle });
 
   if (!wallet && !error) return <BrandLoader label="Carregando sua carteira..." />;
 
@@ -144,12 +152,35 @@ export function PlansPage() {
         </Card>
       )}
 
-      <Typography variant="h6" mb={1.5}>
-        Planos mensais
-      </Typography>
+      <Box
+        display="flex"
+        alignItems="center"
+        justifyContent="space-between"
+        flexWrap="wrap"
+        gap={1.5}
+        mb={1.5}
+      >
+        <Typography variant="h6">Planos</Typography>
+        {/* Só faz sentido oferecer o toggle se algum plano tem opção anual. */}
+        {plans.some((p) => p.annual) && (
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={cycle}
+            onChange={(_e, value) => value && setCycle(value as BillingCycle)}
+          >
+            <ToggleButton value="month">Mensal</ToggleButton>
+            <ToggleButton value="year">Anual</ToggleButton>
+          </ToggleButtonGroup>
+        )}
+      </Box>
       <Grid container spacing={2} mb={4}>
         {plans.map((plan) => {
           const current = wallet?.plan === plan.id;
+          // No ciclo anual, um plano sem opção anual cai de volta no mensal.
+          const annual = cycle === 'year' && !!plan.annual;
+          const price = annual ? plan.annual!.priceBrl : plan.priceBrl;
+          const credits = annual ? plan.annual!.credits : plan.monthlyCredits;
           return (
             <Grid item xs={12} sm={6} md={4} key={plan.id}>
               <Card
@@ -161,7 +192,21 @@ export function PlansPage() {
                   position: 'relative',
                 }}
               >
-                {plan.highlight && (
+                {plan.offer && (
+                  <Chip
+                    label={plan.offer.label}
+                    size="small"
+                    sx={{
+                      position: 'absolute',
+                      top: 12,
+                      right: 12,
+                      background: 'linear-gradient(135deg, #f59e0b, #ef4444)',
+                      color: '#fff',
+                      fontWeight: 700,
+                    }}
+                  />
+                )}
+                {plan.highlight && !plan.offer && (
                   <Chip
                     label="Mais popular"
                     size="small"
@@ -180,15 +225,32 @@ export function PlansPage() {
                 >
                   <Typography variant="h6">{plan.name}</Typography>
                   <Typography variant="h5" fontWeight={800} my={0.5}>
-                    {plan.priceBrl === 0
+                    {/* Preço de tabela riscado ao lado do promocional */}
+                    {plan.offer && !annual && (
+                      <Typography
+                        component="span"
+                        variant="body1"
+                        color="text.secondary"
+                        sx={{ textDecoration: 'line-through', mr: 1 }}
+                      >
+                        R$ {plan.offer.listPriceBrl.toFixed(2).replace('.', ',')}
+                      </Typography>
+                    )}
+                    {price === 0
                       ? 'Grátis'
-                      : `R$ ${plan.priceBrl.toFixed(2).replace('.', ',')}`}
-                    {plan.priceBrl > 0 && (
+                      : `R$ ${price.toFixed(2).replace('.', ',')}`}
+                    {price > 0 && (
                       <Typography component="span" variant="body2" color="text.secondary">
-                        /mês
+                        {annual ? '/ano' : '/mês'}
                       </Typography>
                     )}
                   </Typography>
+                  {price > 0 && (
+                    <Typography variant="caption" color="text.secondary">
+                      {credits} créditos {annual ? 'no ano' : 'por mês'}
+                      {annual && ` · R$ ${(price / 12).toFixed(2).replace('.', ',')}/mês`}
+                    </Typography>
+                  )}
                   <List dense sx={{ flexGrow: 1 }}>
                     {plan.perks.map((perk) => (
                       <ListItem key={perk} disableGutters sx={{ py: 0.25 }}>

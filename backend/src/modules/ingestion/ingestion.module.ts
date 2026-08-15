@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BillingModule } from '../billing/billing.module';
+import { MediaModule } from '../media/media.module';
 import { Creator } from '../creators/entities/creator.entity';
 import { Trend } from '../trends/entities/trend.entity';
 import { UsersModule } from '../users/users.module';
@@ -22,6 +23,7 @@ import { IngestionService } from './ingestion.service';
     TypeOrmModule.forFeature([Trend, Creator, Video, Product, ProductMetricDaily, IngestionRun, IngestionSetting]),
     UsersModule,
     BillingModule,
+    MediaModule,
   ],
   controllers: [IngestionController],
   // O provider é exportado para o módulo de vídeos resolver o MP4 sob demanda.

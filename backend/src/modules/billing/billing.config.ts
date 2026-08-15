@@ -39,6 +39,23 @@ export const ACTION_PRICES: Record<BillableAction, ActionPrice> = {
   video: { credits: 60, worstCaseCostBrl: 3.6, label: 'Vídeo com IA' },
 };
 
+export type BillingCycle = 'month' | 'year';
+
+/** Preço promocional: `priceBrl` é o que se cobra, `listPriceBrl` o riscado. */
+export interface PlanOffer {
+  listPriceBrl: number;
+  label: string;
+}
+
+/**
+ * Opção anual: cobrança única no ano, com o lote de créditos creditado de uma
+ * vez (não é o mensal × 12 — é uma cota anual própria, precificada pelo custo).
+ */
+export interface PlanAnnual {
+  priceBrl: number;
+  credits: number;
+}
+
 export interface Plan {
   id: string;
   name: string;
@@ -46,6 +63,18 @@ export interface Plan {
   monthlyCredits: number;
   highlight?: boolean;
   perks: string[];
+  offer?: PlanOffer;
+  annual?: PlanAnnual;
+}
+
+/** Preço cobrado no ciclo escolhido. */
+export function planPrice(plan: Plan, cycle: BillingCycle = 'month'): number {
+  return cycle === 'year' ? (plan.annual?.priceBrl ?? 0) : plan.priceBrl;
+}
+
+/** Créditos liberados a cada cobrança do ciclo escolhido. */
+export function planCredits(plan: Plan, cycle: BillingCycle = 'month'): number {
+  return cycle === 'year' ? (plan.annual?.credits ?? 0) : plan.monthlyCredits;
 }
 
 /**
@@ -56,10 +85,11 @@ export interface Plan {
  *
  * Três degraus, de propósito: Free para provar o valor, Pro para quem produz
  * e Business para quem escala. Preço por crédito:
- *   Pro      R$ 79,90 / 800 cr   = R$ 0,0999/cr → 1,66× o pior custo
- *   Business R$ 249,90 / 2.800 cr = R$ 0,0892/cr → 1,49× o pior custo
- * O Business é ~11% mais barato por crédito — o desconto de volume sai da
- * margem, nunca do custo.
+ *   Pro (oferta) R$ 39,90 / 450 cr   = R$ 0,0887/cr → 1,48× o pior custo
+ *   Pro anual    R$ 199,90 / 2.300 cr = R$ 0,0869/cr → 1,45× o pior custo
+ *   Business     R$ 249,90 / 2.800 cr = R$ 0,0892/cr → 1,49× o pior custo
+ * O desconto de volume (e o de lançamento) sai da margem, nunca do custo — é
+ * por isso que a cota de créditos do Pro acompanha o preço promocional.
  */
 export const PLANS: Plan[] = [
   {
@@ -76,11 +106,15 @@ export const PLANS: Plan[] = [
   {
     id: 'pro',
     name: 'Pro',
-    priceBrl: 79.9,
-    monthlyCredits: 800,
+    priceBrl: 39.9,
+    monthlyCredits: 450,
     highlight: true,
+    // Sem data de fim por enquanto: para encerrar a promoção, troque o
+    // `priceBrl` pelo `listPriceBrl` e apague o bloco `offer`.
+    offer: { listPriceBrl: 79.9, label: 'Oferta de lançamento' },
+    annual: { priceBrl: 199.9, credits: 2300 },
     perks: [
-      '800 créditos/mês',
+      '450 créditos/mês (ou 2.300 no plano anual)',
       'Roteiros e análises com Claude',
       'Transcrição Whisper',
       'Imagens e vídeos com IA',
@@ -216,12 +250,24 @@ export function assertProfitability(): string[] {
     }
   }
   for (const plan of [...PLANS, ...LEGACY_PLANS]) {
-    if (plan.monthlyCredits === 0) continue;
-    const worstSpend = plan.monthlyCredits * perCredit;
-    if (plan.priceBrl < worstSpend * MIN_MARGIN) {
-      problems.push(
-        `Plano "${plan.id}": R$ ${plan.priceBrl} não cobre pior gasto R$ ${worstSpend.toFixed(2)} × margem ${MIN_MARGIN}`,
-      );
+    // Cada ciclo é checado com a cota que ele libera: o anual não é o mensal
+    // × 12, então precisa passar pelo mesmo teste com os próprios números.
+    const cycles: Array<[string, number, number]> = [
+      ['mensal', plan.priceBrl, plan.monthlyCredits],
+      ...(plan.annual
+        ? ([['anual', plan.annual.priceBrl, plan.annual.credits]] as Array<
+            [string, number, number]
+          >)
+        : []),
+    ];
+    for (const [cycle, price, credits] of cycles) {
+      if (credits === 0) continue;
+      const worstSpend = credits * perCredit;
+      if (price < worstSpend * MIN_MARGIN) {
+        problems.push(
+          `Plano "${plan.id}" (${cycle}): R$ ${price} não cobre pior gasto R$ ${worstSpend.toFixed(2)} × margem ${MIN_MARGIN}`,
+        );
+      }
     }
   }
   for (const pack of CREDIT_PACKS) {

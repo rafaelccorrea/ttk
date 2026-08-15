@@ -27,6 +27,8 @@ export interface Wallet {
   history: CreditTransaction[];
 }
 
+export type BillingCycle = 'month' | 'year';
+
 export interface Plan {
   id: string;
   name: string;
@@ -34,6 +36,10 @@ export interface Plan {
   monthlyCredits: number;
   highlight?: boolean;
   perks: string[];
+  /** Preço promocional em vigor: `listPriceBrl` é o de tabela, riscado. */
+  offer?: { listPriceBrl: number; label: string };
+  /** Cobrança anual: preço único no ano e a cota de créditos do período. */
+  annual?: { priceBrl: number; credits: number };
 }
 
 export interface CreditPack {
@@ -49,10 +55,10 @@ export const billingService = {
   packs: () => api.get<CreditPack[]>('/billing/packs').then((r) => r.data),
   purchasePack: (packId: string) =>
     api.post<Wallet>('/billing/packs/purchase', { packId }).then((r) => r.data),
-  subscribe: (planId: string) =>
-    api.post<Wallet>('/billing/subscribe', { planId }).then((r) => r.data),
+  subscribe: (planId: string, cycle: BillingCycle = 'month') =>
+    api.post<Wallet>('/billing/subscribe', { planId, cycle }).then((r) => r.data),
   // Stripe: cria a sessão e devolve a URL de pagamento.
-  checkout: (item: { packId?: string; planId?: string }) =>
+  checkout: (item: { packId?: string; planId?: string; cycle?: BillingCycle }) =>
     api.post<{ url: string }>('/billing/checkout', item).then((r) => r.data),
   confirmCheckout: (sessionId: string) =>
     api.post<Wallet>('/billing/checkout/confirm', { sessionId }).then((r) => r.data),

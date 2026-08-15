@@ -13,6 +13,7 @@ import {
   CreativeCenterProductsSource,
   TrendingProduct,
 } from './creative-center-products.source';
+import { MediaMirrorService } from '../media/media-mirror.service';
 import { ExternalDataProvider, ExternalProduct } from './external-data.provider';
 import { categoryOptions } from './product-categories';
 import { evaluateProduct, filterSourcedProducts } from './product-gate';
@@ -48,8 +49,26 @@ export class IngestionService implements OnModuleInit {
     private readonly externalData: ExternalDataProvider,
     private readonly extractor: ProductExtractorService,
     private readonly imageSearch: ImageSearchSource,
+    private readonly mirror: MediaMirrorService,
     private readonly scheduler: SchedulerRegistry,
   ) {}
+
+  /**
+   * Guarda a imagem no S3 e devolve a URL definitiva.
+   *
+   * A URL assinada do EchoTik expira em ~72h e renová-la custa cota. Espelhar
+   * paga uma vez e resolve para sempre. Sem bucket configurado, devolve a
+   * própria URL assinada — funciona, mas volta a expirar.
+   */
+  private async persistImage(
+    url: string | null,
+    prefix: string,
+    id: string,
+  ): Promise<string | null> {
+    if (!url) return null;
+    if (!this.mirror.enabled) return url;
+    return (await this.mirror.mirror(url, prefix, id)) ?? url;
+  }
 
   // Registra o cron a partir da configuração persistida.
   async onModuleInit() {
@@ -403,7 +422,13 @@ export class IngestionService implements OnModuleInit {
         accepted.map((p) => p.images[0]).filter((u): u is string => !!u),
       );
       for (const ext of accepted) {
-        const cover = ext.images[0] ? signed.get(ext.images[0]) : undefined;
+        const signedCover = ext.images[0] ? signed.get(ext.images[0]) : undefined;
+        // Espelha no S3: a URL assinada expira em 72h, a nossa não expira.
+        const cover = await this.persistImage(
+          signedCover ?? null,
+          'products',
+          ext.tiktokProductId,
+        );
         const gallery = cover ? [cover] : [];
         const product = await this.upsertProduct({
           externalId: ext.externalId,
@@ -567,8 +592,11 @@ export class IngestionService implements OnModuleInit {
         ? `https://www.tiktok.com/@${handle}/video/${v.videoId}`
         : video.videoUrl;
       video.thumbnailUrl =
-        (v.coverUrl ? (signed.get(v.coverUrl) ?? v.coverUrl) : null) ??
-        video.thumbnailUrl;
+        (await this.persistImage(
+          v.coverUrl ? (signed.get(v.coverUrl) ?? v.coverUrl) : null,
+          'video-covers',
+          v.videoId,
+        )) ?? video.thumbnailUrl;
       video.productId = product.id;
       video.category = product.category;
       // Veio da associação de venda: é produto por construção, não "pending".
@@ -624,9 +652,16 @@ export class IngestionService implements OnModuleInit {
       creator.gmvPeriod = this.usdToBrl(detail.totalGmvUsd, ext).toFixed(2);
       creator.salesPeriod = detail.totalSales;
       creator.category = detail.category ?? c.category ?? 'geral';
-      creator.avatarUrl = detail.avatarUrl
-        ? (signedAvatars.get(detail.avatarUrl) ?? detail.avatarUrl)
-        : (creator.avatarUrl ?? c.avatarUrl);
+      creator.avatarUrl =
+        (await this.persistImage(
+          detail.avatarUrl
+            ? (signedAvatars.get(detail.avatarUrl) ?? detail.avatarUrl)
+            : null,
+          'avatars',
+          detail.userId,
+        )) ??
+        creator.avatarUrl ??
+        c.avatarUrl;
       creator.source = 'echotik';
 
       await this.creators.save(creator);

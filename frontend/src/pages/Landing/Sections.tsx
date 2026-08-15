@@ -424,19 +424,36 @@ export function Pricing() {
                     '&:hover': { transform: 'translateY(-6px)', borderColor: p.highlight ? `${red}99` : lineStrong },
                   }}
                 >
-                  {p.highlight && (
+                  {(p.offerLabel || p.highlight) && (
                     <Chip
                       size="small"
-                      label="Mais popular"
-                      sx={{ position: 'absolute', top: 14, right: 14, bgcolor: red, color: '#fff', fontWeight: 800, height: 22, fontSize: 11 }}
+                      label={p.offerLabel ?? 'Mais popular'}
+                      sx={{
+                        position: 'absolute', top: 14, right: 14, color: '#fff',
+                        fontWeight: 800, height: 22, fontSize: 11,
+                        background: p.offerLabel
+                          ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
+                          : red,
+                      }}
                     />
                   )}
                   <Typography fontSize={15} fontWeight={800} letterSpacing="0.02em">{p.name}</Typography>
                   <Typography fontSize={12.5} color={textFaint} mb={2}>{p.tagline}</Typography>
                   <Stack direction="row" alignItems="baseline" spacing={0.75}>
+                    {/* Preço de tabela riscado quando há oferta em vigor */}
+                    {p.listPrice && (
+                      <Typography fontSize={17} color={textFaint} sx={{ textDecoration: 'line-through' }}>
+                        {brl(p.listPrice)}
+                      </Typography>
+                    )}
                     <Typography fontSize={34} fontWeight={800} letterSpacing="-0.03em">{brl(p.price)}</Typography>
                     {p.price > 0 && <Typography fontSize={13} color={textDim}>/mês</Typography>}
                   </Stack>
+                  {p.annual && (
+                    <Typography fontSize={12.5} color={cyanDeep} fontWeight={700} mt={0.75}>
+                      ou {brl(p.annual.price)}/ano · {p.annual.credits}
+                    </Typography>
+                  )}
                   <Stack spacing={1.25} mt={3} flex={1}>
                     {p.perks.map((perk) => (
                       <Stack key={perk} direction="row" spacing={1.25} alignItems="flex-start">

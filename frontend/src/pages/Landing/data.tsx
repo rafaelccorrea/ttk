@@ -192,10 +192,13 @@ export const PRICING = [
   {
     id: 'pro',
     name: 'Pro',
-    price: 79.9,
+    price: 39.9,
+    listPrice: 79.9,
+    offerLabel: 'Oferta de lançamento',
+    annual: { price: 199.9, credits: '2.300 créditos no ano' },
     tagline: 'Para quem publica toda semana',
     highlight: true,
-    perks: ['800 créditos/mês', 'Roteiros e análises com IA', 'Transcrição de vídeos', 'Imagens e vídeos com IA', 'Multiplicador de conteúdo'],
+    perks: ['450 créditos/mês', 'Roteiros e análises com IA', 'Transcrição de vídeos', 'Imagens e vídeos com IA', 'Multiplicador de conteúdo'],
   },
   {
     id: 'business',

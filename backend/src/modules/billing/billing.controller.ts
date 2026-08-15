@@ -1,9 +1,10 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsIn, IsOptional, IsString } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
+import { BillingCycle } from './billing.config';
 import { BillingService } from './billing.service';
 import { StripeService } from './stripe.service';
 
@@ -15,6 +16,11 @@ class PurchasePackDto {
 class SubscribeDto {
   @IsString()
   planId: string;
+
+  /** 'month' (padrão) ou 'year', quando o plano tem opção anual. */
+  @IsOptional()
+  @IsIn(['month', 'year'])
+  cycle?: BillingCycle;
 }
 
 class CheckoutDto {
@@ -25,6 +31,10 @@ class CheckoutDto {
   @IsOptional()
   @IsString()
   planId?: string;
+
+  @IsOptional()
+  @IsIn(['month', 'year'])
+  cycle?: BillingCycle;
 }
 
 class ConfirmDto {
@@ -48,6 +58,7 @@ export class BillingController {
     return this.stripeService.createCheckout(user.id, user.email, {
       packId: dto.packId,
       planId: dto.planId,
+      cycle: dto.cycle,
     });
   }
 
@@ -84,6 +95,6 @@ export class BillingController {
   @Post('subscribe')
   @ApiOperation({ summary: 'Assina um plano (dev: créditos imediatos)' })
   subscribe(@CurrentUser() user: AuthUser, @Body() dto: SubscribeDto) {
-    return this.billing.subscribe(user.id, dto.planId);
+    return this.billing.subscribe(user.id, dto.planId, dto.cycle);
   }
 }
