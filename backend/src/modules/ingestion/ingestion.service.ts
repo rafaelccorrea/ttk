@@ -379,6 +379,10 @@ export class IngestionService implements OnModuleInit {
       const ext = details.get(product.tiktokProductId!);
       if (!ext) continue;
       if (ext.price > 0) product.price = ext.price.toFixed(2);
+      // Nota 0 é "sem avaliação", não nota ruim — só grava quando existe.
+      if (ext.rating != null && ext.rating > 0) {
+        product.rating = ext.rating.toFixed(1);
+      }
       product.lastRefreshedAt = now;
       await this.products.save(product);
       await this.upsertDailyMetric(product.id, today, ext.salesDaily, ext.revenueDaily);
@@ -442,6 +446,7 @@ export class IngestionService implements OnModuleInit {
           images: gallery,
           storeName: ext.storeName,
           tiktokUrl: ext.tiktokUrl,
+          rating: ext.rating,
           radarScore: null,
         });
         await this.upsertDailyMetric(product.id, today, ext.salesDaily, ext.revenueDaily);
@@ -897,6 +902,8 @@ export class IngestionService implements OnModuleInit {
     images?: string[];
     storeName: string | null;
     tiktokUrl: string | null;
+    /** Nota do produto (0–5). Alimenta o filtro "Nota mínima". */
+    rating?: number | null;
     radarScore: number | null;
   }): Promise<Product> {
     const product =
@@ -912,6 +919,10 @@ export class IngestionService implements OnModuleInit {
     if (data.images?.length) product.images = data.images;
     product.storeName = data.storeName ?? product.storeName;
     product.tiktokUrl = data.tiktokUrl ?? product.tiktokUrl;
+    // Nota 0 significa "sem avaliação ainda" no fornecedor, não nota péssima.
+    if (data.rating != null && data.rating > 0) {
+      product.rating = data.rating.toFixed(1);
+    }
     if (data.radarScore !== null) product.radarScore = data.radarScore;
     return this.products.save(product);
   }

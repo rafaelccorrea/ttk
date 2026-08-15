@@ -46,6 +46,36 @@ export class Product {
   @Column({ nullable: true })
   tiktokUrl: string;
 
+  // ------------------------------------------------ métricas por período
+  // Vêm prontas do fornecedor (acumulados de 7/30/60/90 dias) no mesmo
+  // request que atualiza o produto. Existem porque a série diária só tem o
+  // dia corrente — sem isso, filtrar por 7 ou 90 dias dava o mesmo resultado.
+
+  @Column({ type: 'int', default: 0 })
+  sales7d: number;
+
+  @Index()
+  @Column({ type: 'int', default: 0 })
+  sales30d: number;
+
+  @Column({ type: 'int', default: 0 })
+  sales60d: number;
+
+  @Column({ type: 'int', default: 0 })
+  sales90d: number;
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  revenue7d: string;
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  revenue30d: string;
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  revenue60d: string;
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  revenue90d: string;
+
   /**
    * Assinatura normalizada do título, usada para achar o mesmo produto
    * anunciado por vendedores ou variações diferentes.

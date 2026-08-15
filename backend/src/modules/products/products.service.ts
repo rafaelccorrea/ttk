@@ -24,8 +24,19 @@ export interface RankedProduct {
   isFavorite?: boolean;
 }
 
+/** Validade do cache da vitrine — curto o bastante para não servir dado velho. */
+const SECTIONS_TTL_MS = 60 * 1000;
+
 @Injectable()
 export class ProductsService {
+  /**
+   * Linhas brutas da vitrine, compartilhadas entre requisições do scroll.
+   */
+  private static readonly sectionsCache = new Map<
+    string,
+    { rows: any[]; expiresAt: number }
+  >();
+
   constructor(
     @InjectRepository(Product)
     private readonly products: Repository<Product>,
@@ -287,7 +298,15 @@ export class ProductsService {
     const current = this.isoDaysAgo(period);
     const previous = this.isoDaysAgo(period * 2);
 
-    const rows = await this.products.query(
+    // Mesma razão do lado dos vídeos: a janela do ROW_NUMBER varre a tabela
+    // inteira (~0,7s) e o scroll infinito repete a chamada só mudando o
+    // offset. Guardamos as linhas por pouco tempo; a marcação de favorito
+    // continua sendo resolvida por usuário, fora do cache.
+    const cacheKey = `sections:${period}:${perSection}`;
+    const cached = ProductsService.sectionsCache.get(cacheKey);
+    const rows: any[] = cached && cached.expiresAt > Date.now()
+      ? cached.rows
+      : await this.products.query(
       `
       WITH agg AS (
         SELECT p.id, p.title, p."storeName", p.category, p.price, p."imageUrl",
@@ -315,6 +334,13 @@ export class ProductsService {
       `,
       [current, previous, perSection],
     );
+
+    if (!cached || cached.expiresAt <= Date.now()) {
+      ProductsService.sectionsCache.set(cacheKey, {
+        rows,
+        expiresAt: Date.now() + SECTIONS_TTL_MS,
+      });
+    }
 
     const favoriteIds = userId
       ? new Set(

@@ -126,8 +126,13 @@ export class MediaMirrorService {
 
       const contentType =
         response.headers.get('content-type') ?? 'application/octet-stream';
+      // Sem essa checagem, uma página de erro do CDN era guardada como se
+      // fosse capa: o objeto respondia 200 com HTML e o card ficava vazio.
+      // Já aconteceu — sobraram 7 thumbnails ".htm" no bucket.
       if (!/^(image|video)\//.test(contentType)) {
-        this.logger.warn(`Espelhamento: tipo inesperado "${contentType}"`);
+        this.logger.warn(
+          `Espelhamento recusado: "${contentType}" não é mídia (${sourceUrl.slice(0, 70)})`,
+        );
         return null;
       }
 

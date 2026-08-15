@@ -113,6 +113,18 @@ function ProductCard({
               src={proxyImage(product.imageUrl)}
               alt={product.title}
               loading="lazy"
+              // Imagem em cache termina de carregar ANTES de o React anexar o onLoad,
+
+              // e aí o evento nunca dispara — o card ficava preso no placeholder com a
+
+              // foto invisível por baixo. A ref confere o estado já na montagem.
+
+              ref={(el: HTMLImageElement | null) => {
+
+                if (el?.complete && el.naturalWidth > 0) setImgLoaded(true);
+
+              }}
+
               onLoad={() => setImgLoaded(true)}
               onError={() => setImgLoaded(true)}
               sx={{
