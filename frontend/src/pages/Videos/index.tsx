@@ -67,6 +67,10 @@ function VideoCard({
   onPlay: (video: ViralVideo) => void;
 }) {
   const thumb = video.thumbnailUrl ?? video.productImageUrl;
+  // Thumb de vídeo já vem vertical (9/16): dá pra preencher o card inteiro com
+  // `cover`. O fallback é foto de produto (quadrada) — aí `cover` cortaria o
+  // produto, então mantemos `contain` com a cópia borrada preenchendo as bordas.
+  const fillsCard = Boolean(video.thumbnailUrl);
   const playable = Boolean(video.playbackUrl || tiktokEmbedId(video.videoUrl));
   // Botões flutuantes no canto direito, no estilo da barra de ações do TikTok.
   const railButton = {
@@ -98,23 +102,25 @@ function VideoCard({
       {thumb && (
         <>
           {/* Cópia desfocada preenche as bordas sem cortar a thumb real */}
-          <Box
-            component="img"
-            src={proxyImage(thumb)}
-            alt=""
-            aria-hidden
-            loading="lazy"
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              filter: 'blur(24px) saturate(1.3)',
-              transform: 'scale(1.2)',
-              opacity: 0.5,
-            }}
-          />
+          {!fillsCard && (
+            <Box
+              component="img"
+              src={proxyImage(thumb)}
+              alt=""
+              aria-hidden
+              loading="lazy"
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                filter: 'blur(24px) saturate(1.3)',
+                transform: 'scale(1.2)',
+                opacity: 0.5,
+              }}
+            />
+          )}
           <Box
             component="img"
             src={proxyImage(thumb)}
@@ -125,7 +131,8 @@ function VideoCard({
               inset: 0,
               width: '100%',
               height: '100%',
-              objectFit: 'contain',
+              objectFit: fillsCard ? 'cover' : 'contain',
+              objectPosition: 'center top',
               transition: 'transform .35s ease',
               '.MuiCard-root:hover &': { transform: 'scale(1.05)' },
             }}
@@ -457,7 +464,10 @@ export function VideosPage() {
               onToggleSave={toggleSave}
               onShowTranscript={setTranscriptVideo}
               onPlay={(video) => {
-                const playable = items.filter((it) => it.playbackUrl);
+                // O MP4 é resolvido pelo player no momento do play, então
+                // filtrar por `playbackUrl` (sempre nulo) zerava a lista e o
+                // player nunca abria. Basta ter id.
+                const playable = items.filter((it) => it.id);
                 const idx = playable.findIndex((it) => it.id === video.id);
                 if (idx >= 0) setPlayingIndex(idx);
               }}
@@ -484,7 +494,7 @@ export function VideosPage() {
 
       {/* Player fullscreen estilo TikTok */}
       <TikTokPlayer
-        videos={items.filter((it) => it.playbackUrl)}
+        videos={items.filter((it) => it.id)}
         index={playingIndex}
         onIndexChange={setPlayingIndex}
         onClose={() => setPlayingIndex(null)}

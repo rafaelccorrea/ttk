@@ -116,6 +116,11 @@ export interface ExternalCreatorDetail {
 /** URLs de mídia resolvidas na hora — nunca persistir, expiram em horas. */
 export interface ResolvedMedia {
   videoId: string;
+  /**
+   * Melhor fonte disponível, nesta ordem: sem marca d'água > download > play.
+   * O `play_url` é o stream de preview e vem com bitrate de áudio bem baixo;
+   * os de download são o arquivo completo.
+   */
   playUrl: string;
   coverUrl: string | null;
   dynamicCoverUrl: string | null;
@@ -356,7 +361,10 @@ export class ExternalDataProvider {
       '/realtime/video/download-url',
       { url: `https://www.tiktok.com/@tiktok/video/${videoId}` },
     );
-    const playUrl = this.str(data?.play_url);
+    const playUrl =
+      this.str(data?.no_watermark_download_url) ??
+      this.str(data?.download_url) ??
+      this.str(data?.play_url);
     if (!data || !playUrl) return null;
 
     const media: ResolvedMedia = {

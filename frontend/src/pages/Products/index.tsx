@@ -93,24 +93,10 @@ function ProductCard({
         />
         {product.imageUrl && (
           <>
-            {/* Cópia desfocada preenche as bordas sem cortar a foto real */}
-            <Box
-              component="img"
-              src={proxyImage(product.imageUrl)}
-              alt=""
-              aria-hidden
-              loading="lazy"
-              sx={{
-                position: 'absolute',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                filter: 'blur(24px) saturate(1.3)',
-                transform: 'scale(1.2)',
-                opacity: 0.5,
-              }}
-            />
+            {/* A foto preenche o card inteiro. Foto de produto costuma vir
+                quadrada com margem sobrando nas bordas, então o corte do
+                `cover` come a margem, não o produto — e some com as faixas
+                borradas que desperdiçavam metade do card. */}
             <Box
               component="img"
               src={proxyImage(product.imageUrl)}
@@ -121,7 +107,8 @@ function ProductCard({
                 inset: 0,
                 width: '100%',
                 height: '100%',
-                objectFit: 'contain',
+                objectFit: 'cover',
+                objectPosition: 'center 40%',
                 transition: 'transform .35s ease',
                 '.MuiCard-root:hover &': { transform: 'scale(1.05)' },
               }}
