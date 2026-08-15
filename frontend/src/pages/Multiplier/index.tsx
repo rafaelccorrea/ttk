@@ -33,6 +33,7 @@ import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
 import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
+import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
 import UploadRoundedIcon from '@mui/icons-material/UploadRounded';
 import { DragEvent, FormEvent, useEffect, useRef, useState } from 'react';
@@ -176,6 +177,8 @@ interface ClipDropzoneProps {
   clips: CombinationClip[];
   busy: boolean;
   disabled?: boolean;
+  /** `undefined` no gancho: ele é obrigatório e não tem chave. */
+  onToggle?: (ligado: boolean) => void;
   onUpload: (files: FileList | null) => void;
   onRemove: (id: string) => void;
 }
@@ -196,6 +199,7 @@ function ClipDropzone({
   clips,
   busy,
   disabled,
+  onToggle,
   onUpload,
   onRemove,
 }: ClipDropzoneProps) {
@@ -205,130 +209,170 @@ function ClipDropzone({
   return (
     <Box
       sx={{
-        mb: 1.5,
-        p: 1.5,
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
         borderRadius: 2,
+        overflow: 'hidden',
         border: '1px solid',
-        borderColor: 'divider',
-        // A faixa lateral colorida identifica o bloco sem depender de ler o
-        // título — é o mesmo código de cor da fórmula e da tabela.
-        borderLeft: '3px solid',
-        borderLeftColor: disabled ? 'divider' : bloco.cor,
-        opacity: disabled ? 0.45 : 1,
-        transition: 'opacity .2s, border-color .2s',
+        borderColor: disabled ? 'divider' : 'divider',
+        bgcolor: 'background.paper',
+        opacity: disabled ? 0.5 : 1,
+        transition: 'opacity .2s',
       }}
     >
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
+      {/* Cabeçalho na cor do bloco: é a mesma cor da fórmula e dos códigos na
+          tabela, então dá para rastrear a peça sem ler texto. A chave de
+          liga/desliga fica AQUI, no próprio bloco — a linha de switches
+          separada não deixava claro qual chave pertencia a qual rótulo. */}
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1}
+        sx={{
+          px: 1.25,
+          py: 0.75,
+          bgcolor: disabled ? 'action.disabledBackground' : bloco.cor,
+          color: disabled ? 'text.disabled' : '#fff',
+        }}
+      >
         <Typography variant="subtitle2" fontWeight={700} sx={{ flexGrow: 1 }}>
           {bloco.emoji} {bloco.titulo}
         </Typography>
-        <Chip
-          size="small"
-          variant={cheio ? 'filled' : 'outlined'}
-          color={cheio ? 'warning' : 'default'}
-          label={`${clips.length}/${bloco.max}`}
-          sx={{ fontWeight: 700 }}
-        />
-      </Stack>
-      <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-        {bloco.ajuda}
-      </Typography>
-
-      <Stack spacing={0.5} sx={{ mb: clips.length ? 1 : 0 }}>
-        {clips.map((clip, index) => (
-          <Stack
-            key={clip.id}
-            direction="row"
-            spacing={1}
-            alignItems="center"
-            sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: 'action.hover' }}
-          >
-            {/* A posição vira o código do arquivo (G1, C2, A3), então mostrá-la
-                aqui é o que liga esta lista aos resultados. */}
-            <Box
-              sx={{
-                px: 0.75,
-                py: 0.25,
-                borderRadius: 0.75,
-                fontSize: 11,
-                fontWeight: 700,
-                fontFamily: 'monospace',
-                color: '#fff',
-                bgcolor: bloco.cor,
-              }}
-            >
-              {bloco.letra}
-              {index + 1}
-            </Box>
-            <Tooltip title={clip.label}>
-              <Typography variant="caption" noWrap sx={{ flexGrow: 1, minWidth: 0 }}>
-                {clip.label}
-              </Typography>
-            </Tooltip>
-            <Typography variant="caption" color="text.secondary">
-              {formatarTamanho(clip.sizeBytes)}
-            </Typography>
-            <IconButton
-              size="small"
-              aria-label={`Remover ${clip.label}`}
-              onClick={() => onRemove(clip.id)}
-            >
-              <CloseRoundedIcon sx={{ fontSize: 15 }} />
-            </IconButton>
-          </Stack>
-        ))}
-      </Stack>
-
-      {!cheio && !disabled && (
         <Box
-          component="label"
-          onDragOver={(e: DragEvent) => {
-            e.preventDefault();
-            setArrastando(true);
-          }}
-          onDragLeave={() => setArrastando(false)}
-          onDrop={(e: DragEvent) => {
-            e.preventDefault();
-            setArrastando(false);
-            onUpload(e.dataTransfer?.files ?? null);
-          }}
           sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 1,
-            py: 1.25,
-            px: 1,
-            cursor: busy ? 'progress' : 'pointer',
-            border: '1px dashed',
-            borderColor: arrastando ? bloco.cor : 'divider',
-            bgcolor: arrastando ? 'action.selected' : 'transparent',
-            borderRadius: 1.5,
-            transition: 'border-color .15s, background-color .15s',
-            '&:hover': { borderColor: busy ? 'divider' : bloco.cor },
+            px: 0.75,
+            borderRadius: 5,
+            fontSize: 11,
+            fontWeight: 700,
+            bgcolor: 'rgba(255,255,255,0.25)',
           }}
         >
-          {busy ? (
-            <CircularProgress size={16} />
-          ) : (
-            <UploadRoundedIcon sx={{ fontSize: 18 }} color="action" />
-          )}
-          <Typography variant="caption" color="text.secondary">
-            {busy ? 'Enviando...' : 'Arraste vídeos ou clique · MP4 até 40 MB'}
-          </Typography>
-          <input
-            type="file"
-            accept="video/*"
-            multiple
-            hidden
-            disabled={busy}
-            onChange={(e) => {
-              onUpload(e.target.files);
-              e.target.value = '';
-            }}
-          />
+          {clips.length}/{bloco.max}
         </Box>
-      )}
+        {onToggle ? (
+          <Switch
+            size="small"
+            checked={!disabled}
+            onChange={(e) => onToggle(e.target.checked)}
+            inputProps={{ 'aria-label': `Usar ${bloco.titulo}` }}
+            sx={{ ml: -0.5 }}
+          />
+        ) : (
+          // O gancho não desliga: sem ele não há vídeo nem código de arquivo.
+          <Tooltip title="O gancho é obrigatório">
+            <LockRoundedIcon sx={{ fontSize: 15, opacity: 0.7 }} />
+          </Tooltip>
+        )}
+      </Stack>
+
+      <Box sx={{ p: 1.25, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+        <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+          {bloco.ajuda}
+        </Typography>
+
+        <Stack spacing={0.5} sx={{ mb: clips.length ? 1 : 0 }}>
+          {clips.map((clip, index) => (
+            <Stack
+              key={clip.id}
+              direction="row"
+              spacing={0.75}
+              alignItems="center"
+              sx={{ px: 0.75, py: 0.5, borderRadius: 1, bgcolor: 'action.hover' }}
+            >
+              {/* A posição vira o código do arquivo (G1, C2, A3), então
+                  mostrá-la aqui é o que liga esta lista aos resultados. */}
+              <Box
+                sx={{
+                  px: 0.6,
+                  py: 0.15,
+                  borderRadius: 0.75,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  color: '#fff',
+                  bgcolor: bloco.cor,
+                  flexShrink: 0,
+                }}
+              >
+                {bloco.letra}
+                {index + 1}
+              </Box>
+              <Tooltip title={`${clip.label} · ${formatarTamanho(clip.sizeBytes)}`}>
+                <Typography
+                  variant="caption"
+                  noWrap
+                  sx={{ flexGrow: 1, minWidth: 0, fontSize: 11 }}
+                >
+                  {clip.label}
+                </Typography>
+              </Tooltip>
+              <IconButton
+                size="small"
+                aria-label={`Remover ${clip.label}`}
+                onClick={() => onRemove(clip.id)}
+                sx={{ p: 0.25 }}
+              >
+                <CloseRoundedIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </Stack>
+          ))}
+        </Stack>
+
+        {!cheio && !disabled && (
+          <Box
+            component="label"
+            onDragOver={(e: DragEvent) => {
+              e.preventDefault();
+              setArrastando(true);
+            }}
+            onDragLeave={() => setArrastando(false)}
+            onDrop={(e: DragEvent) => {
+              e.preventDefault();
+              setArrastando(false);
+              onUpload(e.dataTransfer?.files ?? null);
+            }}
+            sx={{
+              mt: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 0.25,
+              py: 1.5,
+              px: 1,
+              textAlign: 'center',
+              cursor: busy ? 'progress' : 'pointer',
+              border: '1px dashed',
+              borderColor: arrastando ? bloco.cor : 'divider',
+              bgcolor: arrastando ? 'action.selected' : 'transparent',
+              borderRadius: 1.5,
+              transition: 'border-color .15s, background-color .15s',
+              '&:hover': { borderColor: busy ? 'divider' : bloco.cor },
+            }}
+          >
+            {busy ? (
+              <CircularProgress size={18} />
+            ) : (
+              <UploadRoundedIcon sx={{ fontSize: 20 }} color="action" />
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+              {busy ? 'Enviando...' : 'Arraste ou clique'}
+            </Typography>
+            <input
+              type="file"
+              accept="video/*"
+              multiple
+              hidden
+              disabled={busy}
+              onChange={(e) => {
+                onUpload(e.target.files);
+                e.target.value = '';
+              }}
+            />
+          </Box>
+        )}
+      </Box>
     </Box>
   );
 }
@@ -473,6 +517,111 @@ function CodigoChip({ code }: { code: string }) {
   );
 }
 
+/**
+ * Tudo que o usuário já montou, num lugar só.
+ *
+ * Sem isto, o vídeo montado só existia enquanto a aba ficasse aberta: saiu da
+ * tela, perdeu o link. Como cada montagem custa minutos de ffmpeg, refazer era
+ * o único caminho de volta — e o arquivo continuava lá no bucket o tempo todo.
+ *
+ * A prévia usa `<video preload="metadata">`: baixa só o cabeçalho e mostra o
+ * primeiro quadro, em vez de puxar dezenas de MP4 inteiros ao abrir a aba.
+ */
+function Galeria({
+  videos,
+  onRecarregar,
+}: {
+  videos: CombinationVideo[];
+  onRecarregar: () => void;
+}) {
+  const prontos = videos.filter((v) => v.status === 'pronto' && v.url);
+
+  return (
+    <Card>
+      <CardContent>
+        <Stack direction="row" alignItems="center" sx={{ mb: 2 }}>
+          <Box sx={{ flexGrow: 1 }}>
+            <Typography variant="h6">Meus vídeos</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {prontos.length
+                ? `${prontos.length} vídeo(s) montados e prontos para postar`
+                : 'Os vídeos que você montar ficam guardados aqui'}
+            </Typography>
+          </Box>
+          <Button size="small" onClick={onRecarregar}>
+            Atualizar
+          </Button>
+        </Stack>
+
+        {prontos.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            Nenhum vídeo montado ainda. Gere uma matriz e clique em “Montar
+            vídeos”.
+          </Typography>
+        ) : (
+          <Grid container spacing={1.5}>
+            {prontos.map((v) => (
+              <Grid item xs={6} sm={4} md={3} key={v.id}>
+                <Box
+                  sx={{
+                    borderRadius: 1.5,
+                    overflow: 'hidden',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    bgcolor: '#000',
+                  }}
+                >
+                  <Box
+                    component="video"
+                    src={resolveApiUrl(v.url!)}
+                    controls
+                    preload="metadata"
+                    sx={{
+                      width: '100%',
+                      aspectRatio: '9 / 16',
+                      display: 'block',
+                      objectFit: 'contain',
+                      bgcolor: '#000',
+                    }}
+                  />
+                  <Box sx={{ p: 1, bgcolor: 'background.paper' }}>
+                    <Stack direction="row" alignItems="center" spacing={0.5} mb={0.5}>
+                      <CodigoChip code={v.code} />
+                    </Stack>
+                    <Tooltip title={v.filename}>
+                      <Typography
+                        variant="caption"
+                        noWrap
+                        display="block"
+                        sx={{ fontFamily: 'monospace', fontSize: 10 }}
+                      >
+                        {v.filename}
+                      </Typography>
+                    </Tooltip>
+                    <Button
+                      fullWidth
+                      size="small"
+                      component="a"
+                      href={resolveApiUrl(v.url!)}
+                      download={v.filename}
+                      target="_blank"
+                      rel="noopener"
+                      startIcon={<DownloadRoundedIcon />}
+                      sx={{ mt: 0.5 }}
+                    >
+                      Baixar
+                    </Button>
+                  </Box>
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function MultiplierPage() {
   const [sigla, setSigla] = useState('');
   const [format, setFormat] = useState<PlanFormat>('9:16');
@@ -487,7 +636,12 @@ export function MultiplierPage() {
   const [usarCta, setUsarCta] = useState(true);
 
   const [videos, setVideos] = useState<CombinationVideo[]>([]);
+  const [galeria, setGaleria] = useState<CombinationVideo[]>([]);
   const [montando, setMontando] = useState(false);
+
+  function recarregarGaleria() {
+    combinationsService.gallery().then(setGaleria).catch(console.error);
+  }
   // A sondagem precisa morrer quando a tela sai, senão continua batendo na API
   // para sempre e tenta atualizar o estado de um componente desmontado.
   const sondagem = useRef<number | null>(null);
@@ -509,6 +663,7 @@ export function MultiplierPage() {
   useEffect(() => {
     combinationsService.list().then(setPlans).catch(console.error);
     combinationsService.listClips().then(setClips).catch(console.error);
+    combinationsService.gallery().then(setGaleria).catch(console.error);
   }, []);
 
   const ligado: Record<ClipRole, boolean> = {
@@ -628,6 +783,8 @@ export function MultiplierPage() {
           if (acabou) {
             if (sondagem.current) clearInterval(sondagem.current);
             setMontando(false);
+            // Os arquivos novos entram na galeria assim que ficam prontos.
+            recarregarGaleria();
           }
         } catch {
           // Falha de rede numa sondagem não é motivo para abortar a montagem,
@@ -748,17 +905,20 @@ export function MultiplierPage() {
         postar, com nomenclatura padronizada para teste A/B.
       </Typography>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={5}>
-          <form onSubmit={handleSubmit}>
-            <Card sx={{ mb: 2 }}>
-              <CardContent>
-                <Passo
-                  numero={1}
-                  titulo="Identifique o produto"
-                  descricao="A sigla nomeia todos os arquivos gerados."
-                  concluido={Boolean(sigla.trim())}
-                />
+      <form onSubmit={handleSubmit}>
+        {/* Passos 1 e 2 ocupam a largura toda: os três blocos de clipes
+            precisam caber lado a lado, e numa coluna de 5/12 eles ficavam
+            espremidos ou empilhados numa fita vertical interminável. */}
+        <Card sx={{ mb: 2 }}>
+          <CardContent>
+            <Passo
+              numero={1}
+              titulo="Identifique o produto"
+              descricao="A sigla nomeia todos os arquivos gerados."
+              concluido={Boolean(sigla.trim())}
+            />
+            <Grid container spacing={2} alignItems="flex-start">
+              <Grid item xs={12} sm={5}>
                 <TextField
                   fullWidth
                   required
@@ -768,10 +928,10 @@ export function MultiplierPage() {
                   value={sigla}
                   inputProps={{ maxLength: 10, style: { textTransform: 'uppercase' } }}
                   onChange={(e) => setSigla(e.target.value)}
-                  helperText={`Nome dos arquivos: ${sigla.trim().toUpperCase() || '[SIGLA]'}_G1C2A3_DDMM.mp4`}
-                  sx={{ mb: 2 }}
+                  helperText={`Arquivos: ${sigla.trim().toUpperCase() || '[SIGLA]'}_G1C2A3_DDMM.mp4`}
                 />
-
+              </Grid>
+              <Grid item xs={12} sm={7}>
                 <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
                   Formato de saída
                 </Typography>
@@ -786,69 +946,49 @@ export function MultiplierPage() {
                   <ToggleButton value="16:9">16:9 Horizontal</ToggleButton>
                   <ToggleButton value="1:1">1:1 Quadrado</ToggleButton>
                 </ToggleButtonGroup>
-              </CardContent>
-            </Card>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
 
-            <Card sx={{ mb: 2 }}>
-              <CardContent>
-                <Passo
-                  numero={2}
-                  titulo="Suba seus clipes"
-                  descricao="Cada bloco vira uma peça da combinação."
-                  concluido={counts.hooks > 0}
-                />
+        <Card sx={{ mb: 2 }}>
+          <CardContent>
+            <Passo
+              numero={2}
+              titulo="Suba seus clipes"
+              descricao="Cada bloco vira uma peça da combinação. Desligue Corpo ou CTA pela chave no cabeçalho."
+              concluido={counts.hooks > 0}
+            />
 
-                {/* Gancho é obrigatório — é o bloco que decide o scroll e o que
-                    dá a primeira letra do código. Corpo e CTA saem e entram
-                    conforme o teste. */}
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  flexWrap="wrap"
-                  sx={{ mb: 1.5, gap: 0.5 }}
-                >
-                  <Typography variant="caption" color="text.secondary" mr={0.5}>
-                    Blocos:
-                  </Typography>
-                  <Chip size="small" label="🎣 Gancho" sx={{ fontWeight: 600 }} />
-                  <FormControlLabel
-                    sx={{ mr: 0 }}
-                    control={
-                      <Switch
-                        size="small"
-                        checked={usarCorpo}
-                        onChange={(e) => setUsarCorpo(e.target.checked)}
+                {/* Lado a lado: os três blocos são a mesma coisa em paralelo,
+                    não uma sequência. Empilhados eles viravam uma coluna longa
+                    que escondia o passo 3 abaixo da dobra. */}
+                <Grid container spacing={1.5} alignItems="stretch">
+                  {BLOCOS.map((bloco) => (
+                    <Grid item xs={12} sm={4} key={bloco.role}>
+                      <ClipDropzone
+                        bloco={bloco}
+                        clips={clips.filter((c) => c.role === bloco.role)}
+                        busy={enviando === bloco.role}
+                        disabled={!ligado[bloco.role]}
+                        onToggle={
+                          bloco.role === 'body'
+                            ? setUsarCorpo
+                            : bloco.role === 'cta'
+                              ? setUsarCta
+                              : undefined
+                        }
+                        onUpload={(files) => void handleUpload(bloco.role, files)}
+                        onRemove={(id) => void handleRemoveClip(id)}
                       />
-                    }
-                    label={<Typography variant="caption">📝 Corpo</Typography>}
-                  />
-                  <FormControlLabel
-                    sx={{ mr: 0 }}
-                    control={
-                      <Switch
-                        size="small"
-                        checked={usarCta}
-                        onChange={(e) => setUsarCta(e.target.checked)}
-                      />
-                    }
-                    label={<Typography variant="caption">🎯 CTA</Typography>}
-                  />
-                </Stack>
+                    </Grid>
+                  ))}
+                </Grid>
+          </CardContent>
+        </Card>
 
-                {BLOCOS.map((bloco) => (
-                  <ClipDropzone
-                    key={bloco.role}
-                    bloco={bloco}
-                    clips={clips.filter((c) => c.role === bloco.role)}
-                    busy={enviando === bloco.role}
-                    disabled={!ligado[bloco.role]}
-                    onUpload={(files) => void handleUpload(bloco.role, files)}
-                    onRemove={(id) => void handleRemoveClip(id)}
-                  />
-                ))}
-              </CardContent>
-            </Card>
-
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={5}>
             <Card>
               <CardContent>
                 <Passo
@@ -948,11 +1088,10 @@ export function MultiplierPage() {
                 )}
               </CardContent>
             </Card>
-          </form>
-        </Grid>
+          </Grid>
 
-        <Grid item xs={12} md={7}>
-          <Card sx={{ mb: 3 }}>
+          <Grid item xs={12} md={7}>
+            <Card sx={{ mb: 3 }}>
             <CardContent>
               {result ? (
                 <>
@@ -1036,8 +1175,15 @@ export function MultiplierPage() {
               )}
             </CardContent>
           </Card>
+          </Grid>
+        </Grid>
+      </form>
 
-          <Card>
+      <Box sx={{ mt: 3 }}>
+        <Galeria videos={galeria} onRecarregar={recarregarGaleria} />
+      </Box>
+
+      <Card sx={{ mt: 3 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Planos salvos
@@ -1127,9 +1273,7 @@ export function MultiplierPage() {
                 </Stack>
               )}
             </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      </Card>
     </>
   );
 }

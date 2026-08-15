@@ -115,24 +115,25 @@ function ProductCard({
                 quadrada com margem sobrando nas bordas, então o corte do
                 `cover` come a margem, não o produto — e some com as faixas
                 borradas que desperdiçavam metade do card. */}
+            {/* Fica ATRÁS da foto (que não é mais escondida por opacidade) e
+                some quando o `onLoad` chega. Se o evento se perder por causa do
+                cache, ele continua aqui embaixo — invisível, porque a imagem já
+                o cobriu. */}
             {!imgLoaded && <ImagePlaceholder />}
             <Box
               component="img"
               src={proxyImage(product.imageUrl)}
               alt={product.title}
-              loading="lazy"
-              // Imagem em cache termina de carregar ANTES de o React anexar o onLoad,
-
-              // e aí o evento nunca dispara — o card ficava preso no placeholder com a
-
-              // foto invisível por baixo. A ref confere o estado já na montagem.
-
-              ref={(el: HTMLImageElement | null) => {
-
-                if (el?.complete && el.naturalWidth > 0) setImgLoaded(true);
-
-              }}
-
+              /**
+               * `eager`, não `lazy`.
+               *
+               * O card é montado ANTES dos dados chegarem, com altura zero. O
+               * navegador avalia a proximidade da viewport nesse instante,
+               * conclui que a imagem está longe e adia — e a reavaliação nativa
+               * só ocorre quando a página rola. Quem abria a tela e não rolava
+               * via só o placeholder; quem rolava via tudo aparecer de uma vez.
+               */
+              loading="eager"
               onLoad={() => setImgLoaded(true)}
               onError={() => setImgLoaded(true)}
               sx={{
@@ -142,8 +143,17 @@ function ProductCard({
                 height: '100%',
                 objectFit: 'cover',
                 objectPosition: 'center 40%',
-                opacity: imgLoaded ? 1 : 0,
-                transition: 'transform .35s ease, opacity .3s ease',
+                /**
+                 * A foto NÃO é escondida enquanto carrega.
+                 *
+                 * Antes era `opacity: imgLoaded ? 1 : 0`: os pixels só apareciam
+                 * se um evento de JavaScript tivesse chegado. Imagem vinda do
+                 * cache termina antes de o React pendurar o `onLoad`, o evento
+                 * nunca dispara, e sobra uma foto baixada, decodificada e
+                 * invisível. O navegador é a fonte da verdade: até ter pixels o
+                 * `<img>` é transparente e o placeholder aparece por baixo.
+                 */
+                transition: 'transform .35s ease',
                 '.MuiCard-root:hover &': { transform: 'scale(1.05)' },
               }}
             />
