@@ -16,6 +16,13 @@ const IMAGE_HEIGHT = 960;
 /** Quantos objetos manter em memória (imagens tratadas pesam ~40KB). */
 const OBJECT_CACHE_MAX = 600;
 
+/**
+ * Como a imagem preenche o quadro 9:16.
+ *  - `cover`: recorta as bordas (capa de vídeo, retrato de persona);
+ *  - `contain`: cabe inteira, com faixa branca (foto de produto).
+ */
+export type AjusteDeImagem = 'cover' | 'contain';
+
 /** Rota que serve os objetos quando o bucket é privado (opção padrão). */
 export const MEDIA_ROUTE = '/api/v1/media/s3';
 
@@ -186,6 +193,7 @@ export class MediaMirrorService {
     original: Buffer,
     prefix: string,
     id: string,
+    ajuste: AjusteDeImagem = 'cover',
   ): Promise<string | null> {
     if (!this.client || !original?.length) return null;
     if (original.byteLength > this.maxBytes) {
@@ -193,7 +201,7 @@ export class MediaMirrorService {
       return null;
     }
 
-    const tratada = await this.normalizarImagem(original);
+    const tratada = await this.normalizarImagem(original, ajuste);
     if (!tratada) {
       this.logger.warn('Upload recusado: o conteúdo não é uma imagem.');
       return null;
@@ -272,7 +280,38 @@ export class MediaMirrorService {
    */
   private async normalizarImagem(
     original: Buffer,
+    ajuste: AjusteDeImagem = 'cover',
   ): Promise<{ body: Buffer } | null> {
+    /**
+     * Foto de produto é `contain`, capa é `cover`.
+     *
+     * O recorte 9:16 serve para capa de vídeo, onde cortar as bordas não custa
+     * nada. Numa foto de PRODUTO ele destrói o assunto: uma imagem quadrada
+     * perde quase metade da largura, e o que sobra é uma faixa central onde
+     * mal se reconhece o que está à venda. Como essa mesma foto vira o frame
+     * da cena de demonstração, o corte apareceria no anúncio.
+     *
+     * Com `contain` a foto inteira cabe, com faixa branca no que sobra —
+     * exatamente o que se vê em anúncio de e-commerce.
+     */
+    if (ajuste === 'contain') {
+      try {
+        const body = await sharp(original)
+          .rotate()
+          .resize(IMAGE_WIDTH, IMAGE_HEIGHT, {
+            fit: 'contain',
+            background: { r: 255, g: 255, b: 255, alpha: 1 },
+          })
+          .flatten({ background: '#ffffff' }) // PNG com transparência vira branco
+          .webp({ quality: 82 })
+          .toBuffer();
+        return { body };
+      } catch (error) {
+        this.logger.warn(`Normalização (contain) falhou: ${error}`);
+        return null;
+      }
+    }
+
     try {
       const body = await sharp(original)
         .rotate() // respeita o EXIF antes de recortar

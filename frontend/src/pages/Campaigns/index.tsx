@@ -1,5 +1,6 @@
 import AddPhotoAlternateRoundedIcon from '@mui/icons-material/AddPhotoAlternateRounded';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
+import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
@@ -12,6 +13,8 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogContent,
   Divider,
   Grid,
   IconButton,
@@ -28,6 +31,7 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { CurrencyField } from '@/components/ui/CurrencyField';
 import { resolveApiUrl } from '@/services/api';
+import { formatMoney } from '@/utils/format';
 import {
   LIMITES,
   avisoFalaLonga,
@@ -77,6 +81,7 @@ function ProdutoCard({
 }) {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [ampliada, setAmpliada] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function enviar(arquivos: FileList | null) {
@@ -124,7 +129,8 @@ function ProdutoCard({
           <Box flexGrow={1}>
             <Typography fontWeight={700}>{produto.name}</Typography>
             <Typography variant="body2" color="text.secondary">
-              {produto.priceBrl ? `R$ ${Number(produto.priceBrl).toFixed(2)}` : 'sem preço'}
+              {/* `toFixed` devolvia "R$ 99.00", com ponto — errado em pt-BR. */}
+              {produto.priceBrl ? formatMoney(Number(produto.priceBrl)) : 'sem preço'}
               {produto.benefit ? ` · ${produto.benefit}` : ''}
             </Typography>
           </Box>
@@ -140,21 +146,65 @@ function ProdutoCard({
 
         <Divider sx={{ my: 1.5 }} />
 
+        {/* As regras ficam à vista ANTES de escolher o arquivo. Descobrir o
+            limite pelo erro depois do upload é o caminho mais caro. */}
+        <Box display="flex" alignItems="baseline" gap={1} mb={1} flexWrap="wrap">
+          <Typography variant="body2" fontWeight={700}>
+            Fotos do produto
+          </Typography>
+          <Typography
+            variant="caption"
+            color={
+              produto.images.length >= LIMITES.fotosPorProduto
+                ? 'warning.main'
+                : 'text.secondary'
+            }
+            fontWeight={700}
+          >
+            {produto.images.length}/{LIMITES.fotosPorProduto}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            · JPG, PNG ou WebP até {LIMITES.fotoBytes / 1024 / 1024}MB cada
+          </Typography>
+        </Box>
+
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
           {produto.images.map((foto) => (
             <Box
               key={foto}
               sx={{
                 position: 'relative',
-                width: 72,
-                height: 72,
+                // Miniatura no MESMO formato do arquivo (9:16). Num quadrado,
+                // a foto vertical aparecia como uma fatia central e não dava
+                // para reconhecer o produto.
+                width: 96,
+                aspectRatio: '9 / 16',
                 borderRadius: 1.5,
                 overflow: 'hidden',
                 border: '1px solid',
                 borderColor: 'divider',
+                bgcolor: '#fff',
               }}
             >
-              <SmartImage src={foto} alt={produto.name} />
+              {/* A miniatura é pequena demais para conferir enquadramento, e é
+                  dela que sai o frame da cena — vale poder ver de perto. */}
+              <Box
+                component="button"
+                type="button"
+                onClick={() => setAmpliada(foto)}
+                aria-label={`Ver ${produto.name} em tamanho maior`}
+                sx={{
+                  all: 'unset',
+                  cursor: 'zoom-in',
+                  display: 'block',
+                  width: '100%',
+                  height: '100%',
+                }}
+              >
+                {/* `contain`: o arquivo já vem em 9:16 com o produto inteiro —
+                    recortar de novo aqui desfaria o trabalho. */}
+                <SmartImage src={foto} alt={produto.name} objectFit="contain" />
+              </Box>
               <IconButton
                 size="small"
                 onClick={async () => {
@@ -179,10 +229,22 @@ function ProdutoCard({
             <Button
               component="label"
               variant="outlined"
-              startIcon={enviando ? <CircularProgress size={16} /> : <AddPhotoAlternateRoundedIcon />}
               disabled={enviando}
-              sx={{ height: 72, borderStyle: 'dashed' }}
+              // Mesmo formato das miniaturas, para a fileira não ficar torta.
+              // O ícone vira filho: com `startIcon` a margem lateral do MUI
+              // desalinha tudo quando o botão é uma coluna.
+              sx={{
+                width: 96,
+                aspectRatio: '9 / 16',
+                borderStyle: 'dashed',
+                flexDirection: 'column',
+                gap: 0.5,
+                fontSize: 12,
+                lineHeight: 1.2,
+                px: 1,
+              }}
             >
+              {enviando ? <CircularProgress size={18} /> : <AddPhotoAlternateRoundedIcon />}
               {enviando ? 'Enviando...' : 'Adicionar foto'}
               <input
                 ref={inputRef}
@@ -207,6 +269,44 @@ function ProdutoCard({
             parecido. Envie ao menos uma foto para ter cenas de demonstração reais.
           </Alert>
         )}
+
+        <Dialog
+          open={Boolean(ampliada)}
+          onClose={() => setAmpliada(null)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogContent sx={{ p: 0, bgcolor: '#000', position: 'relative' }}>
+            {ampliada && (
+              <Box
+                component="img"
+                src={resolveApiUrl(ampliada)}
+                alt={produto.name}
+                sx={{
+                  display: 'block',
+                  width: '100%',
+                  // `contain`: aqui a foto é conferida, então não pode cortar —
+                  // é justamente o corte que se quer avaliar.
+                  maxHeight: '80vh',
+                  objectFit: 'contain',
+                }}
+              />
+            )}
+            <IconButton
+              onClick={() => setAmpliada(null)}
+              sx={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                bgcolor: 'rgba(0,0,0,0.55)',
+                color: '#fff',
+                '&:hover': { bgcolor: 'rgba(0,0,0,0.75)' },
+              }}
+            >
+              <CloseRoundedIcon />
+            </IconButton>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

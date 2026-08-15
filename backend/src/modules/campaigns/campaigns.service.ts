@@ -149,7 +149,15 @@ export class CampaignsService {
       throw new ConflictException(`Máximo de ${MAX_FOTOS} fotos por produto.`);
     }
 
-    const url = await this.mirror.putImage(arquivo, 'user-products', produto.id);
+    // `contain`: a foto do produto tem que caber INTEIRA. Recortar em 9:16
+    // cortaria o produto ao meio, e é essa mesma imagem que vira o frame da
+    // cena de demonstração.
+    const url = await this.mirror.putImage(
+      arquivo,
+      'user-products',
+      produto.id,
+      'contain',
+    );
     if (!url) {
       throw new BadRequestException(
         'Não foi possível ler a imagem. Envie um JPG, PNG ou WebP.',
