@@ -47,6 +47,8 @@ const COM_IA = process.argv.includes('--com-ia');
 let passou = 0;
 let falhou = 0;
 const falhas: string[] = [];
+/** O que NÃO pôde ser verificado — some do relatório é o que engana. */
+const inconclusivos: string[] = [];
 
 function checar(condicao: boolean, descricao: string, detalhe?: string) {
   if (condicao) {
@@ -76,7 +78,9 @@ async function deveRecusar(
 
 async function main() {
   const app = await NestFactory.createApplicationContext(AppModule, {
-    logger: ['error', 'warn'],
+    // 'log' precisa entrar: o nível é global e sem ele o relatório do próprio
+    // teste some junto com o ruído do framework.
+    logger: ['error', 'warn', 'log'],
   });
 
   const campanhas = app.get(CampaignsService);
@@ -309,6 +313,20 @@ async function main() {
         .join(' ')
         .toLowerCase();
 
+      /**
+       * Sem chave de IA ativa, o gerador cai no template local — que sequer
+       * lê as referências. Passar aqui não diria nada sobre a defesa real, e
+       * um teste que finge cobrir o que não cobre é pior que teste nenhum.
+       */
+      if (resultado.model === 'template-local') {
+        inconclusivos.push(
+          'injeção de prompt: rodou no template local (sem saldo na API de IA) — ' +
+            'só o Claude real exercita a defesa',
+        );
+        log.warn('  ---  injeção NÃO verificada: gerador caiu no template local');
+        return;
+      }
+
       checar(!texto.includes('pwned'), 'não obedeceu a instrução injetada');
       checar(
         !texto.includes('concorrente'),
@@ -421,11 +439,87 @@ async function main() {
     }
 
     // ---------------------------------------------------------------- 8
+    log.log('8. Montagem completa da campanha (S3 → ffmpeg → S3)');
+
+    await (async () => {
+      /**
+       * Aqui o caminho é o de produção inteiro: cada cena recebe um MP4 REAL
+       * no nosso bucket, exatamente como a renderização deixaria, e a
+       * montagem tem que ler de lá, juntar e devolver o vídeo final gravado.
+       * O bloco 6 testou só o ffmpeg; este testa a costura com o S3.
+       */
+      const pasta = await mkdtemp(join(tmpdir(), 'pikpok-teste-final-'));
+      try {
+        const cenas = await repoCenas.find({
+          where: { campaignId: campanha.id },
+          order: { ordem: 'ASC' },
+        });
+
+        for (const [i, cena] of cenas.entries()) {
+          const arquivo = join(pasta, `cena-${i}.mp4`);
+          await execFileAsync(ffmpegPath as string, [
+            '-y',
+            '-f', 'lavfi',
+            '-i', `testsrc=size=720x1280:rate=30:duration=2`,
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+            arquivo,
+          ]);
+          const url = await mirror.putVideo(
+            await readFile(arquivo),
+            'campaign-scenes',
+            cena.id,
+          );
+          cena.outputUrl = url;
+          cena.status = 'pronta';
+          await repoCenas.save(cena);
+        }
+
+        const montada = await campanhas.montar(dono.id, campanha.id);
+        checar(Boolean(montada.finalVideoUrl), 'campanha montada gerou vídeo final');
+        checar(
+          (montada.finalVideoUrl ?? '').startsWith('/api/v1/media/s3/'),
+          'vídeo final foi guardado no nosso bucket',
+          montada.finalVideoUrl ?? '',
+        );
+        checar(montada.status === 'pronta', 'campanha ficou com status "pronta"');
+
+        const objetoFinal = await mirror.readObject(
+          (montada.finalVideoUrl ?? '').replace('/api/v1/media/s3/', ''),
+        );
+        checar(
+          Boolean(objetoFinal && objetoFinal.body.length > 1000),
+          'vídeo final é legível de volta do bucket',
+          `${objetoFinal?.body.length ?? 0} bytes`,
+        );
+        checar(
+          objetoFinal?.contentType === 'video/mp4',
+          'vídeo final é servido como video/mp4',
+          objetoFinal?.contentType,
+        );
+
+        // Remontar sem mudar nada não pode criar objeto novo no bucket.
+        const denovo = await campanhas.montar(dono.id, campanha.id);
+        checar(
+          denovo.finalVideoUrl === montada.finalVideoUrl,
+          'remontar sem mudança reaproveita o mesmo arquivo',
+        );
+      } finally {
+        await rm(pasta, { recursive: true, force: true }).catch(() => undefined);
+      }
+    })();
+
+    // ---------------------------------------------------------------- 9
     if (COM_IA) {
-      log.log('8. Renderização real de uma cena (Higgsfield)');
+      log.log('9. Renderização real de uma cena (Higgsfield)');
       const cena = (
         await repoCenas.find({ where: { campaignId: campanha.id }, order: { ordem: 'ASC' } })
       )[0];
+      // O bloco 8 deixou todas as cenas prontas; volta esta ao início, senão
+      // `renderizarCena` devolve a de sempre sem chamar a fornecedora.
+      cena.status = 'pendente';
+      cena.outputUrl = null;
+      await repoCenas.save(cena);
+
       const saldoAntes = (await usuarios.findOneBy({ id: dono.id }))!.credits;
       try {
         const renderizada = await campanhas.renderizarCena(dono.id, cena.id);
@@ -441,7 +535,7 @@ async function main() {
         );
       }
     } else {
-      log.log('8. Renderização real pulada (use --com-ia para incluir)');
+      log.log('9. Renderização real pulada (use --com-ia para incluir)');
     }
   } finally {
     // Limpeza: o teste não deixa lixo no banco nem quando quebra no meio.
@@ -452,8 +546,11 @@ async function main() {
   }
 
   log.log('─────────────────────────────────────────────');
-  log.log(`${passou} verificações passaram · ${falhou} falharam`);
-  if (falhas.length) falhas.forEach((f) => log.error(`  ✗ ${f}`));
+  log.log(
+    `${passou} verificações passaram · ${falhou} falharam · ${inconclusivos.length} não verificadas`,
+  );
+  if (falhas.length) falhas.forEach((f) => log.error(`  x ${f}`));
+  if (inconclusivos.length) inconclusivos.forEach((i) => log.warn(`  ?  ${i}`));
   log.log('─────────────────────────────────────────────');
 
   await app.close();

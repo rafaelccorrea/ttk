@@ -30,6 +30,11 @@ interface SearchableSelectProps {
   variant?: 'pill' | 'field';
   /** Mostra a coluna de miniatura mesmo nas opções sem imagem, para alinhar. */
   showImages?: boolean;
+  /**
+   * Permite digitar um valor fora da lista. Para campos que hoje são texto
+   * livre e ganham sugestões — a lista vira atalho, não camisa de força.
+   */
+  allowCustom?: boolean;
   disabled?: boolean;
   helperText?: string;
   fullWidth?: boolean;
@@ -91,6 +96,7 @@ export function SearchableSelect({
   emptyLabel,
   variant = 'field',
   showImages,
+  allowCustom,
   disabled,
   helperText,
   fullWidth,
@@ -101,7 +107,11 @@ export function SearchableSelect({
     ? [{ value: EMPTY, label: emptyLabel }, ...options]
     : options;
 
-  const selecionada = lista.find((o) => o.value === value) ?? null;
+  const daLista = lista.find((o) => o.value === value) ?? null;
+  // Com `allowCustom`, um valor digitado não existe na lista — o próprio texto
+  // vira o valor do campo, senão o que foi escrito sumiria do input.
+  const selecionada: SearchableOption | string | null =
+    daLista ?? (allowCustom && value ? value : null);
   // Basta uma opção com foto para valer a coluna de miniaturas: sem ela, as
   // linhas com e sem imagem ficariam desalinhadas entre si.
   const comImagens = showImages ?? options.some((o) => o.imageUrl);
@@ -112,15 +122,25 @@ export function SearchableSelect({
     <Autocomplete
       options={lista}
       value={selecionada}
-      onChange={(_e, opcao) => onChange(opcao?.value ?? EMPTY)}
+      freeSolo={allowCustom}
+      onChange={(_e, opcao) =>
+        onChange(typeof opcao === 'string' ? opcao : (opcao?.value ?? EMPTY))
+      }
+      // Texto digitado só vira valor quando o campo aceita valor livre; nos
+      // demais, digitar apenas filtra a lista.
+      onInputChange={(_e, texto, motivo) => {
+        if (allowCustom && motivo === 'input') onChange(texto);
+      }}
       // Limpar o campo volta para a opção "todos" quando ela existe; sem ela,
       // o X não faria sentido e some.
       disableClearable={!emptyLabel && !value}
       disabled={disabled}
       fullWidth={fullWidth}
       size={size}
-      getOptionLabel={(o) => o.label}
-      isOptionEqualToValue={(o, v) => o.value === v.value}
+      getOptionLabel={(o) => (typeof o === 'string' ? o : o.label)}
+      isOptionEqualToValue={(o, v) =>
+        typeof v === 'string' ? o.label === v : o.value === v.value
+      }
       renderOption={(props, opcao) => {
         const { key, ...rest } = props as typeof props & { key: string };
         return (
@@ -165,12 +185,12 @@ export function SearchableSelect({
             ...params.InputProps,
             // Miniatura do item escolhido dentro do próprio campo.
             startAdornment:
-              comImagens && selecionada && selecionada.value !== EMPTY ? (
+              comImagens && daLista && daLista.value !== EMPTY ? (
                 <Box sx={{ display: 'flex', pl: pill ? 0.75 : 0, mr: 0.25 }}>
                   {/* Menor que na lista: precisa caber na altura do input. */}
                   <Thumb
-                    src={selecionada.imageUrl}
-                    alt={selecionada.label}
+                    src={daLista.imageUrl}
+                    alt={daLista.label}
                     size={size === 'small' ? 24 : 30}
                   />
                 </Box>

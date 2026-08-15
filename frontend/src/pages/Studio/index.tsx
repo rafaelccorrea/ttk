@@ -22,6 +22,26 @@ import { productsService, RankedProduct } from '@/services/products.service';
 import { Script, studioService } from '@/services/studio.service';
 
 /**
+ * Tons sugeridos para o roteiro.
+ *
+ * O campo continua aceitando texto livre (`allowCustom`): a lista é atalho
+ * para os tons que mais funcionam no TikTok Shop, não uma restrição.
+ */
+const TONES = [
+  'Divertido e urgente',
+  'Direto ao ponto',
+  'Empolgado e enérgico',
+  'Amigável e próximo',
+  'Autoridade e especialista',
+  'Emocional e pessoal',
+  'Bem-humorado',
+  'Educativo e didático',
+  'Depoimento honesto',
+  'Urgência e escassez',
+  'Sofisticado e premium',
+];
+
+/**
  * Ficha do produto montada com o que já temos em mãos.
  *
  * São os mesmos dados que alimentam o catálogo — nada de chamada extra nem
@@ -183,14 +203,15 @@ export function StudioPage() {
                       : undefined
                   }
                 />
-                <TextField
+                <SearchableSelect
                   fullWidth
-                  size="small"
+                  allowCustom
                   label="Tom (opcional)"
-                  placeholder="ex.: divertido e urgente"
+                  placeholder="Escolha ou escreva o seu"
                   value={tone}
-                  onChange={(e) => setTone(e.target.value)}
-                  margin="normal"
+                  onChange={setTone}
+                  sx={{ mt: 2, mb: 1 }}
+                  options={TONES.map((t) => ({ value: t, label: t }))}
                 />
                 {error && <Alert severity="error">{error}</Alert>}
                 <Button

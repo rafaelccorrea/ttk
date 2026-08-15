@@ -56,9 +56,25 @@ export class VideoAssemblyService {
         const entrada = join(pasta, `cena-${i}.mp4`);
         const saida = join(pasta, `norm-${i}.mp4`);
         await writeFile(entrada, cena);
+
+        /**
+         * Só inventa silêncio quando a cena vem MUDA.
+         *
+         * O concat descarta o áudio inteiro se um dos trechos não tiver faixa,
+         * então toda cena precisa ter uma. Mas mapear silêncio sem checar
+         * apagaria a narração das cenas que têm voz — que é o que o vendedor
+         * está pagando para gerar.
+         */
+        const mudo = !(await this.temAudio(entrada));
+
         await this.rodar([
           '-y',
+          // Os dois `-i` vêm primeiro: opção de saída entre entradas é
+          // atribuída ao arquivo errado e o ffmpeg recusa.
           '-i', entrada,
+          ...(mudo
+            ? ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100']
+            : []),
           // `setsar=1` evita a imagem esticada quando a cena vem com pixel
           // não-quadrado; sem isso a virada de cena "pula" de largura.
           '-vf', `scale=${LARGURA}:${ALTURA}:force_original_aspect_ratio=decrease,pad=${LARGURA}:${ALTURA}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30`,
@@ -66,14 +82,14 @@ export class VideoAssemblyService {
           '-preset', 'veryfast',
           '-crf', '23',
           '-pix_fmt', 'yuv420p',
-          // Trilha de silêncio quando a cena vier muda: o concat descarta o
-          // áudio inteiro se um dos trechos não tiver faixa.
-          '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-          '-shortest',
           '-c:a', 'aac',
           '-ar', '44100',
+          '-ac', '2',
           '-map', '0:v:0',
-          '-map', '1:a:0',
+          '-map', mudo ? '1:a:0' : '0:a:0',
+          // Corta pelo vídeo: sem isso a trilha infinita de silêncio nunca
+          // termina e o ffmpeg fica gerando para sempre.
+          ...(mudo ? ['-shortest'] : []),
           saida,
         ]);
         normalizadas.push(saida);
@@ -104,6 +120,25 @@ export class VideoAssemblyService {
       await rm(pasta, { recursive: true, force: true }).catch((error) =>
         this.logger.warn(`Não foi possível limpar ${pasta}: ${error}`),
       );
+    }
+  }
+
+  /**
+   * A cena tem faixa de áudio?
+   *
+   * O `ffmpeg -i` sem saída sempre termina em erro — é o modo dele de só
+   * descrever o arquivo. O que interessa é o texto, não o código de saída.
+   * (O pacote não traz o ffprobe, então a leitura é daqui mesmo.)
+   */
+  private async temAudio(arquivo: string): Promise<boolean> {
+    try {
+      const { stderr } = await execFileAsync(ffmpegPath as string, [
+        '-i', arquivo, '-hide_banner',
+      ]);
+      return /Stream #\d+:\d+.*: Audio:/.test(stderr ?? '');
+    } catch (error) {
+      const stderr = (error as { stderr?: string }).stderr ?? '';
+      return /Stream #\d+:\d+.*: Audio:/.test(stderr);
     }
   }
 
