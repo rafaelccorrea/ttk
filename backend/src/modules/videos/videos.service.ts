@@ -26,8 +26,20 @@ export interface VideoItem {
   productImageUrl: string | null;
 }
 
+/** Validade do cache da vitrine — curto o bastante para não servir dado velho. */
+const SECTIONS_TTL_MS = 60 * 1000;
+
 @Injectable()
 export class VideosService {
+  /**
+   * Cache do resultado bruto da vitrine, compartilhado entre requisições.
+   * Guarda só as LINHAS do banco; a marcação de "salvo" continua por usuário.
+   */
+  private static readonly sectionsCache = new Map<
+    string,
+    { rows: any[]; expiresAt: number }
+  >();
+
   constructor(
     @InjectRepository(Video)
     private readonly videos: Repository<Video>,
@@ -71,9 +83,17 @@ export class VideosService {
     /** Há mais seções depois desta página. */
     hasMore: boolean;
   }> {
+    // A janela do ROW_NUMBER varre a tabela inteira e custa ~2s. Como o scroll
+    // infinito pede lote após lote com os MESMOS parâmetros (só muda o
+    // offset), guardamos o resultado por pouco tempo: a primeira rolagem paga,
+    // as seguintes vêm de memória.
+    const cacheKey = `sections:${perSection}`;
+    const cached = VideosService.sectionsCache.get(cacheKey);
     const rows: Array<
       Video & { categoryTotal: string; productImageUrl: string | null }
-    > = await this.videos.query(
+    > = cached && cached.expiresAt > Date.now()
+      ? cached.rows
+      : await this.videos.query(
         `
         WITH ranked AS (
           SELECT v.*,
@@ -96,6 +116,13 @@ export class VideosService {
         `,
         [perSection],
       );
+
+    if (!cached || cached.expiresAt <= Date.now()) {
+      VideosService.sectionsCache.set(cacheKey, {
+        rows,
+        expiresAt: Date.now() + SECTIONS_TTL_MS,
+      });
+    }
 
     const savedIds = userId
       ? new Set(

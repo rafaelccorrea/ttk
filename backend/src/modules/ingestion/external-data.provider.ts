@@ -142,6 +142,8 @@ const MEDIA_TTL_MS = 90 * 60 * 1000;
 const MEDIA_CACHE_MAX = 2000;
 /** `product_sort_field`: 7 = total_sale_gmv_30d_amt. */
 const PRODUCT_SORT_GMV_30D = 7;
+/** Quanto tempo parar de chamar o fornecedor depois de bater no limite. */
+const QUOTA_COOLDOWN_MS = 10 * 60 * 1000;
 /** Só URLs deste host podem (e precisam) ser assinadas. */
 const SIGNABLE_HOST = 'echosell-images.tos-ap-southeast-1.volces.com';
 
@@ -172,6 +174,15 @@ export class ExternalDataProvider {
     string,
     { media: ResolvedMedia; expiresAt: number }
   >();
+  /**
+   * Disjuntor de cota.
+   *
+   * Quando a conta fica sem saldo, o fornecedor leva ~7 SEGUNDOS para
+   * responder o erro. Sem isso, cada play na interface pagava esse pedágio
+   * antes de cair no embed — o que fazia o player parecer travado. Ao ver o
+   * primeiro "Usage Limit Exceeded", paramos de chamar por um tempo.
+   */
+  private quotaBlockedUntil = 0;
 
   constructor(config: ConfigService) {
     this.baseUrl = (
@@ -557,6 +568,9 @@ export class ExternalDataProvider {
     /** `false` para endpoints que o fornecedor não cobra (download de capa). */
     countsAgainstQuota = true,
   ): Promise<T | null> {
+    // Cota esgotada há pouco: nem tenta. Economiza os ~7s do erro.
+    if (Date.now() < this.quotaBlockedUntil) return null;
+
     if (countsAgainstQuota && this.budgetExhausted) {
       this.logger.warn(
         `Cota da execução esgotada (${this.requestCount}); ${path} não foi chamado.`,
@@ -580,11 +594,20 @@ export class ExternalDataProvider {
       }
       const body = (await response.json()) as EchoTikEnvelope<T>;
       if (body.code !== 0) {
-        this.logger.warn(
-          `EchoTik ${path} retornou code=${body.code} (${body.message ?? 'sem mensagem'})`,
-        );
+        if (/usage limit/i.test(body.message ?? '')) {
+          this.quotaBlockedUntil = Date.now() + QUOTA_COOLDOWN_MS;
+          this.logger.warn(
+            `Cota do EchoTik esgotada — chamadas suspensas por ${QUOTA_COOLDOWN_MS / 60000} min.`,
+          );
+        } else {
+          this.logger.warn(
+            `EchoTik ${path} retornou code=${body.code} (${body.message ?? 'sem mensagem'})`,
+          );
+        }
         return null;
       }
+      // Deu certo: a cota voltou, reabre o disjuntor.
+      this.quotaBlockedUntil = 0;
       return body.data;
     } catch (error) {
       this.logger.warn(`EchoTik ${path} falhou: ${error}`);
