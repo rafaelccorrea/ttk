@@ -114,6 +114,76 @@ function Rotulo({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Linha da lista de produtos: miniatura, título e a legenda de cada origem.
+ *
+ * Fica FORA da página de propósito: declarada dentro dela, a função seria
+ * outra a cada render, e o React remontaria todas as linhas a cada tecla
+ * digitada na busca — as fotos recomeçavam o carregamento e piscavam.
+ */
+function ItemProduto({
+  titulo,
+  legenda,
+  foto,
+  ativo,
+  onSelect,
+}: {
+  titulo: string;
+  legenda: string;
+  foto?: string | null;
+  ativo: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <Box
+      onClick={onSelect}
+      sx={{
+        display: 'flex',
+        gap: 1.25,
+        alignItems: 'center',
+        p: 1,
+        borderRadius: 2,
+        cursor: 'pointer',
+        border: '1px solid',
+        borderColor: ativo ? 'primary.main' : 'transparent',
+        bgcolor: ativo ? 'action.selected' : 'transparent',
+        '&:hover': { bgcolor: 'action.hover' },
+      }}
+    >
+      <Box
+        sx={{
+          // `SmartImage` se posiciona em `absolute; inset: 0` — sem este
+          // `relative` ela ancora no primeiro pai posicionado (a página) e a
+          // foto vaza por cima de todo o layout.
+          position: 'relative',
+          width: 44,
+          height: 44,
+          flexShrink: 0,
+          borderRadius: 1.5,
+          overflow: 'hidden',
+          bgcolor: 'action.hover',
+        }}
+      >
+        <SmartImage
+          src={foto ?? null}
+          alt={titulo}
+          fallback={
+            <ImageNotSupportedRoundedIcon sx={{ fontSize: 16, opacity: 0.35 }} />
+          }
+        />
+      </Box>
+      <Box minWidth={0}>
+        <Typography noWrap fontSize={14} fontWeight={600}>
+          {titulo}
+        </Typography>
+        <Typography noWrap fontSize={12.5} color="text.secondary">
+          {legenda}
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
+
 export function StudioPage() {
   const [searchParams] = useSearchParams();
   const [type, setType] = useState<'live' | 'video'>(
@@ -274,65 +344,6 @@ export function StudioPage() {
       ? [escolhido, ...topProducts]
       : topProducts;
 
-  /** Linha da lista de produtos: miniatura, título e a legenda de cada origem. */
-  function ItemProduto({
-    valor,
-    titulo,
-    legenda,
-    foto,
-  }: {
-    valor: string;
-    titulo: string;
-    legenda: string;
-    foto?: string | null;
-  }) {
-    const ativo = selecao === valor;
-    return (
-      <Box
-        onClick={() => selecionar(valor)}
-        sx={{
-          display: 'flex',
-          gap: 1.25,
-          alignItems: 'center',
-          p: 1,
-          borderRadius: 2,
-          cursor: 'pointer',
-          border: '1px solid',
-          borderColor: ativo ? 'primary.main' : 'transparent',
-          bgcolor: ativo ? 'action.selected' : 'transparent',
-          '&:hover': { bgcolor: 'action.hover' },
-        }}
-      >
-        <Box
-          sx={{
-            width: 44,
-            height: 44,
-            flexShrink: 0,
-            borderRadius: 1.5,
-            overflow: 'hidden',
-            bgcolor: 'action.hover',
-          }}
-        >
-          <SmartImage
-            src={foto ?? null}
-            alt={titulo}
-            fallback={
-              <ImageNotSupportedRoundedIcon sx={{ fontSize: 16, opacity: 0.35 }} />
-            }
-          />
-        </Box>
-        <Box minWidth={0}>
-          <Typography noWrap fontSize={14} fontWeight={600}>
-            {titulo}
-          </Typography>
-          <Typography noWrap fontSize={12.5} color="text.secondary">
-            {legenda}
-          </Typography>
-        </Box>
-      </Box>
-    );
-  }
-
   return (
     <>
       <Stack
@@ -455,10 +466,11 @@ export function StudioPage() {
                     listaTop.map((p) => (
                       <ItemProduto
                         key={p.id}
-                        valor={`cat:${p.id}`}
                         titulo={p.title}
                         legenda={`${formatCurrency(p.price)} · ${formatNumber(p.salesPeriod)} vendas`}
                         foto={p.imageUrl ? proxyImage(p.imageUrl) : null}
+                        ativo={selecao === `cat:${p.id}`}
+                        onSelect={() => selecionar(`cat:${p.id}`)}
                       />
                     ))
                   ) : (
@@ -470,7 +482,6 @@ export function StudioPage() {
                   listaMeus.map((p) => (
                     <ItemProduto
                       key={p.id}
-                      valor={`meu:${p.id}`}
                       titulo={p.name}
                       legenda={
                         p.benefit ??
@@ -479,6 +490,8 @@ export function StudioPage() {
                           : 'Produto seu')
                       }
                       foto={p.images[0] ?? null}
+                      ativo={selecao === `meu:${p.id}`}
+                      onSelect={() => selecionar(`meu:${p.id}`)}
                     />
                   ))
                 ) : (

@@ -25,16 +25,17 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
-import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
-import UploadRoundedIcon from '@mui/icons-material/UploadRounded';
 import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
 import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
-import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
+import UploadRoundedIcon from '@mui/icons-material/UploadRounded';
+import { DragEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { resolveApiUrl } from '@/services/api';
 import {
   ClipRole,
@@ -48,7 +49,47 @@ import {
   combinationsService,
 } from '@/services/combinations.service';
 
-const LIMITS = { hooks: 10, bodies: 5, ctas: 3 } as const;
+/**
+ * Definição de cada bloco da fórmula, num lugar só.
+ *
+ * `letra` é a que aparece no nome do arquivo (G1C2A3) e vem do `expand()` do
+ * servidor. Antes a tela derivava a letra do título — e como "Corpos" e "CTAs"
+ * começam com C, o CTA aparecia rotulado como "C1" enquanto o arquivo saía
+ * "A1". Aqui a letra é declarada, não adivinhada.
+ *
+ * A cor é informação, não enfeite: é a mesma no bloco, na barra da fórmula e
+ * na tabela de resultados, então dá para rastrear de onde veio cada pedaço de
+ * um vídeo montado sem ler texto nenhum.
+ */
+const BLOCOS = [
+  {
+    role: 'hook' as const,
+    letra: 'G',
+    titulo: 'Ganchos',
+    emoji: '🎣',
+    max: 10,
+    cor: '#fe2c55',
+    ajuda: 'Os 3 primeiros segundos. É o bloco que decide o scroll.',
+  },
+  {
+    role: 'body' as const,
+    letra: 'C',
+    titulo: 'Corpos',
+    emoji: '📝',
+    max: 5,
+    cor: '#25f4ee',
+    ajuda: 'Demonstração e prova — o miolo do vídeo.',
+  },
+  {
+    role: 'cta' as const,
+    letra: 'A',
+    titulo: 'CTAs',
+    emoji: '🎯',
+    max: 3,
+    cor: '#ffb020',
+    ajuda: 'O comando final para tocar no carrinho.',
+  },
+];
 
 /** Teto do backend (`MaxFileSizeValidator`), replicado para recusar antes de subir. */
 const MAX_BYTES = 40 * 1024 * 1024;
@@ -60,30 +101,79 @@ function truncate(text: string, max = 30) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-function formatarMb(bytes: number): string {
+/**
+ * Tamanho legível.
+ *
+ * Fixar em MB mostrava "0.0 MB" para um clipe de 24 KB, o que parece arquivo
+ * corrompido. A unidade acompanha a grandeza.
+ */
+function formatarTamanho(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /**
  * Checa o arquivo ANTES de subir.
  *
- * Sem isto, um clipe de 200MB gasta o upload inteiro para tomar um 413, e num
+ * Sem isto, um clipe de 200 MB gasta o upload inteiro para tomar um 413, e num
  * bloco de 10 ganchos isso é o tipo de espera que faz o vendedor achar que a
  * ferramenta travou.
  */
 function validarClipe(file: File): string | null {
   if (!file.type.startsWith('video/')) return `"${file.name}" não é um vídeo.`;
   if (file.size > MAX_BYTES) {
-    return `"${file.name}" tem ${formatarMb(file.size)}. O limite é 40 MB.`;
+    return `"${file.name}" tem ${formatarTamanho(file.size)}. O limite é 40 MB.`;
   }
   return null;
 }
 
+/** Cabeçalho de passo — a tela é uma sequência, e a numeração diz isso. */
+function Passo({
+  numero,
+  titulo,
+  descricao,
+  concluido,
+}: {
+  numero: number;
+  titulo: string;
+  descricao: string;
+  concluido?: boolean;
+}) {
+  return (
+    <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ mb: 2 }}>
+      <Box
+        sx={{
+          width: 26,
+          height: 26,
+          flexShrink: 0,
+          borderRadius: '50%',
+          display: 'grid',
+          placeItems: 'center',
+          fontSize: 13,
+          fontWeight: 700,
+          bgcolor: concluido ? 'success.main' : 'action.selected',
+          color: concluido ? '#fff' : 'text.secondary',
+          transition: 'background-color .2s',
+        }}
+      >
+        {concluido ? <CheckCircleRoundedIcon sx={{ fontSize: 18 }} /> : numero}
+      </Box>
+      <Box sx={{ minWidth: 0 }}>
+        <Typography variant="subtitle2" fontWeight={700}>
+          {titulo}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {descricao}
+        </Typography>
+      </Box>
+    </Stack>
+  );
+}
+
 interface ClipDropzoneProps {
-  title: string;
-  emoji: string;
+  bloco: (typeof BLOCOS)[number];
   clips: CombinationClip[];
-  max: number;
   busy: boolean;
   disabled?: boolean;
   onUpload: (files: FileList | null) => void;
@@ -91,7 +181,7 @@ interface ClipDropzoneProps {
 }
 
 /**
- * Um bloco da fórmula (gancho, corpo ou CTA) com os vídeos de verdade.
+ * Um bloco da fórmula com os vídeos de verdade.
  *
  * Antes isto era uma lista de campos de texto: o vendedor digitava o NOME do
  * clipe e a plataforma devolvia uma planilha de nomes de arquivo, deixando a
@@ -102,67 +192,88 @@ interface ClipDropzoneProps {
  * uma segunda fonte de verdade que só podia divergir da primeira.
  */
 function ClipDropzone({
-  title,
-  emoji,
+  bloco,
   clips,
-  max,
   busy,
   disabled,
   onUpload,
   onRemove,
 }: ClipDropzoneProps) {
   const [arrastando, setArrastando] = useState(false);
-  const cheio = clips.length >= max;
+  const cheio = clips.length >= bloco.max;
 
   return (
-    <Box sx={{ mb: 2, opacity: disabled ? 0.5 : 1 }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-        <Typography variant="subtitle2">
-          {emoji} {title}
+    <Box
+      sx={{
+        mb: 1.5,
+        p: 1.5,
+        borderRadius: 2,
+        border: '1px solid',
+        borderColor: 'divider',
+        // A faixa lateral colorida identifica o bloco sem depender de ler o
+        // título — é o mesmo código de cor da fórmula e da tabela.
+        borderLeft: '3px solid',
+        borderLeftColor: disabled ? 'divider' : bloco.cor,
+        opacity: disabled ? 0.45 : 1,
+        transition: 'opacity .2s, border-color .2s',
+      }}
+    >
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
+        <Typography variant="subtitle2" fontWeight={700} sx={{ flexGrow: 1 }}>
+          {bloco.emoji} {bloco.titulo}
         </Typography>
         <Chip
           size="small"
-          variant="outlined"
+          variant={cheio ? 'filled' : 'outlined'}
           color={cheio ? 'warning' : 'default'}
-          label={`${clips.length}/${max}`}
+          label={`${clips.length}/${bloco.max}`}
+          sx={{ fontWeight: 700 }}
         />
       </Stack>
+      <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+        {bloco.ajuda}
+      </Typography>
 
-      <Stack spacing={0.5} sx={{ mb: 1 }}>
+      <Stack spacing={0.5} sx={{ mb: clips.length ? 1 : 0 }}>
         {clips.map((clip, index) => (
           <Stack
             key={clip.id}
             direction="row"
             spacing={1}
             alignItems="center"
-            sx={{
-              px: 1,
-              py: 0.5,
-              borderRadius: 1,
-              bgcolor: 'action.hover',
-            }}
+            sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: 'action.hover' }}
           >
-            {/* A posição é o que vira o código do arquivo (G1, G2...), então
-                mostrá-la aqui é o que liga esta lista à matriz de resultados. */}
-            <Chip
-              size="small"
-              label={`${title[0]}${index + 1}`}
-              sx={{ fontWeight: 700, minWidth: 40 }}
-            />
+            {/* A posição vira o código do arquivo (G1, C2, A3), então mostrá-la
+                aqui é o que liga esta lista aos resultados. */}
+            <Box
+              sx={{
+                px: 0.75,
+                py: 0.25,
+                borderRadius: 0.75,
+                fontSize: 11,
+                fontWeight: 700,
+                fontFamily: 'monospace',
+                color: '#fff',
+                bgcolor: bloco.cor,
+              }}
+            >
+              {bloco.letra}
+              {index + 1}
+            </Box>
             <Tooltip title={clip.label}>
               <Typography variant="caption" noWrap sx={{ flexGrow: 1, minWidth: 0 }}>
                 {clip.label}
               </Typography>
             </Tooltip>
             <Typography variant="caption" color="text.secondary">
-              {formatarMb(clip.sizeBytes)}
+              {formatarTamanho(clip.sizeBytes)}
             </Typography>
             <IconButton
               size="small"
               aria-label={`Remover ${clip.label}`}
               onClick={() => onRemove(clip.id)}
             >
-              <CloseRoundedIcon fontSize="small" />
+              <CloseRoundedIcon sx={{ fontSize: 15 }} />
             </IconButton>
           </Stack>
         ))}
@@ -183,31 +294,27 @@ function ClipDropzone({
           }}
           sx={{
             display: 'flex',
-            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 0.5,
-            py: 2,
+            gap: 1,
+            py: 1.25,
             px: 1,
             cursor: busy ? 'progress' : 'pointer',
             border: '1px dashed',
-            borderColor: arrastando ? 'primary.main' : 'divider',
+            borderColor: arrastando ? bloco.cor : 'divider',
             bgcolor: arrastando ? 'action.selected' : 'transparent',
             borderRadius: 1.5,
-            textAlign: 'center',
             transition: 'border-color .15s, background-color .15s',
+            '&:hover': { borderColor: busy ? 'divider' : bloco.cor },
           }}
         >
           {busy ? (
-            <CircularProgress size={20} />
+            <CircularProgress size={16} />
           ) : (
-            <UploadRoundedIcon fontSize="small" color="action" />
+            <UploadRoundedIcon sx={{ fontSize: 18 }} color="action" />
           )}
           <Typography variant="caption" color="text.secondary">
-            {busy ? 'Enviando...' : 'Arraste vídeos ou clique para selecionar'}
-          </Typography>
-          <Typography variant="caption" color="text.disabled">
-            Até {max} vídeos · MP4 até 40 MB cada
+            {busy ? 'Enviando...' : 'Arraste vídeos ou clique · MP4 até 40 MB'}
           </Typography>
           <input
             type="file"
@@ -236,33 +343,40 @@ const ROTULO_STATUS: Record<CombinationVideoStatus, string> = {
 /**
  * Acompanhamento da montagem, vídeo a vídeo.
  *
- * A montagem é sequencial e leva minutos numa matriz grande. Mostrar só um
- * spinner geral esconderia o que interessa: os primeiros vídeos já ficam
- * prontos para baixar enquanto os últimos ainda estão na fila.
+ * A montagem é sequencial e leva minutos numa matriz grande. Um spinner geral
+ * esconderia o que interessa: os primeiros vídeos já ficam prontos para baixar
+ * enquanto os últimos ainda estão na fila.
  */
 function RenderProgress({ videos }: { videos: CombinationVideo[] }) {
   const prontos = videos.filter((v) => v.status === 'pronto').length;
   const falhas = videos.filter((v) => v.status === 'falhou').length;
+  const terminou = prontos + falhas === videos.length;
 
   return (
     <Box>
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.5 }}>
         <Box sx={{ flexGrow: 1 }}>
           <LinearProgress
             variant="determinate"
             value={((prontos + falhas) / videos.length) * 100}
-            sx={{ height: 6, borderRadius: 3 }}
+            color={falhas > 0 ? 'warning' : 'primary'}
+            sx={{ height: 8, borderRadius: 4 }}
           />
         </Box>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="body2" fontWeight={700}>
           {prontos + falhas}/{videos.length}
         </Typography>
       </Stack>
 
+      {terminou && falhas === 0 && (
+        <Alert severity="success" sx={{ mb: 1.5 }}>
+          {prontos} vídeos prontos para postar.
+        </Alert>
+      )}
       {falhas > 0 && (
-        <Alert severity="warning" sx={{ mb: 1 }}>
+        <Alert severity="warning" sx={{ mb: 1.5 }}>
           {falhas} vídeo(s) falharam na montagem. Os demais continuam
-          disponíveis para baixar.
+          disponíveis — passe o mouse no status para ver o motivo.
         </Alert>
       )}
 
@@ -280,7 +394,7 @@ function RenderProgress({ videos }: { videos: CombinationVideo[] }) {
             {videos.map((v) => (
               <TableRow key={v.id} hover>
                 <TableCell>
-                  <Chip size="small" color="primary" variant="outlined" label={v.code} />
+                  <CodigoChip code={v.code} />
                 </TableCell>
                 <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>
                   {v.filename}
@@ -325,6 +439,40 @@ function RenderProgress({ videos }: { videos: CombinationVideo[] }) {
   );
 }
 
+/**
+ * `G1C2A3` colorido por bloco.
+ *
+ * Cada par letra+número ganha a cor do seu bloco, então o código deixa de ser
+ * uma sigla opaca e passa a mostrar a composição do vídeo de relance.
+ */
+function CodigoChip({ code }: { code: string }) {
+  const partes = code.match(/[A-Z]\d+/g) ?? [code];
+  return (
+    <Stack direction="row" spacing={0.25}>
+      {partes.map((parte) => {
+        const bloco = BLOCOS.find((b) => b.letra === parte[0]);
+        return (
+          <Box
+            key={parte}
+            sx={{
+              px: 0.6,
+              py: 0.2,
+              borderRadius: 0.75,
+              fontSize: 11,
+              fontWeight: 700,
+              fontFamily: 'monospace',
+              color: '#fff',
+              bgcolor: bloco?.cor ?? 'text.disabled',
+            }}
+          >
+            {parte}
+          </Box>
+        );
+      })}
+    </Stack>
+  );
+}
+
 export function MultiplierPage() {
   const [sigla, setSigla] = useState('');
   const [format, setFormat] = useState<PlanFormat>('9:16');
@@ -363,19 +511,18 @@ export function MultiplierPage() {
     combinationsService.listClips().then(setClips).catch(console.error);
   }, []);
 
-  const porBloco = useMemo(
-    () => ({
-      hook: clips.filter((c) => c.role === 'hook'),
-      body: usarCorpo ? clips.filter((c) => c.role === 'body') : [],
-      cta: usarCta ? clips.filter((c) => c.role === 'cta') : [],
-    }),
-    [clips, usarCorpo, usarCta],
-  );
+  const ligado: Record<ClipRole, boolean> = {
+    hook: true,
+    body: usarCorpo,
+    cta: usarCta,
+  };
+  const doBloco = (role: ClipRole) =>
+    ligado[role] ? clips.filter((c) => c.role === role) : [];
 
   const counts = {
-    hooks: porBloco.hook.length,
-    bodies: porBloco.body.length,
-    ctas: porBloco.cta.length,
+    hooks: doBloco('hook').length,
+    bodies: doBloco('body').length,
+    ctas: doBloco('cta').length,
   };
 
   // Bloco vazio conta como 1 na matriz: desligar o CTA não zera o total, só
@@ -389,10 +536,10 @@ export function MultiplierPage() {
     if (!lista.length) return;
     setError(null);
 
-    const cabem = LIMITS[role === 'hook' ? 'hooks' : role === 'body' ? 'bodies' : 'ctas'] -
-      clips.filter((c) => c.role === role).length;
+    const bloco = BLOCOS.find((b) => b.role === role)!;
+    const cabem = bloco.max - clips.filter((c) => c.role === role).length;
     if (lista.length > cabem) {
-      setError(`Cabem mais ${cabem} vídeo(s) neste bloco.`);
+      setError(`Cabem mais ${cabem} vídeo(s) em ${bloco.titulo}.`);
       return;
     }
     for (const arquivo of lista) {
@@ -406,7 +553,7 @@ export function MultiplierPage() {
     setEnviando(role);
     try {
       // Um por vez: são arquivos grandes, e em paralelo o navegador estrangula
-      // a banda e o servidor recebe vários multipart de 40MB de uma só vez.
+      // a banda e o servidor recebe vários multipart de 40 MB de uma só vez.
       for (const arquivo of lista) {
         const clip = await combinationsService.uploadClip(role, arquivo);
         setClips((prev) => [...prev, clip]);
@@ -440,19 +587,16 @@ export function MultiplierPage() {
         format,
         // Rótulo e clipe saem da MESMA lista, na mesma ordem: é isso que faz
         // o vídeo G3 sair com o nome do gancho 3.
-        hooks: porBloco.hook.map((c) => c.label),
-        bodies: porBloco.body.map((c) => c.label),
-        ctas: porBloco.cta.map((c) => c.label),
-        hookClipIds: porBloco.hook.map((c) => c.id),
-        bodyClipIds: porBloco.body.map((c) => c.id),
-        ctaClipIds: porBloco.cta.map((c) => c.id),
+        hooks: doBloco('hook').map((c) => c.label),
+        bodies: doBloco('body').map((c) => c.label),
+        ctas: doBloco('cta').map((c) => c.label),
+        hookClipIds: doBloco('hook').map((c) => c.id),
+        bodyClipIds: doBloco('body').map((c) => c.id),
+        ctaClipIds: doBloco('cta').map((c) => c.id),
       });
       setResult(plan);
       setVideos([]);
-      setPlans((prev) => [
-        { ...plan, total: plan.combinations.length },
-        ...prev,
-      ]);
+      setPlans((prev) => [{ ...plan, total: plan.combinations.length }, ...prev]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao gerar combinações');
     } finally {
@@ -507,6 +651,8 @@ export function MultiplierPage() {
       'code;filename;hook;body;cta',
       ...plan.combinations.map((c) => [c.code, c.filename, c.hook, c.body, c.cta].join(';')),
     ];
+    // BOM na frente: sem ele o Excel em pt-BR abre o CSV em ANSI e os acentos
+    // dos rótulos viram lixo.
     const blob = new Blob(['﻿' + rows.join('\n')], {
       type: 'text/csv;charset=utf-8',
     });
@@ -540,7 +686,10 @@ export function MultiplierPage() {
       setExpanded(null);
       setExpandedDetail(null);
     }
-    if (result?.id === id) setResult(null);
+    if (result?.id === id) {
+      setResult(null);
+      setVideos([]);
+    }
   }
 
   function renderCombinationsTable(combinations: Combination[]) {
@@ -560,9 +709,11 @@ export function MultiplierPage() {
             {combinations.map((c) => (
               <TableRow key={c.code} hover>
                 <TableCell>
-                  <Chip size="small" color="primary" variant="outlined" label={c.code} />
+                  <CodigoChip code={c.code} />
                 </TableCell>
-                <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>{c.filename}</TableCell>
+                <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+                  {c.filename}
+                </TableCell>
                 <TableCell>
                   <Tooltip title={c.hook}>
                     <span>{truncate(c.hook)}</span>
@@ -599,9 +750,15 @@ export function MultiplierPage() {
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={5}>
-          <Card>
-            <CardContent>
-              <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit}>
+            <Card sx={{ mb: 2 }}>
+              <CardContent>
+                <Passo
+                  numero={1}
+                  titulo="Identifique o produto"
+                  descricao="A sigla nomeia todos os arquivos gerados."
+                  concluido={Boolean(sigla.trim())}
+                />
                 <TextField
                   fullWidth
                   required
@@ -611,12 +768,12 @@ export function MultiplierPage() {
                   value={sigla}
                   inputProps={{ maxLength: 10, style: { textTransform: 'uppercase' } }}
                   onChange={(e) => setSigla(e.target.value)}
-                  helperText="Usada no nome dos arquivos: [SIGLA]_G1C2A3_[DDMM].mp4"
+                  helperText={`Nome dos arquivos: ${sigla.trim().toUpperCase() || '[SIGLA]'}_G1C2A3_DDMM.mp4`}
                   sx={{ mb: 2 }}
                 />
 
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Formato
+                <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+                  Formato de saída
                 </Typography>
                 <ToggleButtonGroup
                   exclusive
@@ -624,25 +781,38 @@ export function MultiplierPage() {
                   size="small"
                   value={format}
                   onChange={(_e, value) => value && setFormat(value)}
-                  sx={{ mb: 2 }}
                 >
                   <ToggleButton value="9:16">9:16 Vertical</ToggleButton>
                   <ToggleButton value="16:9">16:9 Horizontal</ToggleButton>
                   <ToggleButton value="1:1">1:1 Quadrado</ToggleButton>
                 </ToggleButtonGroup>
+              </CardContent>
+            </Card>
 
-                {/* Gancho é obrigatório — é o bloco que decide o scroll e o
-                    que dá a primeira letra do código. Corpo e CTA saem e
-                    entram conforme o teste. */}
+            <Card sx={{ mb: 2 }}>
+              <CardContent>
+                <Passo
+                  numero={2}
+                  titulo="Suba seus clipes"
+                  descricao="Cada bloco vira uma peça da combinação."
+                  concluido={counts.hooks > 0}
+                />
+
+                {/* Gancho é obrigatório — é o bloco que decide o scroll e o que
+                    dá a primeira letra do código. Corpo e CTA saem e entram
+                    conforme o teste. */}
                 <Stack
                   direction="row"
                   alignItems="center"
                   flexWrap="wrap"
-                  sx={{ mb: 2, gap: 1 }}
+                  sx={{ mb: 1.5, gap: 0.5 }}
                 >
-                  <Typography variant="subtitle2">Combinar:</Typography>
-                  <Chip size="small" label="🎣 Gancho (sempre)" />
+                  <Typography variant="caption" color="text.secondary" mr={0.5}>
+                    Blocos:
+                  </Typography>
+                  <Chip size="small" label="🎣 Gancho" sx={{ fontWeight: 600 }} />
                   <FormControlLabel
+                    sx={{ mr: 0 }}
                     control={
                       <Switch
                         size="small"
@@ -650,9 +820,10 @@ export function MultiplierPage() {
                         onChange={(e) => setUsarCorpo(e.target.checked)}
                       />
                     }
-                    label={<Typography variant="body2">📝 Corpo</Typography>}
+                    label={<Typography variant="caption">📝 Corpo</Typography>}
                   />
                   <FormControlLabel
+                    sx={{ mr: 0 }}
                     control={
                       <Switch
                         size="small"
@@ -660,54 +831,88 @@ export function MultiplierPage() {
                         onChange={(e) => setUsarCta(e.target.checked)}
                       />
                     }
-                    label={<Typography variant="body2">🎯 CTA</Typography>}
+                    label={<Typography variant="caption">🎯 CTA</Typography>}
                   />
                 </Stack>
 
-                <ClipDropzone
-                  title="Ganchos"
-                  emoji="🎣"
-                  clips={clips.filter((c) => c.role === 'hook')}
-                  max={LIMITS.hooks}
-                  busy={enviando === 'hook'}
-                  onUpload={(files) => void handleUpload('hook', files)}
-                  onRemove={(id) => void handleRemoveClip(id)}
-                />
-                <ClipDropzone
-                  title="Corpos"
-                  emoji="📝"
-                  clips={clips.filter((c) => c.role === 'body')}
-                  max={LIMITS.bodies}
-                  busy={enviando === 'body'}
-                  disabled={!usarCorpo}
-                  onUpload={(files) => void handleUpload('body', files)}
-                  onRemove={(id) => void handleRemoveClip(id)}
-                />
-                <ClipDropzone
-                  title="CTAs"
-                  emoji="🎯"
-                  clips={clips.filter((c) => c.role === 'cta')}
-                  max={LIMITS.ctas}
-                  busy={enviando === 'cta'}
-                  disabled={!usarCta}
-                  onUpload={(files) => void handleUpload('cta', files)}
-                  onRemove={(id) => void handleRemoveClip(id)}
+                {BLOCOS.map((bloco) => (
+                  <ClipDropzone
+                    key={bloco.role}
+                    bloco={bloco}
+                    clips={clips.filter((c) => c.role === bloco.role)}
+                    busy={enviando === bloco.role}
+                    disabled={!ligado[bloco.role]}
+                    onUpload={(files) => void handleUpload(bloco.role, files)}
+                    onRemove={(id) => void handleRemoveClip(id)}
+                  />
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent>
+                <Passo
+                  numero={3}
+                  titulo="Gere a matriz"
+                  descricao="Todas as combinações possíveis, de uma vez."
+                  concluido={Boolean(result)}
                 />
 
-                <Divider sx={{ my: 2 }} />
-
-                <Typography
-                  variant="h4"
-                  align="center"
-                  sx={{ fontWeight: 700, mb: 2 }}
-                  color={total > 0 ? 'primary' : 'text.disabled'}
+                {/* A conta com as cores dos blocos: mostra de onde sai cada
+                    fator, não só o número final. */}
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="center"
+                  spacing={1}
+                  sx={{ mb: 2 }}
                 >
-                  {counts.hooks} × {Math.max(counts.bodies, 1)} ×{' '}
-                  {Math.max(counts.ctas, 1)} = {total}{' '}
-                  <Typography component="span" variant="h6">
-                    vídeos
+                  {BLOCOS.map((bloco, i) => (
+                    <Stack key={bloco.role} direction="row" alignItems="center" spacing={1}>
+                      {i > 0 && (
+                        <Typography variant="h6" color="text.disabled">
+                          ×
+                        </Typography>
+                      )}
+                      <Box sx={{ textAlign: 'center' }}>
+                        <Typography
+                          variant="h5"
+                          fontWeight={700}
+                          sx={{
+                            color: ligado[bloco.role] ? bloco.cor : 'text.disabled',
+                          }}
+                        >
+                          {Math.max(
+                            bloco.role === 'hook'
+                              ? counts.hooks
+                              : bloco.role === 'body'
+                                ? counts.bodies
+                                : counts.ctas,
+                            bloco.role === 'hook' ? 0 : 1,
+                          )}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {bloco.letra}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  ))}
+                  <Typography variant="h6" color="text.disabled">
+                    =
                   </Typography>
-                </Typography>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography
+                      variant="h4"
+                      fontWeight={800}
+                      color={total > 0 ? 'text.primary' : 'text.disabled'}
+                    >
+                      {total}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      vídeos
+                    </Typography>
+                  </Box>
+                </Stack>
 
                 {acimaDoTeto && (
                   <Alert severity="warning" sx={{ mb: 2 }}>
@@ -715,7 +920,6 @@ export function MultiplierPage() {
                     montagem. Remova clipes de um dos blocos.
                   </Alert>
                 )}
-
                 {error && (
                   <Alert severity="error" sx={{ mb: 2 }}>
                     {error}
@@ -742,9 +946,9 @@ export function MultiplierPage() {
                     Envie ao menos um vídeo de gancho para começar.
                   </Typography>
                 )}
-              </form>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </form>
         </Grid>
 
         <Grid item xs={12} md={7}>
@@ -759,10 +963,18 @@ export function MultiplierPage() {
                     flexWrap="wrap"
                     sx={{ mb: 2, gap: 1 }}
                   >
-                    <Typography variant="h6">
-                      {result.sigla} — {result.combinations.length} combinações ({result.format})
-                    </Typography>
-                    <Stack direction="row" spacing={1}>
+                    <Box>
+                      <Typography variant="h6">
+                        {result.sigla} — {result.combinations.length} combinações
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {result.format} ·{' '}
+                        {videos.length
+                          ? 'montagem em vídeo'
+                          : 'matriz gerada — clique em Montar vídeos'}
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                       <Button
                         size="small"
                         variant="outlined"
@@ -777,7 +989,7 @@ export function MultiplierPage() {
                         startIcon={<DownloadRoundedIcon />}
                         onClick={() => handleDownloadCsv(result)}
                       >
-                        Baixar CSV
+                        CSV
                       </Button>
                       <Button
                         size="small"
@@ -809,12 +1021,16 @@ export function MultiplierPage() {
                     🎬
                   </Typography>
                   <Typography variant="h6" gutterBottom>
-                    Suas combinações aparecerão aqui
+                    Seus vídeos aparecerão aqui
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 420, mx: 'auto' }}>
-                    Preencha a sigla, escolha o formato e cadastre seus clipes de
-                    gancho, corpo e CTA. Dica: grave variações curtas de gancho —
-                    os 3 primeiros segundos decidem o scroll.
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ maxWidth: 420, mx: 'auto' }}
+                  >
+                    Suba 3 ganchos, 2 corpos e 1 CTA e saia com 6 vídeos
+                    diferentes — cada um com o nome pronto para você saber qual
+                    performou no teste A/B.
                   </Typography>
                 </Box>
               )}
@@ -838,7 +1054,12 @@ export function MultiplierPage() {
                         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                           <Typography variant="subtitle2">
                             {plan.sigla}{' '}
-                            <Chip size="small" variant="outlined" label={plan.format} sx={{ ml: 0.5 }} />
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={plan.format}
+                              sx={{ ml: 0.5 }}
+                            />
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
                             {plan.hooks.length} ganchos × {plan.bodies.length} corpos ×{' '}
@@ -883,6 +1104,13 @@ export function MultiplierPage() {
                                   onClick={() => handleDownloadCsv(expandedDetail)}
                                 >
                                   Baixar CSV
+                                </Button>
+                                <Button
+                                  size="small"
+                                  startIcon={<MovieFilterRoundedIcon />}
+                                  onClick={() => void handleRender(plan.id)}
+                                >
+                                  Montar vídeos
                                 </Button>
                               </Stack>
                               {renderCombinationsTable(expandedDetail.combinations)}
