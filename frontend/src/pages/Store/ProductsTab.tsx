@@ -19,6 +19,7 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { StoreProduct, storesService } from '@/services/stores.service';
 import { formatMoney } from '@/utils/format';
+import { ExportButton } from './ExportButton';
 
 const SORT_OPTIONS = [
   { value: 'title', label: 'Nome (A-Z)' },
@@ -150,6 +151,12 @@ export function ProductsTab({
           }}
           sx={{ fontWeight: 700 }}
         />
+        <Box ml="auto">
+          <ExportButton
+            label="Exportar catálogo"
+            onExport={() => storesService.exportProducts(storeId)}
+          />
+        </Box>
       </FilterBar>
 
       {loading ? (

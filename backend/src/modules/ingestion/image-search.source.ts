@@ -34,11 +34,25 @@ export class ImageSearchSource {
       const body = (await response.json()) as {
         results?: Array<{ image?: string; width?: number; height?: number }>;
       };
-      // Prefere imagens razoavelmente quadradas/landscape e https.
-      const candidate = (body.results ?? []).find(
-        (r) => r.image?.startsWith('https://') && (r.width ?? 0) >= 300,
-      );
-      return candidate?.image ?? null;
+      // Ranqueia: CDNs de marketplace (foto de produto de verdade) > tamanho
+      // médio > proporção próxima do quadrado (foto de catálogo).
+      const MARKETPLACE =
+        /mlstatic|susercontent|shopee|alicdn|aliexpress|amazon|media-amazon|magazineluiza|magalu|americanas|shein|cdn\.shopify|kabum|casasbahia/i;
+      const scored = (body.results ?? [])
+        .filter((r) => r.image?.startsWith('https://') && (r.width ?? 0) >= 300)
+        .map((r) => {
+          const w = r.width ?? 0;
+          const h = r.height ?? 1;
+          const ratio = w / h;
+          let score = 0;
+          if (MARKETPLACE.test(r.image!)) score += 100;
+          if (ratio >= 0.7 && ratio <= 1.4) score += 30; // foto de catálogo
+          if (w >= 500 && w <= 2000) score += 20;
+          if (/logo|icon|banner/i.test(r.image!)) score -= 50;
+          return { url: r.image!, score };
+        })
+        .sort((a, b) => b.score - a.score);
+      return scored[0]?.url ?? null;
     } catch (err) {
       this.logger.warn(`Busca de imagem falhou p/ "${title}": ${err instanceof Error ? err.message : err}`);
       return null;

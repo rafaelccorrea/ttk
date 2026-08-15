@@ -1,4 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { existsSync } from 'fs';
+import { join } from 'path';
+
+// Sessão logada (npm run cc:login) — com ela, a aba de vídeos aceita
+// region=BR e mostra mais criadores; sem ela, cai no fluxo anônimo (US, 4).
+const SESSION_FILE = join(process.cwd(), 'cc-session.json');
 
 export interface TrendingCreator {
   handle: string;
@@ -137,15 +143,22 @@ export class CreativeCenterSource {
    */
   async fetchTrendingCreators(limit = 4): Promise<TrendingCreator[]> {
     const { chromium } = await import('playwright');
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({
+      headless: true,
+      args: ['--disable-blink-features=AutomationControlled'],
+    });
     try {
-      const page = await browser.newPage({
+      const hasSession = existsSync(SESSION_FILE);
+      const context = await browser.newContext({
         userAgent: HEADERS['user-agent'],
         locale: 'pt-BR',
         viewport: { width: 1366, height: 2000 },
+        ...(hasSession ? { storageState: SESSION_FILE } : {}),
       });
+      const page = await context.newPage();
+      // Logado, a aba de vídeos aceita region=BR; anônimo só existe US.
       await page.goto(
-        'https://ads.tiktok.com/creative/creativeCenter/trends/video?period=7',
+        `https://ads.tiktok.com/creative/creativeCenter/trends/video?period=7${hasSession ? '&region=BR' : ''}`,
         { waitUntil: 'domcontentloaded', timeout: 60_000 },
       );
       await page.waitForTimeout(9_000);

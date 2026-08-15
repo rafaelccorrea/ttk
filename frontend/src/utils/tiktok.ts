@@ -12,3 +12,13 @@ export function tiktokSearchUrl(query: string): string {
 }
 
 export const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
+
+/**
+ * Passa imagens externas pelo proxy do backend: CDNs (TikTok, Shopee, ML...)
+ * bloqueiam hotlink pelo Referer do navegador, mas respondem ao servidor.
+ */
+export function proxyImage(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (!url.startsWith('http')) return url;
+  return `/api/v1/media/proxy?url=${encodeURIComponent(url)}`;
+}

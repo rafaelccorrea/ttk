@@ -9,6 +9,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { CombinationsModule } from './modules/combinations/combinations.module';
 import { CreatorsModule } from './modules/creators/creators.module';
 import { IngestionModule } from './modules/ingestion/ingestion.module';
+import { MediaModule } from './modules/media/media.module';
 import { ProductsModule } from './modules/products/products.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { StudioModule } from './modules/studio/studio.module';
@@ -31,6 +32,7 @@ import { VideogenModule } from './modules/videogen/videogen.module';
     CombinationsModule,
     CreatorsModule,
     IngestionModule,
+    MediaModule,
     UsersModule,
     ProductsModule,
     StoresModule,

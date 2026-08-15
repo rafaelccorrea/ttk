@@ -15,6 +15,7 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { StoreOrder, storesService } from '@/services/stores.service';
 import { formatMoney } from '@/utils/format';
+import { ExportButton } from './ExportButton';
 
 const STAGE_STYLE: Record<
   StoreOrder['stage'],
@@ -105,6 +106,12 @@ export function OrdersTab({
           }}
           sx={{ fontWeight: 700 }}
         />
+        <Box ml="auto">
+          <ExportButton
+            label="Exportar pedidos"
+            onExport={() => storesService.exportOrders(storeId, period)}
+          />
+        </Box>
       </FilterBar>
 
       {loading ? (

@@ -27,7 +27,7 @@ import { TikTokPlayer } from '@/components/ui/TikTokPlayer';
 import { FilterBar, SearchField } from '@/components/ui/Filters';
 import { videosService, ViralVideo } from '@/services/videos.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
-import { tiktokProfileUrl } from '@/utils/tiktok';
+import { proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
 
 const PAGE_SIZE = 24;
 
@@ -82,7 +82,7 @@ function VideoCard({
           maxHeight: 260,
           // Thumbnail real quando a ingestão populou; gradiente como fallback.
           background: video.thumbnailUrl
-            ? `linear-gradient(180deg, rgba(0,0,0,0.05) 45%, rgba(0,0,0,0.6)), url(${video.thumbnailUrl}) center/cover no-repeat`
+            ? `linear-gradient(180deg, rgba(0,0,0,0.05) 45%, rgba(0,0,0,0.6)), url(${proxyImage(video.thumbnailUrl)}) center/cover no-repeat`
             : gradientFor(video.category),
           display: 'flex',
           flexDirection: 'column',
@@ -174,19 +174,24 @@ function VideoCard({
           {video.caption}
         </Typography>
         <Typography variant="caption" color="text.secondary" mt={0.5}>
-          <Box
-            component="a"
-            href={tiktokProfileUrl(video.creatorHandle)}
-            target="_blank"
-            rel="noopener noreferrer"
-            sx={{
-              color: 'inherit',
-              textDecoration: 'none',
-              '&:hover': { color: 'primary.main', textDecoration: 'underline' },
-            }}
-          >
-            {video.creatorHandle}
-          </Box>
+          {/* Só linka o perfil quando o vídeo veio da ingestão real (handle existe no TikTok). */}
+          {video.playbackUrl || video.thumbnailUrl ? (
+            <Box
+              component="a"
+              href={tiktokProfileUrl(video.creatorHandle)}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                color: 'inherit',
+                textDecoration: 'none',
+                '&:hover': { color: 'primary.main', textDecoration: 'underline' },
+              }}
+            >
+              {video.creatorHandle}
+            </Box>
+          ) : (
+            video.creatorHandle
+          )}
           {' · '}
           {video.category}
         </Typography>
@@ -265,7 +270,7 @@ export function VideosPage() {
   const [search, setSearch] = useState('');
   const [savedOnly, setSavedOnly] = useState(false);
   const [page, setPage] = useState(1);
-  const [playingVideo, setPlayingVideo] = useState<ViralVideo | null>(null);
+  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [transcriptVideo, setTranscriptVideo] = useState<ViralVideo | null>(
     null,
   );
@@ -343,7 +348,11 @@ export function VideosPage() {
               rank={(page - 1) * PAGE_SIZE + index + 1}
               onToggleSave={toggleSave}
               onShowTranscript={setTranscriptVideo}
-              onPlay={setPlayingVideo}
+              onPlay={(video) => {
+                const playable = items.filter((it) => it.playbackUrl);
+                const idx = playable.findIndex((it) => it.id === video.id);
+                if (idx >= 0) setPlayingIndex(idx);
+              }}
             />
           </Grid>
         ))}
@@ -367,8 +376,10 @@ export function VideosPage() {
 
       {/* Player fullscreen estilo TikTok */}
       <TikTokPlayer
-        video={playingVideo}
-        onClose={() => setPlayingVideo(null)}
+        videos={items.filter((it) => it.playbackUrl)}
+        index={playingIndex}
+        onIndexChange={setPlayingIndex}
+        onClose={() => setPlayingIndex(null)}
         onToggleSave={toggleSave}
       />
 

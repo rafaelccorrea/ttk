@@ -11,6 +11,6 @@ import { SupabaseAuthGuard } from './supabase-auth.guard';
   imports: [TypeOrmModule.forFeature([AppUser]), UsersModule],
   controllers: [AuthController],
   providers: [AuthService, MailService, SupabaseAuthGuard],
-  exports: [SupabaseAuthGuard, UsersModule],
+  exports: [SupabaseAuthGuard, MailService, UsersModule],
 })
 export class AuthModule {}

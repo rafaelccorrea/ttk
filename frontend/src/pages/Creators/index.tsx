@@ -17,7 +17,7 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { creatorsService, RankedCreator } from '@/services/creators.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
-import { tiktokProfileUrl } from '@/utils/tiktok';
+import { proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
 
 const PAGE_SIZE = 25;
 
@@ -142,12 +142,13 @@ export function CreatorsPage() {
                 </TableCell>
                 <TableCell>
                   <Box display="flex" alignItems="center" gap={1.5}>
+                    {/* Perfis com avatar vêm da ingestão real; os demais são dados demo do seed. */}
                     <Avatar
-                      component="a"
-                      href={tiktokProfileUrl(creator.handle)}
+                      component={creator.avatarUrl ? 'a' : 'div'}
+                      href={creator.avatarUrl ? tiktokProfileUrl(creator.handle) : undefined}
                       target="_blank"
                       rel="noopener noreferrer"
-                      src={creator.avatarUrl ?? undefined}
+                      src={proxyImage(creator.avatarUrl)}
                       sx={{
                         width: 36,
                         height: 36,
@@ -167,15 +168,17 @@ export function CreatorsPage() {
                         {creator.name}
                       </Typography>
                       <Typography
-                        component="a"
-                        href={tiktokProfileUrl(creator.handle)}
+                        component={creator.avatarUrl ? 'a' : 'span'}
+                        href={creator.avatarUrl ? tiktokProfileUrl(creator.handle) : undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         variant="caption"
                         sx={{
                           color: 'text.secondary',
                           textDecoration: 'none',
-                          '&:hover': { color: 'primary.main', textDecoration: 'underline' },
+                          '&:hover': creator.avatarUrl
+                            ? { color: 'primary.main', textDecoration: 'underline' }
+                            : undefined,
                         }}
                       >
                         @{creator.handle}

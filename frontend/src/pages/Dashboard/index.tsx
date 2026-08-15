@@ -23,7 +23,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { TikTokPlayer } from '@/components/ui/TikTokPlayer';
-import { tiktokProfileUrl } from '@/utils/tiktok';
+import { proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { analyticsService, Overview, TopVideo } from '@/services/analytics.service';
@@ -57,7 +57,8 @@ function SectionHeader({ title, to }: { title: string; to: string }) {
 export function DashboardPage() {
   const { email } = useAuth();
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [playingVideo, setPlayingVideo] = useState<TopVideo | null>(null);
+  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
+  const playableVideos = (overview?.topVideos ?? []).filter((v) => v.playbackUrl);
 
   useEffect(() => {
     analyticsService.overview().then(setOverview).catch(console.error);
@@ -174,14 +175,18 @@ export function DashboardPage() {
               href={v.playbackUrl ? undefined : v.videoUrl ?? tiktokProfileUrl(v.creatorHandle)}
               target={v.playbackUrl ? undefined : '_blank'}
               rel={v.playbackUrl ? undefined : 'noopener noreferrer'}
-              onClick={v.playbackUrl ? () => setPlayingVideo(v) : undefined}
+              onClick={
+                v.playbackUrl
+                  ? () => setPlayingIndex(playableVideos.findIndex((p) => p.id === v.id))
+                  : undefined
+              }
               sx={{
                 cursor: 'pointer',
                 borderRadius: 3,
                 aspectRatio: '3 / 4',
                 // Thumbnail real quando a ingestão populou; gradiente como fallback.
                 background: v.thumbnailUrl
-                  ? `linear-gradient(180deg, rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.72)), url(${v.thumbnailUrl}) center/cover no-repeat`
+                  ? `linear-gradient(180deg, rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.72)), url(${proxyImage(v.thumbnailUrl)}) center/cover no-repeat`
                   : gradientFor(v.category),
                 color: '#fff',
                 display: 'flex',
@@ -236,12 +241,13 @@ export function DashboardPage() {
         <Stack divider={<Box borderBottom="1px solid rgba(22,24,35,0.08)" />}>
           {overview?.topCreators.map((c) => (
             <Box key={c.id} display="flex" alignItems="center" gap={2} px={2} py={1.25}>
+              {/* Perfis com avatar vêm da ingestão real; os demais são dados demo do seed. */}
               <Avatar
-                component="a"
-                href={tiktokProfileUrl(c.handle)}
+                component={c.avatarUrl ? 'a' : 'div'}
+                href={c.avatarUrl ? tiktokProfileUrl(c.handle) : undefined}
                 target="_blank"
                 rel="noopener noreferrer"
-                src={c.avatarUrl ?? undefined}
+                src={proxyImage(c.avatarUrl)}
                 sx={{
                   width: 36,
                   height: 36,
@@ -262,14 +268,16 @@ export function DashboardPage() {
                 </Typography>
                 <Typography variant="body2" color="text.secondary" noWrap>
                   <Box
-                    component="a"
-                    href={tiktokProfileUrl(c.handle)}
+                    component={c.avatarUrl ? 'a' : 'span'}
+                    href={c.avatarUrl ? tiktokProfileUrl(c.handle) : undefined}
                     target="_blank"
                     rel="noopener noreferrer"
                     sx={{
                       color: 'inherit',
                       textDecoration: 'none',
-                      '&:hover': { color: 'primary.main', textDecoration: 'underline' },
+                      '&:hover': c.avatarUrl
+                        ? { color: 'primary.main', textDecoration: 'underline' }
+                        : undefined,
                     }}
                   >
                     @{c.handle}
@@ -316,7 +324,12 @@ export function DashboardPage() {
       </Grid>
 
       {/* Player fullscreen estilo TikTok */}
-      <TikTokPlayer video={playingVideo} onClose={() => setPlayingVideo(null)} />
+      <TikTokPlayer
+        videos={playableVideos}
+        index={playingIndex}
+        onIndexChange={setPlayingIndex}
+        onClose={() => setPlayingIndex(null)}
+      />
     </>
   );
 }

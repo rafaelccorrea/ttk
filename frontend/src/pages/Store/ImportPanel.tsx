@@ -92,9 +92,9 @@ export function ImportPanel({ storeId, onImported }: ImportPanelProps) {
       <Alert severity="info" sx={{ mb: 3, borderRadius: 3 }}>
         <AlertTitle>Como trazer os dados da sua loja</AlertTitle>
         Exporte os relatórios no Seller Center do TikTok Shop e envie os
-        arquivos <strong>.csv</strong> aqui. Se o download vier em Excel, abra e
-        use "Salvar como → CSV". Reimportar o mesmo período atualiza os
-        registros — nada é duplicado.
+        arquivos aqui — aceitamos <strong>.xlsx</strong> e <strong>.csv</strong>,
+        do jeito que vierem. Reimportar o mesmo período atualiza os registros —
+        nada é duplicado, e o custo que você cadastrou é preservado.
       </Alert>
 
       <Grid container spacing={2.5} mb={3}>
@@ -111,7 +111,7 @@ export function ImportPanel({ storeId, onImported }: ImportPanelProps) {
                 <input
                   hidden
                   type="file"
-                  accept=".csv,text/csv"
+                  accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   ref={(node) => {
                     inputs.current[item.dataset] = node;
                   }}
@@ -134,7 +134,7 @@ export function ImportPanel({ storeId, onImported }: ImportPanelProps) {
                   }
                   onClick={() => inputs.current[item.dataset]?.click()}
                 >
-                  {busy === item.dataset ? 'Importando...' : 'Enviar CSV'}
+                  {busy === item.dataset ? 'Importando...' : 'Enviar planilha'}
                 </Button>
               </CardContent>
             </Card>

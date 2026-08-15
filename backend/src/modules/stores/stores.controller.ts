@@ -9,11 +9,14 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -43,6 +46,7 @@ import {
   StoreDataset,
 } from './sources/store-sync-source';
 import { StoresAnalyticsService } from './stores-analytics.service';
+import { ExportFile, StoresExportService } from './stores-export.service';
 import { StoresImportService } from './stores-import.service';
 import { StoresService } from './stores.service';
 
@@ -59,6 +63,7 @@ export class StoresController {
     private readonly stores: StoresService,
     private readonly imports: StoresImportService,
     private readonly analytics: StoresAnalyticsService,
+    private readonly exports: StoresExportService,
   ) {}
 
   // ----------------------------------------------------------------- Lojas
@@ -217,6 +222,55 @@ export class StoresController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.analytics.opportunities(user.id, id, query.period ?? 30);
+  }
+
+  // ----------------------------------------------------------- Exportação
+
+  @Get(':id/products/export')
+  @ApiOperation({ summary: 'Baixa o catálogo com custo e margem em CSV' })
+  async exportProducts(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.sendCsv(res, await this.exports.products(user.id, id));
+  }
+
+  @Get(':id/skus/export')
+  @ApiOperation({ summary: 'Baixa a curva ABC com margem por SKU em CSV' })
+  async exportSkus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: QueryPeriodDto,
+    @CurrentUser() user: AuthUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.sendCsv(
+      res,
+      await this.exports.skus(user.id, id, query.period ?? 30),
+    );
+  }
+
+  @Get(':id/orders/export')
+  @ApiOperation({ summary: 'Baixa os pedidos do período em CSV' })
+  async exportOrders(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: QueryPeriodDto,
+    @CurrentUser() user: AuthUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.sendCsv(
+      res,
+      await this.exports.orders(user.id, id, query.period ?? 30),
+    );
+  }
+
+  private sendCsv(res: Response, file: ExportFile): StreamableFile {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${file.fileName}"`,
+    );
+    return new StreamableFile(Buffer.from(file.content, 'utf8'));
   }
 
   // ----------------------------------------------------------- Precificação

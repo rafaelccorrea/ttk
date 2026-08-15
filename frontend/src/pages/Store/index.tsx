@@ -211,7 +211,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
           },
           {
             title: '2. Exporte os relatórios',
-            body: 'No Seller Center: Pedidos, Produtos e Extrato financeiro, em CSV.',
+            body: 'No Seller Center: Pedidos, Produtos e Extrato financeiro (XLSX ou CSV).',
           },
           {
             title: '3. Envie os arquivos',

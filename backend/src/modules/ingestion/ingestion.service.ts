@@ -150,7 +150,7 @@ export class IngestionService implements OnModuleInit {
       }
 
       // 2) Criadores/vídeos em alta (com avatar, thumbnail e MP4 reais).
-      const trendingCreators = await this.creativeCenter.fetchTrendingCreators(4);
+      const trendingCreators = await this.creativeCenter.fetchTrendingCreators(8);
       run.creatorsFetched = trendingCreators.length;
       for (const tc of trendingCreators) {
         const creator =
@@ -160,6 +160,13 @@ export class IngestionService implements OnModuleInit {
         creator.followers = tc.followers;
         creator.category = tc.topic ?? creator.category ?? 'geral';
         creator.avatarUrl = tc.avatarUrl ?? creator.avatarUrl;
+        // GMV real não é público: estimativa conservadora pelas views do
+        // vídeo em alta (1% das views × ticket R$ 60 ÷ 100 ≈ R$ 0,006/view),
+        // só para o criador raspado disputar o ranking com os dados antigos.
+        const estimatedGmv = Math.round(tc.videoViews * 0.006);
+        if (estimatedGmv > Number(creator.gmvPeriod ?? 0)) {
+          creator.gmvPeriod = String(estimatedGmv);
+        }
         await this.creators.save(creator);
 
         const externalId = `cc-top-${tc.handle}`;

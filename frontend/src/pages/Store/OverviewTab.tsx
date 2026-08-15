@@ -25,6 +25,7 @@ import {
   storesService,
 } from '@/services/stores.service';
 import { formatMoney, formatNumber } from '@/utils/format';
+import { ExportButton } from './ExportButton';
 
 const CURVE_COLOR: Record<SkuPerformance['curve'], string> = {
   A: '#16a34a',
@@ -242,9 +243,20 @@ export function OverviewTab({
         <RevenueSeries series={overview.series} currency={overview.currency} />
       </Box>
 
-      <Typography variant="h6" mb={1.5}>
-        Curva ABC por faturamento
-      </Typography>
+      <Box
+        display="flex"
+        alignItems="center"
+        justifyContent="space-between"
+        mb={1.5}
+      >
+        <Typography variant="h6">Curva ABC por faturamento</Typography>
+        {skus.length > 0 && (
+          <ExportButton
+            label="Exportar curva ABC"
+            onExport={() => storesService.exportSkus(storeId, period)}
+          />
+        )}
+      </Box>
       {skus.length === 0 ? (
         <Typography color="text.secondary">
           Sem vendas por SKU no período.

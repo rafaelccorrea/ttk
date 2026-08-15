@@ -53,10 +53,29 @@ npm run dev
   curva ABC e margem real por SKU, calculadora de preço/ponto de equilíbrio e o
   cruzamento do catálogo com o radar de produtos em alta ("em alta que você ainda não vende").
 
+  Aceita **XLSX e CSV**, exporta os relatórios de volta em CSV (catálogo, pedidos, curva ABC)
+  e envia um **aviso diário por e-mail** quando há pedido com prazo estourado ou SKU em ruptura
+  (desligável com `STORE_ALERTS_ENABLED=false`).
+
   A entrada de dados fica atrás do contrato `StoreSyncSource` (`modules/stores/sources/`).
-  Hoje só existe `CsvImportSource`, que **não depende de homologação na TikTok**. Quando o
-  app público for aprovado, basta adicionar `TikTokShopApiSource` implementando o mesmo
-  contrato — entidades, endpoints e telas não mudam.
+  Hoje só existe `SpreadsheetImportSource`, que **não depende de homologação na TikTok**.
+  Quando o app público for aprovado, basta adicionar `TikTokShopApiSource` implementando o
+  mesmo contrato — entidades, endpoints e telas não mudam.
+
+## Banco de dados e migrations
+
+O schema é versionado em `backend/src/database/migrations`. Em desenvolvimento o
+`synchronize` ainda cria as tabelas, mas **em produção o provisionamento é por migration**:
+
+```bash
+cd backend
+npm run migration:run                                   # aplica as pendentes
+npm run migration:generate -- src/database/migrations/Nome  # gera a partir das entidades
+npm run typeorm -- schema:log                           # confere drift (não altera nada)
+```
+
+As migrations são idempotentes, então bancos que já rodaram com `synchronize` podem
+aplicá-las sem quebrar.
 
 ## Testes
 
@@ -64,6 +83,10 @@ npm run dev
 cd backend && npm test    # Jest (unit) | npm run test:e2e
 cd frontend && npm test   # Vitest + Testing Library
 ```
+
+O CI (`.github/workflows/ci.yml`) roda build + testes dos dois lados e, num Postgres
+limpo, aplica as migrations duas vezes (provando idempotência) e falha se as entidades
+divergirem do schema resultante.
 
 ## Documentação
 

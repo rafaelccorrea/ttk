@@ -59,7 +59,7 @@ function ProductCard({
           height: 132,
           // Foto real do produto quando a ingestão populou; gradiente como fallback.
           background: product.imageUrl
-            ? `linear-gradient(180deg, rgba(0,0,0,0.0) 55%, rgba(0,0,0,0.35)), url(${product.imageUrl}) center/cover no-repeat`
+            ? `linear-gradient(180deg, rgba(0,0,0,0.0) 55%, rgba(0,0,0,0.35)), url(${proxyImage(product.imageUrl)}) center/cover no-repeat`
             : gradientFor(product.category),
           display: 'flex',
           alignItems: 'flex-start',

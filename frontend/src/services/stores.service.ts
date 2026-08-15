@@ -158,6 +158,27 @@ interface Paginated<T> {
   page: number;
 }
 
+/**
+ * Dispara o download no navegador. Precisa passar pelo axios (e não por um
+ * link direto) porque a rota exige o Bearer token do usuário.
+ */
+async function download(url: string, params?: Record<string, unknown>) {
+  const response = await api.get(url, { params, responseType: 'blob' });
+
+  const disposition = String(response.headers['content-disposition'] ?? '');
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  const fileName = match ? match[1] : 'relatorio.csv';
+
+  const href = URL.createObjectURL(response.data as Blob);
+  const anchor = document.createElement('a');
+  anchor.href = href;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(href);
+}
+
 export const storesService = {
   async list(): Promise<Store[]> {
     const { data } = await api.get<Store[]>('/stores');
@@ -267,6 +288,18 @@ export const storesService = {
   async imports(storeId: string): Promise<ImportReport[]> {
     const { data } = await api.get<ImportReport[]>(`/stores/${storeId}/imports`);
     return data;
+  },
+
+  exportProducts(storeId: string) {
+    return download(`/stores/${storeId}/products/export`);
+  },
+
+  exportSkus(storeId: string, period = 30) {
+    return download(`/stores/${storeId}/skus/export`, { period });
+  },
+
+  exportOrders(storeId: string, period = 30) {
+    return download(`/stores/${storeId}/orders/export`, { period });
   },
 
   async simulatePricing(
