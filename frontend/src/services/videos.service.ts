@@ -52,6 +52,21 @@ export const videosService = {
     return data;
   },
 
+  /**
+   * Resolve o MP4 tocável na hora do play.
+   *
+   * A URL assinada da TikTok expira em horas, por isso não é guardada no
+   * banco — pedir aqui é o que faz o player abrir. Quando o espelhamento no
+   * S3 estiver ligado, `permanent` volta true e a URL não expira mais.
+   */
+  async playback(id: string): Promise<string | null> {
+    const { data } = await api.get<{
+      playbackUrl: string | null;
+      permanent: boolean;
+    }>(`/videos/${id}/playback`);
+    return data.playbackUrl;
+  },
+
   async toggleSave(id: string): Promise<boolean> {
     const { data } = await api.post<{ isSaved: boolean }>(
       `/videos/${id}/save`,

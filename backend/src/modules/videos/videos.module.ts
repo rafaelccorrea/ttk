@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { IngestionModule } from '../ingestion/ingestion.module';
+import { MediaModule } from '../media/media.module';
 import { UsersModule } from '../users/users.module';
 import { SavedVideo } from './entities/saved-video.entity';
 import { Video } from './entities/video.entity';
@@ -7,7 +9,12 @@ import { VideosController } from './videos.controller';
 import { VideosService } from './videos.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Video, SavedVideo]), UsersModule],
+  imports: [
+    TypeOrmModule.forFeature([Video, SavedVideo]),
+    UsersModule,
+    IngestionModule,
+    MediaModule,
+  ],
   controllers: [VideosController],
   providers: [VideosService],
   exports: [VideosService],

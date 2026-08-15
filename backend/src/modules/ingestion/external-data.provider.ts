@@ -135,6 +135,8 @@ const MAX_PAGE_SIZE = 10;
 /** A URL assinada do CDN dura poucas horas; renovamos com folga. */
 const MEDIA_TTL_MS = 90 * 60 * 1000;
 const MEDIA_CACHE_MAX = 2000;
+/** `product_sort_field`: 7 = total_sale_gmv_30d_amt. */
+const PRODUCT_SORT_GMV_30D = 7;
 /** Só URLs deste host podem (e precisam) ser assinadas. */
 const SIGNABLE_HOST = 'echosell-images.tos-ap-southeast-1.volces.com';
 
@@ -154,6 +156,8 @@ export class ExternalDataProvider {
   private readonly logger = new Logger(ExternalDataProvider.name);
   private readonly baseUrl: string;
   private readonly region: string;
+  /** Piso de vendas em 30 dias para o produto sequer entrar na página. */
+  private readonly minSales30d: number;
   private readonly authValue: string;
   /** Contador de chamadas — a cota do EchoTik é por request, não por item. */
   private requestCount = 0;
@@ -169,6 +173,7 @@ export class ExternalDataProvider {
       config.get<string>('ECHOTIK_BASE_URL') ?? DEFAULT_BASE_URL
     ).replace(/\/+$/, '');
     this.region = config.get<string>('ECHOTIK_REGION') ?? 'BR';
+    this.minSales30d = Number(config.get<string>('ECHOTIK_MIN_SALES_30D') ?? 50);
 
     const appId = config.get<string>('ECHOTIK_APP_ID') ?? '';
     const secret = config.get<string>('ECHOTIK_APP_SECRET') ?? '';
@@ -228,7 +233,13 @@ export class ExternalDataProvider {
           region: this.region,
           page_num: page,
           page_size: MAX_PAGE_SIZE,
+          // SEM este campo a API devolve ordem arbitrária — era o motivo do
+          // catálogo vir com item aleatório em vez de campeão de venda.
+          // 7 = GMV dos últimos 30 dias: "o que está vendendo agora".
+          product_sort_field: PRODUCT_SORT_GMV_30D,
           sort_type: 1,
+          // Corta a cauda longa antes de gastar página com quem não vende.
+          min_total_sale_30d_cnt: this.minSales30d,
         },
       );
       if (!rows?.length) break;

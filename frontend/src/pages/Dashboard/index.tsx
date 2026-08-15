@@ -61,7 +61,8 @@ export function DashboardPage() {
   const { email } = useAuth();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
-  const playableVideos = (overview?.topVideos ?? []).filter((v) => v.playbackUrl);
+  // Todo vídeo com id é tocável: o MP4 é resolvido sob demanda pelo player.
+  const playableVideos = (overview?.topVideos ?? []).filter((v) => v.id);
 
   useEffect(() => {
     analyticsService.overview().then(setOverview).catch(console.error);
@@ -219,12 +220,12 @@ export function DashboardPage() {
           <Grid item xs={12} sm={6} md={2.4} key={v.id}>
             <Box
               // Com MP4 disponível, toca dentro da plataforma; senão abre o TikTok.
-              component={v.playbackUrl ? 'div' : 'a'}
-              href={v.playbackUrl ? undefined : v.videoUrl ?? tiktokProfileUrl(v.creatorHandle)}
-              target={v.playbackUrl ? undefined : '_blank'}
-              rel={v.playbackUrl ? undefined : 'noopener noreferrer'}
+              component={v.id ? 'div' : 'a'}
+              href={v.id ? undefined : (v.videoUrl ?? tiktokProfileUrl(v.creatorHandle))}
+              target={v.id ? undefined : '_blank'}
+              rel={v.id ? undefined : 'noopener noreferrer'}
               onClick={
-                v.playbackUrl
+                v.id
                   ? () => setPlayingIndex(playableVideos.findIndex((p) => p.id === v.id))
                   : undefined
               }

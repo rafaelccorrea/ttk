@@ -100,7 +100,8 @@ export function ProductDetailPage() {
   const gallery = Array.from(
     new Set([...(product?.images ?? []), ...(product?.imageUrl ? [product.imageUrl] : [])]),
   );
-  const playableVideos = videos.filter((v) => v.playbackUrl);
+  // O MP4 é resolvido no play; basta ter id para ser tocável.
+  const playableVideos = videos.filter((v) => v.id);
 
   useEffect(() => {
     if (!id) return;
@@ -333,7 +334,7 @@ export function ProductDetailPage() {
       ) : (
         <Grid container spacing={2}>
           {videos.map((v) => {
-            const playable = Boolean(v.playbackUrl);
+            const playable = Boolean(v.id);
             return (
               <Grid item xs={6} sm={4} md={3} lg={2} key={v.id}>
                 <Card

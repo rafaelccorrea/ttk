@@ -24,7 +24,8 @@ import { IngestionService } from './ingestion.service';
     BillingModule,
   ],
   controllers: [IngestionController],
-  exports: [IngestionService],
+  // O provider é exportado para o módulo de vídeos resolver o MP4 sob demanda.
+  exports: [IngestionService, ExternalDataProvider],
   providers: [
     IngestionService,
     CreativeCenterSource,

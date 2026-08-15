@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ExternalDataProvider } from '../ingestion/external-data.provider';
+import { MediaMirrorService } from '../media/media-mirror.service';
 import { QueryVideosDto } from './dto/query-videos.dto';
 import { SavedVideo } from './entities/saved-video.entity';
 import { Video } from './entities/video.entity';
@@ -31,7 +33,58 @@ export class VideosService {
     private readonly videos: Repository<Video>,
     @InjectRepository(SavedVideo)
     private readonly savedVideos: Repository<SavedVideo>,
+    private readonly externalData: ExternalDataProvider,
+    private readonly mirror: MediaMirrorService,
   ) {}
+
+  /**
+   * Devolve um MP4 tocável para o vídeo.
+   *
+   * Por que não fica no banco: a URL que a TikTok assina expira em poucas horas
+   * (a que vem na listagem do fornecedor já chega vencida, respondendo 403) —
+   * era exatamente por isso que o player não abria.
+   *
+   * Ordem de preferência:
+   *  1. `playbackUrl` já espelhado no S3 — permanente, não custa cota;
+   *  2. resolve no fornecedor e espelha, passando a valer para sempre;
+   *  3. resolve no fornecedor e devolve a URL temporária (sem S3 configurado).
+   */
+  async resolvePlayback(
+    id: string,
+  ): Promise<{ playbackUrl: string | null; permanent: boolean }> {
+    const video = await this.videos.findOneBy({ id });
+    if (!video) throw new NotFoundException(`Vídeo ${id} não encontrado`);
+
+    // Já espelhado: nada a fazer.
+    if (video.playbackUrl && this.mirror.enabled) {
+      return { playbackUrl: video.playbackUrl, permanent: true };
+    }
+
+    // `externalId` guarda "echotik-v-<video_id>".
+    const tiktokId =
+      video.externalId?.replace(/^echotik-v-/, '') ??
+      video.videoUrl?.match(/\/video\/(\d+)/)?.[1];
+    if (!tiktokId) return { playbackUrl: video.playbackUrl ?? null, permanent: false };
+
+    const media = await this.externalData.resolveMedia(tiktokId);
+    if (!media) return { playbackUrl: video.playbackUrl ?? null, permanent: false };
+
+    // Sem marca d'água quando o fornecedor entrega; senão o play normal.
+    const source = media.playUrl;
+
+    if (this.mirror.enabled) {
+      const mirrored = await this.mirror.mirror(source, 'videos', tiktokId);
+      if (mirrored) {
+        video.playbackUrl = mirrored;
+        // Aproveita para corrigir a URL canônica, se ainda faltava.
+        if (!video.videoUrl && media.homeUrl) video.videoUrl = media.homeUrl;
+        await this.videos.save(video);
+        return { playbackUrl: mirrored, permanent: true };
+      }
+    }
+
+    return { playbackUrl: source, permanent: false };
+  }
 
   private toItem(video: Video, savedIds: Set<string>): VideoItem {
     return {

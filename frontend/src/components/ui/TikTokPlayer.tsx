@@ -12,6 +12,7 @@ import VolumeOffRoundedIcon from '@mui/icons-material/VolumeOffRounded';
 import VolumeUpRoundedIcon from '@mui/icons-material/VolumeUpRounded';
 import { Avatar, Backdrop, Box, Button, Fade, IconButton, Stack, Typography } from '@mui/material';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { videosService } from '@/services/videos.service';
 import { formatNumber } from '@/utils/format';
 import { displayHandle, proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
 
@@ -55,6 +56,29 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
   const hasPrev = index !== null && index > 0;
   const hasNext = index !== null && index < videos.length - 1;
 
+  // O MP4 não vem do banco: a URL assinada da TikTok expira em horas, então é
+  // resolvida aqui, no momento do play. Cache local por id evita repetir a
+  // chamada ao navegar para frente e para trás no feed.
+  const [resolved, setResolved] = useState<Record<string, string>>({});
+  const [resolving, setResolving] = useState(false);
+  const src = video ? (video.playbackUrl ?? (video.id ? resolved[video.id] : undefined)) : undefined;
+
+  useEffect(() => {
+    if (!video?.id || video.playbackUrl || resolved[video.id]) return;
+    let cancelled = false;
+    setResolving(true);
+    videosService
+      .playback(video.id)
+      .then((url) => {
+        if (!cancelled && url) setResolved((prev) => ({ ...prev, [video.id!]: url }));
+      })
+      .catch(() => undefined)
+      .finally(() => !cancelled && setResolving(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [video?.id, video?.playbackUrl, resolved]);
+
   const goTo = useCallback(
     (next: number) => {
       if (next >= 0 && next < videos.length) onIndexChange(next);
@@ -77,7 +101,7 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
       void el.play().catch(() => setPlaying(false));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [video?.playbackUrl]);
+  }, [src]);
 
   useEffect(() => {
     if (index === null) return;
@@ -165,7 +189,7 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
             <Box
               component="video"
               ref={videoRef}
-              src={video.playbackUrl ?? undefined}
+              src={src}
               poster={proxyImage(video.thumbnailUrl)}
               autoPlay
               playsInline
