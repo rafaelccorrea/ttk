@@ -5,7 +5,11 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
+
+/** Rota que serve os objetos quando o bucket é privado (opção padrão). */
+export const MEDIA_ROUTE = '/api/v1/media/s3';
 
 /**
  * Espelha mídia de terceiros no S3.
@@ -33,10 +37,17 @@ export class MediaMirrorService {
     const accessKeyId = config.get<string>('AWS_ACCESS_KEY_ID') ?? '';
     const secretAccessKey = config.get<string>('AWS_SECRET_ACCESS_KEY') ?? '';
 
-    // Se houver CDN na frente do bucket, basta apontar aqui.
-    this.publicBase =
-      config.get<string>('AWS_S3_PUBLIC_BASE') ??
-      `https://${this.bucket}.s3.${region}.amazonaws.com`;
+    /**
+     * Como a mídia chega ao navegador.
+     *
+     * Sem `AWS_S3_PUBLIC_BASE`, o bucket é tratado como PRIVADO: guardamos um
+     * caminho da nossa própria API e o backend lê do S3 com credencial. Assim
+     * nenhum objeto fica exposto na internet e nada expira.
+     *
+     * Com a variável preenchida (CDN ou bucket público), a URL aponta direto
+     * para lá e o tráfego não passa por nós.
+     */
+    this.publicBase = config.get<string>('AWS_S3_PUBLIC_BASE') ?? MEDIA_ROUTE;
 
     this.client =
       this.bucket && accessKeyId && secretAccessKey
@@ -121,6 +132,32 @@ export class MediaMirrorService {
       return `${this.publicBase}/${key}`;
     } catch (error) {
       this.logger.warn(`Espelhamento falhou (${prefix}/${id}): ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Lê um objeto do bucket. Usado pela rota que serve mídia quando o bucket é
+   * privado — é o que substitui deixar tudo público.
+   */
+  async readObject(
+    key: string,
+  ): Promise<{ body: Buffer; contentType: string } | null> {
+    if (!this.client || !key) return null;
+    try {
+      const result = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      const chunks: Buffer[] = [];
+      for await (const chunk of result.Body as AsyncIterable<Uint8Array>) {
+        chunks.push(Buffer.from(chunk));
+      }
+      return {
+        body: Buffer.concat(chunks),
+        contentType: result.ContentType ?? 'application/octet-stream',
+      };
+    } catch (error) {
+      this.logger.warn(`Leitura do S3 falhou (${key}): ${error}`);
       return null;
     }
   }

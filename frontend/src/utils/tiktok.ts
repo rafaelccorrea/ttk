@@ -1,3 +1,4 @@
+import { resolveApiUrl } from '@/services/api';
 // Links públicos do TikTok — sempre abrir em nova guia.
 export function tiktokProfileUrl(handle: string): string {
   return `https://www.tiktok.com/@${handle.replace(/^@/, '')}`;
@@ -24,6 +25,8 @@ export const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const
  */
 export function proxyImage(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
-  if (!url.startsWith('http')) return url;
-  return `/api/v1/media/proxy?url=${encodeURIComponent(url)}`;
+  // Mídia já espelhada no nosso S3 chega como caminho relativo da própria API
+  // (/api/v1/media/s3/...). Não precisa de proxy: só da origem correta.
+  if (!url.startsWith('http')) return resolveApiUrl(url);
+  return resolveApiUrl(`/api/v1/media/proxy?url=${encodeURIComponent(url)}`);
 }

@@ -1,6 +1,7 @@
-import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
+import { MediaMirrorService } from './media-mirror.service';
 
 /** Tipo pela extensão, para CDNs que respondem octet-stream. */
 const MIME_BY_EXT: Record<string, string> = {
@@ -30,6 +31,37 @@ const BLOCKED_HOST = /^(localhost|127\.|0\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.
 @ApiTags('media')
 @Controller('media')
 export class MediaController {
+  constructor(private readonly mirror: MediaMirrorService) {}
+
+  /**
+   * Serve a mídia espelhada quando o bucket é PRIVADO.
+   *
+   * Assim nenhum objeto fica exposto publicamente na internet e, ao mesmo
+   * tempo, a URL guardada no banco nunca expira — diferente das assinadas do
+   * fornecedor, que morrem em ~72h. Sem auth porque é consumido em <img>.
+   */
+  // Express 4 (Nest 10) nomeia o wildcard como "0"; a chave tem barras, então
+  // precisa ser wildcard e não um :param simples.
+  @Get('s3/*')
+  @ApiOperation({ summary: 'Serve mídia espelhada no S3 (bucket privado)' })
+  async fromS3(@Param('0') key: string, @Res() res: Response) {
+    const objectKey = key;
+    // Impede escapar do bucket com "..".
+    if (!objectKey || objectKey.includes('..')) {
+      throw new BadRequestException('Chave inválida');
+    }
+
+    const object = await this.mirror.readObject(objectKey);
+    if (!object) {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader('Content-Type', object.contentType);
+    // A chave contém o hash da origem: o conteúdo nunca muda.
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send(object.body);
+  }
+
   @Get('proxy')
   @ApiOperation({ summary: 'Proxy de imagem externa (contorna bloqueio de hotlink)' })
   async proxy(@Query('url') url: string, @Res() res: Response) {
