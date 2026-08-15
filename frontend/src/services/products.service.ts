@@ -78,12 +78,12 @@ export const productsService = {
    * Vitrine agrupada por categoria. Evita a grade misturada onde perfume
    * aparece ao lado de furadeira — o usuário varre por nicho.
    */
-  async sections(period = 30, perSection = 12): Promise<ProductSection[]> {
-    const { data } = await api.get<{ sections: ProductSection[] }>(
+  async sections(period = 30, perSection = 12, offset = 0, maxSections = 4) {
+    const { data } = await api.get<{ sections: ProductSection[]; hasMore: boolean }>(
       '/products/sections',
-      { params: { period, perSection } },
+      { params: { period, perSection, offset, maxSections } },
     );
-    return data.sections;
+    return data;
   },
 
   async filterOptions(): Promise<ProductFilterOptions> {

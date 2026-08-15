@@ -33,6 +33,11 @@ const AVATAR_COLORS = [
   '#ec4899',
   '#ef4444',
 ];
+/** Handle numérico é user_id do fornecedor, não perfil navegável. */
+function isRealHandle(handle: string): boolean {
+  return Boolean(handle) && !/^d+$/.test(handle);
+}
+
 function avatarColorFor(handle: string): string {
   let hash = 0;
   for (const ch of handle) hash = (hash * 31 + ch.charCodeAt(0)) % 997;
@@ -145,10 +150,12 @@ export function CreatorsPage() {
                 </TableCell>
                 <TableCell>
                   <Box display="flex" alignItems="center" gap={1.5}>
-                    {/* Perfis com avatar vêm da ingestão real; os demais são dados demo do seed. */}
+                    {/* Linka pelo @handle, não pela presença de avatar: criador real pode
+                        estar sem foto (o CDN do fornecedor bloqueia hotlink) e ainda
+                        assim ter perfil válido no TikTok. Sem src, o Avatar mostra a inicial. */}
                     <Avatar
-                      component={creator.avatarUrl ? 'a' : 'div'}
-                      href={creator.avatarUrl ? tiktokProfileUrl(creator.handle) : undefined}
+                      component={isRealHandle(creator.handle) ? 'a' : 'div'}
+                      href={isRealHandle(creator.handle) ? tiktokProfileUrl(creator.handle) : undefined}
                       target="_blank"
                       rel="noopener noreferrer"
                       src={proxyImage(creator.avatarUrl)}
@@ -171,8 +178,8 @@ export function CreatorsPage() {
                         {creator.name}
                       </Typography>
                       <Typography
-                        component={creator.avatarUrl ? 'a' : 'span'}
-                        href={creator.avatarUrl ? tiktokProfileUrl(creator.handle) : undefined}
+                        component={isRealHandle(creator.handle) ? 'a' : 'span'}
+                        href={isRealHandle(creator.handle) ? tiktokProfileUrl(creator.handle) : undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         variant="caption"

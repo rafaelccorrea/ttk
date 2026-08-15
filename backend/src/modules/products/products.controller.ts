@@ -36,12 +36,16 @@ export class ProductsController {
     @Query('period') period?: string,
     @Query('perSection') perSection?: string,
     @Query('maxSections') maxSections?: string,
+    @Query('offset') offset?: string,
   ) {
     return this.productsService.sections(
       Math.min(Number(period) || 30, 90),
       Math.min(Number(perSection) || 12, 24),
-      Math.min(Number(maxSections) || 10, 31),
+      // Lote pequeno: o scroll infinito pede mais conforme desce.
+      Math.min(Number(maxSections) || 4, 31),
       user.id,
+      4,
+      Math.max(Number(offset) || 0, 0),
     );
   }
 

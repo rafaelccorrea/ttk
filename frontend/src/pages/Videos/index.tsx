@@ -24,8 +24,10 @@ import {
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { ImagePlaceholder } from '@/components/ui/ImagePlaceholder';
 import { TikTokPlayer } from '@/components/ui/TikTokPlayer';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { HotBadge } from '@/components/ui/HotBadge';
@@ -110,15 +112,10 @@ function VideoCard({
           background: thumb ? '#12131b' : gradientFor(video.category),
         }}
       />
+      {!thumb && <ImagePlaceholder loading={false} />}
       {thumb && (
         <>
-          {!imgLoaded && (
-            <Skeleton
-              variant="rectangular"
-              animation="wave"
-              sx={{ position: 'absolute', inset: 0, bgcolor: 'rgba(255,255,255,0.07)' }}
-            />
-          )}
+          {!imgLoaded && <ImagePlaceholder />}
           {/* Cópia desfocada preenche as bordas sem cortar a thumb real */}
           {!fillsCard && imgLoaded && (
             <Box
@@ -421,6 +418,8 @@ export function VideosPage() {
   const [category, setCategory] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
   const [sections, setSections] = useState<VideoSection[]>([]);
+  const [sectionsMore, setSectionsMore] = useState(true);
+  const [loadingSections, setLoadingSections] = useState(false);
   const [page, setPage] = useState(1);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [transcriptVideo, setTranscriptVideo] = useState<ViralVideo | null>(
@@ -440,10 +439,44 @@ export function VideosPage() {
     videosService.categories().then(setCategories).catch(console.error);
   }, []);
 
+  // Vitrine em lotes de 4 categorias — o scroll pede as próximas.
   useEffect(() => {
     if (!showSections) return;
-    videosService.sections(12).then(setSections).catch(console.error);
+    setSections([]);
+    setSectionsMore(true);
+    setLoadingSections(true);
+    videosService
+      .sections(12, 0)
+      .then((d) => {
+        setSections(d.sections);
+        setSectionsMore(d.hasMore);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingSections(false));
   }, [showSections]);
+
+  function loadMoreSections() {
+    if (loadingSections || !sectionsMore) return;
+    setLoadingSections(true);
+    videosService
+      .sections(12, sections.length)
+      .then((d) => {
+        // Evita duplicar categoria se duas chamadas se cruzarem.
+        setSections((prev) => {
+          const vistos = new Set(prev.map((s) => s.category));
+          return [...prev, ...d.sections.filter((s) => !vistos.has(s.category))];
+        });
+        setSectionsMore(d.hasMore);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingSections(false));
+  }
+
+  const sentinelRef = useInfiniteScroll({
+    hasMore: showSections && sectionsMore,
+    loading: loadingSections,
+    onLoadMore: loadMoreSections,
+  });
 
   useEffect(() => {
     setLoading(true);
@@ -593,6 +626,15 @@ export function VideosPage() {
             </Grid>
           ))}
         </Grid>
+      )}
+
+      {/* Sentinela do scroll infinito: entra em cena antes do fim e puxa
+          o próximo lote de categorias. */}
+      {showSections && sectionsMore && (
+        <Box ref={sentinelRef} sx={{ height: 1 }} />
+      )}
+      {showSections && loadingSections && sections.length > 0 && (
+        <BrandLoader label="Carregando mais categorias..." minHeight={140} />
       )}
 
       {!loading && feed.length === 0 && (

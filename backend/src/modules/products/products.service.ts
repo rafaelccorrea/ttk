@@ -270,12 +270,16 @@ export class ProductsService {
     userId?: string,
     /** Abaixo disso a categoria não vira seção — 2 produtos não são vitrine. */
     minItems = 4,
+    /** Quantas seções pular — é o cursor do scroll infinito. */
+    offsetSections = 0,
   ): Promise<{
     sections: Array<{
       category: string;
       total: number;
       items: RankedProduct[];
     }>;
+    /** Há mais seções depois desta página — o scroll infinito usa isto. */
+    hasMore: boolean;
   }> {
     const current = this.isoDaysAgo(period);
     const previous = this.isoDaysAgo(period * 2);
@@ -334,12 +338,14 @@ export class ProductsService {
       section.items.push(this.toRanked(row, favoriteIds));
     }
 
+    const elegiveis = [...byCategory.values()]
+      // Compara com o TOTAL da categoria, não com a lista truncada: senão
+      // pedir `perSection` menor que `minItems` zera todas as seções.
+      .filter((s) => s.total >= minItems);
+
     return {
-      sections: [...byCategory.values()]
-        // Compara com o TOTAL da categoria, não com a lista truncada: senão
-        // pedir `perSection` menor que `minItems` zera todas as seções.
-        .filter((s) => s.total >= minItems)
-        .slice(0, maxSections),
+      sections: elegiveis.slice(offsetSections, offsetSections + maxSections),
+      hasMore: offsetSections + maxSections < elegiveis.length,
     };
   }
 

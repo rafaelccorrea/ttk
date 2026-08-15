@@ -64,12 +64,12 @@ export const videosService = {
    * Vitrine agrupada por categoria — mesma lógica dos produtos, para o feed
    * não misturar nichos.
    */
-  async sections(perSection = 12): Promise<VideoSection[]> {
-    const { data } = await api.get<{ sections: VideoSection[] }>(
+  async sections(perSection = 12, offset = 0, maxSections = 4) {
+    const { data } = await api.get<{ sections: VideoSection[]; hasMore: boolean }>(
       '/videos/sections',
-      { params: { perSection } },
+      { params: { perSection, offset, maxSections } },
     );
-    return data.sections;
+    return data;
   },
 
   /** Categorias que têm vídeo, para o filtro da tela. */

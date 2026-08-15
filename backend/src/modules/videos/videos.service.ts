@@ -64,8 +64,12 @@ export class VideosService {
     userId?: string,
     /** Abaixo disso a categoria não vira seção. */
     minItems = 4,
+    /** Quantas seções pular — cursor do scroll infinito. */
+    offsetSections = 0,
   ): Promise<{
     sections: Array<{ category: string; total: number; items: VideoItem[] }>;
+    /** Há mais seções depois desta página. */
+    hasMore: boolean;
   }> {
     const rows: Array<
       Video & { categoryTotal: string; productImageUrl: string | null }
@@ -123,12 +127,14 @@ export class VideosService {
       });
     }
 
+    const elegiveis = [...byCategory.values()]
+      // Compara com o TOTAL da categoria, não com a lista truncada: senão
+      // pedir `perSection` menor que `minItems` zera todas as seções.
+      .filter((s) => s.total >= minItems);
+
     return {
-      sections: [...byCategory.values()]
-        // Compara com o TOTAL da categoria, não com a lista truncada: senão
-        // pedir `perSection` menor que `minItems` zera todas as seções.
-        .filter((s) => s.total >= minItems)
-        .slice(0, maxSections),
+      sections: elegiveis.slice(offsetSections, offsetSections + maxSections),
+      hasMore: offsetSections + maxSections < elegiveis.length,
     };
   }
 

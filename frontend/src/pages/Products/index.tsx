@@ -26,8 +26,10 @@ import {
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { ImagePlaceholder } from '@/components/ui/ImagePlaceholder';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { HotBadge } from '@/components/ui/HotBadge';
 import {
@@ -99,19 +101,14 @@ function ProductCard({
             background: product.imageUrl ? '#12131b' : gradientFor(product.category),
           }}
         />
+        {!product.imageUrl && <ImagePlaceholder loading={false} />}
         {product.imageUrl && (
           <>
             {/* A foto preenche o card inteiro. Foto de produto costuma vir
                 quadrada com margem sobrando nas bordas, então o corte do
                 `cover` come a margem, não o produto — e some com as faixas
                 borradas que desperdiçavam metade do card. */}
-            {!imgLoaded && (
-              <Skeleton
-                variant="rectangular"
-                animation="wave"
-                sx={{ position: 'absolute', inset: 0, bgcolor: 'rgba(255,255,255,0.07)' }}
-              />
-            )}
+            {!imgLoaded && <ImagePlaceholder />}
             <Box
               component="img"
               src={proxyImage(product.imageUrl)}
@@ -339,6 +336,8 @@ export function ProductsPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [sections, setSections] = useState<ProductSection[]>([]);
+  const [sectionsMore, setSectionsMore] = useState(true);
+  const [loadingSections, setLoadingSections] = useState(false);
 
   const categories = options?.categories ?? [];
 
@@ -360,14 +359,44 @@ export function ProductsPage() {
     sort === 'sales' &&
     page === 1;
 
-  // Busca as seções só quando o modo está ativo — e refaz ao trocar o período.
+  // Vitrine em lotes de 4 categorias — o scroll pede as próximas.
   useEffect(() => {
     if (!showSections) return;
+    setSections([]);
+    setSectionsMore(true);
+    setLoadingSections(true);
     productsService
-      .sections(period, 12)
-      .then(setSections)
-      .catch(console.error);
+      .sections(period, 12, 0)
+      .then((d) => {
+        setSections(d.sections);
+        setSectionsMore(d.hasMore);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingSections(false));
   }, [showSections, period]);
+
+  function loadMoreSections() {
+    if (loadingSections || !sectionsMore) return;
+    setLoadingSections(true);
+    productsService
+      .sections(period, 12, sections.length)
+      .then((d) => {
+        // Evita duplicar categoria se duas chamadas se cruzarem.
+        setSections((prev) => {
+          const vistos = new Set(prev.map((s) => s.category));
+          return [...prev, ...d.sections.filter((s) => !vistos.has(s.category))];
+        });
+        setSectionsMore(d.hasMore);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingSections(false));
+  }
+
+  const sentinelRef = useInfiniteScroll({
+    hasMore: showSections && sectionsMore,
+    loading: loadingSections,
+    onLoadMore: loadMoreSections,
+  });
 
   useEffect(() => {
     productsService.filterOptions().then(setOptions).catch(console.error);
@@ -626,7 +655,16 @@ export function ProductsPage() {
             </Grid>
           </Box>
         ))
-      ) : (
+      ) : null}
+
+      {/* Sentinela do scroll infinito: entra em cena antes do fim da lista e
+          puxa o próximo lote de categorias. */}
+      {showSections && sectionsMore && <Box ref={sentinelRef} sx={{ height: 1 }} />}
+      {showSections && loadingSections && sections.length > 0 && (
+        <BrandLoader label="Carregando mais categorias..." minHeight={140} />
+      )}
+
+      {!showSections && (
         <>
           <Grid
             container

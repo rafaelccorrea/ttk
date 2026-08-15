@@ -33,11 +33,15 @@ export class VideosController {
     @CurrentUser() user: AuthUser,
     @Query('perSection') perSection?: string,
     @Query('maxSections') maxSections?: string,
+    @Query('offset') offset?: string,
   ) {
     return this.videosService.sections(
       Math.min(Number(perSection) || 12, 24),
-      Math.min(Number(maxSections) || 10, 31),
+      // Lote pequeno: o scroll infinito pede mais conforme desce.
+      Math.min(Number(maxSections) || 4, 31),
       user.id,
+      4,
+      Math.max(Number(offset) || 0, 0),
     );
   }
 
