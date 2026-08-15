@@ -13,6 +13,8 @@ export interface RankedProduct {
   category: string;
   price: number;
   imageUrl: string | null;
+  /** Galeria de fotos reais do produto (pode estar vazia). */
+  images: string[];
   rating: number | null;
   radarScore: number | null;
   tiktokUrl: string | null;
@@ -63,6 +65,7 @@ export class ProductsService {
       .addSelect('p.category', 'category')
       .addSelect('p.price', 'price')
       .addSelect('p.imageUrl', 'imageUrl')
+      .addSelect('p.images', 'images')
       .addSelect('p.rating', 'rating')
       .addSelect('p.radarScore', 'radarScore')
       .addSelect('p.tiktokUrl', 'tiktokUrl')
@@ -262,6 +265,7 @@ export class ProductsService {
       category: r.category,
       price: Number(r.price),
       imageUrl: r.imageUrl,
+      images: Array.isArray(r.images) ? r.images : [],
       rating: r.rating === null ? null : Number(r.rating),
       radarScore: r.radarScore,
       tiktokUrl: r.tiktokUrl,

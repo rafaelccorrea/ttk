@@ -156,7 +156,14 @@ export class IngestionService implements OnModuleInit {
       //    São virais genéricos, não vídeos de produto: por isso entram
       //    marcados como 'trending' e a tela de Vídeos que Vendem os separa
       //    do conteúdo com produto atrelado.
-      const trendingCreators = await this.creativeCenter.fetchTrendingCreators(24);
+      // DESLIGADO (medido): a aba de vídeos do Creative Center força a região
+      // "United States of America" e ignora region=BR — o conteúdo vem de
+      // criadores americanos e sem produto atrelado. Para um produto de
+      // TikTok Shop Brasil isso é dado errado, não dado parcial.
+      // Religar quando existir fonte de vídeo BR COM produto.
+      const trendingCreators: Awaited<
+        ReturnType<CreativeCenterSource['fetchTrendingCreators']>
+      > = [];
       run.creatorsFetched = trendingCreators.length;
       for (const tc of trendingCreators) {
         // Handles do TikTok são case-insensitive; normaliza para não duplicar.

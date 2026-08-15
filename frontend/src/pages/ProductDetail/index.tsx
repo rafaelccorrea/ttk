@@ -93,6 +93,13 @@ export function ProductDetailPage() {
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [videos, setVideos] = useState<ViralVideo[]>([]);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
+  const [activeImage, setActiveImage] = useState(0);
+
+  // Galeria = fotos coletadas + a capa, sem repetir. Se só existe a capa,
+  // as miniaturas não aparecem.
+  const gallery = Array.from(
+    new Set([...(product?.images ?? []), ...(product?.imageUrl ? [product.imageUrl] : [])]),
+  );
   const playableVideos = videos.filter((v) => v.playbackUrl);
 
   useEffect(() => {
@@ -138,13 +145,54 @@ export function ProductDetailPage() {
                 p: 2,
               }}
             >
-              {product.imageUrl ? (
-                <Box
-                  component="img"
-                  src={proxyImage(product.imageUrl)}
-                  alt={product.title}
-                  sx={{ maxWidth: '100%', maxHeight: 320, objectFit: 'contain' }}
-                />
+              {gallery.length > 0 ? (
+                <Box sx={{ width: '100%' }}>
+                  <Box
+                    component="img"
+                    src={proxyImage(gallery[activeImage] ?? gallery[0])}
+                    alt={product.title}
+                    sx={{
+                      display: 'block',
+                      mx: 'auto',
+                      maxWidth: '100%',
+                      maxHeight: 300,
+                      objectFit: 'contain',
+                    }}
+                  />
+                  {gallery.length > 1 && (
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      mt={1.5}
+                      justifyContent="center"
+                      flexWrap="wrap"
+                      useFlexGap
+                    >
+                      {gallery.slice(0, 6).map((url, index) => (
+                        <Box
+                          key={url}
+                          component="img"
+                          src={proxyImage(url)}
+                          alt={`${product.title} — foto ${index + 1}`}
+                          onClick={() => setActiveImage(index)}
+                          sx={{
+                            width: 52,
+                            height: 52,
+                            objectFit: 'cover',
+                            borderRadius: 1.5,
+                            cursor: 'pointer',
+                            bgcolor: '#fff',
+                            border:
+                              index === activeImage
+                                ? '2px solid #fe2c55'
+                                : '1px solid rgba(22,24,35,0.12)',
+                            transition: 'border-color .15s ease',
+                          }}
+                        />
+                      ))}
+                    </Stack>
+                  )}
+                </Box>
               ) : (
                 <ShoppingBagRoundedIcon sx={{ fontSize: 64, color: 'rgba(22,24,35,0.2)' }} />
               )}

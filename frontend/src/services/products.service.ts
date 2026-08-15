@@ -7,6 +7,8 @@ export interface RankedProduct {
   category: string;
   price: number;
   imageUrl: string | null;
+  /** Galeria de fotos reais do produto. */
+  images?: string[];
   rating: number | null;
   radarScore: number | null;
   tiktokUrl: string | null;
