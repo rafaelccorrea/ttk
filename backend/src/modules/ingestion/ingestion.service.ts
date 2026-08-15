@@ -156,11 +156,9 @@ export class IngestionService implements OnModuleInit {
       //    São virais genéricos, não vídeos de produto: por isso entram
       //    marcados como 'trending' e a tela de Vídeos que Vendem os separa
       //    do conteúdo com produto atrelado.
-      // DESLIGADO (medido): a aba de vídeos do Creative Center força a região
-      // "United States of America" e ignora region=BR — o conteúdo vem de
-      // criadores americanos e sem produto atrelado. Para um produto de
-      // TikTok Shop Brasil isso é dado errado, não dado parcial.
-      // Religar quando existir fonte de vídeo BR COM produto.
+      // A aba "Vídeos" do Creative Center força region=US (medido) e a de
+      // criadores está "em breve" — por isso não usamos nenhuma das duas.
+      // A fonte de vídeo BR é o Top Ads, tratado logo abaixo.
       const trendingCreators: Awaited<
         ReturnType<CreativeCenterSource['fetchTrendingCreators']>
       > = [];
@@ -199,6 +197,27 @@ export class IngestionService implements OnModuleInit {
         video.category = tc.topic ?? 'geral';
         video.thumbnailUrl = tc.thumbnailUrl ?? video.thumbnailUrl;
         video.playbackUrl = tc.playbackUrl ?? video.playbackUrl;
+        await this.videos.save(video);
+        run.videosUpserted += 1;
+      }
+
+      // 2b) Vídeos de anúncios BRASILEIROS (Top Ads) — reais e reproduzíveis.
+      const adVideos = await this.ccProducts.fetchAdVideos(60);
+      for (const ad of adVideos) {
+        const video =
+          (await this.videos.findOne({ where: { externalId: ad.externalId } })) ??
+          this.videos.create({
+            externalId: ad.externalId,
+            postedAt: new Date().toISOString().slice(0, 10),
+          });
+        video.kind = 'product';
+        video.caption = ad.caption || 'Anúncio em alta no TikTok Brasil';
+        video.creatorHandle = ad.brand ?? 'anunciante';
+        video.category = ad.category;
+        video.likes = ad.likes;
+        video.thumbnailUrl = ad.thumbnailUrl ?? video.thumbnailUrl;
+        // MP4 expira em horas: sempre sobrescreve com a URL fresca.
+        video.playbackUrl = ad.playbackUrl ?? video.playbackUrl;
         await this.videos.save(video);
         run.videosUpserted += 1;
       }

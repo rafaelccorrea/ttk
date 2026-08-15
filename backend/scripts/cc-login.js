@@ -65,6 +65,33 @@ const STATE_FILE = path.join(__dirname, '..', 'cc-session.json');
 
   await context.storageState({ path: STATE_FILE });
   console.log(`Sessão salva em ${STATE_FILE}`);
-  console.log('Pronto! A ingestão de produtos vai usar essa sessão.');
+
+  // Conta dos EUA trava as abas de vídeo/criador na região US. Conferimos a
+  // região e o idioma logo após o login para não descobrir depois.
+  console.log('');
+  console.log('Verificando a região da conta...');
+  await page
+    .goto('https://ads.tiktok.com/creative/creativeCenter/trends/video?period=7', {
+      waitUntil: 'domcontentloaded',
+      timeout: 60_000,
+    })
+    .catch(() => undefined);
+  await page.waitForTimeout(8000);
+  const finalUrl = page.url();
+  const bodyText = await page
+    .evaluate(() => document.body.innerText.slice(0, 400))
+    .catch(() => '');
+  const regionInUrl = finalUrl.match(/region=([A-Z]{2})/)?.[1] ?? '(não informada)';
+  const mentionsBrazil = /Brasil|Brazil/.test(bodyText);
+
+  console.log(`  Região da aba de vídeos: ${regionInUrl}`);
+  console.log(`  Página menciona Brasil: ${mentionsBrazil ? 'sim' : 'não'}`);
+  if (regionInUrl === 'BR' || mentionsBrazil) {
+    console.log('  [OK] Conta com acesso ao Brasil — vídeos e criadores BR liberados.');
+  } else {
+    console.log('  [!] A aba de vídeos está travada na região ' + regionInUrl + '.');
+    console.log('      Se esta conta for dos EUA, saia dela e entre com uma conta BR.');
+    console.log('      A coleta de vídeos BR pelo Top Ads funciona de qualquer forma.');
+  }
   await browser.close();
 })();
