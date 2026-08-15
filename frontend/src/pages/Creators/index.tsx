@@ -13,11 +13,12 @@ import {
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { creatorsService, RankedCreator } from '@/services/creators.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
-import { proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
+import { displayHandle, proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
 
 const PAGE_SIZE = 25;
 
@@ -42,7 +43,9 @@ export function CreatorsPage() {
   const [items, setItems] = useState<RankedCreator[]>([]);
   const [total, setTotal] = useState(0);
   const [categories, setCategories] = useState<string[]>([]);
-  const [search, setSearch] = useState('');
+  // Permite abrir a página já filtrada (ex.: card do Dashboard -> /criadores?search=handle).
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const [category, setCategory] = useState('');
   const [sort, setSort] = useState<'gmv' | 'followers'>('gmv');
   const [page, setPage] = useState(1);
@@ -181,7 +184,7 @@ export function CreatorsPage() {
                             : undefined,
                         }}
                       >
-                        @{creator.handle}
+                        {displayHandle(creator.handle)}
                       </Typography>
                     </Box>
                   </Box>

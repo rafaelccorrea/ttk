@@ -20,6 +20,8 @@ export interface VideoItem {
   videoUrl: string | null;
   thumbnailUrl: string | null;
   playbackUrl: string | null;
+  /** Foto do produto associado: capa de fallback quando não há thumbnail. */
+  productImageUrl: string | null;
 }
 
 @Injectable()
@@ -47,6 +49,7 @@ export class VideosService {
       videoUrl: video.videoUrl ?? null,
       thumbnailUrl: video.thumbnailUrl ?? null,
       playbackUrl: video.playbackUrl ?? null,
+      productImageUrl: video.product?.imageUrl ?? null,
     };
   }
 
@@ -66,6 +69,8 @@ export class VideosService {
     // Desempate por id para paginação estável (sort do Postgres não é estável).
     const qb = this.videos
       .createQueryBuilder('v')
+      // Traz o produto para usar a foto dele como capa quando falta thumbnail.
+      .leftJoinAndSelect('v.product', 'product')
       .orderBy('v.views', 'DESC')
       .addOrderBy('v.id', 'ASC');
 

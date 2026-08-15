@@ -22,12 +22,30 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { TikTokPlayer } from '@/components/ui/TikTokPlayer';
 import { StatCard } from '@/components/ui/StatCard';
 import { ProductDetail, productsService } from '@/services/products.service';
 import { videosService, ViralVideo } from '@/services/videos.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
-import { proxyImage, tiktokSearchUrl } from '@/utils/tiktok';
+import { displayHandle, proxyImage, tiktokSearchUrl } from '@/utils/tiktok';
+
+// Gradiente estável por categoria (mesmo padrão da página de Vídeos).
+const VIDEO_GRADIENTS = [
+  'linear-gradient(135deg, #fe2c55 0%, #7c3aed 100%)',
+  'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)',
+  'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
+  'linear-gradient(135deg, #10b981 0%, #06b6d4 100%)',
+  'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
+  'linear-gradient(135deg, #f43f5e 0%, #f59e0b 100%)',
+];
+function videoGradientFor(category: string): string {
+  let hash = 0;
+  for (const ch of category) hash = (hash * 31 + ch.charCodeAt(0)) % 997;
+  return VIDEO_GRADIENTS[hash % VIDEO_GRADIENTS.length];
+}
 
 // Gráfico de área com gradiente da marca a partir da série diária de vendas.
 function TrendChart({ values }: { values: number[] }) {
@@ -74,6 +92,8 @@ export function ProductDetailPage() {
   const [period, setPeriod] = useState(30);
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [videos, setVideos] = useState<ViralVideo[]>([]);
+  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
+  const playableVideos = videos.filter((v) => v.playbackUrl);
 
   useEffect(() => {
     if (!id) return;
@@ -112,7 +132,7 @@ export function ProductDetailPage() {
               sx={{
                 bgcolor: '#f6f6f8',
                 height: '100%',
-                minHeight: { xs: 220, sm: 260 },
+                minHeight: { xs: 260, sm: 340 },
                 display: 'grid',
                 placeItems: 'center',
                 p: 2,
@@ -123,7 +143,7 @@ export function ProductDetailPage() {
                   component="img"
                   src={proxyImage(product.imageUrl)}
                   alt={product.title}
-                  sx={{ maxWidth: '100%', maxHeight: 240, objectFit: 'contain' }}
+                  sx={{ maxWidth: '100%', maxHeight: 320, objectFit: 'contain' }}
                 />
               ) : (
                 <ShoppingBagRoundedIcon sx={{ fontSize: 64, color: 'rgba(22,24,35,0.2)' }} />
@@ -264,39 +284,125 @@ export function ProductDetailPage() {
         </Typography>
       ) : (
         <Grid container spacing={2}>
-          {videos.map((v) => (
-            <Grid item xs={12} sm={6} md={4} key={v.id}>
-              <Card sx={{ height: '100%' }}>
-                <CardContent sx={{ py: 2 }}>
-                  <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
-                    <Typography fontWeight={800}>{formatNumber(v.views)} views</Typography>
-                    <Chip
-                      size="small"
-                      label={formatCurrency(v.revenueEstimate)}
-                      sx={{ fontWeight: 700, bgcolor: 'rgba(0,194,187,0.12)', color: 'secondary.main' }}
-                    />
-                  </Box>
-                  <Typography
-                    variant="body2"
+          {videos.map((v) => {
+            const playable = Boolean(v.playbackUrl);
+            return (
+              <Grid item xs={6} sm={4} md={3} lg={2} key={v.id}>
+                <Card
+                  onClick={
+                    playable
+                      ? () => setPlayingIndex(playableVideos.findIndex((p) => p.id === v.id))
+                      : undefined
+                  }
+                  sx={{
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    cursor: playable ? 'pointer' : 'default',
+                    '&:hover': playable ? { transform: 'translateY(-3px)' } : undefined,
+                  }}
+                >
+                  {/* Miniatura vertical 9:16, como no feed do TikTok */}
+                  <Box
                     sx={{
-                      mt: 0.5,
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
+                      position: 'relative',
+                      aspectRatio: '9 / 16',
+                      maxHeight: 300,
+                      // Capa: thumbnail do vídeo; sem ela, a foto do produto.
+                      background: v.thumbnailUrl ?? v.productImageUrl ?? product.imageUrl
+                        ? `linear-gradient(180deg, rgba(0,0,0,0.05) 45%, rgba(0,0,0,0.65)), url(${proxyImage(
+                            v.thumbnailUrl ?? v.productImageUrl ?? product.imageUrl,
+                          )}) center/cover no-repeat`
+                        : videoGradientFor(v.category),
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      p: 1.25,
                       overflow: 'hidden',
                     }}
                   >
-                    {v.caption}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    @{v.creatorHandle}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
+                    <Chip
+                      size="small"
+                      icon={<VisibilityOutlinedIcon sx={{ fontSize: 15, color: '#fff !important' }} />}
+                      label={formatNumber(v.views)}
+                      sx={{
+                        alignSelf: 'flex-start',
+                        bgcolor: 'rgba(0,0,0,0.45)',
+                        color: '#fff',
+                        fontWeight: 700,
+                        backdropFilter: 'blur(4px)',
+                      }}
+                    />
+                    <Box
+                      sx={{
+                        alignSelf: 'center',
+                        width: 46,
+                        height: 46,
+                        borderRadius: '50%',
+                        display: 'grid',
+                        placeItems: 'center',
+                        color: '#fff',
+                        bgcolor: playable ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.25)',
+                        transition: 'transform .2s ease, background-color .2s ease',
+                        '.MuiCard-root:hover &': playable
+                          ? { transform: 'scale(1.12)', bgcolor: 'rgba(254,44,85,0.9)' }
+                          : undefined,
+                      }}
+                    >
+                      <PlayArrowRoundedIcon sx={{ fontSize: 30 }} />
+                    </Box>
+                    <Typography
+                      sx={{
+                        color: '#fff',
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        textShadow: '0 1px 4px rgba(0,0,0,0.6)',
+                      }}
+                      noWrap
+                    >
+                      {displayHandle(v.creatorHandle)}
+                    </Typography>
+                  </Box>
+
+                  <CardContent sx={{ py: 1.5, flexGrow: 1 }}>
+                    <Typography
+                      sx={{
+                        fontSize: 13.5,
+                        lineHeight: 1.4,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        minHeight: '2.8em',
+                      }}
+                    >
+                      {v.caption}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={formatCurrency(v.revenueEstimate)}
+                      sx={{
+                        mt: 1,
+                        fontWeight: 700,
+                        bgcolor: 'rgba(0,194,187,0.12)',
+                        color: 'secondary.main',
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })}
         </Grid>
       )}
+
+      {/* Player fullscreen estilo TikTok */}
+      <TikTokPlayer
+        videos={playableVideos}
+        index={playingIndex}
+        onIndexChange={setPlayingIndex}
+        onClose={() => setPlayingIndex(null)}
+      />
     </>
   );
 }

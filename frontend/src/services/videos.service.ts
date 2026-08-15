@@ -15,6 +15,7 @@ export interface ViralVideo {
   videoUrl: string | null;
   thumbnailUrl: string | null;
   playbackUrl: string | null;
+  productImageUrl: string | null;
 }
 
 export interface VideoDetail extends ViralVideo {

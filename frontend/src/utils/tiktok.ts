@@ -3,6 +3,11 @@ export function tiktokProfileUrl(handle: string): string {
   return `https://www.tiktok.com/@${handle.replace(/^@/, '')}`;
 }
 
+/** Exibe o handle sempre com um único "@" (alguns já vêm com ele do seed). */
+export function displayHandle(handle: string): string {
+  return `@${handle.replace(/^@+/, '')}`;
+}
+
 export function tiktokHashtagUrl(hashtag: string): string {
   return `https://www.tiktok.com/tag/${encodeURIComponent(hashtag.replace(/^#/, ''))}`;
 }

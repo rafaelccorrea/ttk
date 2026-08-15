@@ -27,7 +27,7 @@ import { TikTokPlayer } from '@/components/ui/TikTokPlayer';
 import { FilterBar, SearchField } from '@/components/ui/Filters';
 import { videosService, ViralVideo } from '@/services/videos.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
-import { proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
+import { displayHandle, proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
 
 const PAGE_SIZE = 24;
 
@@ -81,8 +81,10 @@ function VideoCard({
           aspectRatio: '9 / 16',
           maxHeight: 260,
           // Thumbnail real quando a ingestão populou; gradiente como fallback.
-          background: video.thumbnailUrl
-            ? `linear-gradient(180deg, rgba(0,0,0,0.05) 45%, rgba(0,0,0,0.6)), url(${proxyImage(video.thumbnailUrl)}) center/cover no-repeat`
+          background: video.thumbnailUrl ?? video.productImageUrl
+            ? `linear-gradient(180deg, rgba(0,0,0,0.05) 45%, rgba(0,0,0,0.6)), url(${proxyImage(
+                video.thumbnailUrl ?? video.productImageUrl,
+              )}) center/cover no-repeat`
             : gradientFor(video.category),
           display: 'flex',
           flexDirection: 'column',
@@ -187,7 +189,7 @@ function VideoCard({
                 '&:hover': { color: 'primary.main', textDecoration: 'underline' },
               }}
             >
-              {video.creatorHandle}
+              {displayHandle(video.creatorHandle)}
             </Box>
           ) : (
             video.creatorHandle

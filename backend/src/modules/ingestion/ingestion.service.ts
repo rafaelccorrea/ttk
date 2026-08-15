@@ -151,8 +151,14 @@ export class IngestionService implements OnModuleInit {
         }
       }
 
-      // 2) Criadores/vídeos em alta (com avatar, thumbnail e MP4 reais).
-      const trendingCreators = await this.creativeCenter.fetchTrendingCreators(8);
+      // 2) Criadores/vídeos em alta.
+      //    DESLIGADO: a aba de vídeos do Creative Center traz virais genéricos
+      //    (dança, humor, região US) sem relação com produto. Isso poluía
+      //    "Vídeos que Vendem", que deve conter só vídeo com produto atrelado.
+      //    Religar apenas quando a fonte entregar vídeo COM produto.
+      const trendingCreators: Awaited<
+        ReturnType<CreativeCenterSource['fetchTrendingCreators']>
+      > = [];
       run.creatorsFetched = trendingCreators.length;
       for (const tc of trendingCreators) {
         // Handles do TikTok são case-insensitive; normaliza para não duplicar.
@@ -190,9 +196,12 @@ export class IngestionService implements OnModuleInit {
         run.videosUpserted += 1;
       }
 
-      // 3) Produtos em alta → tabelas products + product_metrics_daily.
-      //    Fornecedor externo (vendas reais) tem prioridade; sem ele, usa o
-      //    Creative Center (popularidade → estimativa).
+      // 3) Produtos → tabelas products + product_metrics_daily.
+      //    IMPORTANTE: só ingerimos produto de fonte confiável. O Top Ads foi
+      //    descartado como fonte (medição: 117 anúncios coletados, apenas 2 de
+      //    venda de produto — o resto era publicidade sem produto, poluindo o
+      //    catálogo). Enquanto não houver fonte real de catálogo, roda apenas
+      //    com fornecedor externo configurado (EXTERNAL_DATA_*).
       run.productsIngested = await this.ingestProducts();
 
       // 4) Imagens de produtos sem foto (busca de imagem real; 15 por execução).
@@ -259,23 +268,11 @@ export class IngestionService implements OnModuleInit {
       return count;
     }
 
-    // 3b) Creative Center — popularidade pública → estimativa conservadora.
-    const trending = await this.ccProducts.fetchTrendingProducts(20);
-    for (const tp of trending) {
-      const product = await this.upsertProduct({
-        externalId: tp.externalId,
-        title: tp.title,
-        category: tp.category,
-        price: tp.price,
-        imageUrl: tp.imageUrl,
-        storeName: null,
-        tiktokUrl: null,
-        radarScore: Math.round(tp.popularity),
-      });
-      const estimate = this.estimateFromPopularity(tp, Number(product.price));
-      await this.upsertDailyMetric(product.id, today, estimate.sales, estimate.revenue);
-      count += 1;
-    }
+    // 3b) Sem fornecedor externo não inventamos catálogo: melhor nenhum
+    //     produto novo do que produto que não é produto.
+    this.logger.warn(
+      'Nenhuma fonte confiável de produtos configurada (EXTERNAL_DATA_*). Nenhum produto ingerido.',
+    );
     return count;
   }
 

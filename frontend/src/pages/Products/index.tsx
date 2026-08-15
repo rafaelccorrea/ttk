@@ -3,6 +3,7 @@ import StarBorderIcon from '@mui/icons-material/StarBorder';
 import {
   Box,
   Card,
+  CardActionArea,
   CardContent,
   Chip,
   Grid,
@@ -52,14 +53,21 @@ function ProductCard({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        '&:hover': { transform: 'translateY(-2px)' },
+        cursor: 'pointer',
+        '&:hover': { transform: 'translateY(-3px)' },
       }}
     >
-      {/* Foto estilo catálogo: contain (sem cortes) sobre fundo neutro. */}
+      {/* Card inteiro navega para o detalhe (UX óbvia) */}
+      <CardActionArea
+        component={Link}
+        to={`/produtos/${product.id}`}
+        sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}
+      >
+      {/* Foto grande e imersiva (cover) */}
       <Box
         sx={{
           position: 'relative',
-          height: 172,
+          height: 220,
           background: product.imageUrl ? '#f6f6f8' : gradientFor(product.category),
           display: 'flex',
           alignItems: 'flex-start',
@@ -79,13 +87,30 @@ function ProductCard({
               inset: 0,
               width: '100%',
               height: '100%',
-              objectFit: 'contain',
-              p: 1.5,
-              transition: 'transform .25s ease',
-              '.MuiCard-root:hover &': { transform: 'scale(1.05)' },
+              objectFit: 'cover',
+              transition: 'transform .3s ease',
+              '.MuiCard-root:hover &': { transform: 'scale(1.06)' },
             }}
           />
         )}
+        {/* Convite visível ao hover */}
+        <Chip
+          size="small"
+          label="Ver detalhes →"
+          sx={{
+            position: 'absolute',
+            right: 10,
+            bottom: 10,
+            zIndex: 1,
+            fontWeight: 700,
+            color: '#fff',
+            bgcolor: 'rgba(254,44,85,0.92)',
+            opacity: 0,
+            transform: 'translateY(6px)',
+            transition: 'opacity .2s ease, transform .2s ease',
+            '.MuiCard-root:hover &': { opacity: 1, transform: 'translateY(0)' },
+          }}
+        />
         <Chip
           size="small"
           label={`#${rank}`}
@@ -99,7 +124,12 @@ function ProductCard({
         />
         <IconButton
           size="small"
-          onClick={() => onToggleFavorite(product.id)}
+          onClick={(e) => {
+            // Impede que o clique no favorito navegue para o detalhe.
+            e.preventDefault();
+            e.stopPropagation();
+            onToggleFavorite(product.id);
+          }}
           aria-label="favoritar"
           sx={{
             bgcolor: 'rgba(0,0,0,0.35)',
@@ -120,11 +150,7 @@ function ProductCard({
         sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, pt: 1.5 }}
       >
         <Typography
-          component={Link}
-          to={`/produtos/${product.id}`}
           sx={{
-            color: 'inherit',
-            textDecoration: 'none',
             fontWeight: 700,
             fontSize: 15,
             lineHeight: 1.35,
@@ -133,7 +159,7 @@ function ProductCard({
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
             minHeight: '2.7em',
-            '&:hover': { color: 'primary.main' },
+            '.MuiCard-root:hover &': { color: 'primary.main' },
           }}
         >
           {product.title}
@@ -201,6 +227,7 @@ function ProductCard({
           )}
         </Box>
       </CardContent>
+      </CardActionArea>
     </Card>
   );
 }
