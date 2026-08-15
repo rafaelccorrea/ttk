@@ -29,6 +29,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
+import { HotBadge } from '@/components/ui/HotBadge';
 import {
   ProductFilterOptions,
   ProductSort,
@@ -66,6 +67,8 @@ function ProductCard({
   onToggleFavorite: (id: string) => void;
 }) {
   const growth = product.growthPct;
+  // "Destaque": pódio do ranking ou crescimento forte no período.
+  const isHot = rank <= 3 || (growth !== null && growth >= 50);
   // Skeleton no lugar da foto até o `onLoad` — evita o card piscar preto
   // enquanto a imagem vem do proxy.
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -153,16 +156,27 @@ function ProductCard({
             zIndex: 2,
           }}
         >
-          <Chip
-            size="small"
-            label={`#${rank}`}
-            sx={{
-              bgcolor: 'rgba(0,0,0,0.5)',
-              color: '#fff',
-              fontWeight: 800,
-              backdropFilter: 'blur(4px)',
-            }}
-          />
+          <Box display="flex" alignItems="center" gap={0.5} minWidth={0}>
+            <Chip
+              size="small"
+              label={`#${rank}`}
+              sx={{
+                bgcolor: 'rgba(0,0,0,0.5)',
+                color: '#fff',
+                fontWeight: 800,
+                backdropFilter: 'blur(4px)',
+              }}
+            />
+            {isHot && (
+              <HotBadge
+                title={
+                  rank <= 3
+                    ? `Top ${rank} em vendas no período`
+                    : `Crescimento de ${growth}% no período`
+                }
+              />
+            )}
+          </Box>
           <IconButton
             size="small"
             onClick={(e) => {

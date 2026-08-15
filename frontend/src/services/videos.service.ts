@@ -52,6 +52,12 @@ export const videosService = {
     return data;
   },
 
+  /** Categorias que têm vídeo, para o filtro da tela. */
+  async categories(): Promise<string[]> {
+    const { data } = await api.get<string[]>('/videos/categories');
+    return data;
+  },
+
   /**
    * Resolve o MP4 tocável na hora do play.
    *

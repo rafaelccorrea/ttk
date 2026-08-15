@@ -38,6 +38,21 @@ export class VideosService {
   ) {}
 
   /**
+   * Categorias que realmente têm vídeo, para montar o filtro da tela.
+   * Sai do banco (e não da lista fixa) para não oferecer opção que não
+   * devolveria nenhum resultado.
+   */
+  async categories(): Promise<string[]> {
+    const rows = await this.videos
+      .createQueryBuilder('v')
+      .select('DISTINCT v.category', 'category')
+      .where('v.category IS NOT NULL')
+      .orderBy('category', 'ASC')
+      .getRawMany<{ category: string }>();
+    return rows.map((r) => r.category).filter(Boolean);
+  }
+
+  /**
    * Devolve um MP4 tocável para o vídeo.
    *
    * Por que não fica no banco: a URL que a TikTok assina expira em poucas horas

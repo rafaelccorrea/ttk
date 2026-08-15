@@ -27,6 +27,12 @@ export class VideosController {
     return this.videosService.list(query, user.id);
   }
 
+  @Get('categories')
+  @ApiOperation({ summary: 'Categorias com vídeos disponíveis (para o filtro)' })
+  categories() {
+    return this.videosService.categories();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Detalhe do vídeo com produto relacionado' })
   findOne(

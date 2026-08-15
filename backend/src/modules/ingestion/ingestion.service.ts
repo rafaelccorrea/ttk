@@ -448,14 +448,19 @@ export class IngestionService implements OnModuleInit {
       .take(setting.enrichPerRun)
       .getMany();
 
+    if (targets.length === 0) return 0;
+
+    // Detalhes de TODOS os alvos de uma vez (10 por request). Buscar um a um
+    // custaria 1 request por produto — 125 desperdiçados por execução.
+    const details = await this.externalData.fetchProductDetails(
+      targets.map((p) => p.tiktokProductId!).filter(Boolean),
+    );
+
     const now = new Date();
     let count = 0;
     for (const product of targets) {
       if (this.externalData.budgetExhausted) break;
-      const ext = await this.externalData.fetchProductDetails([
-        product.tiktokProductId!,
-      ]);
-      const data = ext.get(product.tiktokProductId!);
+      const data = details.get(product.tiktokProductId!);
       if (!data) continue;
 
       await this.ingestProductVideos(product, data);

@@ -26,7 +26,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { TikTokPlayer } from '@/components/ui/TikTokPlayer';
-import { FilterBar, SearchField } from '@/components/ui/Filters';
+import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
+import { HotBadge } from '@/components/ui/HotBadge';
 import { videosService, ViralVideo } from '@/services/videos.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 import { displayHandle, proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
@@ -73,6 +74,8 @@ function VideoCard({
   // produto, então mantemos `contain` com a cópia borrada preenchendo as bordas.
   const fillsCard = Boolean(video.thumbnailUrl);
   const playable = Boolean(video.playbackUrl || tiktokEmbedId(video.videoUrl));
+  // "Destaque": pódio do ranking ou vídeo com audiência realmente viral.
+  const isHot = rank <= 3 || video.views >= 1_000_000;
   // Skeleton no lugar da thumb até o `onLoad`.
   const [imgLoaded, setImgLoaded] = useState(false);
   // Botões flutuantes no canto direito, no estilo da barra de ações do TikTok.
@@ -186,16 +189,27 @@ function VideoCard({
           zIndex: 2,
         }}
       >
-        <Chip
-          size="small"
-          label={`#${rank}`}
-          sx={{
-            bgcolor: 'rgba(0,0,0,0.5)',
-            color: '#fff',
-            fontWeight: 800,
-            backdropFilter: 'blur(4px)',
-          }}
-        />
+        <Box display="flex" alignItems="center" gap={0.5} minWidth={0} zIndex={3}>
+          <Chip
+            size="small"
+            label={`#${rank}`}
+            sx={{
+              bgcolor: 'rgba(0,0,0,0.5)',
+              color: '#fff',
+              fontWeight: 800,
+              backdropFilter: 'blur(4px)',
+            }}
+          />
+          {isHot && (
+            <HotBadge
+              title={
+                rank <= 3
+                  ? `Top ${rank} entre os vídeos virais`
+                  : `${formatNumber(video.views)} views`
+              }
+            />
+          )}
+        </Box>
         <IconButton
           size="small"
           onClick={() => onToggleSave(video.id)}
@@ -397,12 +411,19 @@ export function VideosPage() {
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [savedOnly, setSavedOnly] = useState(false);
+  const [category, setCategory] = useState('');
+  const [categories, setCategories] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [transcriptVideo, setTranscriptVideo] = useState<ViralVideo | null>(
     null,
   );
   const [loading, setLoading] = useState(true);
+
+  // Categorias vêm do banco: só aparecem as que realmente têm vídeo.
+  useEffect(() => {
+    videosService.categories().then(setCategories).catch(console.error);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -412,6 +433,7 @@ export function VideosPage() {
         .list({
           search: search || undefined,
           saved: savedOnly || undefined,
+          category: category || undefined,
           page,
           limit: PAGE_SIZE,
         })
@@ -423,7 +445,7 @@ export function VideosPage() {
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, savedOnly, page]);
+  }, [search, savedOnly, category, page]);
 
   async function toggleSave(id: string) {
     const isSaved = await videosService.toggleSave(id);
@@ -458,6 +480,14 @@ export function VideosPage() {
           <ToggleButton value="trending">Em alta</ToggleButton>
           <ToggleButton value="saved">Salvos</ToggleButton>
         </ToggleButtonGroup>
+        <SelectField
+          value={category}
+          onChange={(value) => (setCategory(value), setPage(1))}
+          options={[
+            { value: '', label: 'Todas as categorias' },
+            ...categories.map((c) => ({ value: c, label: c })),
+          ]}
+        />
         <SearchField
           value={search}
           onChange={(value) => (setSearch(value), setPage(1))}
