@@ -57,6 +57,11 @@ await context.addInitScript(
 const page = await context.newPage();
 for (const shot of SHOTS) {
   await page.goto(`${BASE}${shot.path}`, { waitUntil: 'networkidle', timeout: 60_000 });
+  // Espera o splash de carregamento sair — senão o print pega a tela vazia.
+  await page
+    .waitForFunction(() => !document.body.innerText.includes('Carregando'), null, { timeout: 30_000 })
+    .catch(() => {});
+  await page.waitForLoadState('networkidle').catch(() => {});
   // Esconde o widget de chat flutuante, que polui o print.
   await page.addStyleTag({
     content: '[class*="MuiFab-root"], [aria-label*="chat" i] { display: none !important; }',

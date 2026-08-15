@@ -1,11 +1,11 @@
 import {
-  AutoAwesomeRounded,
   AutoFixHighRounded,
   CheckRounded,
   CloseRounded,
   ExpandMoreRounded,
   FavoriteRounded,
   GroupsRounded,
+  InsightsRounded,
   LocalFireDepartmentRounded,
   OndemandVideoRounded,
   RocketLaunchRounded,
@@ -27,7 +27,7 @@ import {
 import { ReactNode, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { COMPARISON, FAQ, FEATURES, HIGHLIGHTS, NICHES, PRICING, STEPS, TESTIMONIALS, brl } from './data';
-import { Reveal, SectionHeading, cyan, glass, glowCard, gradientText, ink, inkSoft, line, lineStrong, page, pageNarrow, red, textDim, textFaint } from './theme';
+import { BrowserFrame, Reveal, SectionHeading, cyan, glass, glowCard, gradientText, ink, inkSoft, line, lineStrong, page, pageNarrow, red, textDim, textFaint } from './theme';
 
 /* ---------------------------------------------------------------- marquee */
 
@@ -131,122 +131,48 @@ const TABS = [
   { id: 'produtos', label: 'Produtos', icon: <TrendingUpRounded sx={{ fontSize: 18 }} /> },
   { id: 'videos', label: 'Vídeos', icon: <OndemandVideoRounded sx={{ fontSize: 18 }} /> },
   { id: 'criadores', label: 'Criadores', icon: <GroupsRounded sx={{ fontSize: 18 }} /> },
-  { id: 'estudio', label: 'Estúdio IA', icon: <AutoFixHighRounded sx={{ fontSize: 18 }} /> },
+  { id: 'tendencias', label: 'Tendências', icon: <InsightsRounded sx={{ fontSize: 18 }} /> },
+  { id: 'prompts', label: 'Estúdio IA', icon: <AutoFixHighRounded sx={{ fontSize: 18 }} /> },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
 
-const PANELS: Record<TabId, { title: string; desc: string; bullets: string[]; body: ReactNode }> = {
+/** Capturas reais do app — geradas por frontend/scripts/capture-screens.mjs. */
+const PANELS: Record<TabId, { title: string; desc: string; bullets: string[]; img: string; route: string }> = {
   produtos: {
     title: 'Ranking diário de produtos',
-    desc: 'Ordene por crescimento, comissão ou receita estimada e filtre pelo nicho em que você já publica.',
-    bullets: ['Receita e GMV estimados', 'Comissão e faixa de preço', 'Índice de saturação'],
-    body: (
-      <Stack spacing={1.25}>
-        {[
-          ['Mini ring light recarregável', '+312%', 'R$ 84k', '18%'],
-          ['Escova alisadora 3 em 1', '+248%', 'R$ 61k', '22%'],
-          ['Organizador de maquiagem', '+197%', 'R$ 47k', '15%'],
-          ['Garrafa térmica smart', '+154%', 'R$ 39k', '11%'],
-        ].map(([name, growth, rev, com]) => (
-          <Stack key={name} direction="row" alignItems="center" spacing={1.5} sx={{ ...glass, borderRadius: 3, p: 1.4 }}>
-            <Box sx={{ width: 32, height: 32, borderRadius: 2, flexShrink: 0, background: `linear-gradient(135deg, ${red}33, ${cyan}33)` }} />
-            <Typography flex={1} minWidth={0} noWrap fontSize={13.5} fontWeight={700}>{name}</Typography>
-            <Chip size="small" label={growth} sx={{ bgcolor: 'rgba(37,244,238,0.12)', color: cyan, fontWeight: 700, height: 22 }} />
-            <Typography fontSize={13} fontWeight={700} width={62} textAlign="right">{rev}</Typography>
-            <Typography fontSize={12} color={textDim} width={44} textAlign="right">{com}</Typography>
-          </Stack>
-        ))}
-      </Stack>
-    ),
+    desc: 'Ordene por vendas, faturamento ou preço e filtre pelo nicho em que você já publica.',
+    bullets: ['Vendas e faturamento reais', 'Nota do radar por produto', 'Janelas de 7, 30 e 90 dias'],
+    img: '/screens/produtos.jpg',
+    route: 'app.pikpok.com.br/produtos',
   },
   videos: {
-    title: 'Os vídeos que realmente converteram',
-    desc: 'Veja o criativo que puxou as vendas do produto e entenda o gancho, o ritmo e o CTA por trás dele.',
-    bullets: ['Views, likes e conversão', 'Transcrição completa', 'Estrutura do gancho'],
-    body: (
-      <Grid container spacing={1.5}>
-        {[
-          ['2,4M', 'Testei por 7 dias e…'],
-          ['890k', 'Ninguém te conta isso'],
-          ['1,1M', 'Por R$ 39 eu não esperava'],
-          ['640k', 'Antes x depois real'],
-        ].map(([views, hook]) => (
-          <Grid item xs={6} key={hook}>
-            <Box sx={{ ...glass, borderRadius: 3, p: 1.5, height: '100%' }}>
-              <Box
-                sx={{
-                  position: 'relative', height: 84, borderRadius: 2, mb: 1.25, overflow: 'hidden',
-                  background: `linear-gradient(135deg, ${red}2a, ${cyan}22)`,
-                  display: 'grid', placeItems: 'center',
-                }}
-              >
-                <OndemandVideoRounded sx={{ color: 'rgba(255,255,255,0.55)' }} />
-                <Box
-                  aria-hidden
-                  sx={{
-                    position: 'absolute', left: 0, right: 0, height: 2,
-                    background: `linear-gradient(90deg, transparent, ${cyan}, transparent)`,
-                    animation: 'lpScan 3.4s linear infinite',
-                  }}
-                />
-              </Box>
-              <Typography fontSize={12.5} fontWeight={700} noWrap>“{hook}”</Typography>
-              <Typography fontSize={11.5} color={textDim}>{views} views · gancho de 1,8s</Typography>
-            </Box>
-          </Grid>
-        ))}
-      </Grid>
-    ),
+    title: 'Os vídeos que realmente venderam',
+    desc: 'Veja o criativo que puxou as vendas do produto e leia a transcrição para entender o gancho.',
+    bullets: ['Views, curtidas e faturamento', 'Transcrição do vídeo', 'Link direto para o produto'],
+    img: '/screens/videos.jpg',
+    route: 'app.pikpok.com.br/videos',
   },
   criadores: {
     title: 'Radar de criadores por nicho',
     desc: 'Monte a lista de parceiros com quem faz sentido falar — antes que a concorrência chegue neles.',
-    bullets: ['Filtro por nicho e GMV', 'Engajamento real', 'Histórico de produtos'],
-    body: (
-      <Stack spacing={1.25}>
-        {[
-          ['@lala.beauty', 'Beleza', '412k', '8,4%'],
-          ['@casa.do.gui', 'Casa', '188k', '11,2%'],
-          ['@fit.com.ana', 'Fitness', '96k', '9,7%'],
-          ['@gadget.br', 'Gadgets', '271k', '6,9%'],
-        ].map(([handle, niche, followers, eng]) => (
-          <Stack key={handle} direction="row" alignItems="center" spacing={1.5} sx={{ ...glass, borderRadius: 3, p: 1.4 }}>
-            <Avatar sx={{ width: 32, height: 32, fontSize: 13, bgcolor: `${red}33`, color: '#fff' }}>
-              {handle[1].toUpperCase()}
-            </Avatar>
-            <Box flex={1} minWidth={0}>
-              <Typography fontSize={13.5} fontWeight={700} noWrap>{handle}</Typography>
-              <Typography fontSize={11.5} color={textDim}>{niche} · {followers} seguidores</Typography>
-            </Box>
-            <Chip size="small" label={`${eng} eng.`} sx={{ bgcolor: 'rgba(37,244,238,0.12)', color: cyan, fontWeight: 700, height: 22 }} />
-          </Stack>
-        ))}
-      </Stack>
-    ),
+    bullets: ['Ranking por GMV', 'Seguidores e vendas em 30 dias', 'Filtro por categoria'],
+    img: '/screens/criadores.jpg',
+    route: 'app.pikpok.com.br/criadores',
   },
-  estudio: {
-    title: 'Roteiro pronto para gravar',
-    desc: 'A IA lê os virais daquele produto e devolve gancho, corpo e CTA no seu tom — em segundos.',
-    bullets: ['Gancho testado', 'Corpo com prova', 'CTA de conversão'],
-    body: (
-      <Stack spacing={1.5}>
-        {[
-          ['GANCHO · 0-3s', 'Parei de gastar R$ 200 em ring light quando descobri esse aqui.'],
-          ['CORPO · 3-18s', 'Ele carrega por USB, tem 3 tons de luz e prende em qualquer superfície. Gravei esse vídeo com ele.'],
-          ['CTA · 18-25s', 'Tá no link amarelo por menos de R$ 40 — corre que o estoque some.'],
-        ].map(([label, text], i) => (
-          <Box key={label} sx={{ ...glass, borderRadius: 3, p: 1.75, animation: `lpFadeUp .5s ease ${i * 120}ms both` }}>
-            <Typography fontSize={11} fontWeight={800} letterSpacing="0.1em" color={cyan}>{label}</Typography>
-            <Typography fontSize={14} mt={0.75} lineHeight={1.6}>{text}</Typography>
-          </Box>
-        ))}
-        <Stack direction="row" spacing={1} alignItems="center" color={textFaint}>
-          <AutoAwesomeRounded sx={{ fontSize: 15 }} />
-          <Typography fontSize={12.5}>gerado em 4,2s · 8 créditos</Typography>
-        </Stack>
-      </Stack>
-    ),
+  tendencias: {
+    title: 'O que está subindo agora',
+    desc: 'Categorias, hashtags e produtos em ascensão comparando os últimos 7 dias com os 7 anteriores.',
+    bullets: ['Hashtags em alta no Brasil', 'Categorias em movimento', 'Produtos em ascensão'],
+    img: '/screens/tendencias.jpg',
+    route: 'app.pikpok.com.br/tendencias',
+  },
+  prompts: {
+    title: 'Do produto ao criativo, com IA',
+    desc: 'Roteiro, análise de viral e um cofre de prompts prontos de vídeo e imagem — é só preencher e usar.',
+    bullets: ['Prompts testados de vídeo e imagem', 'Roteiro gerado por IA', 'Geração de imagem e vídeo'],
+    img: '/screens/prompts.jpg',
+    route: 'app.pikpok.com.br/prompts',
   },
 };
 
@@ -261,7 +187,7 @@ export function Showcase() {
           <SectionHeading
             eyebrow="POR DENTRO DA PLATAFORMA"
             title="Veja o PikPok trabalhando"
-            subtitle="Quatro telas, um fluxo. Clique para navegar entre elas."
+            subtitle="Telas reais do produto, com os dados que o radar coletou. Clique para navegar entre elas."
           />
         </Reveal>
 
@@ -291,8 +217,8 @@ export function Showcase() {
         </Reveal>
 
         <Reveal>
-          <Grid container spacing={4} alignItems="center">
-            <Grid item xs={12} md={5}>
+          <Grid container spacing={{ xs: 4, lg: 6 }} alignItems="center">
+            <Grid item xs={12} md={5} lg={4}>
               <Typography fontSize={{ xs: 24, md: 28 }} fontWeight={800} letterSpacing="-0.02em">
                 {panel.title}
               </Typography>
@@ -310,15 +236,9 @@ export function Showcase() {
                 ))}
               </Stack>
             </Grid>
-            <Grid item xs={12} md={7}>
-              <Box
-                key={tab}
-                sx={{
-                  ...glass, p: { xs: 2, md: 3 }, boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
-                  animation: 'lpFadeUp .45s ease both',
-                }}
-              >
-                {panel.body}
+            <Grid item xs={12} md={7} lg={8}>
+              <Box key={tab} sx={{ animation: 'lpFadeUp .45s ease both' }}>
+                <BrowserFrame src={panel.img} alt={`Tela de ${panel.title} no PikPok`} caption={panel.route} />
               </Box>
             </Grid>
           </Grid>

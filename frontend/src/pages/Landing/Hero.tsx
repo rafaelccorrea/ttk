@@ -11,27 +11,8 @@ import { Box, Button, Chip, Container, Grid, Stack, Typography } from '@mui/mate
 import { ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { TICKER_WORDS } from './data';
-import { cyan, glass, gradientText, line, page, red, textDim, textFaint, useCountUp } from './theme';
+import { BrowserFrame, cyan, glass, gradientText, page, red, textDim, textFaint, useCountUp } from './theme';
 
-function MockRow({ name, growth, revenue, w, delay }: { name: string; growth: string; revenue: string; w: number; delay: number }) {
-  return (
-    <Stack direction="row" alignItems="center" spacing={1.5} sx={{ py: 1.1, borderBottom: `1px solid ${line}` }}>
-      <Box sx={{ width: 34, height: 34, borderRadius: 2, flexShrink: 0, background: `linear-gradient(135deg, ${red}33, ${cyan}33)` }} />
-      <Box flex={1} minWidth={0}>
-        <Typography fontSize={13} fontWeight={700} color="#fff" noWrap>{name}</Typography>
-        <Box
-          sx={{
-            mt: 0.6, height: 4, borderRadius: 2, width: `${w}%`,
-            background: `linear-gradient(90deg, ${red}, ${cyan})`,
-            animation: `lpBar 1.2s cubic-bezier(.2,.8,.2,1) ${delay}ms both`,
-          }}
-        />
-      </Box>
-      <Chip size="small" label={growth} sx={{ bgcolor: 'rgba(37,244,238,0.12)', color: cyan, fontWeight: 700, height: 22 }} />
-      <Typography fontSize={13} fontWeight={700} color="#fff" sx={{ width: 72, textAlign: 'right' }}>{revenue}</Typography>
-    </Stack>
-  );
-}
 
 function FloatingBadge({
   children,
@@ -176,58 +157,37 @@ export function Hero() {
           {/* Mock do dashboard com badges flutuantes */}
           <Grid item xs={12} md={6} lg={7}>
             <Box sx={{ position: 'relative', animation: 'lpFadeUp .8s ease .25s both' }}>
-              <FloatingBadge sx={{ top: -26, right: 24 }} duration={5}>
+              <FloatingBadge sx={{ top: -30, right: -18 }} duration={5}>
                 <RocketLaunchRounded sx={{ fontSize: 18, color: cyan }} />
                 <Box>
                   <Typography fontSize={12} fontWeight={800} lineHeight={1.2}>Novo viral detectado</Typography>
                   <Typography fontSize={11} color={textDim} lineHeight={1.2}>há 2 minutos</Typography>
                 </Box>
               </FloatingBadge>
-              <FloatingBadge sx={{ bottom: -22, left: -28 }} duration={6} alt>
+              <FloatingBadge sx={{ bottom: -26, left: -44 }} duration={6} alt>
                 <TrendingUpRounded sx={{ fontSize: 18, color: red }} />
                 <Box>
                   <Typography fontSize={12} fontWeight={800} lineHeight={1.2}>+312% em 24h</Typography>
                   <Typography fontSize={11} color={textDim} lineHeight={1.2}>mini ring light</Typography>
                 </Box>
               </FloatingBadge>
-              <FloatingBadge sx={{ top: '42%', right: -34 }} duration={7}>
+              <FloatingBadge sx={{ top: '58%', right: -52 }} duration={7}>
                 <AutoFixHighRounded sx={{ fontSize: 18, color: cyan }} />
                 <Typography fontSize={12} fontWeight={800}>Roteiro gerado ✓</Typography>
               </FloatingBadge>
 
               <Box
                 sx={{
-                  ...glass, p: 3, boxShadow: '0 30px 80px rgba(0,0,0,0.5)',
-                  transition: 'transform .3s ease',
-                  '&:hover': { transform: 'perspective(900px) rotateX(1.5deg) rotateY(-2deg) translateY(-4px)' },
+                  transition: 'transform .35s ease',
+                  '&:hover': { transform: 'perspective(1100px) rotateX(1.5deg) rotateY(-2deg) translateY(-4px)' },
                 }}
               >
-                <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <TrendingUpRounded sx={{ color: red }} />
-                    <Typography fontWeight={700} fontSize={14}>Produtos em alta · hoje</Typography>
-                  </Stack>
-                  <Stack direction="row" spacing={0.8} alignItems="center">
-                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: red, animation: 'lpPulse 1.8s ease infinite' }} />
-                    <Typography fontSize={12} fontWeight={700} color={red}>ao vivo</Typography>
-                  </Stack>
-                </Stack>
-                <MockRow name="Mini ring light recarregável" growth="+312%" revenue="R$ 84k" w={92} delay={400} />
-                <MockRow name="Escova alisadora 3 em 1" growth="+248%" revenue="R$ 61k" w={78} delay={550} />
-                <MockRow name="Organizador de maquiagem" growth="+197%" revenue="R$ 47k" w={64} delay={700} />
-                <MockRow name="Garrafa térmica smart" growth="+154%" revenue="R$ 39k" w={51} delay={850} />
-                <Stack direction="row" spacing={2} mt={2.5}>
-                  {[
-                    ['GMV do nicho', 'R$ 2,4M'],
-                    ['Vídeos novos', '1.283'],
-                    ['Criadores ativos', '412'],
-                  ].map(([l, v]) => (
-                    <Box key={l} sx={{ ...glass, borderRadius: 3, p: 1.5, flex: 1 }}>
-                      <Typography fontSize={11} color={textDim}>{l}</Typography>
-                      <Typography fontSize={16} fontWeight={800}>{v}</Typography>
-                    </Box>
-                  ))}
-                </Stack>
+                <BrowserFrame
+                  src="/screens/dashboard.jpg"
+                  alt="Dashboard do PikPok com faturamento rastreado e produtos em alta"
+                  caption="app.pikpok.com.br/dashboard"
+                  priority
+                />
               </Box>
             </Box>
           </Grid>
