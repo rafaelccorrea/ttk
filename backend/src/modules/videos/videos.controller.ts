@@ -36,6 +36,17 @@ export class VideosController {
     return this.videosService.findOne(id, user.id);
   }
 
+  @Get(':id/playback')
+  @ApiOperation({
+    summary: 'Resolve o MP4 tocável do vídeo (URL temporária, ~1h)',
+    description:
+      'A URL assinada do CDN da TikTok expira em horas, por isso não é ' +
+      'persistida. Chame este endpoint no momento de dar play.',
+  })
+  playback(@Param('id', ParseUUIDPipe) id: string) {
+    return this.videosService.resolvePlayback(id);
+  }
+
   @Post(':id/save')
   @ApiOperation({ summary: 'Alterna vídeo salvo para o usuário' })
   toggleSave(

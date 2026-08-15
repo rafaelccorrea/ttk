@@ -9,9 +9,7 @@ import OndemandVideoRoundedIcon from '@mui/icons-material/OndemandVideoRounded';
 import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
-import SmartToyRoundedIcon from '@mui/icons-material/SmartToyRounded';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
-import StorefrontRoundedIcon from '@mui/icons-material/StorefrontRounded';
 import StyleRoundedIcon from '@mui/icons-material/StyleRounded';
 import TroubleshootRoundedIcon from '@mui/icons-material/TroubleshootRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
@@ -67,12 +65,6 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: 'Minha Loja',
-    items: [
-      { to: '/loja', label: 'Painel da Loja', icon: <StorefrontRoundedIcon />, feature: 'stores' },
-    ],
-  },
-  {
     title: 'Descoberta',
     items: [
       { to: '/produtos', label: 'Produtos', icon: <LocalFireDepartmentRoundedIcon /> },
@@ -90,12 +82,6 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/multiplicador', label: 'Multiplicador', icon: <DynamicFeedRoundedIcon /> },
       { to: '/prompts', label: 'Cofre de Prompts', icon: <StyleRoundedIcon /> },
       { to: '/geracoes', label: 'Minhas Gerações', icon: <MovieFilterRoundedIcon /> },
-    ],
-  },
-  {
-    title: 'Admin',
-    items: [
-      { to: '/coleta', label: 'Coleta de Dados', icon: <SmartToyRoundedIcon />, feature: 'ingestion' },
     ],
   },
   {

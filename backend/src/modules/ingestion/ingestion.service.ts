@@ -13,7 +13,7 @@ import {
   CreativeCenterProductsSource,
   TrendingProduct,
 } from './creative-center-products.source';
-import { ExternalDataProvider } from './external-data.provider';
+import { ExternalDataProvider, ExternalProduct } from './external-data.provider';
 import { evaluateProduct, filterSourcedProducts } from './product-gate';
 import { ProductExtractorService } from './product-extractor.service';
 import { ImageSearchSource } from './image-search.source';
@@ -297,6 +297,14 @@ export class IngestionService implements OnModuleInit {
     const today = new Date().toISOString().slice(0, 10);
     let count = 0;
 
+    // Abre a janela de cota ANTES de qualquer chamada paga.
+    const allowance = await this.openApiAllowance();
+    this.externalData.beginRun(allowance);
+    if (allowance <= 0) {
+      this.logger.warn('Cota mensal do EchoTik esgotada: nenhuma chamada será feita.');
+      return 0;
+    }
+
     // 3a) Fornecedor pago (EchoTik) — dado real, prioridade máxima.
     const external = await this.externalData.fetchTopProducts(50);
 
@@ -316,20 +324,42 @@ export class IngestionService implements OnModuleInit {
       );
     }
 
-    for (const ext of accepted) {
+    // Produtos com mais GMV primeiro: se a cota acabar no meio, o que entrou
+    // é o que mais importa.
+    const ordered = accepted.sort((a, b) => b.revenueTotal - a.revenueTotal);
+
+    // O CDN do EchoTik recusa hotlink (403). Assinar é obrigatório para a
+    // imagem aparecer — e não consome cota, então vale para todas de uma vez.
+    const signed = await this.externalData.signImageUrls(
+      ordered.flatMap((p) => p.images),
+    );
+    const sign = (url: string | null) => (url ? (signed.get(url) ?? url) : null);
+
+    for (const ext of ordered) {
+      const gallery = ext.images.map((u) => sign(u)).filter((u): u is string => !!u);
       const product = await this.upsertProduct({
         externalId: ext.externalId,
         title: ext.cleanTitle,
         category: ext.category,
         price: ext.price,
-        imageUrl: ext.imageUrl,
+        imageUrl: gallery[0] ?? null,
+        images: gallery,
         storeName: ext.storeName,
         tiktokUrl: ext.tiktokUrl,
         radarScore: null,
       });
       await this.upsertDailyMetric(product.id, today, ext.salesDaily, ext.revenueDaily);
       count += 1;
+
+      // Associações custam 2 requests por produto. Só vale para quem vende de
+      // verdade — e só enquanto sobrar cota.
+      if (!this.externalData.budgetExhausted && ext.salesTotal > 0) {
+        await this.ingestProductVideos(product, ext);
+        await this.ingestProductCreators(ext);
+      }
     }
+    await this.closeApiAllowance();
+
     if (count > 0) {
       this.logger.log(
         `${count} produtos do EchoTik (dado real, ${this.externalData.requestsUsed} requests gastos)`,
@@ -343,6 +373,132 @@ export class IngestionService implements OnModuleInit {
       'Nenhuma fonte confiável de produtos configurada (EXTERNAL_DATA_*). Nenhum produto ingerido.',
     );
     return count;
+  }
+
+  /**
+   * Vídeos que efetivamente venderam este produto.
+   *
+   * O `playbackUrl` NÃO é gravado aqui: a URL assinada do CDN expira em horas
+   * e foi a causa dos vídeos que não tocavam. Guardamos `videoUrl` (canônica,
+   * estável) e resolvemos o MP4 na hora de exibir, via resolveMedia().
+   */
+  private async ingestProductVideos(
+    product: Product,
+    ext: ExternalProduct,
+  ): Promise<number> {
+    const videos = await this.externalData.fetchProductVideos(
+      ext.tiktokProductId,
+      10,
+    );
+    if (videos.length === 0) return 0;
+
+    // O @handle não vem na lista de vídeos, só o user_id — e sem ele a URL do
+    // post fica inválida e o embed não abre. 1 request resolve até 10 autores.
+    const authors = await this.externalData.fetchCreatorDetails(
+      videos.map((v) => v.userId),
+    );
+    const signed = await this.externalData.signImageUrls(
+      videos.map((v) => v.coverUrl).filter((u): u is string => !!u),
+    );
+
+    let saved = 0;
+
+    for (const v of videos) {
+      if (!v.videoId) continue;
+      const handle = authors.get(v.userId)?.handle ?? null;
+      const externalId = `echotik-v-${v.videoId}`;
+      const video =
+        (await this.videos.findOne({ where: { externalId } })) ??
+        this.videos.create({ externalId });
+
+      video.caption = v.caption || product.title;
+      video.creatorHandle = handle ?? v.userId;
+      video.views = v.views;
+      video.likes = v.likes;
+      // GMV do vídeo vem em USD: converte com o câmbio derivado do produto.
+      video.revenueEstimate = this.usdToBrl(v.salesGmvUsd, ext).toFixed(2);
+      video.postedAt = v.createdAt.slice(0, 10);
+      // Sem @handle a URL do post não existe — melhor nula do que quebrada.
+      video.videoUrl = handle
+        ? `https://www.tiktok.com/@${handle}/video/${v.videoId}`
+        : video.videoUrl;
+      video.thumbnailUrl =
+        (v.coverUrl ? (signed.get(v.coverUrl) ?? v.coverUrl) : null) ??
+        video.thumbnailUrl;
+      video.productId = product.id;
+      video.category = product.category;
+      // Veio da associação de venda: é produto por construção, não "pending".
+      video.kind = 'product';
+
+      await this.videos.save(video);
+      saved += 1;
+    }
+
+    if (saved > 0) {
+      this.logger.debug(`${saved} vídeos vinculados a "${product.title.slice(0, 40)}"`);
+    }
+    return saved;
+  }
+
+  /**
+   * Criadores que venderam este produto.
+   *
+   * Duas chamadas por lote: a lista por produto traz GMV real mas NÃO traz o
+   * @handle; `influencer/detail` completa em lote de 10.
+   */
+  private async ingestProductCreators(ext: ExternalProduct): Promise<number> {
+    const creators = await this.externalData.fetchProductCreators(
+      ext.tiktokProductId,
+      10,
+    );
+    if (creators.length === 0) return 0;
+
+    const details = await this.externalData.fetchCreatorDetails(
+      creators.map((c) => c.userId),
+    );
+    const signedAvatars = await this.externalData.signImageUrls(
+      [...details.values()]
+        .map((d) => d.avatarUrl)
+        .filter((u): u is string => !!u),
+    );
+
+    let saved = 0;
+    for (const c of creators) {
+      const detail = details.get(c.userId);
+      // Sem @handle não gravamos: a coluna é única e o perfil ficaria sem link.
+      if (!detail) continue;
+
+      const creator =
+        (await this.creators.findOne({ where: { externalId: c.userId } })) ??
+        (await this.creators.findOne({ where: { handle: detail.handle } })) ??
+        this.creators.create({ externalId: c.userId });
+
+      creator.externalId = c.userId;
+      creator.handle = detail.handle;
+      creator.name = detail.nickName || c.nickName;
+      creator.followers = detail.followers || c.followers;
+      creator.gmvPeriod = this.usdToBrl(detail.totalGmvUsd, ext).toFixed(2);
+      creator.salesPeriod = detail.totalSales;
+      creator.category = detail.category ?? c.category ?? 'geral';
+      creator.avatarUrl = detail.avatarUrl
+        ? (signedAvatars.get(detail.avatarUrl) ?? detail.avatarUrl)
+        : (creator.avatarUrl ?? c.avatarUrl);
+      creator.source = 'echotik';
+
+      await this.creators.save(creator);
+      saved += 1;
+    }
+    return saved;
+  }
+
+  /**
+   * O EchoTik devolve GMV em USD mesmo com region=BR. O câmbio é derivado do
+   * próprio produto (preço BRL ÷ preço USD) — sem depender de cotação externa.
+   */
+  private usdToBrl(usd: number, ext: ExternalProduct): number {
+    if (!usd) return 0;
+    const rate = ext.priceUsd > 0 ? ext.price / ext.priceUsd : 1;
+    return usd * rate;
   }
 
   /**
@@ -449,6 +605,75 @@ export class IngestionService implements OnModuleInit {
     return pt >= other;
   }
 
+  // ------------------------------------------------------------------ cota
+  //
+  // Estratégia: a API paga é chamada SÓ pelo cron (3x ao dia), nunca por
+  // request de usuário. O orçamento mensal é dividido pelas execuções que ainda
+  // faltam no mês, então o consumo é linear e nunca acaba antes do dia 30.
+  // O contador vive no banco para sobreviver a restart e deploy.
+
+  /** Quantos requests esta execução pode gastar. */
+  private async openApiAllowance(): Promise<number> {
+    const setting = await this.getSetting();
+    const monthKey = new Date().toISOString().slice(0, 7);
+
+    // Virou o mês: zera o contador.
+    if (setting.apiMonthKey !== monthKey) {
+      setting.apiMonthKey = monthKey;
+      setting.apiRequestsUsed = 0;
+      await this.settings.save(setting);
+    }
+
+    // Sem teto configurado, não limitamos (útil no trial e em dev).
+    if (setting.apiMonthlyBudget <= 0) return Number.MAX_SAFE_INTEGER;
+
+    const remaining = setting.apiMonthlyBudget - setting.apiRequestsUsed;
+    if (remaining <= 0) return 0;
+
+    // Divide o que sobrou pelas execuções restantes do mês, com uma folga de
+    // 10% para não gastar tudo e ficar sem margem para reprocessar.
+    const now = new Date();
+    const daysInMonth = new Date(
+      now.getUTCFullYear(),
+      now.getUTCMonth() + 1,
+      0,
+    ).getUTCDate();
+    const runsPerDay = this.runsPerDay(setting.cronExpr);
+    const runsLeft = Math.max(
+      1,
+      (daysInMonth - now.getUTCDate() + 1) * runsPerDay,
+    );
+    return Math.max(1, Math.floor((remaining / runsLeft) * 0.9));
+  }
+
+  /** Persiste o consumo depois da execução. */
+  private async closeApiAllowance(): Promise<void> {
+    const used = this.externalData.requestsUsed;
+    if (used <= 0) return;
+    const setting = await this.getSetting();
+    setting.apiRequestsUsed += used;
+    await this.settings.save(setting);
+    if (setting.apiMonthlyBudget > 0) {
+      const pct = Math.round(
+        (setting.apiRequestsUsed / setting.apiMonthlyBudget) * 100,
+      );
+      this.logger.log(
+        `Cota EchoTik: ${setting.apiRequestsUsed}/${setting.apiMonthlyBudget} (${pct}%) em ${setting.apiMonthKey}`,
+      );
+    }
+  }
+
+  /** Conta quantas execuções por dia a expressão cron dispara (campo hora). */
+  private runsPerDay(cronExpr: string): number {
+    const hour = cronExpr.trim().split(/\s+/)[2];
+    if (!hour || hour === '*') return 24;
+    if (hour.startsWith('*/')) {
+      const step = Number(hour.slice(2));
+      return step > 0 ? Math.floor(24 / step) : 1;
+    }
+    return hour.split(',').filter(Boolean).length || 1;
+  }
+
   private slugify(text: string): string {
     return text
       .toLowerCase()
@@ -465,6 +690,7 @@ export class IngestionService implements OnModuleInit {
     category: string;
     price: number;
     imageUrl: string | null;
+    images?: string[];
     storeName: string | null;
     tiktokUrl: string | null;
     radarScore: number | null;
@@ -477,6 +703,8 @@ export class IngestionService implements OnModuleInit {
     if (data.price > 0) product.price = data.price.toFixed(2);
     else if (!product.price) product.price = '0.00';
     product.imageUrl = data.imageUrl ?? product.imageUrl;
+    // A URL assinada expira em ~3 dias: sempre sobrescreve com a mais recente.
+    if (data.images?.length) product.images = data.images;
     product.storeName = data.storeName ?? product.storeName;
     product.tiktokUrl = data.tiktokUrl ?? product.tiktokUrl;
     if (data.radarScore !== null) product.radarScore = data.radarScore;

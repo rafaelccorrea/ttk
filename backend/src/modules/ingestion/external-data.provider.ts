@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { categoryName } from './product-categories';
 
 /**
  * Produto vindo de um fornecedor pago de dados (EchoTik). Diferente do Creative
@@ -17,7 +18,10 @@ export interface ExternalProduct {
   /** ID do produto na TikTok Shop — a chave real, sem prefixo. */
   tiktokProductId: string;
   title: string;
+  /** Nome da categoria em português, pronto para o filtro da interface. */
   category: string;
+  /** Id numérico da categoria na TikTok Shop. */
+  categoryId: string;
   /** Preço unitário em BRL (de `skus[].real_price`, ou convertido). */
   price: number;
   /** Preço unitário em USD, como veio do fornecedor. */
@@ -91,6 +95,24 @@ export interface ExternalCreator {
   region: string;
 }
 
+/**
+ * Enriquecimento vindo de `/influencer/detail` (lote de até 10 ids por
+ * request). É a ÚNICA forma barata de descobrir o @handle: a lista de
+ * criadores por produto devolve só `user_id` e o nome de exibição.
+ */
+export interface ExternalCreatorDetail {
+  userId: string;
+  /** @handle real, sem "@". */
+  handle: string;
+  nickName: string;
+  avatarUrl: string | null;
+  category: string | null;
+  language: string | null;
+  followers: number;
+  totalSales: number;
+  totalGmvUsd: number;
+}
+
 /** URLs de mídia resolvidas na hora — nunca persistir, expiram em horas. */
 export interface ResolvedMedia {
   videoId: string;
@@ -113,6 +135,8 @@ const MAX_PAGE_SIZE = 10;
 /** A URL assinada do CDN dura poucas horas; renovamos com folga. */
 const MEDIA_TTL_MS = 90 * 60 * 1000;
 const MEDIA_CACHE_MAX = 2000;
+/** Só URLs deste host podem (e precisam) ser assinadas. */
+const SIGNABLE_HOST = 'echosell-images.tos-ap-southeast-1.volces.com';
 
 /**
  * Conector do EchoTik.
@@ -260,6 +284,45 @@ export class ExternalDataProvider {
       .filter((c): c is ExternalCreator => c !== null);
   }
 
+  /**
+   * Enriquece criadores em LOTE (até 10 ids por request). Sem isto não há
+   * @handle — e sem @handle não dá para linkar o perfil nem para usar a coluna
+   * única de `creators`.
+   */
+  async fetchCreatorDetails(
+    userIds: string[],
+  ): Promise<Map<string, ExternalCreatorDetail>> {
+    const out = new Map<string, ExternalCreatorDetail>();
+    if (!this.enabled) return out;
+
+    const unique = [...new Set(userIds.filter(Boolean))];
+    for (let i = 0; i < unique.length; i += MAX_PAGE_SIZE) {
+      const chunk = unique.slice(i, i + MAX_PAGE_SIZE);
+      const rows = await this.get<Array<Record<string, unknown>>>(
+        '/echotik/influencer/detail',
+        { user_ids: chunk.join(',') },
+      );
+      if (!rows) break;
+      for (const row of rows) {
+        const userId = this.str(row.user_id);
+        const handle = this.str(row.unique_id);
+        if (!userId || !handle) continue;
+        out.set(userId, {
+          userId,
+          handle,
+          nickName: this.str(row.nick_name) ?? handle,
+          avatarUrl: this.str(row.avatar),
+          category: this.str(row.category),
+          language: this.str(row.language),
+          followers: this.num(row.total_followers_cnt),
+          totalSales: this.num(row.total_sale_cnt),
+          totalGmvUsd: this.num(row.total_sale_gmv_amt),
+        });
+      }
+    }
+    return out;
+  }
+
   // ------------------------------------------------------------------ mídia
 
   /**
@@ -300,6 +363,37 @@ export class ExternalDataProvider {
     return media;
   }
 
+  /**
+   * Assina URLs de imagem do CDN do EchoTik.
+   *
+   * As URLs cruas do domínio `echosell-images...volces.com` respondem 403 por
+   * proteção de hotlink — era por isso que produto, vídeo e criador apareciam
+   * sem imagem. Este endpoint devolve a mesma URL assinada, válida por ~3 dias,
+   * em lotes de 10. Segundo a documentação do fornecedor, NÃO consome cota.
+   */
+  async signImageUrls(urls: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    if (!this.enabled) return out;
+
+    const pending = [...new Set(urls.filter((u) => u?.includes(SIGNABLE_HOST)))];
+    for (let i = 0; i < pending.length; i += MAX_PAGE_SIZE) {
+      const chunk = pending.slice(i, i + MAX_PAGE_SIZE);
+      // A resposta é um ARRAY de objetos de uma chave só: [{origem: assinada}].
+      const rows = await this.get<Array<Record<string, string>>>(
+        '/echotik/batch/cover/download',
+        { cover_urls: chunk.join(',') },
+        false,
+      );
+      if (!rows) continue;
+      for (const row of rows) {
+        for (const [source, signed] of Object.entries(row ?? {})) {
+          if (signed) out.set(source, signed);
+        }
+      }
+    }
+    return out;
+  }
+
   /** Evita crescimento indefinido do cache em processo longo. */
   private pruneMediaCache(): void {
     if (this.mediaCache.size <= MEDIA_CACHE_MAX) return;
@@ -320,8 +414,10 @@ export class ExternalDataProvider {
   private async get<T>(
     path: string,
     params: Record<string, string | number>,
+    /** `false` para endpoints que o fornecedor não cobra (download de capa). */
+    countsAgainstQuota = true,
   ): Promise<T | null> {
-    if (this.budgetExhausted) {
+    if (countsAgainstQuota && this.budgetExhausted) {
       this.logger.warn(
         `Cota da execução esgotada (${this.requestCount}); ${path} não foi chamado.`,
       );
@@ -334,7 +430,7 @@ export class ExternalDataProvider {
     }
 
     try {
-      this.requestCount += 1;
+      if (countsAgainstQuota) this.requestCount += 1;
       const response = await fetch(url, {
         headers: { accept: 'application/json', Authorization: this.authValue },
       });
@@ -379,7 +475,9 @@ export class ExternalDataProvider {
       externalId: `echotik-${productId}`,
       tiktokProductId: productId,
       title,
-      category: this.str(row.category_id) ?? 'geral',
+      // Nome legível em PT: o id cru ("601739") não serve para filtrar na UI.
+      category: categoryName(this.str(row.category_id)),
+      categoryId: this.str(row.category_id) ?? '0',
       price: brl ?? priceUsd,
       priceUsd,
       imageUrl: images[0] ?? null,
@@ -429,6 +527,28 @@ export class ExternalDataProvider {
     };
     // Nota: `play_addr` existe no payload mas é ignorado de propósito — vem
     // com assinatura expirada. Use resolveMedia(videoId) na hora de exibir.
+  }
+
+  private parseCreator(
+    row: Record<string, unknown>,
+    productId: string,
+  ): ExternalCreator | null {
+    const userId = this.str(row.user_id);
+    if (!userId) return null;
+    return {
+      userId,
+      nickName: this.str(row.nick_name) ?? userId,
+      avatarUrl: this.str(row.avatar),
+      category: this.str(row.category),
+      followers: this.num(row.total_followers_cnt),
+      likes: this.num(row.total_digg_cnt),
+      totalVideos: this.num(row.total_post_video_cnt),
+      totalViews: this.num(row.total_views_cnt),
+      productSales: this.num(row.per_product_ifl_sale_cnt),
+      productGmvUsd: this.num(row.per_product_ifl_gmv_amt),
+      productId,
+      region: this.str(row.region) ?? this.region,
+    };
   }
 
   /**
