@@ -192,14 +192,24 @@ export function GenerationsPage() {
 
   return (
     <>
-      <Box display="flex" alignItems="center" justifyContent="space-between">
-        <Box>
+      <Box
+        display="flex"
+        alignItems="center"
+        justifyContent="space-between"
+        gap={1}
+        flexWrap="wrap"
+      >
+        <Box minWidth={0}>
           <Typography variant="h5">Minhas Gerações</Typography>
-          <Typography color="text.secondary" mb={3}>
+          <Typography color="text.secondary" mb={{ xs: 1.5, sm: 3 }}>
             Imagens e vídeos criados por IA a partir do Cofre de Prompts.
           </Typography>
         </Box>
-        <Button startIcon={<RefreshRoundedIcon />} onClick={load}>
+        <Button
+          startIcon={<RefreshRoundedIcon />}
+          onClick={load}
+          sx={{ flexShrink: 0, mb: { xs: 2, sm: 0 } }}
+        >
           Atualizar
         </Button>
       </Box>

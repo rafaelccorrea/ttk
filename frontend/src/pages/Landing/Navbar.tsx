@@ -105,6 +105,8 @@ export function Navbar() {
               variant="contained"
               endIcon={<ArrowForwardRounded sx={{ transition: 'transform .2s ease' }} />}
               sx={{
+                // No mobile o CTA vive só na gaveta: na barra ele espremia o logo.
+                display: { xs: 'none', sm: 'inline-flex' },
                 bgcolor: red, px: 2.5, transition: 'all .2s ease', whiteSpace: 'nowrap',
                 '&:hover': { bgcolor: '#e0264c', transform: 'translateY(-1px)', '& .MuiButton-endIcon svg': { transform: 'translateX(3px)' } },
                 '&:active': { transform: 'scale(0.97)' },

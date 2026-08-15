@@ -8,6 +8,7 @@ import { typeOrmConfig } from './config/typeorm.config';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { CombinationsModule } from './modules/combinations/combinations.module';
 import { CreatorsModule } from './modules/creators/creators.module';
 import { IngestionModule } from './modules/ingestion/ingestion.module';
@@ -38,6 +39,7 @@ import { VideogenModule } from './modules/videogen/videogen.module';
     }),
     AuthModule,
     BillingModule,
+    CampaignsModule,
     CombinationsModule,
     CreatorsModule,
     IngestionModule,

@@ -6,7 +6,6 @@ import {
   CardContent,
   Grid,
   IconButton,
-  MenuItem,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -16,6 +15,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { proxyImage } from '@/utils/tiktok';
 import { productsService, RankedProduct } from '@/services/products.service';
 import { Script, studioService } from '@/services/studio.service';
 
@@ -102,22 +103,21 @@ export function StudioPage() {
                   <ToggleButton value="video">Roteiro de Vídeo</ToggleButton>
                 </ToggleButtonGroup>
 
-                <TextField
-                  select
+                <SearchableSelect
                   fullWidth
-                  size="small"
                   label="Produto do catálogo (opcional)"
+                  placeholder="Buscar produto…"
                   value={productId}
-                  onChange={(e) => setProductId(e.target.value)}
-                  margin="normal"
-                >
-                  <MenuItem value="">Descrever meu próprio produto</MenuItem>
-                  {topProducts.map((p) => (
-                    <MenuItem key={p.id} value={p.id}>
-                      {p.title}
-                    </MenuItem>
-                  ))}
-                </TextField>
+                  onChange={setProductId}
+                  emptyLabel="Descrever meu próprio produto"
+                  sx={{ mt: 2, mb: 1 }}
+                  options={topProducts.map((p) => ({
+                    value: p.id,
+                    label: p.title,
+                    imageUrl: p.imageUrl ? proxyImage(p.imageUrl) : null,
+                    caption: [p.storeName, p.category].filter(Boolean).join(' · '),
+                  }))}
+                />
 
                 {!productId && (
                   <TextField

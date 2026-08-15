@@ -1,5 +1,8 @@
 import ArrowDownwardRoundedIcon from '@mui/icons-material/ArrowDownwardRounded';
 import ArrowUpwardRoundedIcon from '@mui/icons-material/ArrowUpwardRounded';
+import ChevronLeftRoundedIcon from '@mui/icons-material/ChevronLeftRounded';
+import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
+import EmojiEventsRoundedIcon from '@mui/icons-material/EmojiEventsRounded';
 import TuneRoundedIcon from '@mui/icons-material/TuneRounded';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
@@ -30,6 +33,7 @@ import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { ImagePlaceholder } from '@/components/ui/ImagePlaceholder';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { HotBadge } from '@/components/ui/HotBadge';
 import {
   ProductFilterOptions,
@@ -63,14 +67,18 @@ function ProductCard({
   product,
   rank,
   onToggleFavorite,
+  showHotBadge = true,
 }: {
   product: RankedProduct;
   rank: number;
   onToggleFavorite: (id: string) => void;
+  /** No card estreito do Top 50 o selo não cabe — e o "#1" já diz o mesmo. */
+  showHotBadge?: boolean;
 }) {
   const growth = product.growthPct;
   // "Destaque": pódio do ranking ou crescimento forte no período.
-  const isHot = rank <= 3 || (growth !== null && growth >= 50);
+  const isHot =
+    showHotBadge && (rank <= 3 || (growth !== null && growth >= 50));
   // Skeleton no lugar da foto até o `onLoad` — evita o card piscar preto
   // enquanto a imagem vem do proxy.
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -305,6 +313,121 @@ function ProductCard({
   );
 }
 
+/** Quantos produtos entram no ranking destacado no topo da vitrine. */
+const TOP_SIZE = 50;
+
+/**
+ * Faixa "Top 50 mais vendidos".
+ *
+ * Ranking global do catálogo: só o período o afeta — categoria, busca e
+ * filtros avançados ficam de fora de propósito, para o número do ranking
+ * significar sempre a mesma coisa.
+ */
+function TopSellersStrip({
+  items,
+  loading,
+  period,
+  onToggleFavorite,
+}: {
+  items: RankedProduct[];
+  loading: boolean;
+  period: number;
+  onToggleFavorite: (id: string) => void;
+}) {
+  const stripRef = useRef<HTMLDivElement>(null);
+
+  // Rola aproximadamente uma "tela" de cards por clique nas setas.
+  // Com "reduzir movimento" ligado o navegador ignora o `smooth` e a seta não
+  // faria nada — daí o salto direto como alternativa.
+  const scrollStrip = (direction: 1 | -1) => {
+    const el = stripRef.current;
+    if (!el) return;
+    const left = direction * el.clientWidth * 0.85;
+    const semAnimacao = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+    if (semAnimacao) el.scrollLeft += left;
+    else el.scrollBy({ left, behavior: 'smooth' });
+  };
+
+  if (!loading && items.length === 0) return null;
+
+  return (
+    <Box mb={4}>
+      <Box
+        display="flex"
+        alignItems="center"
+        justifyContent="space-between"
+        gap={1}
+        mb={1.5}
+      >
+        <Box minWidth={0}>
+          <Typography variant="h6" fontWeight={800} display="flex" alignItems="center" gap={0.75}>
+            <EmojiEventsRoundedIcon sx={{ color: '#f59e0b', fontSize: 22 }} />
+            Top {TOP_SIZE} mais vendidos
+          </Typography>
+          <Typography color="text.secondary" fontSize={13}>
+            O ranking do catálogo inteiro nos últimos {period} dias — não muda
+            com os filtros.
+          </Typography>
+        </Box>
+        {/* Setas só no desktop: no toque o próprio arrasto resolve. */}
+        <Box display={{ xs: 'none', md: 'flex' }} gap={0.5} flexShrink={0}>
+          <IconButton size="small" onClick={() => scrollStrip(-1)} aria-label="anteriores">
+            <ChevronLeftRoundedIcon />
+          </IconButton>
+          <IconButton size="small" onClick={() => scrollStrip(1)} aria-label="próximos">
+            <ChevronRightRoundedIcon />
+          </IconButton>
+        </Box>
+      </Box>
+
+      <Box
+        ref={stripRef}
+        sx={{
+          display: 'flex',
+          gap: { xs: 1.5, sm: 2.5 },
+          overflowX: 'auto',
+          scrollSnapType: 'x mandatory',
+          // Espaço para o card não encostar na borda ao rolar até o fim.
+          pb: 1,
+          WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'thin',
+          '&::-webkit-scrollbar': { height: 6 },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'rgba(22,24,35,0.18)',
+            borderRadius: 3,
+          },
+        }}
+      >
+        {loading && items.length === 0
+          ? Array.from({ length: 6 }, (_, i) => (
+              <Box key={i} sx={{ flex: '0 0 auto', width: { xs: 150, sm: 176 } }}>
+                <Skeleton variant="rounded" sx={{ aspectRatio: '9 / 16', height: 'auto' }} />
+              </Box>
+            ))
+          : items.map((p, index) => (
+              <Box
+                key={p.id}
+                sx={{
+                  flex: '0 0 auto',
+                  width: { xs: 150, sm: 176 },
+                  scrollSnapAlign: 'start',
+                }}
+              >
+                <ProductCard
+                  product={p}
+                  rank={index + 1}
+                  onToggleFavorite={onToggleFavorite}
+                  showHotBadge={false}
+                />
+              </Box>
+            ))}
+      </Box>
+    </Box>
+  );
+}
+
 /** Estado dos filtros avançados — tudo opcional, vazio = sem filtro. */
 interface AdvancedFilters {
   store: string;
@@ -350,6 +473,8 @@ export function ProductsPage() {
   const [sections, setSections] = useState<ProductSection[]>([]);
   const [sectionsMore, setSectionsMore] = useState(true);
   const [loadingSections, setLoadingSections] = useState(false);
+  const [topSellers, setTopSellers] = useState<RankedProduct[]>([]);
+  const [loadingTop, setLoadingTop] = useState(true);
 
   const categories = options?.categories ?? [];
 
@@ -422,6 +547,25 @@ export function ProductsPage() {
     productsService.filterOptions().then(setOptions).catch(console.error);
   }, []);
 
+  // Top 50 global: depende só do período, então não entra no efeito da grade
+  // (que refaz a busca a cada tecla digitada).
+  useEffect(() => {
+    let cancelado = false;
+    setLoadingTop(true);
+    productsService
+      .rank({ period, sort: 'sales', order: 'desc', page: 1, limit: TOP_SIZE })
+      .then((data) => {
+        if (!cancelado) setTopSellers(data.items);
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (!cancelado) setLoadingTop(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [period]);
+
   useEffect(() => {
     setLoading(true);
     const timer = setTimeout(() => {
@@ -474,8 +618,14 @@ export function ProductsPage() {
 
   async function toggleFavorite(id: string) {
     const isFavorite = await productsService.toggleFavorite(id);
-    setItems((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, isFavorite } : p)),
+    const aplicar = (lista: RankedProduct[]) =>
+      lista.map((p) => (p.id === id ? { ...p, isFavorite } : p));
+    setItems(aplicar);
+    // O mesmo produto pode estar no Top 50 e nas seções: a estrela precisa
+    // acompanhar em todos os lugares onde ele aparece.
+    setTopSellers(aplicar);
+    setSections((prev) =>
+      prev.map((s) => ({ ...s, items: aplicar(s.items) })),
     );
   }
 
@@ -498,13 +648,13 @@ export function ProductsPage() {
           <ToggleButton value={30}>30 dias</ToggleButton>
           <ToggleButton value={90}>90 dias</ToggleButton>
         </ToggleButtonGroup>
-        <SelectField
+        <SearchableSelect
+          variant="pill"
           value={category}
           onChange={(value) => (setCategory(value), setPage(1))}
-          options={[
-            { value: '', label: 'Todas as categorias' },
-            ...categories.map((c) => ({ value: c, label: c })),
-          ]}
+          emptyLabel="Todas as categorias"
+          placeholder="Categoria"
+          options={categories.map((c) => ({ value: c, label: c }))}
         />
         <SearchField
           value={search}
@@ -546,19 +696,14 @@ export function ProductsPage() {
           <CardContent>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} sm={6} md={3}>
-                <TextField
-                  select
+                <SearchableSelect
                   fullWidth
-                  size="small"
                   label="Loja"
                   value={advanced.store}
-                  onChange={(e) => (setAdvanced({ ...advanced, store: e.target.value }), resetPage())}
-                >
-                  <MenuItem value="">Todas as lojas</MenuItem>
-                  {(options?.stores ?? []).map((s) => (
-                    <MenuItem key={s} value={s}>{s}</MenuItem>
-                  ))}
-                </TextField>
+                  onChange={(value) => (setAdvanced({ ...advanced, store: value }), resetPage())}
+                  emptyLabel="Todas as lojas"
+                  options={(options?.stores ?? []).map((s) => ({ value: s, label: s }))}
+                />
               </Grid>
               <Grid item xs={6} sm={3} md={1.5}>
                 <TextField
@@ -643,6 +788,18 @@ export function ProductsPage() {
       <Typography variant="body2" color="text.secondary" mb={1.5}>
         {loading ? 'Buscando...' : `${total} produto${total === 1 ? '' : 's'} encontrado${total === 1 ? '' : 's'}`}
       </Typography>
+
+      {/* O ranking abre a vitrine. Com filtro ativo ele sai de cena: ali o
+          usuário está comparando um recorte, e um Top 50 global no meio só
+          competiria com o resultado da busca. */}
+      {showSections && (
+        <TopSellersStrip
+          items={topSellers}
+          loading={loadingTop}
+          period={period}
+          onToggleFavorite={toggleFavorite}
+        />
+      )}
 
       {loading && items.length === 0 && sections.length === 0 && (
         <BrandLoader label="Carregando produtos..." />

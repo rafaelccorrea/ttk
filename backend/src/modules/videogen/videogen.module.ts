@@ -12,5 +12,8 @@ import { SingleFlightInterceptor } from '../../common/interceptors/single-flight
   imports: [TypeOrmModule.forFeature([GeneratedMedia]), UsersModule, BillingModule],
   controllers: [VideogenController],
   providers: [SingleFlightInterceptor, VideogenService, HiggsfieldService],
+  // As campanhas geram por aqui, pelos mesmos serviços — nenhuma chamada à
+  // Higgsfield fora deste caminho, para a cobrança e o estorno valerem sempre.
+  exports: [VideogenService],
 })
 export class VideogenModule {}

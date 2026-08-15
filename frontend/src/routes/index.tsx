@@ -4,6 +4,7 @@ import { PlanGate } from '@/components/ui/PlanGate';
 import { AcademyPage } from '@/pages/Academy';
 import { AnalyzePage } from '@/pages/Analyze';
 import { useAuth } from '@/contexts/AuthContext';
+import { CampaignsPage } from '@/pages/Campaigns';
 import { ConfirmEmailPage } from '@/pages/ConfirmEmail';
 import { CreatorsPage } from '@/pages/Creators';
 import { DashboardPage } from '@/pages/Dashboard';
@@ -51,6 +52,7 @@ export function AppRoutes() {
           <Route path="/favoritos" element={<FavoritesPage />} />
           <Route path="/perfil" element={<ProfilePage />} />
           <Route path="/estudio" element={<StudioPage />} />
+          <Route path="/campanhas" element={<CampaignsPage />} />
           <Route path="/multiplicador" element={<MultiplierPage />} />
           <Route path="/academy" element={<AcademyPage />} />
           <Route path="/indique" element={<ReferralPage />} />

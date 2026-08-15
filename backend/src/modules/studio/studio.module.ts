@@ -19,5 +19,8 @@ import { SingleFlightInterceptor } from '../../common/interceptors/single-flight
   ],
   controllers: [StudioController],
   providers: [SingleFlightInterceptor, StudioService, AiService, TranscriptionService],
+  // As campanhas reaproveitam o mesmo gerador — não existe um segundo caminho
+  // até o Claude, com outro prompt e outras regras.
+  exports: [AiService],
 })
 export class StudioModule {}

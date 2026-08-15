@@ -91,7 +91,7 @@ export function SupportFab() {
             position: 'fixed',
             bottom: { xs: 84, sm: 96 },
             right: { xs: 16, sm: 24 },
-            zIndex: (t) => t.zIndex.tooltip + 1,
+            zIndex: (t) => t.zIndex.drawer - 1,
             width: { xs: 'calc(100vw - 32px)', sm: 380 },
             height: { xs: 'calc(100vh - 116px)', sm: 480 },
             maxHeight: 'calc(100vh - 116px)',
@@ -240,7 +240,7 @@ export function SupportFab() {
             position: 'fixed',
             bottom: { xs: 16, sm: 24 },
             right: { xs: 16, sm: 24 },
-            zIndex: (t) => t.zIndex.tooltip + 1,
+            zIndex: (t) => t.zIndex.drawer - 1,
           }}
         >
           {open ? <CloseRoundedIcon /> : <ChatRoundedIcon />}

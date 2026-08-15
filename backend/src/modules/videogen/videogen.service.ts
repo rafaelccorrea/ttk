@@ -40,6 +40,40 @@ export class VideogenService {
     );
   }
 
+  /**
+   * Anima uma imagem que JÁ existe, pulando a fase 1.
+   *
+   * É o que dá consistência de personagem às campanhas: o retrato-semente da
+   * persona é gerado uma vez e entra como frame base de todas as cenas. Se
+   * cada cena passasse pelo Soul de novo, a API devolveria uma pessoa
+   * *parecida* a cada chamada — e o rosto trocaria no meio do anúncio.
+   *
+   * Cobra como vídeo, porque é exatamente o mesmo custo de DoP; o que se
+   * economiza é a chamada de imagem, não a de vídeo.
+   */
+  async generateFromImage(
+    userId: string,
+    imageUrl: string,
+    prompt: string,
+  ): Promise<GeneratedMedia> {
+    const submitted = await this.billing.withCharge(userId, 'video', () =>
+      this.higgsfield.submitVideo(imageUrl, prompt),
+    );
+    return this.media.save(
+      this.media.create({
+        userId,
+        kind: 'video',
+        prompt,
+        aspectRatio: '9:16',
+        status: (submitted.status as GeneratedMedia['status']) ?? 'queued',
+        // Já nasce na fase 2: o refresh vai direto para o desfecho.
+        phase: 'video',
+        imageUrl,
+        requestId: submitted.requestId,
+      }),
+    );
+  }
+
   list(userId: string): Promise<GeneratedMedia[]> {
     return this.media.find({
       where: { userId },

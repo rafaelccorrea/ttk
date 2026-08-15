@@ -9,7 +9,6 @@ import {
   CardContent,
   Grid,
   IconButton,
-  MenuItem,
   TextField,
   Typography,
 } from '@mui/material';
@@ -17,6 +16,8 @@ import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { apiErrorMessage } from '@/contexts/AuthContext';
 import { api } from '@/services/api';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { proxyImage } from '@/utils/tiktok';
 import { productsService, RankedProduct } from '@/services/products.service';
 import { Script } from '@/services/studio.service';
 
@@ -139,22 +140,21 @@ export function AnalyzePage() {
               >
                 2 · Seu produto (opcional)
               </Typography>
-              <TextField
-                select
+              <SearchableSelect
                 fullWidth
-                size="small"
                 label="Adaptar para o produto"
+                placeholder="Buscar produto…"
                 value={productId}
-                onChange={(e) => setProductId(e.target.value)}
-                margin="dense"
-              >
-                <MenuItem value="">Nenhum — só analisar a estrutura</MenuItem>
-                {products.map((p) => (
-                  <MenuItem key={p.id} value={p.id}>
-                    {p.title}
-                  </MenuItem>
-                ))}
-              </TextField>
+                onChange={setProductId}
+                emptyLabel="Nenhum — só analisar a estrutura"
+                sx={{ mt: 1, mb: 0.5 }}
+                options={products.map((p) => ({
+                  value: p.id,
+                  label: p.title,
+                  imageUrl: p.imageUrl ? proxyImage(p.imageUrl) : null,
+                  caption: [p.storeName, p.category].filter(Boolean).join(' · '),
+                }))}
+              />
 
               {error && (
                 <Alert severity="error" sx={{ mt: 1 }}>

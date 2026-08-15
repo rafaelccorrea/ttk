@@ -15,8 +15,9 @@ import {
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
-import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
+import { FilterBar, SearchField } from '@/components/ui/Filters';
 import { ScrollX } from '@/components/ui/ScrollX';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { creatorsService, RankedCreator } from '@/services/creators.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 import { displayHandle, proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
@@ -97,13 +98,13 @@ export function CreatorsPage() {
           onChange={(value) => (setSearch(value), setPage(1))}
           placeholder="Buscar criador ou @handle"
         />
-        <SelectField
+        <SearchableSelect
+          variant="pill"
           value={category}
           onChange={(value) => (setCategory(value), setPage(1))}
-          options={[
-            { value: '', label: 'Todas as categorias' },
-            ...categories.map((c) => ({ value: c, label: c })),
-          ]}
+          emptyLabel="Todas as categorias"
+          placeholder="Categoria"
+          options={categories.map((c) => ({ value: c, label: c }))}
         />
         <ToggleButtonGroup
           size="small"

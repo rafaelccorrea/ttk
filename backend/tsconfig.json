@@ -6,6 +6,11 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
+    // Sem isto, `allowSyntheticDefaultImports` só cala o compilador: o import
+    // default de um pacote CommonJS compila e vira `x_1.default(...)`, que é
+    // `undefined` em execução. Foi o que quebrou o `sharp` — e o erro só
+    // aparecia como aviso solto no log, com a imagem sumindo em silêncio.
+    "esModuleInterop": true,
     "target": "ES2021",
     "sourceMap": true,
     "outDir": "./dist",

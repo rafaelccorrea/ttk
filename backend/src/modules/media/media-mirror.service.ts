@@ -172,6 +172,54 @@ export class MediaMirrorService {
   }
 
   /**
+   * Guarda uma imagem que já veio em memória — upload do próprio usuário.
+   *
+   * Passa exatamente pela mesma validação do espelhamento de URL: se o `sharp`
+   * não abre, não é imagem e não entra no bucket. Isso vale ainda mais aqui,
+   * porque o conteúdo vem de fora e o `content-type` do multipart é escolhido
+   * por quem envia.
+   *
+   * A chave usa o hash do CONTEÚDO: subir a mesma foto duas vezes não cria
+   * dois objetos.
+   */
+  async putImage(
+    original: Buffer,
+    prefix: string,
+    id: string,
+  ): Promise<string | null> {
+    if (!this.client || !original?.length) return null;
+    if (original.byteLength > this.maxBytes) {
+      this.logger.warn(`Upload grande demais (${original.byteLength}b)`);
+      return null;
+    }
+
+    const tratada = await this.normalizarImagem(original);
+    if (!tratada) {
+      this.logger.warn('Upload recusado: o conteúdo não é uma imagem.');
+      return null;
+    }
+
+    const digest = createHash('sha1').update(tratada.body).digest('hex').slice(0, 16);
+    const key = `${prefix}/${id}-${digest}.webp`;
+
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: tratada.body,
+          ContentType: 'image/webp',
+          CacheControl: 'public, max-age=31536000, immutable',
+        }),
+      );
+      return `${this.publicBase}/${key}`;
+    } catch (error) {
+      this.logger.warn(`Upload falhou (${prefix}/${id}): ${error}`);
+      return null;
+    }
+  }
+
+  /**
    * Padroniza a imagem antes de guardar.
    *
    * As capas chegam com proporções e pesos muito diferentes — quadrada,

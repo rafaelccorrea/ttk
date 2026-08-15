@@ -1,0 +1,176 @@
+import { Autocomplete, Box, TextField, Typography } from '@mui/material';
+import type { SxProps, Theme } from '@mui/material';
+import ImageNotSupportedRoundedIcon from '@mui/icons-material/ImageNotSupportedRounded';
+import { SmartImage } from '@/components/ui/SmartImage';
+
+export interface SearchableOption {
+  value: string;
+  label: string;
+  /**
+   * URL pronta para o `<img>`. Quem chama resolve proxy/origem — o
+   * componente não sabe de onde a imagem vem.
+   */
+  imageUrl?: string | null;
+  /** Linha secundária: loja, categoria, status… */
+  caption?: string;
+}
+
+interface SearchableSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: SearchableOption[];
+  label?: string;
+  placeholder?: string;
+  /**
+   * Rótulo da opção "nenhum/todos". Quando presente, ela encabeça a lista e
+   * limpar o campo equivale a escolhê-la.
+   */
+  emptyLabel?: string;
+  /** `pill` para as barras de filtro; `field` para formulários. */
+  variant?: 'pill' | 'field';
+  /** Mostra a coluna de miniatura mesmo nas opções sem imagem, para alinhar. */
+  showImages?: boolean;
+  disabled?: boolean;
+  helperText?: string;
+  fullWidth?: boolean;
+  size?: 'small' | 'medium';
+  sx?: SxProps<Theme>;
+}
+
+const EMPTY = '';
+
+/** Miniatura quadrada da opção (ou o vazio alinhado, quando não há foto). */
+function Thumb({ src, alt }: { src?: string | null; alt: string }) {
+  return (
+    <Box
+      sx={{
+        position: 'relative',
+        width: 34,
+        height: 34,
+        flexShrink: 0,
+        borderRadius: 1.5,
+        overflow: 'hidden',
+        bgcolor: 'rgba(22,24,35,0.05)',
+      }}
+    >
+      <SmartImage
+        src={src ?? null}
+        alt={alt}
+        fallback={
+          <ImageNotSupportedRoundedIcon
+            sx={{ fontSize: 15, color: 'rgba(22,24,35,0.25)' }}
+          />
+        }
+      />
+    </Box>
+  );
+}
+
+/**
+ * Select com busca embutida e miniatura opcional.
+ *
+ * O `<TextField select>` do MUI só rola a lista — em catálogo com centenas de
+ * lojas ou produtos, achar um item vira garimpo. Aqui o campo filtra conforme
+ * se digita, e quando a opção tem foto ela aparece na lista e no valor
+ * escolhido: reconhecer um produto pela imagem é mais rápido que pelo título.
+ */
+export function SearchableSelect({
+  value,
+  onChange,
+  options,
+  label,
+  placeholder,
+  emptyLabel,
+  variant = 'field',
+  showImages,
+  disabled,
+  helperText,
+  fullWidth,
+  size = 'small',
+  sx,
+}: SearchableSelectProps) {
+  const lista: SearchableOption[] = emptyLabel
+    ? [{ value: EMPTY, label: emptyLabel }, ...options]
+    : options;
+
+  const selecionada = lista.find((o) => o.value === value) ?? null;
+  // Basta uma opção com foto para valer a coluna de miniaturas: sem ela, as
+  // linhas com e sem imagem ficariam desalinhadas entre si.
+  const comImagens = showImages ?? options.some((o) => o.imageUrl);
+
+  const pill = variant === 'pill';
+
+  return (
+    <Autocomplete
+      options={lista}
+      value={selecionada}
+      onChange={(_e, opcao) => onChange(opcao?.value ?? EMPTY)}
+      // Limpar o campo volta para a opção "todos" quando ela existe; sem ela,
+      // o X não faria sentido e some.
+      disableClearable={!emptyLabel && !value}
+      disabled={disabled}
+      fullWidth={fullWidth}
+      size={size}
+      getOptionLabel={(o) => o.label}
+      isOptionEqualToValue={(o, v) => o.value === v.value}
+      renderOption={(props, opcao) => {
+        const { key, ...rest } = props as typeof props & { key: string };
+        return (
+          <Box
+            component="li"
+            key={key}
+            {...rest}
+            sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}
+          >
+            {comImagens && opcao.value !== EMPTY && (
+              <Thumb src={opcao.imageUrl} alt={opcao.label} />
+            )}
+            {/* A opção "todos" não tem foto: o recuo mantém o texto alinhado. */}
+            {comImagens && opcao.value === EMPTY && (
+              <Box sx={{ width: 34, flexShrink: 0 }} />
+            )}
+            <Box minWidth={0}>
+              <Typography noWrap fontSize={14} fontWeight={500}>
+                {opcao.label}
+              </Typography>
+              {opcao.caption && (
+                <Typography noWrap fontSize={12} color="text.secondary">
+                  {opcao.caption}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+        );
+      }}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          label={label}
+          placeholder={placeholder}
+          helperText={helperText}
+          InputProps={{
+            ...params.InputProps,
+            // Miniatura do item escolhido dentro do próprio campo.
+            startAdornment:
+              comImagens && selecionada && selecionada.value !== EMPTY ? (
+                <Box sx={{ display: 'flex', pl: pill ? 0.75 : 0, mr: 0.25 }}>
+                  <Thumb src={selecionada.imageUrl} alt={selecionada.label} />
+                </Box>
+              ) : (
+                params.InputProps.startAdornment
+              ),
+          }}
+        />
+      )}
+      sx={{
+        // No mobile o campo ocupa a linha inteira, como os demais filtros.
+        width: pill ? { xs: '100%', sm: 'auto' } : undefined,
+        minWidth: pill ? { xs: 0, sm: 190 } : undefined,
+        '& .MuiOutlinedInput-root': pill
+          ? { borderRadius: 999, fontSize: 14, fontWeight: 500, pl: 1 }
+          : { borderRadius: 2.5, fontSize: 14.5 },
+        ...sx,
+      }}
+    />
+  );
+}

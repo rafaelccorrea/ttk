@@ -28,7 +28,8 @@ import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { ImagePlaceholder } from '@/components/ui/ImagePlaceholder';
 import { TikTokPlayer } from '@/components/ui/TikTokPlayer';
-import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
+import { FilterBar, SearchField } from '@/components/ui/Filters';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { HotBadge } from '@/components/ui/HotBadge';
 import { videosService, VideoSection, ViralVideo } from '@/services/videos.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
@@ -568,13 +569,13 @@ export function VideosPage() {
           <ToggleButton value="trending">Em alta</ToggleButton>
           <ToggleButton value="saved">Salvos</ToggleButton>
         </ToggleButtonGroup>
-        <SelectField
+        <SearchableSelect
+          variant="pill"
           value={category}
           onChange={(value) => (setCategory(value), setPage(1))}
-          options={[
-            { value: '', label: 'Todas as categorias' },
-            ...categories.map((c) => ({ value: c, label: c })),
-          ]}
+          emptyLabel="Todas as categorias"
+          placeholder="Categoria"
+          options={categories.map((c) => ({ value: c, label: c }))}
         />
         <SearchField
           value={search}

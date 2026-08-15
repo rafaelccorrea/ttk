@@ -11,6 +11,7 @@ import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import StyleRoundedIcon from '@mui/icons-material/StyleRounded';
+import TheatersRoundedIcon from '@mui/icons-material/TheatersRounded';
 import TroubleshootRoundedIcon from '@mui/icons-material/TroubleshootRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import WorkspacePremiumRoundedIcon from '@mui/icons-material/WorkspacePremiumRounded';
@@ -79,6 +80,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Estúdio',
     items: [
+      { to: '/campanhas', label: 'Fábrica de Criativos', icon: <TheatersRoundedIcon /> },
       { to: '/estudio', label: 'Roteirizar com IA', icon: <AutoFixHighRoundedIcon /> },
       { to: '/analisar', label: 'Analisar Vídeo', icon: <TroubleshootRoundedIcon /> },
       { to: '/multiplicador', label: 'Multiplicador', icon: <DynamicFeedRoundedIcon /> },
@@ -194,6 +196,7 @@ export function AppLayout() {
           transition: 'width .22s ease',
           '& .MuiDrawer-paper': {
             width: drawerWidth,
+            maxWidth: '86vw',
             overflowX: 'hidden',
             transition: 'width .22s ease',
             boxSizing: 'border-box',

@@ -1,0 +1,25 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>QA</title>
+<style>
+  body{margin:0;font:12px system-ui;background:#222;color:#fff}
+  .row{display:flex;gap:8px;padding:8px;overflow-x:auto}
+  figure{margin:0;flex:0 0 auto}
+  figcaption{padding:4px 0}
+  iframe{border:0;background:#fff}
+</style></head>
+<body>
+<div class="row" id="row"></div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const w = q.get('w') || 390, h = q.get('h') || 820;
+  for (const p of q.get('p').split(',')) {
+    const fig = document.createElement('figure');
+    fig.innerHTML = '<figcaption>' + p + ' @' + w + '</figcaption>';
+    const f = document.createElement('iframe');
+    f.style.width = w + 'px'; f.style.height = h + 'px';
+    f.src = p + (p.includes('?') ? '&' : '?') + 'qa=1';
+    fig.appendChild(f);
+    row.appendChild(fig);
+  }
+</script>
+</body></html>
