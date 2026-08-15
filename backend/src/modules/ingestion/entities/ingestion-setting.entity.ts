@@ -31,6 +31,26 @@ export class IngestionSetting {
   @Column({ type: 'int', default: 0 })
   apiMonthlyBudget: number;
 
+  // ------------------------------------------------------------ estratégia
+  // Reguláveis sem deploy. As camadas se dimensionam a partir daqui e do
+  // orçamento restante, então subir de plano não exige mexer em código.
+
+  /** Quantos produtos manter no catálogo ativo (alvo do rodízio). */
+  @Column({ type: 'int', default: 2500 })
+  catalogSize: number;
+
+  /** Produtos enriquecidos (vídeos + criadores) por execução. */
+  @Column({ type: 'int', default: 125 })
+  enrichPerRun: number;
+
+  /** Páginas por categoria na varredura de descoberta (10 produtos por página). */
+  @Column({ type: 'int', default: 3 })
+  discoveryPagesPerCategory: number;
+
+  /** Hora do dia (0-23) em que a descoberta por categoria roda. */
+  @Column({ type: 'int', default: 6 })
+  discoveryHour: number;
+
   @UpdateDateColumn()
   updatedAt: Date;
 }

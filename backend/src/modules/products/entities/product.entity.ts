@@ -46,6 +46,27 @@ export class Product {
   @Column({ nullable: true })
   tiktokUrl: string;
 
+  // ------------------------------------------------- controle de ingestão
+  // A cota do fornecedor é mensal, então o catálogo é revisitado em rodízio.
+  // Estas colunas dizem o que já foi feito e quando, para priorizar.
+
+  /** Id do produto na TikTok Shop, sem prefixo — chave para a API do fornecedor. */
+  @Index()
+  @Column({ type: 'varchar', nullable: true })
+  tiktokProductId: string | null;
+
+  /** Última atualização de métricas (barata: 10 produtos por request). */
+  @Column({ type: 'timestamptz', nullable: true })
+  lastRefreshedAt: Date | null;
+
+  /** Última busca de vídeos e criadores (cara: ~4 requests por produto). */
+  @Column({ type: 'timestamptz', nullable: true })
+  lastEnrichedAt: Date | null;
+
+  /** Histórico diário já preenchido via `product/trend` (uma vez por produto). */
+  @Column({ type: 'boolean', default: false })
+  historyBackfilled: boolean;
+
   @OneToMany(() => ProductMetricDaily, (m) => m.product)
   metrics: ProductMetricDaily[];
 

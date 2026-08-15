@@ -14,6 +14,7 @@ import {
   TrendingProduct,
 } from './creative-center-products.source';
 import { ExternalDataProvider, ExternalProduct } from './external-data.provider';
+import { categoryOptions } from './product-categories';
 import { evaluateProduct, filterSourcedProducts } from './product-gate';
 import { ProductExtractorService } from './product-extractor.service';
 import { ImageSearchSource } from './image-search.source';
@@ -293,9 +294,20 @@ export class IngestionService implements OnModuleInit {
    *   ESTIMATIVA derivada do índice de popularidade (documentado no código;
    *   o dado bruto de popularidade vai em radarScore).
    */
+  /**
+   * Ingestão em CAMADAS, na ordem em que o orçamento deve ser gasto.
+   *
+   * A cota é mensal e não recupera, então a ordem importa: se acabar no meio,
+   * perde-se enriquecimento (recuperável amanhã), nunca a atualização das
+   * métricas do catálogo, que é o que sustenta o ranking.
+   *
+   *   1. Refresh    — métricas de todo o catálogo, 10 produtos por request
+   *   2. Descoberta — top de CADA categoria, 1x/dia (cobertura de nicho)
+   *   3. Enrich     — vídeos e criadores, rodízio por prioridade
+   *   4. Backfill   — histórico diário real de produto novo
+   */
   private async ingestProducts(): Promise<number> {
-    const today = new Date().toISOString().slice(0, 10);
-    let count = 0;
+    const setting = await this.getSetting();
 
     // Abre a janela de cota ANTES de qualquer chamada paga.
     const allowance = await this.openApiAllowance();
@@ -304,74 +316,198 @@ export class IngestionService implements OnModuleInit {
       this.logger.warn('Cota mensal do EchoTik esgotada: nenhuma chamada será feita.');
       return 0;
     }
+    this.logger.log(`Orçamento desta execução: ${allowance} requests`);
 
-    // 3a) Fornecedor pago (EchoTik) — dado real, prioridade máxima.
-    const external = await this.externalData.fetchTopProducts(50);
+    const refreshed = await this.layerRefresh(setting);
+    const discovered = await this.layerDiscovery(setting);
+    const enriched = await this.layerEnrich(setting);
+    const backfilled = await this.layerBackfill(setting);
 
-    // Portão estruturado: só entra no catálogo quem tem product_id + seller_id
-    // + região BR + venda registrada. Sem isso, descarta.
-    const { accepted, rejected } = filterSourcedProducts(external, {
-      region: 'BR',
-      minSales: 1,
-    });
-
-    for (const { reason } of rejected.slice(0, 10)) {
-      this.logger.debug(`Produto externo recusado: ${reason}`);
-    }
-    if (rejected.length > 0) {
-      this.logger.log(
-        `${rejected.length} de ${external.length} produtos externos recusados pelo portão`,
-      );
-    }
-
-    // Produtos com mais GMV primeiro: se a cota acabar no meio, o que entrou
-    // é o que mais importa.
-    const ordered = accepted.sort((a, b) => b.revenueTotal - a.revenueTotal);
-
-    // O CDN do EchoTik recusa hotlink (403). Assinar é obrigatório para a
-    // imagem aparecer — e não consome cota, então vale para todas de uma vez.
-    const signed = await this.externalData.signImageUrls(
-      ordered.flatMap((p) => p.images),
+    await this.closeApiAllowance();
+    this.logger.log(
+      `Camadas: refresh ${refreshed} · descoberta ${discovered} · ` +
+        `enrich ${enriched} · backfill ${backfilled} ` +
+        `(${this.externalData.requestsUsed} requests)`,
     );
-    const sign = (url: string | null) => (url ? (signed.get(url) ?? url) : null);
+    return refreshed + discovered;
+  }
 
-    for (const ext of ordered) {
-      const gallery = ext.images.map((u) => sign(u)).filter((u): u is string => !!u);
-      const product = await this.upsertProduct({
-        externalId: ext.externalId,
-        title: ext.cleanTitle,
-        category: ext.category,
-        price: ext.price,
-        imageUrl: gallery[0] ?? null,
-        images: gallery,
-        storeName: ext.storeName,
-        tiktokUrl: ext.tiktokUrl,
-        radarScore: null,
-      });
+  /**
+   * Camada 1 — atualiza métricas do catálogo existente.
+   * Prioriza quem está há mais tempo sem atualizar.
+   */
+  private async layerRefresh(setting: IngestionSetting): Promise<number> {
+    const stale = await this.products
+      .createQueryBuilder('p')
+      .where('p."tiktokProductId" IS NOT NULL')
+      .orderBy('p."lastRefreshedAt"', 'ASC', 'NULLS FIRST')
+      .take(setting.catalogSize)
+      .getMany();
+    if (stale.length === 0) return 0;
+
+    const details = await this.externalData.fetchProductDetails(
+      stale.map((p) => p.tiktokProductId!).filter(Boolean),
+    );
+    if (details.size === 0) return 0;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    let count = 0;
+
+    for (const product of stale) {
+      const ext = details.get(product.tiktokProductId!);
+      if (!ext) continue;
+      if (ext.price > 0) product.price = ext.price.toFixed(2);
+      product.lastRefreshedAt = now;
+      await this.products.save(product);
       await this.upsertDailyMetric(product.id, today, ext.salesDaily, ext.revenueDaily);
       count += 1;
-
-      // Associações custam 2 requests por produto. Só vale para quem vende de
-      // verdade — e só enquanto sobrar cota.
-      if (!this.externalData.budgetExhausted && ext.salesTotal > 0) {
-        await this.ingestProductVideos(product, ext);
-        await this.ingestProductCreators(ext);
-      }
     }
-    await this.closeApiAllowance();
+    return count;
+  }
 
-    if (count > 0) {
-      this.logger.log(
-        `${count} produtos do EchoTik (dado real, ${this.externalData.requestsUsed} requests gastos)`,
+  /**
+   * Camada 2 — descoberta varrendo TODAS as categorias.
+   *
+   * A lista global concentra em poucos nichos; por categoria é o que faz
+   * "Produtos em alta" ter Pet Shop e Automotivo, não só Beleza.
+   * Roda uma vez por dia para não repetir o custo em toda execução.
+   */
+  private async layerDiscovery(setting: IngestionSetting): Promise<number> {
+    if (new Date().getHours() !== setting.discoveryHour) return 0;
+    if (this.externalData.budgetExhausted) return 0;
+
+    const today = new Date().toISOString().slice(0, 10);
+    let count = 0;
+
+    for (const { id, name } of categoryOptions()) {
+      if (this.externalData.budgetExhausted) break;
+      // "Outros" e "Produtos Virtuais" não são catálogo físico vendável.
+      if (id === '0' || id === '834312') continue;
+
+      const found = await this.externalData.fetchProductsByCategory(
+        id,
+        setting.discoveryPagesPerCategory,
       );
-      return count;
-    }
+      const { accepted } = filterSourcedProducts(found, {
+        region: 'BR',
+        minSales: 1,
+      });
+      if (accepted.length === 0) continue;
 
-    // 3b) Sem fornecedor externo não inventamos catálogo: melhor nenhum
-    //     produto novo do que produto que não é produto.
-    this.logger.warn(
-      'Nenhuma fonte confiável de produtos configurada (EXTERNAL_DATA_*). Nenhum produto ingerido.',
-    );
+      const signed = await this.externalData.signImageUrls(
+        accepted.flatMap((p) => p.images),
+      );
+      for (const ext of accepted) {
+        const gallery = ext.images
+          .map((u) => signed.get(u) ?? u)
+          .filter((u): u is string => !!u);
+        const product = await this.upsertProduct({
+          externalId: ext.externalId,
+          tiktokProductId: ext.tiktokProductId,
+          title: ext.cleanTitle,
+          category: ext.category,
+          price: ext.price,
+          imageUrl: gallery[0] ?? null,
+          images: gallery,
+          storeName: ext.storeName,
+          tiktokUrl: ext.tiktokUrl,
+          radarScore: null,
+        });
+        await this.upsertDailyMetric(product.id, today, ext.salesDaily, ext.revenueDaily);
+        count += 1;
+      }
+      this.logger.debug(`Descoberta "${name}": ${accepted.length} produtos`);
+    }
+    return count;
+  }
+
+  /**
+   * Camada 3 — vídeos e criadores, em rodízio.
+   *
+   * Custa ~4 requests por produto, então só os melhores entram por execução.
+   * Prioridade mista: quem nunca foi enriquecido primeiro, depois o de maior
+   * receita e, entre iguais, o mais antigo — assim o topo do catálogo fica
+   * sempre fresco sem abandonar a cauda.
+   */
+  private async layerEnrich(setting: IngestionSetting): Promise<number> {
+    if (this.externalData.budgetExhausted) return 0;
+
+    const targets = await this.products
+      .createQueryBuilder('p')
+      .leftJoin(
+        ProductMetricDaily,
+        'm',
+        'm."productId" = p.id AND m.date >= :since',
+        { since: this.isoDaysAgo(7) },
+      )
+      .where('p."tiktokProductId" IS NOT NULL')
+      .groupBy('p.id')
+      .orderBy('p."lastEnrichedAt"', 'ASC', 'NULLS FIRST')
+      .addOrderBy('COALESCE(SUM(m.revenue), 0)', 'DESC')
+      .take(setting.enrichPerRun)
+      .getMany();
+
+    const now = new Date();
+    let count = 0;
+    for (const product of targets) {
+      if (this.externalData.budgetExhausted) break;
+      const ext = await this.externalData.fetchProductDetails([
+        product.tiktokProductId!,
+      ]);
+      const data = ext.get(product.tiktokProductId!);
+      if (!data) continue;
+
+      await this.ingestProductVideos(product, data);
+      await this.ingestProductCreators(data);
+      product.lastEnrichedAt = now;
+      await this.products.save(product);
+      count += 1;
+    }
+    return count;
+  }
+
+  /**
+   * Camada 4 — histórico diário real de produtos novos.
+   *
+   * Sem isso o ranking por período fica zerado até acumularmos dias sozinhos.
+   * O fornecedor entrega série de verdade (até 180 dias), então preenchemos
+   * com dado real em vez de estimar — inventar histórico quebraria a premissa
+   * do produto.
+   */
+  private async layerBackfill(setting: IngestionSetting): Promise<number> {
+    if (this.externalData.budgetExhausted) return 0;
+
+    const pending = await this.products.find({
+      where: { historyBackfilled: false },
+      order: { createdAt: 'DESC' },
+      take: 50,
+    });
+
+    let count = 0;
+    for (const product of pending) {
+      if (this.externalData.budgetExhausted) break;
+      if (!product.tiktokProductId) continue;
+
+      const series = await this.externalData.fetchProductTrend(
+        product.tiktokProductId,
+        30,
+      );
+      if (series.length === 0) continue;
+
+      // O câmbio vem do próprio produto: preço BRL gravado ÷ preço USD atual.
+      for (const point of series) {
+        await this.upsertDailyMetric(
+          product.id,
+          point.date,
+          point.sales,
+          point.gmvUsd,
+        );
+      }
+      product.historyBackfilled = true;
+      await this.products.save(product);
+      count += 1;
+    }
     return count;
   }
 
@@ -684,8 +820,17 @@ export class IngestionService implements OnModuleInit {
       .slice(0, 60);
   }
 
+  /** Data ISO de N dias atrás (mesma convenção do módulo de produtos). */
+  private isoDaysAgo(days: number): string {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - days);
+    return d.toISOString().slice(0, 10);
+  }
+
   private async upsertProduct(data: {
     externalId: string;
+    /** Id na TikTok Shop — chave para consultar o fornecedor em lote. */
+    tiktokProductId?: string;
     title: string;
     category: string;
     price: number;
@@ -699,6 +844,7 @@ export class IngestionService implements OnModuleInit {
       (await this.products.findOne({ where: { externalId: data.externalId } })) ??
       this.products.create({ externalId: data.externalId });
     product.title = data.title;
+    if (data.tiktokProductId) product.tiktokProductId = data.tiktokProductId;
     product.category = data.category || product.category || 'geral';
     if (data.price > 0) product.price = data.price.toFixed(2);
     else if (!product.price) product.price = '0.00';

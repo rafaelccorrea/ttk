@@ -260,6 +260,122 @@ export class ExternalDataProvider {
     return out.slice(0, limit);
   }
 
+  /**
+   * Top produtos de UMA categoria.
+   *
+   * A lista global concentra em Beleza e Eletrônicos; varrer categoria a
+   * categoria é o que dá cobertura real de nicho (Pet Shop, Automotivo,
+   * Moda Infantil) por poucas páginas cada.
+   */
+  async fetchProductsByCategory(
+    categoryId: string,
+    pages = 3,
+  ): Promise<ExternalProduct[]> {
+    if (!this.enabled) return [];
+    const out: ExternalProduct[] = [];
+    const fetchedAt = new Date().toISOString();
+
+    for (let page = 1; page <= pages; page += 1) {
+      const rows = await this.get<Array<Record<string, unknown>>>(
+        '/echotik/product/list',
+        {
+          region: this.region,
+          category_id: categoryId,
+          page_num: page,
+          page_size: MAX_PAGE_SIZE,
+          product_sort_field: PRODUCT_SORT_GMV_30D,
+          sort_type: 1,
+          min_total_sale_30d_cnt: this.minSales30d,
+        },
+      );
+      if (!rows?.length) break;
+      for (const row of rows) {
+        const parsed = this.parseProduct(row, fetchedAt);
+        if (parsed) out.push(parsed);
+      }
+      if (rows.length < MAX_PAGE_SIZE) break;
+    }
+    return out;
+  }
+
+  /**
+   * Atualiza métricas de produtos JÁ conhecidos, em lote de 10 por request.
+   *
+   * É a camada mais importante da estratégia de cota: manter 2.500 produtos
+   * atualizados custa 250 requests, não 2.500.
+   */
+  async fetchProductDetails(
+    tiktokProductIds: string[],
+  ): Promise<Map<string, ExternalProduct>> {
+    const out = new Map<string, ExternalProduct>();
+    if (!this.enabled) return out;
+
+    const unique = [...new Set(tiktokProductIds.filter(Boolean))];
+    const fetchedAt = new Date().toISOString();
+
+    for (let i = 0; i < unique.length; i += MAX_PAGE_SIZE) {
+      const chunk = unique.slice(i, i + MAX_PAGE_SIZE);
+      const rows = await this.get<Array<Record<string, unknown>>>(
+        '/echotik/product/detail',
+        { product_ids: chunk.join(',') },
+      );
+      // `null` aqui significa cota esgotada ou erro: parar em vez de insistir.
+      if (!rows) break;
+      for (const row of rows) {
+        const parsed = this.parseProduct(row, fetchedAt);
+        if (parsed) out.set(parsed.tiktokProductId, parsed);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Série diária real de um produto (até 180 dias no fornecedor).
+   *
+   * Usada para preencher o histórico de um produto recém-descoberto: sem isso
+   * o ranking por período fica zerado até acumularmos dias, e inventar número
+   * não é opção.
+   */
+  async fetchProductTrend(
+    tiktokProductId: string,
+    days = 30,
+  ): Promise<Array<{ date: string; sales: number; gmvUsd: number }>> {
+    if (!this.enabled) return [];
+
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+    const out: Array<{ date: string; sales: number; gmvUsd: number }> = [];
+    // page_size é 10, então 30 dias custam 3 requests.
+    const pages = Math.ceil(days / MAX_PAGE_SIZE);
+
+    for (let page = 1; page <= pages; page += 1) {
+      const rows = await this.get<Array<Record<string, unknown>>>(
+        '/echotik/product/trend',
+        {
+          product_id: tiktokProductId,
+          start_date: iso(start),
+          end_date: iso(end),
+          page_num: page,
+          page_size: MAX_PAGE_SIZE,
+        },
+      );
+      if (!rows?.length) break;
+      for (const row of rows) {
+        const date = this.str(row.dt);
+        if (!date) continue;
+        out.push({
+          date: date.slice(0, 10),
+          sales: this.num(row.total_sale_cnt),
+          gmvUsd: this.num(row.total_sale_gmv_amt),
+        });
+      }
+      if (rows.length < MAX_PAGE_SIZE) break;
+    }
+    return out;
+  }
+
   /** Vídeos que venderam um produto, do mais relevante para o menos. */
   async fetchProductVideos(
     tiktokProductId: string,
