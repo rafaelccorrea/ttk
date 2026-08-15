@@ -23,7 +23,8 @@
     "migration:revert": "npm run typeorm -- migration:revert",
     "cc:login": "node scripts/cc-login.js",
     "purge:scraped": "ts-node src/database/seeds/purge-scraped.ts",
-    "shop:login": "node scripts/shop-login.js"
+    "shop:login": "node scripts/shop-login.js",
+    "shop:register": "node scripts/shop-register.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
