@@ -16,15 +16,27 @@ import { FilterBar, SearchField } from '@/components/ui/Filters';
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiErrorMessage } from '@/contexts/AuthContext';
+import { billingService, Wallet } from '@/services/billing.service';
 import { PromptTemplate, studioService } from '@/services/studio.service';
 import { videogenService } from '@/services/videogen.service';
 
-function PromptCard({ prompt }: { prompt: PromptTemplate }) {
+function PromptCard({ prompt, wallet }: { prompt: PromptTemplate; wallet: Wallet | null }) {
   const navigate = useNavigate();
   const [values, setValues] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+
+  /**
+   * O custo tem que aparecer ANTES do clique.
+   * Gerar vídeo é a ação mais cara do produto (60 créditos) e disparava com um
+   * clique único, sem preço à vista e sem confirmação — o usuário só descobria
+   * o tamanho da conta olhando o saldo depois. Créditos gastos não voltam
+   * (o estorno só cobre falha da geração), então o preço é informação de
+   * decisão, não detalhe.
+   */
+  const preco = wallet?.prices?.[prompt.mediaType]?.credits ?? null;
+  const semSaldo = wallet !== null && preco !== null && wallet.credits < preco;
 
   const filled = prompt.fields.reduce(
     (text, field) => text.replaceAll(`{{${field}}}`, values[field] || `{{${field}}}`),
@@ -114,15 +126,21 @@ function PromptCard({ prompt }: { prompt: PromptTemplate }) {
           size="small"
           startIcon={<AutoAwesomeRoundedIcon />}
           onClick={generate}
-          disabled={generating}
+          disabled={generating || semSaldo}
           sx={{ mt: 1 }}
         >
           {generating
             ? 'Enviando...'
-            : prompt.mediaType === 'video'
-              ? 'Gerar vídeo com IA'
-              : 'Gerar imagem com IA'}
+            : `${prompt.mediaType === 'video' ? 'Gerar vídeo com IA' : 'Gerar imagem com IA'}${
+                preco !== null ? ` · ${preco} cr` : ''
+              }`}
         </Button>
+        {semSaldo && (
+          <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
+            Saldo insuficiente ({wallet?.credits} cr). Recarregue em Planos &
+            Créditos.
+          </Typography>
+        )}
         {genError && (
           <Typography variant="caption" color="error" display="block" mt={0.5}>
             {genError}
@@ -137,6 +155,12 @@ export function PromptsPage() {
   const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
   const [mediaType, setMediaType] = useState<'video' | 'image' | ''>('');
   const [search, setSearch] = useState('');
+  const [wallet, setWallet] = useState<Wallet | null>(null);
+
+  // Uma leitura só para a página inteira: o preço é o mesmo em todos os cards.
+  useEffect(() => {
+    billingService.wallet().then(setWallet).catch(console.error);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -178,10 +202,18 @@ export function PromptsPage() {
         />
       </FilterBar>
 
+      {/* Sem isto a busca sem resultado deixava a tela em branco, o que se
+          confunde com erro de carregamento. */}
+      {prompts.length === 0 && (search || mediaType) && (
+        <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+          Nenhum prompt encontrado para esse filtro.
+        </Typography>
+      )}
+
       <Grid container spacing={2}>
         {prompts.map((p) => (
           <Grid item xs={12} sm={6} md={4} key={p.id}>
-            <PromptCard prompt={p} />
+            <PromptCard prompt={p} wallet={wallet} />
           </Grid>
         ))}
       </Grid>

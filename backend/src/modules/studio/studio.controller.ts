@@ -24,6 +24,11 @@ import { BillingService } from '../billing/billing.service';
 import { AnalyzeDto } from './dto/analyze.dto';
 import { GenerateScriptDto } from './dto/generate-script.dto';
 import { SingleFlightInterceptor } from '../../common/interceptors/single-flight.interceptor';
+import {
+  PlanFeatureGuard,
+  RequiresPlanFeature,
+} from '../billing/plan-feature.guard';
+import { PromptRefreshService } from './prompt-refresh.service';
 import { StudioService } from './studio.service';
 import { TranscriptionService } from './transcription.service';
 
@@ -36,6 +41,7 @@ export class StudioController {
     private readonly studioService: StudioService,
     private readonly transcriptionService: TranscriptionService,
     private readonly billing: BillingService,
+    private readonly promptRefresh: PromptRefreshService,
   ) {}
 
   @Post('transcribe')
@@ -65,7 +71,12 @@ export class StudioController {
     summary: 'Decompõe a transcrição de um vídeo viral e adapta ao produto',
   })
   analyze(@CurrentUser() user: AuthUser, @Body() dto: AnalyzeDto) {
-    return this.studioService.analyze(user.id, dto.transcript, dto.productId);
+    return this.studioService.analyze(
+      user.id,
+      dto.transcript,
+      dto.productId,
+      dto.userProductId,
+    );
   }
 
   @UseInterceptors(SingleFlightInterceptor)
@@ -99,5 +110,26 @@ export class StudioController {
     @Query('search') search?: string,
   ) {
     return this.studioService.listPrompts({ mediaType, niche, search });
+  }
+
+  @Get('prompts/refresh/status')
+  @ApiOperation({ summary: 'Quando o Cofre foi/será atualizado' })
+  refreshStatus() {
+    return this.promptRefresh.status();
+  }
+
+  /**
+   * Gatilho manual, para não depender de esperar a segunda-feira ao publicar
+   * uma safra nova. Fica atrás do mesmo `RequiresPlanFeature('ingestion')` da
+   * coleta de dados: é a mesma classe de operação (rodar um job caro que
+   * altera o catálogo de todo mundo) e o mesmo público — sem isso, qualquer
+   * conta grátis dispararia N chamadas ao Claude por clique.
+   */
+  @Post('prompts/refresh')
+  @UseGuards(PlanFeatureGuard)
+  @RequiresPlanFeature('ingestion')
+  @ApiOperation({ summary: 'Atualiza o Cofre de Prompts agora (manual)' })
+  refreshNow() {
+    return this.promptRefresh.run('manual');
   }
 }

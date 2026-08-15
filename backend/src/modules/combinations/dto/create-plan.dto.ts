@@ -1,11 +1,13 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsIn,
   IsNotEmpty,
+  IsOptional,
   IsString,
+  IsUUID,
   Length,
   MaxLength,
 } from 'class-validator';
@@ -26,24 +28,47 @@ export class CreatePlanDto {
   @ArrayMaxSize(10)
   @IsString({ each: true })
   @IsNotEmpty({ each: true })
-  @MaxLength(80, { each: true })
+  @MaxLength(120, { each: true })
   hooks: string[];
 
-  @ApiProperty({ type: [String], description: 'Corpos (1-5 itens)' })
+  // Corpo e CTA são opcionais: o vendedor pode querer só GANCHO + CTA, que é
+  // o formato curto que roda melhor em conta nova.
+  @ApiProperty({ type: [String], description: 'Corpos (0-5 itens)' })
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(5)
   @IsString({ each: true })
   @IsNotEmpty({ each: true })
-  @MaxLength(80, { each: true })
+  @MaxLength(120, { each: true })
   bodies: string[];
 
-  @ApiProperty({ type: [String], description: 'CTAs (1-3 itens)' })
+  @ApiProperty({ type: [String], description: 'CTAs (0-3 itens)' })
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(3)
   @IsString({ each: true })
   @IsNotEmpty({ each: true })
-  @MaxLength(80, { each: true })
+  @MaxLength(120, { each: true })
   ctas: string[];
+
+  // Clipes enviados antes (POST /combinations/clips). Quando vêm, o plano
+  // pode ser montado de verdade em vídeo; quando não, ele é só o plano.
+  @ApiPropertyOptional({ type: [String], description: 'Ids dos clipes de gancho' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsUUID('4', { each: true })
+  hookClipIds?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Ids dos clipes de corpo' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5)
+  @IsUUID('4', { each: true })
+  bodyClipIds?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Ids dos clipes de CTA' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsUUID('4', { each: true })
+  ctaClipIds?: string[];
 }

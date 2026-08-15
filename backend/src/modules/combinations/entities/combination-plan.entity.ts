@@ -31,6 +31,21 @@ export class CombinationPlan {
   @Column('simple-json')
   ctas: string[];
 
+  /**
+   * Clipes de vídeo por bloco, na mesma ordem dos rótulos acima.
+   *
+   * Ficam separados dos rótulos porque o plano continua válido só com texto
+   * (planejar a matriz antes de gravar), e nesse caso as listas ficam vazias.
+   */
+  @Column({ type: 'simple-json', default: '[]' })
+  hookClipIds: string[];
+
+  @Column({ type: 'simple-json', default: '[]' })
+  bodyClipIds: string[];
+
+  @Column({ type: 'simple-json', default: '[]' })
+  ctaClipIds: string[];
+
   @CreateDateColumn()
   createdAt: Date;
 }

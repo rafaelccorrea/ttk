@@ -24,6 +24,8 @@ export interface PromptTemplate {
 export interface GenerateScriptInput {
   type: 'live' | 'video';
   productId?: string;
+  /** Produto cadastrado pelo próprio vendedor (Campanhas). */
+  userProductId?: string;
   productName?: string;
   productDescription?: string;
   tone?: string;

@@ -12,4 +12,11 @@ export class AnalyzeDto {
   @IsOptional()
   @IsUUID()
   productId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Produto do próprio usuário (cadastrado em Campanhas)',
+  })
+  @IsOptional()
+  @IsUUID()
+  userProductId?: string;
 }

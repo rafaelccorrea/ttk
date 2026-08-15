@@ -40,7 +40,14 @@ export class VideoAssemblyService {
    * Recebe os MP4 das cenas na ordem do roteiro e devolve o vídeo final.
    * Trabalha em memória/tmp e limpa tudo ao terminar, inclusive em erro.
    */
-  async juntar(cenas: Buffer[]): Promise<Buffer> {
+  async juntar(
+    cenas: Buffer[],
+    dimensoes: { largura: number; altura: number } = {
+      largura: LARGURA,
+      altura: ALTURA,
+    },
+  ): Promise<Buffer> {
+    const { largura, altura } = dimensoes;
     if (!ffmpegPath) {
       throw new Error('ffmpeg não está disponível neste ambiente.');
     }
@@ -77,7 +84,7 @@ export class VideoAssemblyService {
             : []),
           // `setsar=1` evita a imagem esticada quando a cena vem com pixel
           // não-quadrado; sem isso a virada de cena "pula" de largura.
-          '-vf', `scale=${LARGURA}:${ALTURA}:force_original_aspect_ratio=decrease,pad=${LARGURA}:${ALTURA}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30`,
+          '-vf', `scale=${largura}:${altura}:force_original_aspect_ratio=decrease,pad=${largura}:${altura}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30`,
           '-c:v', 'libx264',
           '-preset', 'veryfast',
           '-crf', '23',

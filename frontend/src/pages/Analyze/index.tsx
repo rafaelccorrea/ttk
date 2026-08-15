@@ -19,6 +19,7 @@ import { api } from '@/services/api';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { proxyImage } from '@/utils/tiktok';
 import { productsService, RankedProduct } from '@/services/products.service';
+import { campaignsService, UserProduct } from '@/services/campaigns.service';
 import { Script } from '@/services/studio.service';
 
 export function AnalyzePage() {
@@ -27,7 +28,12 @@ export function AnalyzePage() {
   const [products, setProducts] = useState<RankedProduct[]>([]);
   const [busca, setBusca] = useState('');
   const [buscando, setBuscando] = useState(false);
-  const [productId, setProductId] = useState('');
+  // Produtos que o próprio vendedor cadastrou em Campanhas. Vêm inteiros do
+  // servidor (lista curta), por isso não entram na busca com debounce.
+  const [meusProdutos, setMeusProdutos] = useState<UserProduct[]>([]);
+  // Valor do campo com prefixo de origem: `cat:` catálogo, `meu:` cadastro
+  // próprio. Sem o prefixo os dois ids se confundiriam num único uuid.
+  const [selecao, setSelecao] = useState('');
   // O escolhido pode não estar na lista atual (a busca seguinte troca as 50
   // opções). Guardá-lo à parte mantém título e foto no campo.
   const [escolhido, setEscolhido] = useState<RankedProduct | null>(null);
@@ -35,6 +41,10 @@ export function AnalyzePage() {
   const [error, setError] = useState<string | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+
+  useEffect(() => {
+    campaignsService.listProducts().then(setMeusProdutos).catch(console.error);
+  }, []);
 
   // A lista é só o topo do catálogo: um produto fora dos 50 mais vendidos
   // existe mas nunca aparecia, porque o filtro do select era local. Agora a
@@ -100,7 +110,10 @@ export function AnalyzePage() {
     try {
       const { data } = await api.post<Script>('/studio/analyze', {
         transcript,
-        productId: productId || undefined,
+        productId: selecao.startsWith('cat:') ? selecao.slice(4) : undefined,
+        userProductId: selecao.startsWith('meu:')
+          ? selecao.slice(4)
+          : undefined,
       });
       setResult(data);
     } catch (err) {
@@ -165,24 +178,42 @@ export function AnalyzePage() {
                 fullWidth
                 label="Adaptar para o produto"
                 placeholder="Buscar produto…"
-                value={productId}
-                onChange={(id) => {
-                  setProductId(id);
-                  setEscolhido(products.find((p) => p.id === id) ?? null);
+                value={selecao}
+                onChange={(valor) => {
+                  setSelecao(valor);
+                  setEscolhido(
+                    products.find((p) => `cat:${p.id}` === valor) ?? null,
+                  );
                 }}
                 onSearchChange={setBusca}
                 loading={buscando}
                 emptyLabel="Nenhum — só analisar a estrutura"
                 sx={{ mt: 1, mb: 0.5 }}
-                options={(escolhido && !products.some((p) => p.id === escolhido.id)
-                  ? [escolhido, ...products]
-                  : products
-                ).map((p) => ({
-                  value: p.id,
-                  label: p.title,
-                  imageUrl: p.imageUrl ? proxyImage(p.imageUrl) : null,
-                  caption: [p.storeName, p.category].filter(Boolean).join(' · '),
-                }))}
+                options={[
+                  ...meusProdutos
+                    .filter((p) =>
+                      p.name.toLowerCase().includes(busca.trim().toLowerCase()),
+                    )
+                    .map((p) => ({
+                      value: `meu:${p.id}`,
+                      label: p.name,
+                      imageUrl: p.images[0] ?? null,
+                      caption: p.benefit ?? undefined,
+                      group: 'Meus produtos',
+                    })),
+                  ...(escolhido && !products.some((p) => p.id === escolhido.id)
+                    ? [escolhido, ...products]
+                    : products
+                  ).map((p) => ({
+                    value: `cat:${p.id}`,
+                    label: p.title,
+                    imageUrl: p.imageUrl ? proxyImage(p.imageUrl) : null,
+                    caption: [p.storeName, p.category]
+                      .filter(Boolean)
+                      .join(' · '),
+                    group: 'Catálogo da plataforma',
+                  })),
+                ]}
               />
 
               {error && (

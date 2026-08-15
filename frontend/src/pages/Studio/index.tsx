@@ -20,6 +20,7 @@ import { formatCurrency, formatNumber } from '@/utils/format';
 import { proxyImage } from '@/utils/tiktok';
 import { productsService, RankedProduct } from '@/services/products.service';
 import { Script, studioService } from '@/services/studio.service';
+import { campaignsService, UserProduct } from '@/services/campaigns.service';
 
 /**
  * Tons sugeridos para o roteiro.
@@ -63,14 +64,33 @@ function detalhesDoProduto(p: RankedProduct): string {
   return linhas.filter(Boolean).join('\n');
 }
 
+/** Mesma ficha, para o produto que o próprio vendedor cadastrou. */
+function detalhesDoMeuProduto(p: UserProduct): string {
+  return [
+    `Produto: ${p.name}`,
+    p.priceBrl !== null ? `Preço: ${formatCurrency(p.priceBrl)}` : null,
+    p.benefit ? `Benefício principal: ${p.benefit}` : null,
+    p.problemSolved ? `Problema que resolve: ${p.problemSolved}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 export function StudioPage() {
   const [searchParams] = useSearchParams();
   const [type, setType] = useState<'live' | 'video'>(
     searchParams.get('type') === 'video' ? 'video' : 'live',
   );
-  const [productId, setProductId] = useState(
-    searchParams.get('productId') ?? '',
-  );
+  // Valor do campo com prefixo de origem: `cat:` catálogo da plataforma,
+  // `meu:` produto cadastrado pelo próprio vendedor. Sem o prefixo os dois
+  // ids se confundiriam num único uuid.
+  const [selecao, setSelecao] = useState(() => {
+    const id = searchParams.get('productId');
+    return id ? `cat:${id}` : '';
+  });
+  const productId = selecao.startsWith('cat:') ? selecao.slice(4) : '';
+  const userProductId = selecao.startsWith('meu:') ? selecao.slice(4) : '';
+  const [meusProdutos, setMeusProdutos] = useState<UserProduct[]>([]);
   const [productName, setProductName] = useState('');
   const [productDescription, setProductDescription] = useState('');
   const [tone, setTone] = useState('');
@@ -87,6 +107,7 @@ export function StudioPage() {
 
   useEffect(() => {
     studioService.listScripts().then(setScripts).catch(console.error);
+    campaignsService.listProducts().then(setMeusProdutos).catch(console.error);
   }, []);
 
   // A lista carregada é só o topo do catálogo. Sem busca no servidor, um
@@ -116,18 +137,23 @@ export function StudioPage() {
   const autoDescricaoRef = useRef('');
 
   useEffect(() => {
-    const produto =
+    const doCatalogo =
       escolhido?.id === productId
         ? escolhido
         : topProducts.find((p) => p.id === productId);
-    const texto = produto ? detalhesDoProduto(produto) : '';
+    const meu = meusProdutos.find((p) => p.id === userProductId);
+    const texto = doCatalogo
+      ? detalhesDoProduto(doCatalogo)
+      : meu
+        ? detalhesDoMeuProduto(meu)
+        : '';
     setProductDescription((atual) => {
       const foiAutomatico = atual === autoDescricaoRef.current;
       if (!foiAutomatico && atual.trim() !== '') return atual;
       autoDescricaoRef.current = texto;
       return texto;
     });
-  }, [productId, topProducts, escolhido]);
+  }, [productId, userProductId, topProducts, escolhido, meusProdutos]);
 
   // Trava síncrona: `busy` só desabilita o botão no próximo render. Num
   // formulário isso é ainda mais fácil de disparar duas vezes (clique + Enter),
@@ -144,7 +170,8 @@ export function StudioPage() {
       const script = await studioService.generate({
         type,
         productId: productId || undefined,
-        productName: productId ? undefined : productName,
+        userProductId: userProductId || undefined,
+        productName: selecao ? undefined : productName,
         productDescription: productDescription || undefined,
         tone: tone || undefined,
       });
@@ -191,28 +218,48 @@ export function StudioPage() {
                   fullWidth
                   label="Produto do catálogo (opcional)"
                   placeholder="Buscar produto…"
-                  value={productId}
-                  onChange={(id) => {
-                    setProductId(id);
-                    setEscolhido(topProducts.find((p) => p.id === id) ?? null);
+                  value={selecao}
+                  onChange={(valor) => {
+                    setSelecao(valor);
+                    setEscolhido(
+                      topProducts.find((p) => `cat:${p.id}` === valor) ?? null,
+                    );
                   }}
                   onSearchChange={setBusca}
                   loading={buscando}
                   emptyLabel="Descrever meu próprio produto"
                   sx={{ mt: 2, mb: 1 }}
-                  options={(escolhido &&
-                  !topProducts.some((p) => p.id === escolhido.id)
-                    ? [escolhido, ...topProducts]
-                    : topProducts
-                  ).map((p) => ({
-                    value: p.id,
-                    label: p.title,
-                    imageUrl: p.imageUrl ? proxyImage(p.imageUrl) : null,
-                    caption: [p.storeName, p.category].filter(Boolean).join(' · '),
-                  }))}
+                  options={[
+                    ...meusProdutos
+                      .filter((p) =>
+                        p.name
+                          .toLowerCase()
+                          .includes(busca.trim().toLowerCase()),
+                      )
+                      .map((p) => ({
+                        value: `meu:${p.id}`,
+                        label: p.name,
+                        imageUrl: p.images[0] ?? null,
+                        caption: p.benefit ?? undefined,
+                        group: 'Meus produtos',
+                      })),
+                    ...(escolhido &&
+                    !topProducts.some((p) => p.id === escolhido.id)
+                      ? [escolhido, ...topProducts]
+                      : topProducts
+                    ).map((p) => ({
+                      value: `cat:${p.id}`,
+                      label: p.title,
+                      imageUrl: p.imageUrl ? proxyImage(p.imageUrl) : null,
+                      caption: [p.storeName, p.category]
+                        .filter(Boolean)
+                        .join(' · '),
+                      group: 'Catálogo da plataforma',
+                    })),
+                  ]}
                 />
 
-                {!productId && (
+                {!selecao && (
                   <TextField
                     fullWidth
                     size="small"
@@ -235,7 +282,9 @@ export function StudioPage() {
                   helperText={
                     productId
                       ? 'Preenchido com os dados do catálogo — edite à vontade.'
-                      : undefined
+                      : userProductId
+                        ? 'Preenchido com os dados do seu produto — edite à vontade.'
+                        : undefined
                   }
                 />
                 <SearchableSelect

@@ -19,8 +19,17 @@ export class GenerateScriptDto {
   @IsUUID()
   productId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Produto do próprio usuário (cadastrado em Campanhas)',
+  })
+  @IsOptional()
+  @IsUUID()
+  userProductId?: string;
+
   @ApiPropertyOptional({ example: 'Cinta Modeladora Premium' })
-  @ValidateIf((o) => !o.productId)
+  // O nome só é obrigatório quando não veio produto nenhum — do catálogo ou
+  // do cadastro do próprio vendedor, o backend resolve o nome sozinho.
+  @ValidateIf((o) => !o.productId && !o.userProductId)
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)

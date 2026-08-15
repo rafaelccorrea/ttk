@@ -13,6 +13,8 @@ export interface SearchableOption {
   imageUrl?: string | null;
   /** Linha secundária: loja, categoria, status… */
   caption?: string;
+  /** Cabeçalho da seção na lista (ex.: "Meus produtos" × "Catálogo"). */
+  group?: string;
 }
 
 interface SearchableSelectProps {
@@ -112,8 +114,14 @@ export function SearchableSelect({
   size = 'small',
   sx,
 }: SearchableSelectProps) {
+  const agrupado = options.some((o) => o.group);
   const lista: SearchableOption[] = emptyLabel
-    ? [{ value: EMPTY, label: emptyLabel }, ...options]
+    ? [
+        // Com grupos, a opção "nenhum" também precisa de um: sem isso o MUI
+        // desenha um cabeçalho em branco acima dela.
+        { value: EMPTY, label: emptyLabel, group: agrupado ? 'Nenhum' : undefined },
+        ...options,
+      ]
     : options;
 
   const daLista = lista.find((o) => o.value === value) ?? null;
@@ -142,6 +150,13 @@ export function SearchableSelect({
         if (onSearchChange && motivo !== 'reset') onSearchChange(texto);
       }}
       filterOptions={onSearchChange ? (x) => x : undefined}
+      // Só agrupa quando alguém marcou grupo: o Autocomplete esconde as opções
+      // sem `group` se o groupBy estiver sempre ligado.
+      groupBy={
+        agrupado
+          ? (o) => (typeof o === 'string' ? '' : (o.group ?? ''))
+          : undefined
+      }
       loading={loading}
       noOptionsText={loading ? 'Buscando…' : 'Nenhum resultado'}
       // Limpar o campo volta para a opção "todos" quando ela existe; sem ela,

@@ -19,6 +19,7 @@ import { FilterBar, SearchField } from '@/components/ui/Filters';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { creatorsService, RankedCreator } from '@/services/creators.service';
+import { traduzirCategoria } from '@/utils/creator-category';
 import { formatCurrency, formatNumber } from '@/utils/format';
 import { displayHandle, proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
 
@@ -104,7 +105,8 @@ export function CreatorsPage() {
           onChange={(value) => (setCategory(value), setPage(1))}
           emptyLabel="Todas as categorias"
           placeholder="Categoria"
-          options={categories.map((c) => ({ value: c, label: c }))}
+          // `value` continua o original: é ele que o backend filtra.
+          options={categories.map((c) => ({ value: c, label: traduzirCategoria(c) }))}
         />
         <ToggleButtonGroup
           size="small"
@@ -203,7 +205,7 @@ export function CreatorsPage() {
                   <Chip
                     size="small"
                     variant="outlined"
-                    label={creator.category}
+                    label={traduzirCategoria(creator.category)}
                     sx={{ borderColor: 'rgba(22,24,35,0.08)' }}
                   />
                 </TableCell>
