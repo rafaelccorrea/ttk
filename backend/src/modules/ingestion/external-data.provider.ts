@@ -72,6 +72,25 @@ export interface ExternalVideo {
   region: string;
 }
 
+/** Criador que efetivamente vendeu um produto. */
+export interface ExternalCreator {
+  userId: string;
+  /** Nome de exibição. O endpoint NÃO devolve o @handle. */
+  nickName: string;
+  avatarUrl: string | null;
+  category: string | null;
+  followers: number;
+  likes: number;
+  totalVideos: number;
+  totalViews: number;
+  /** Vendas deste criador para ESTE produto. */
+  productSales: number;
+  /** GMV deste criador para ESTE produto (USD, como vem do fornecedor). */
+  productGmvUsd: number;
+  productId: string;
+  region: string;
+}
+
 /** URLs de mídia resolvidas na hora — nunca persistir, expiram em horas. */
 export interface ResolvedMedia {
   videoId: string;
@@ -91,6 +110,9 @@ interface EchoTikEnvelope<T> {
 const DEFAULT_BASE_URL = 'https://open.echotik.live/api/v3';
 /** Limite rígido do fornecedor: a API recusa page_size > 10. */
 const MAX_PAGE_SIZE = 10;
+/** A URL assinada do CDN dura poucas horas; renovamos com folga. */
+const MEDIA_TTL_MS = 90 * 60 * 1000;
+const MEDIA_CACHE_MAX = 2000;
 
 /**
  * Conector do EchoTik.
@@ -111,6 +133,12 @@ export class ExternalDataProvider {
   private readonly authValue: string;
   /** Contador de chamadas — a cota do EchoTik é por request, não por item. */
   private requestCount = 0;
+  /** Teto de requests da execução atual. 0 = esgotado, Infinity = sem teto. */
+  private budget = Number.POSITIVE_INFINITY;
+  private readonly mediaCache = new Map<
+    string,
+    { media: ResolvedMedia; expiresAt: number }
+  >();
 
   constructor(config: ConfigService) {
     this.baseUrl = (
@@ -137,6 +165,20 @@ export class ExternalDataProvider {
   /** Quantos requests já foram gastos nesta execução. */
   get requestsUsed(): number {
     return this.requestCount;
+  }
+
+  get budgetExhausted(): boolean {
+    return this.requestCount >= this.budget;
+  }
+
+  /**
+   * Abre uma execução com teto de requests. O contrato da cota do EchoTik é
+   * mensal e não recupera: melhor uma ingestão parcial hoje do que estourar a
+   * cota no dia 10 e ficar sem dado até o fim do mês.
+   */
+  beginRun(maxRequests: number): void {
+    this.requestCount = 0;
+    this.budget = maxRequests > 0 ? maxRequests : 0;
   }
 
   // ---------------------------------------------------------------- produtos
@@ -196,11 +238,11 @@ export class ExternalDataProvider {
     return (rows ?? []).map((row) => this.parseVideo(row));
   }
 
-  /** Criadores que venderam um produto. */
+  /** Criadores que venderam um produto, do maior GMV para o menor. */
   async fetchProductCreators(
     tiktokProductId: string,
     limit = 10,
-  ): Promise<Array<Record<string, unknown>>> {
+  ): Promise<ExternalCreator[]> {
     if (!this.enabled) return [];
     const rows = await this.get<Array<Record<string, unknown>>>(
       '/echotik/product/influencer/list',
@@ -213,7 +255,9 @@ export class ExternalDataProvider {
         sort_type: 1,
       },
     );
-    return rows ?? [];
+    return (rows ?? [])
+      .map((row) => this.parseCreator(row, tiktokProductId))
+      .filter((c): c is ExternalCreator => c !== null);
   }
 
   // ------------------------------------------------------------------ mídia
@@ -227,20 +271,48 @@ export class ExternalDataProvider {
    * espelhe o MP4 no S3 logo após resolver.
    */
   async resolveMedia(videoId: string): Promise<ResolvedMedia | null> {
-    if (!this.enabled) return null;
+    if (!this.enabled || !videoId) return null;
+
+    // Cache: sem ele, cada play na interface vira 1 request e a cota mensal
+    // acaba em dias. O TTL fica abaixo da validade da assinatura do CDN.
+    const cached = this.mediaCache.get(videoId);
+    if (cached && cached.expiresAt > Date.now()) return cached.media;
+
     const data = await this.get<Record<string, unknown>>(
       '/realtime/video/download-url',
       { url: `https://www.tiktok.com/@tiktok/video/${videoId}` },
     );
     const playUrl = this.str(data?.play_url);
     if (!data || !playUrl) return null;
-    return {
+
+    const media: ResolvedMedia = {
       videoId: this.str(data.video_id) ?? videoId,
       playUrl,
       coverUrl: this.str(data.cover_url),
       dynamicCoverUrl: this.str(data.dynamic_cover_url),
       homeUrl: this.str(data.home_url),
     };
+    this.mediaCache.set(videoId, {
+      media,
+      expiresAt: Date.now() + MEDIA_TTL_MS,
+    });
+    this.pruneMediaCache();
+    return media;
+  }
+
+  /** Evita crescimento indefinido do cache em processo longo. */
+  private pruneMediaCache(): void {
+    if (this.mediaCache.size <= MEDIA_CACHE_MAX) return;
+    const now = Date.now();
+    for (const [key, entry] of this.mediaCache) {
+      if (entry.expiresAt <= now) this.mediaCache.delete(key);
+    }
+    // Ainda grande depois de limpar os expirados: descarta os mais antigos.
+    while (this.mediaCache.size > MEDIA_CACHE_MAX) {
+      const oldest = this.mediaCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.mediaCache.delete(oldest);
+    }
   }
 
   // ------------------------------------------------------------------ HTTP
@@ -249,6 +321,13 @@ export class ExternalDataProvider {
     path: string,
     params: Record<string, string | number>,
   ): Promise<T | null> {
+    if (this.budgetExhausted) {
+      this.logger.warn(
+        `Cota da execução esgotada (${this.requestCount}); ${path} não foi chamado.`,
+      );
+      return null;
+    }
+
     const url = new URL(`${this.baseUrl}${path}`);
     for (const [key, value] of Object.entries(params)) {
       url.searchParams.set(key, String(value));

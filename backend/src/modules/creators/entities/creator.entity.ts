@@ -16,6 +16,14 @@ export class Creator {
   @Column({ unique: true })
   handle: string;
 
+  /**
+   * ID do criador no fornecedor de dados (`user_id` do EchoTik). É a chave de
+   * upsert confiável: o nome de exibição muda, o id não. Nulo nos registros
+   * antigos e nos de demonstração.
+   */
+  @Column({ type: 'varchar', nullable: true, unique: true })
+  externalId: string | null;
+
   @Column()
   name: string;
 
@@ -35,13 +43,14 @@ export class Creator {
   category: string;
 
   /**
-   * 'tiktok' = coletado do TikTok (handle, seguidores e avatar verdadeiros).
-   * 'seed'   = dado de demonstração. Separar evita apresentar como real algo
-   *            que não é — os reais vêm primeiro na listagem.
+   * 'echotik' = fornecedor pago: GMV e vendas por produto são REAIS.
+   * 'tiktok'  = coletado do TikTok (handle, seguidores e avatar verdadeiros).
+   * 'seed'    = dado de demonstração. Separar evita apresentar como real algo
+   *             que não é — os reais vêm primeiro na listagem.
    */
   @Index()
   @Column({ default: 'seed' })
-  source: 'tiktok' | 'seed';
+  source: 'echotik' | 'tiktok' | 'seed';
 
   @Column({ nullable: true })
   avatarUrl: string;
