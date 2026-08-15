@@ -13,6 +13,9 @@ export class AppUser {
   @PrimaryColumn('uuid')
   id: string;
 
+  // Único: uma conta por e-mail. Sem isso, tokens com sub diferente criavam
+  // contas duplicadas e o login encontrava a errada.
+  @Index({ unique: true })
   @Column()
   email: string;
 

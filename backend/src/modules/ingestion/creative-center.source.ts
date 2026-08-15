@@ -75,15 +75,21 @@ export class CreativeCenterSource {
   private async fetchViaBrowser(limit: number): Promise<TrendingHashtag[]> {
     // Import dinâmico: o playwright só é carregado quando necessário.
     const { chromium } = await import('playwright');
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({
+      headless: true,
+      args: ['--disable-blink-features=AutomationControlled'],
+    });
     try {
-      const page = await browser.newPage({
+      // Com a sessão logada (npm run cc:login), o "Ver mais" funciona e a
+      // lista vai muito além das 3 primeiras posições do modo anônimo.
+      const hasSession = existsSync(SESSION_FILE);
+      const context = await browser.newContext({
         userAgent: HEADERS['user-agent'],
         locale: 'pt-BR',
-        viewport: { width: 1366, height: 900 },
+        viewport: { width: 1366, height: 1200 },
+        ...(hasSession ? { storageState: SESSION_FILE } : {}),
       });
-      // Sem login a UI mostra só as 3 primeiras posições por página ("View more"
-      // exige conta). Coletamos vários períodos e acumulamos no banco dia a dia.
+      const page = await context.newPage();
       const collected: Array<{ tag: string; ctx: string }> = [];
       const seenTags = new Set<string>();
       for (const period of [7, 30, 120]) {
@@ -92,6 +98,20 @@ export class CreativeCenterSource {
           { waitUntil: 'domcontentloaded', timeout: 60_000 },
         );
         await page.waitForTimeout(8_000);
+
+        // Logado: clica "Ver mais" até a lista parar de crescer.
+        if (hasSession) {
+          for (let round = 0; round < 6; round++) {
+            const before = await this.extractRows(page);
+            const more = page.getByText(/Ver mais|View More|Carregar mais/i).first();
+            if (!(await more.count().catch(() => 0))) break;
+            await more.click({ timeout: 5_000 }).catch(() => undefined);
+            await page.waitForTimeout(3_500);
+            const after = await this.extractRows(page);
+            if (after.length <= before.length) break;
+          }
+        }
+
         const rows = await this.extractRows(page);
         for (const row of rows) {
           if (seenTags.has(row.tag)) continue;

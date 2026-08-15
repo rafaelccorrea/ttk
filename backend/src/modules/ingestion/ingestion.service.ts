@@ -151,14 +151,12 @@ export class IngestionService implements OnModuleInit {
         }
       }
 
-      // 2) Criadores/vídeos em alta.
-      //    DESLIGADO: a aba de vídeos do Creative Center traz virais genéricos
-      //    (dança, humor, região US) sem relação com produto. Isso poluía
-      //    "Vídeos que Vendem", que deve conter só vídeo com produto atrelado.
-      //    Religar apenas quando a fonte entregar vídeo COM produto.
-      const trendingCreators: Awaited<
-        ReturnType<CreativeCenterSource['fetchTrendingCreators']>
-      > = [];
+      // 2) Criadores/vídeos em alta — dado REAL do Creative Center (handle,
+      //    seguidores, views, avatar, thumbnail e MP4 verdadeiros).
+      //    São virais genéricos, não vídeos de produto: por isso entram
+      //    marcados como 'trending' e a tela de Vídeos que Vendem os separa
+      //    do conteúdo com produto atrelado.
+      const trendingCreators = await this.creativeCenter.fetchTrendingCreators(8);
       run.creatorsFetched = trendingCreators.length;
       for (const tc of trendingCreators) {
         // Handles do TikTok são case-insensitive; normaliza para não duplicar.
@@ -186,6 +184,7 @@ export class IngestionService implements OnModuleInit {
             externalId,
             postedAt: new Date().toISOString().slice(0, 10),
           });
+        video.kind = 'trending';
         video.caption = `Vídeo em alta de ${tc.name}${tc.topic ? ` · ${tc.topic}` : ''}`;
         video.creatorHandle = tc.handle;
         video.views = tc.videoViews;

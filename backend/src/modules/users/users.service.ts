@@ -11,8 +11,19 @@ export class UsersService {
     private readonly repository: Repository<AppUser>,
   ) {}
 
-  // Upsert leve chamado pelo guard a cada requisição autenticada.
+  /**
+   * Upsert leve chamado pelo guard a cada requisição autenticada.
+   *
+   * Cuidado histórico: o orIgnore só protege contra conflito de id. Um token
+   * com outro `sub` mas o MESMO e-mail criava uma segunda conta sem senha, e
+   * o login passava a encontrar a errada ("e-mail ou senha incorretos" numa
+   * conta válida). Por isso conferimos o e-mail antes de inserir.
+   */
   async ensure(user: AuthUser): Promise<void> {
+    const existing = await this.repository.findOne({
+      where: [{ id: user.id }, { email: user.email }],
+    });
+    if (existing) return;
     await this.repository
       .createQueryBuilder()
       .insert()

@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -21,6 +22,11 @@ export class QueryVideosDto {
   @IsString()
   search?: string;
 
+  @ApiPropertyOptional({ enum: ['product','trending'], description: 'product = vende produto; trending = viral sem produto' })
+  @IsOptional()
+  @IsIn(['product','trending'])
+  kind?: 'product' | 'trending';
+
   @ApiPropertyOptional({ example: 'beleza' })
   @IsOptional()
   @IsString()
@@ -33,12 +39,12 @@ export class QueryVideosDto {
   @Min(1)
   page?: number = 1;
 
-  @ApiPropertyOptional({ default: 24, maximum: 50 })
+  @ApiPropertyOptional({ default: 24, maximum: 100 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(50)
+  @Max(100)
   limit?: number = 24;
 
   @ApiPropertyOptional({ description: 'Se true, retorna apenas os vídeos salvos do usuário' })

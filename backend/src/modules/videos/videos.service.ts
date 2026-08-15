@@ -86,6 +86,13 @@ export class VideosService {
     if (query.category) {
       qb.andWhere('v.category = :category', { category: query.category });
     }
+    // Por padrão a tela mostra vídeos de produto; 'trending' são virais reais
+    // sem produto atrelado e só aparecem quando pedidos explicitamente.
+    if (query.kind) {
+      qb.andWhere('v.kind = :kind', { kind: query.kind });
+    } else if (!query.saved && !query.productId) {
+      qb.andWhere('v.kind = :defaultKind', { defaultKind: 'product' });
+    }
     if (query.search) {
       qb.andWhere('(v.caption ILIKE :search OR v.creatorHandle ILIKE :search)', {
         search: `%${query.search}%`,

@@ -62,6 +62,16 @@ export class Video {
   @Column()
   category: string;
 
+  /**
+   * 'product'  = vídeo que vende um produto (é o que a tela Vídeos que Vendem
+   *              deve mostrar por padrão).
+   * 'trending' = viral genérico coletado do Creative Center — dado real, mas
+   *              sem produto atrelado. Fica separado para não poluir o radar.
+   */
+  @Index()
+  @Column({ default: 'product' })
+  kind: 'product' | 'trending';
+
   @CreateDateColumn()
   createdAt: Date;
 
