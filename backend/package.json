@@ -24,7 +24,8 @@
     "cc:login": "node scripts/cc-login.js",
     "purge:scraped": "ts-node src/database/seeds/purge-scraped.ts",
     "shop:login": "node scripts/shop-login.js",
-    "shop:register": "node scripts/shop-register.js"
+    "shop:register": "node scripts/shop-register.js",
+    "purge:seed": "ts-node src/database/seeds/purge-seed.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
