@@ -8,7 +8,7 @@ import { StoreProduct } from './entities/store-product.entity';
 import { StoreSettlement } from './entities/store-settlement.entity';
 import { Store } from './entities/store.entity';
 import { normalizeOrderStage } from './pricing';
-import { CsvImportSource } from './sources/csv/csv-import.source';
+import { SpreadsheetImportSource } from './sources/csv/csv-import.source';
 import { DateOrder } from './sources/csv/columns';
 import {
   ImportIssue,
@@ -49,7 +49,7 @@ export class StoresImportService {
    * aprovado, basta devolver `TikTokShopApiSource` aqui — nada mais muda.
    */
   private sourceFor(store: Store): StoreSyncSource {
-    return new CsvImportSource(store.dateOrder as DateOrder);
+    return new SpreadsheetImportSource(store.dateOrder as DateOrder);
   }
 
   async import(
@@ -78,7 +78,8 @@ export class StoresImportService {
       this.imports.create({
         storeId: store.id,
         dataset,
-        source: source.kind,
+        // Guarda o formato concreto (csv/xlsx) quando a fonte é um arquivo.
+        source: outcome.format ?? source.kind,
         fileName: file.originalName,
         rowsRead: outcome.rowsRead,
         created: outcome.created,

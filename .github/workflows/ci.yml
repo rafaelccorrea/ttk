@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (build + testes)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test -- --ci
+
+  frontend:
+    name: Frontend (build + testes)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npx vitest run
+
+  migrations:
+    name: Migrations em banco limpo
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pikpok
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_DATABASE: pikpok
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+
+      # Prova que um ambiente novo é provisionável sem `synchronize`.
+      - name: Aplicar migrations
+        run: npm run migration:run
+
+      # As migrations são idempotentes: rodar de novo não pode quebrar.
+      - name: Reaplicar (idempotência)
+        run: npm run migration:run
+
+      # O schema resultante precisa bater exatamente com as entidades.
+      - name: Verificar drift entre entidades e banco
+        run: |
+          OUT=$(npm run typeorm -- schema:log)
+          echo "$OUT"
+          if ! echo "$OUT" | grep -q "schema is up to date"; then
+            echo "::error::As entidades divergem do schema criado pelas migrations."
+            exit 1
+          fi

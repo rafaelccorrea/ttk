@@ -33,6 +33,10 @@ export class IngestionRun {
   @Column({ type: 'int', default: 0 })
   productsEnriched: number;
 
+  // Produtos upsertados com métrica diária (fornecedor externo ou Creative Center).
+  @Column({ type: 'int', default: 0 })
+  productsIngested: number;
+
   @Column({ type: 'text', nullable: true })
   error: string | null;
 }

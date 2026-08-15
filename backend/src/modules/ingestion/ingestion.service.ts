@@ -7,7 +7,13 @@ import { Creator } from '../creators/entities/creator.entity';
 import { Trend } from '../trends/entities/trend.entity';
 import { Video } from '../videos/entities/video.entity';
 import { Product } from '../products/entities/product.entity';
+import { ProductMetricDaily } from '../products/entities/product-metric-daily.entity';
 import { CreativeCenterSource } from './creative-center.source';
+import {
+  CreativeCenterProductsSource,
+  TrendingProduct,
+} from './creative-center-products.source';
+import { ExternalDataProvider } from './external-data.provider';
 import { ImageSearchSource } from './image-search.source';
 import { IngestionRun, IngestionTrigger } from './entities/ingestion-run.entity';
 import { IngestionSetting } from './entities/ingestion-setting.entity';
@@ -32,7 +38,11 @@ export class IngestionService implements OnModuleInit {
     private readonly settings: Repository<IngestionSetting>,
     @InjectRepository(Product)
     private readonly products: Repository<Product>,
+    @InjectRepository(ProductMetricDaily)
+    private readonly productMetrics: Repository<ProductMetricDaily>,
     private readonly creativeCenter: CreativeCenterSource,
+    private readonly ccProducts: CreativeCenterProductsSource,
+    private readonly externalData: ExternalDataProvider,
     private readonly imageSearch: ImageSearchSource,
     private readonly scheduler: SchedulerRegistry,
   ) {}
@@ -169,7 +179,12 @@ export class IngestionService implements OnModuleInit {
         run.videosUpserted += 1;
       }
 
-      // 3) Imagens de produtos sem foto (busca de imagem real; 15 por execução).
+      // 3) Produtos em alta → tabelas products + product_metrics_daily.
+      //    Fornecedor externo (vendas reais) tem prioridade; sem ele, usa o
+      //    Creative Center (popularidade → estimativa).
+      run.productsIngested = await this.ingestProducts();
+
+      // 4) Imagens de produtos sem foto (busca de imagem real; 15 por execução).
       const missing = await this.products.find({
         where: { imageUrl: IsNull() },
         take: 15,
@@ -187,7 +202,7 @@ export class IngestionService implements OnModuleInit {
 
       run.status = 'success';
       this.logger.log(
-        `Ingestão ok: ${run.hashtagsFetched} hashtags, ${run.creatorsFetched} criadores, ${run.videosUpserted} vídeos, ${run.productsEnriched} imagens de produto`,
+        `Ingestão ok: ${run.hashtagsFetched} hashtags, ${run.creatorsFetched} criadores, ${run.videosUpserted} vídeos, ${run.productsIngested} produtos, ${run.productsEnriched} imagens de produto`,
       );
     } catch (err) {
       run.status = 'error';
@@ -199,5 +214,109 @@ export class IngestionService implements OnModuleInit {
       this.running = false;
     }
     return run;
+  }
+
+  /**
+   * Upsert de produtos + métrica diária.
+   * - Fornecedor externo configurado: vendas e receita REAIS do dia.
+   * - Só Creative Center: sem venda pública, a métrica diária é uma
+   *   ESTIMATIVA derivada do índice de popularidade (documentado no código;
+   *   o dado bruto de popularidade vai em radarScore).
+   */
+  private async ingestProducts(): Promise<number> {
+    const today = new Date().toISOString().slice(0, 10);
+    let count = 0;
+
+    // 3a) Fornecedor pago (Kalodata etc.) — dado real, prioridade máxima.
+    const external = await this.externalData.fetchTopProducts(50);
+    for (const ext of external) {
+      const product = await this.upsertProduct({
+        externalId: ext.externalId,
+        title: ext.title,
+        category: ext.category,
+        price: ext.price,
+        imageUrl: ext.imageUrl,
+        storeName: ext.storeName,
+        tiktokUrl: ext.tiktokUrl,
+        radarScore: null,
+      });
+      await this.upsertDailyMetric(product.id, today, ext.salesDaily, ext.revenueDaily);
+      count += 1;
+    }
+    if (external.length > 0) {
+      this.logger.log(`${external.length} produtos do fornecedor externo (dado real)`);
+      return count;
+    }
+
+    // 3b) Creative Center — popularidade pública → estimativa conservadora.
+    const trending = await this.ccProducts.fetchTrendingProducts(20);
+    for (const tp of trending) {
+      const product = await this.upsertProduct({
+        externalId: tp.externalId,
+        title: tp.title,
+        category: tp.category,
+        price: tp.price,
+        imageUrl: tp.imageUrl,
+        storeName: null,
+        tiktokUrl: null,
+        radarScore: Math.round(tp.popularity),
+      });
+      const estimate = this.estimateFromPopularity(tp, Number(product.price));
+      await this.upsertDailyMetric(product.id, today, estimate.sales, estimate.revenue);
+      count += 1;
+    }
+    return count;
+  }
+
+  private async upsertProduct(data: {
+    externalId: string;
+    title: string;
+    category: string;
+    price: number;
+    imageUrl: string | null;
+    storeName: string | null;
+    tiktokUrl: string | null;
+    radarScore: number | null;
+  }): Promise<Product> {
+    const product =
+      (await this.products.findOne({ where: { externalId: data.externalId } })) ??
+      this.products.create({ externalId: data.externalId });
+    product.title = data.title;
+    product.category = data.category || product.category || 'geral';
+    if (data.price > 0) product.price = data.price.toFixed(2);
+    else if (!product.price) product.price = '0.00';
+    product.imageUrl = data.imageUrl ?? product.imageUrl;
+    product.storeName = data.storeName ?? product.storeName;
+    product.tiktokUrl = data.tiktokUrl ?? product.tiktokUrl;
+    if (data.radarScore !== null) product.radarScore = data.radarScore;
+    return this.products.save(product);
+  }
+
+  private async upsertDailyMetric(
+    productId: string,
+    date: string,
+    sales: number,
+    revenue: number,
+  ): Promise<void> {
+    const metric =
+      (await this.productMetrics.findOne({ where: { productId, date } })) ??
+      this.productMetrics.create({ productId, date });
+    metric.sales = Math.max(0, Math.round(sales));
+    metric.revenue = Math.max(0, revenue).toFixed(2);
+    await this.productMetrics.save(metric);
+  }
+
+  /**
+   * Estimativa a partir do índice de popularidade (0–100) do Creative Center.
+   * Curva conservadora: popularidade 100 ≈ 400 vendas/dia; sem preço público,
+   * assume ticket médio de R$ 60 (mediana do TikTok Shop BR).
+   */
+  private estimateFromPopularity(
+    tp: TrendingProduct,
+    knownPrice: number,
+  ): { sales: number; revenue: number } {
+    const sales = Math.round((tp.popularity / 100) * 400);
+    const ticket = knownPrice > 0 ? knownPrice : 60;
+    return { sales, revenue: sales * ticket };
   }
 }

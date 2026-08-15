@@ -23,15 +23,21 @@ import {
   PRODUCT_COLUMNS,
   SETTLEMENT_COLUMNS,
 } from './columns';
-import { CsvRow, detectBinaryFormat, parseCsv } from './csv';
+import { CsvRow } from './csv';
+import { readSpreadsheet, SpreadsheetFormat } from './spreadsheet';
 
 /**
- * Fonte de dados por planilha exportada do Seller Center.
+ * Fonte de dados por planilha exportada do Seller Center (CSV ou XLSX).
  *
  * É a única fonte que funciona em produção hoje sem app homologado na TikTok:
  * o seller exporta Pedidos / Produtos / Repasses e sobe o arquivo aqui.
  */
-export class CsvImportSource implements StoreSyncSource {
+export class SpreadsheetImportSource implements StoreSyncSource {
+  /**
+   * Identifica a fonte como "arquivo enviado pelo usuário". O valor continua
+   * `csv` por compatibilidade com os registros de importação já gravados; o
+   * formato real de cada arquivo é reportado em `SyncResult.format`.
+   */
   readonly kind = 'csv' as const;
 
   constructor(private readonly dateOrder: DateOrder = 'dmy') {}
@@ -43,7 +49,11 @@ export class CsvImportSource implements StoreSyncSource {
   // ------------------------------------------------------------------ Produtos
 
   async products(ctx: SyncContext): Promise<SyncResult<NormalizedProduct>> {
-    const { rows, header, issues } = this.open(ctx, PRODUCT_COLUMNS, 'produtos');
+    const { rows, header, issues, format } = await this.open(
+      ctx,
+      PRODUCT_COLUMNS,
+      'produtos',
+    );
     const out: NormalizedProduct[] = [];
     const seen = new Set<string>();
 
@@ -79,13 +89,17 @@ export class CsvImportSource implements StoreSyncSource {
       });
     }
 
-    return { rows: out, issues, rowsRead: rows.length };
+    return { rows: out, issues, rowsRead: rows.length, format };
   }
 
   // ------------------------------------------------------------------- Pedidos
 
   async orders(ctx: SyncContext): Promise<SyncResult<NormalizedOrder>> {
-    const { rows, header, issues } = this.open(ctx, ORDER_COLUMNS, 'pedidos');
+    const { rows, header, issues, format } = await this.open(
+      ctx,
+      ORDER_COLUMNS,
+      'pedidos',
+    );
 
     // O relatório traz uma linha por SKU: agrupamos de volta em pedidos.
     const byOrder = new Map<string, NormalizedOrder>();
@@ -142,7 +156,12 @@ export class CsvImportSource implements StoreSyncSource {
       }
     }
 
-    return { rows: [...byOrder.values()], issues, rowsRead: rows.length };
+    return {
+      rows: [...byOrder.values()],
+      issues,
+      rowsRead: rows.length,
+      format,
+    };
   }
 
   private readItem(
@@ -173,7 +192,7 @@ export class CsvImportSource implements StoreSyncSource {
   // ------------------------------------------------------------------ Repasses
 
   async settlements(ctx: SyncContext): Promise<SyncResult<NormalizedSettlement>> {
-    const { rows, header, issues } = this.open(
+    const { rows, header, issues, format } = await this.open(
       ctx,
       SETTLEMENT_COLUMNS,
       'repasses',
@@ -213,23 +232,21 @@ export class CsvImportSource implements StoreSyncSource {
 
   // -------------------------------------------------------------------- Comum
 
-  private open(
+  private async open(
     ctx: SyncContext,
     spec: ColumnSpec,
     label: string,
-  ): { rows: CsvRow[]; header: HeaderMap; issues: ImportIssue[] } {
+  ): Promise<{
+    rows: CsvRow[];
+    header: HeaderMap;
+    issues: ImportIssue[];
+    format: SpreadsheetFormat;
+  }> {
     if (!ctx.file) {
       throw new BadRequestException('Nenhum arquivo enviado.');
     }
 
-    const binary = detectBinaryFormat(ctx.file.buffer);
-    if (binary) {
-      throw new BadRequestException(
-        `O arquivo parece ser ${binary}. Abra a planilha e use "Salvar como / Exportar" no formato CSV antes de enviar.`,
-      );
-    }
-
-    const parsed = parseCsv(ctx.file.buffer);
+    const { rows: parsed, format } = await readSpreadsheet(ctx.file.buffer);
     if (parsed.length === 0) {
       throw new BadRequestException('O arquivo está vazio.');
     }
@@ -237,7 +254,7 @@ export class CsvImportSource implements StoreSyncSource {
     const header = mapHeader(parsed, spec);
     if (!header) {
       throw new BadRequestException(
-        `Não reconhecemos as colunas de um relatório de ${label}. Envie o CSV exportado pelo Seller Center sem alterar o cabeçalho.`,
+        `Não reconhecemos as colunas de um relatório de ${label}. Envie a planilha exportada pelo Seller Center sem alterar o cabeçalho.`,
       );
     }
 
@@ -245,6 +262,7 @@ export class CsvImportSource implements StoreSyncSource {
       rows: parsed.slice(header.rowIndex + 1),
       header,
       issues: [],
+      format,
     };
   }
 }

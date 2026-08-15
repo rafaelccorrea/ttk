@@ -83,6 +83,8 @@ export interface SyncResult<T> {
   issues: ImportIssue[];
   /** Total de linhas de dado lidas, incluindo as puladas. */
   rowsRead: number;
+  /** Formato concreto lido (ex.: 'csv' | 'xlsx'), quando a fonte é um arquivo. */
+  format?: string;
 }
 
 // -------------------------------------------------------------------- Contrato

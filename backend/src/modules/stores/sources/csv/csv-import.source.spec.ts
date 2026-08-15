@@ -1,12 +1,13 @@
 import { BadRequestException } from '@nestjs/common';
-import { CsvImportSource } from './csv-import.source';
+import { Workbook } from 'exceljs';
+import { SpreadsheetImportSource } from './csv-import.source';
 
 const file = (content: string, originalName = 'relatorio.csv') => ({
   file: { buffer: Buffer.from(content, 'utf8'), originalName },
 });
 
-describe('CsvImportSource', () => {
-  const source = new CsvImportSource('dmy');
+describe('SpreadsheetImportSource', () => {
+  const source = new SpreadsheetImportSource('dmy');
 
   describe('orders', () => {
     const csv = [
@@ -122,18 +123,115 @@ describe('CsvImportSource', () => {
     });
   });
 
-  describe('validação de arquivo', () => {
-    it('rejeita XLSX com instrução de exportar em CSV', async () => {
-      const xlsx = {
+  // O Seller Center entrega XLSX com mais frequência que CSV, então o caminho
+  // da planilha binária precisa ser tão confiável quanto o do texto.
+  describe('XLSX', () => {
+    async function xlsx(rows: unknown[][], name = 'pedidos.xlsx') {
+      const workbook = new Workbook();
+      const sheet = workbook.addWorksheet('Sheet1');
+      rows.forEach((row) => sheet.addRow(row));
+      const buffer = await workbook.xlsx.writeBuffer();
+      return { file: { buffer: Buffer.from(buffer), originalName: name } };
+    }
+
+    it('lê pedidos de uma planilha binária', async () => {
+      const file = await xlsx([
+        [
+          'Order ID',
+          'Order Status',
+          'Created Time',
+          'Seller SKU',
+          'Product Name',
+          'Quantity',
+          'SKU Subtotal After Discount',
+          'Order Amount',
+        ],
+        ['5001', 'Shipped', '01/05/2024 10:00:00', 'SKU-A', 'Camiseta', 2, 79.8, 79.8],
+      ]);
+
+      const result = await source.orders(file);
+
+      expect(result.format).toBe('xlsx');
+      expect(result.rows).toHaveLength(1);
+      expect(result.rows[0].grossAmount).toBe(79.8);
+      expect(result.rows[0].items[0]).toMatchObject({
+        sku: 'SKU-A',
+        quantity: 2,
+        subtotal: 79.8,
+      });
+    });
+
+    it('entende células de data nativas do Excel', async () => {
+      const file = await xlsx([
+        ['Order ID', 'Order Status', 'Created Time', 'Seller SKU', 'Quantity'],
+        ['5002', 'Completed', new Date('2024-05-01T10:00:00Z'), 'SKU-A', 1],
+      ]);
+
+      const { rows } = await source.orders(file);
+      expect(rows[0].placedAt.toISOString()).toBe('2024-05-01T10:00:00.000Z');
+    });
+
+    it('entende números nativos como preço, sem depender de formatação', async () => {
+      const file = await xlsx([
+        ['Product ID', 'Product Name', 'Seller SKU', 'Retail Price', 'Quantity'],
+        ['P1', 'Camiseta', 'SKU-A', 49.9, 120],
+      ]);
+
+      const { rows, format } = await source.products(file);
+      expect(format).toBe('xlsx');
+      expect(rows[0]).toMatchObject({ price: 49.9, stock: 120 });
+    });
+
+    it('acha o cabeçalho mesmo com preâmbulo na planilha', async () => {
+      const file = await xlsx([
+        ['Relatório de produtos'],
+        [],
+        ['Product ID', 'Product Name', 'Seller SKU', 'Retail Price', 'Quantity'],
+        ['P1', 'Camiseta', 'SKU-A', 49.9, 120],
+      ]);
+
+      const { rows } = await source.products(file);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].sku).toBe('SKU-A');
+    });
+
+    it('reporta csv como formato quando o arquivo é texto', async () => {
+      const result = await source.products(
+        file(
+          [
+            'Product ID,Product Name,Seller SKU,Retail Price,Quantity',
+            'P1,Camiseta,SKU-A,"49,90",120',
+          ].join('\n'),
+        ),
+      );
+      expect(result.format).toBe('csv');
+    });
+
+    it('explica o que fazer quando o arquivo é XLS antigo', async () => {
+      const xls = {
         file: {
-          buffer: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00]),
+          buffer: Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0x00]),
+          originalName: 'pedidos.xls',
+        },
+      };
+      await expect(source.orders(xls)).rejects.toThrow(BadRequestException);
+      await expect(source.orders(xls)).rejects.toThrow(/XLSX ou CSV/);
+    });
+
+    it('avisa quando a planilha está corrompida', async () => {
+      const corrupted = {
+        file: {
+          buffer: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x01, 0x02]),
           originalName: 'pedidos.xlsx',
         },
       };
-      await expect(source.orders(xlsx)).rejects.toThrow(BadRequestException);
-      await expect(source.orders(xlsx)).rejects.toThrow(/CSV/);
+      await expect(source.orders(corrupted)).rejects.toThrow(
+        /corrompido|não foi possível abrir/i,
+      );
     });
+  });
 
+  describe('validação de arquivo', () => {
     it('rejeita arquivo vazio', async () => {
       await expect(source.orders(file(''))).rejects.toThrow('vazio');
     });
