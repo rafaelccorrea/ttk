@@ -19,6 +19,7 @@ import {
   Grid,
   IconButton,
   MenuItem,
+  Skeleton,
   Stack,
   Tab,
   Tabs,
@@ -224,6 +225,28 @@ function ProdutoCard({
               </IconButton>
             </Box>
           ))}
+
+          {/* Vaga fantasma durante o upload. O `addPhoto` faz normalização no
+              sharp e envio ao S3 — segundos em que a fileira ficava parada e
+              parecia que o clique não pegou. */}
+          {enviando && (
+            <Box
+              sx={{
+                width: 96,
+                aspectRatio: '9 / 16',
+                borderRadius: 1.5,
+                overflow: 'hidden',
+                border: '1px solid',
+                borderColor: 'divider',
+                position: 'relative',
+              }}
+            >
+              <Skeleton variant="rectangular" width="100%" height="100%" />
+              <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
+                <CircularProgress size={20} />
+              </Box>
+            </Box>
+          )}
 
           {produto.images.length < LIMITES.fotosPorProduto && (
             <Button

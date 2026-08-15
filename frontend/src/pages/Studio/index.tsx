@@ -75,25 +75,51 @@ export function StudioPage() {
   const [productDescription, setProductDescription] = useState('');
   const [tone, setTone] = useState('');
   const [topProducts, setTopProducts] = useState<RankedProduct[]>([]);
+  const [busca, setBusca] = useState('');
+  const [buscando, setBuscando] = useState(false);
+  // O produto escolhido pode sair da lista na busca seguinte; guardá-lo à
+  // parte mantém foto, título e a ficha de detalhes.
+  const [escolhido, setEscolhido] = useState<RankedProduct | null>(null);
   const [scripts, setScripts] = useState<Script[]>([]);
   const [result, setResult] = useState<Script | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    productsService
-      .rank({ period: 30, limit: 50 })
-      .then((data) => setTopProducts(data.items))
-      .catch(console.error);
     studioService.listScripts().then(setScripts).catch(console.error);
   }, []);
+
+  // A lista carregada é só o topo do catálogo. Sem busca no servidor, um
+  // produto fora dos 50 mais vendidos não aparecia por mais que se digitasse.
+  useEffect(() => {
+    let cancelado = false;
+    setBuscando(true);
+    const timer = setTimeout(() => {
+      productsService
+        .rank({ period: 30, limit: 50, search: busca.trim() || undefined })
+        .then((data) => {
+          if (!cancelado) setTopProducts(data.items);
+        })
+        .catch(console.error)
+        .finally(() => {
+          if (!cancelado) setBuscando(false);
+        });
+    }, 350);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [busca]);
 
   // Último texto que este efeito escreveu. Só sobrescrevemos o que foi
   // preenchido automaticamente — o que o usuário digitou fica intocado.
   const autoDescricaoRef = useRef('');
 
   useEffect(() => {
-    const produto = topProducts.find((p) => p.id === productId);
+    const produto =
+      escolhido?.id === productId
+        ? escolhido
+        : topProducts.find((p) => p.id === productId);
     const texto = produto ? detalhesDoProduto(produto) : '';
     setProductDescription((atual) => {
       const foiAutomatico = atual === autoDescricaoRef.current;
@@ -101,7 +127,7 @@ export function StudioPage() {
       autoDescricaoRef.current = texto;
       return texto;
     });
-  }, [productId, topProducts]);
+  }, [productId, topProducts, escolhido]);
 
   // Trava síncrona: `busy` só desabilita o botão no próximo render. Num
   // formulário isso é ainda mais fácil de disparar duas vezes (clique + Enter),
@@ -166,10 +192,19 @@ export function StudioPage() {
                   label="Produto do catálogo (opcional)"
                   placeholder="Buscar produto…"
                   value={productId}
-                  onChange={setProductId}
+                  onChange={(id) => {
+                    setProductId(id);
+                    setEscolhido(topProducts.find((p) => p.id === id) ?? null);
+                  }}
+                  onSearchChange={setBusca}
+                  loading={buscando}
                   emptyLabel="Descrever meu próprio produto"
                   sx={{ mt: 2, mb: 1 }}
-                  options={topProducts.map((p) => ({
+                  options={(escolhido &&
+                  !topProducts.some((p) => p.id === escolhido.id)
+                    ? [escolhido, ...topProducts]
+                    : topProducts
+                  ).map((p) => ({
                     value: p.id,
                     label: p.title,
                     imageUrl: p.imageUrl ? proxyImage(p.imageUrl) : null,
