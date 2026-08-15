@@ -27,7 +27,7 @@ import {
 import { ReactNode, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { COMPARISON, FAQ, FEATURES, HIGHLIGHTS, NICHES, PRICING, STEPS, TESTIMONIALS, brl } from './data';
-import { BrowserFrame, Reveal, SectionHeading, cyan, glass, glowCard, gradientText, ink, inkSoft, line, lineStrong, page, pageNarrow, red, textDim, textFaint } from './theme';
+import { BrowserFrame, Reveal, SectionHeading, cyan, cyanDeep, glass, glowCard, gradientText, ink, inkSoft, line, lineStrong, page, pageNarrow, red, textDim, textFaint, textMain } from './theme';
 
 /* ---------------------------------------------------------------- marquee */
 
@@ -81,13 +81,13 @@ function FeatureCard({ icon, tag, title, desc, big = false }: { icon: ReactNode;
           className="lp-icon"
           sx={{
             width: big ? 54 : 44, height: big ? 54 : 44, borderRadius: 3, display: 'grid', placeItems: 'center',
-            background: `linear-gradient(135deg, ${red}2e, ${cyan}2e)`, color: '#fff',
+            background: `linear-gradient(135deg, ${red}24, ${cyan}3d)`, color: textMain,
             transition: 'transform .25s ease',
           }}
         >
           {icon}
         </Box>
-        <Chip size="small" label={tag} sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: textDim, fontWeight: 700, height: 22, fontSize: 11 }} />
+        <Chip size="small" label={tag} sx={{ bgcolor: 'rgba(11,12,18,0.05)', color: textDim, fontWeight: 700, height: 22, fontSize: 11 }} />
       </Stack>
       <Typography fontWeight={700} fontSize={big ? 22 : 17} mb={1} letterSpacing="-0.01em">{title}</Typography>
       <Typography fontSize={big ? 15.5 : 14.5} color={textDim} lineHeight={1.65}>{desc}</Typography>
@@ -202,11 +202,11 @@ export function Showcase() {
                   startIcon={t.icon}
                   sx={{
                     borderRadius: 999, px: 2.25, py: 1, fontWeight: 700, fontSize: 14,
-                    color: active ? '#fff' : textDim,
+                    color: active ? red : textDim,
                     border: `1px solid ${active ? `${red}66` : line}`,
                     bgcolor: active ? `${red}1f` : 'transparent',
                     transition: 'all .2s ease',
-                    '&:hover': { color: '#fff', borderColor: lineStrong },
+                    '&:hover': { color: textMain, borderColor: lineStrong },
                   }}
                 >
                   {t.label}
@@ -228,8 +228,8 @@ export function Showcase() {
               <Stack spacing={1.25} mt={3}>
                 {panel.bullets.map((b) => (
                   <Stack key={b} direction="row" spacing={1.25} alignItems="center">
-                    <Box sx={{ width: 20, height: 20, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: `${cyan}1f` }}>
-                      <CheckRounded sx={{ fontSize: 13, color: cyan }} />
+                    <Box sx={{ width: 20, height: 20, borderRadius: '50%', display: 'grid', placeItems: 'center', bgcolor: `${cyan}33` }}>
+                      <CheckRounded sx={{ fontSize: 13, color: cyanDeep }} />
                     </Box>
                     <Typography fontSize={14.5}>{b}</Typography>
                   </Stack>
@@ -270,7 +270,7 @@ export function HowItWorks() {
                   sx={{
                     ...glass, p: 3.5, height: '100%', position: 'relative',
                     transition: 'border-color .25s ease, transform .25s ease',
-                    '&:hover': { borderColor: `${cyan}44`, transform: 'translateY(-4px)' },
+                    '&:hover': { borderColor: `${cyanDeep}55`, transform: 'translateY(-4px)' },
                   }}
                 >
                   <Typography sx={{ ...gradientText, fontSize: 44, fontWeight: 800, lineHeight: 1 }}>{s.n}</Typography>
@@ -279,7 +279,7 @@ export function HowItWorks() {
                   <Stack spacing={1} mt={2.5}>
                     {s.bullets.map((b) => (
                       <Stack key={b} direction="row" spacing={1} alignItems="center">
-                        <CheckRounded sx={{ fontSize: 15, color: cyan }} />
+                        <CheckRounded sx={{ fontSize: 15, color: cyanDeep }} />
                         <Typography fontSize={13.5} color={textDim}>{b}</Typography>
                       </Stack>
                     ))}
@@ -309,7 +309,7 @@ export function Comparison() {
         </Reveal>
         <Reveal>
           <Box sx={{ ...glass, overflow: 'hidden' }}>
-            <Grid container sx={{ borderBottom: `1px solid ${line}`, bgcolor: 'rgba(255,255,255,0.02)' }}>
+            <Grid container sx={{ borderBottom: `1px solid ${line}`, bgcolor: 'rgba(11,12,18,0.03)' }}>
               <Grid item xs={12} sm={4} sx={{ p: 2, display: { xs: 'none', sm: 'block' } }}>
                 <Typography fontSize={12} fontWeight={800} letterSpacing="0.1em" color={textFaint}>ETAPA</Typography>
               </Grid>
@@ -317,7 +317,7 @@ export function Comparison() {
                 <Typography fontSize={12} fontWeight={800} letterSpacing="0.1em" color={textFaint}>SEM PIKPOK</Typography>
               </Grid>
               <Grid item xs={6} sm={4} sx={{ p: 2 }}>
-                <Typography fontSize={12} fontWeight={800} letterSpacing="0.1em" color={cyan}>COM PIKPOK</Typography>
+                <Typography fontSize={12} fontWeight={800} letterSpacing="0.1em" color={cyanDeep}>COM PIKPOK</Typography>
               </Grid>
             </Grid>
             {COMPARISON.map((row, i) => (
@@ -331,13 +331,13 @@ export function Comparison() {
                 </Grid>
                 <Grid item xs={6} sm={4} sx={{ p: 2 }}>
                   <Stack direction="row" spacing={1} alignItems="flex-start">
-                    <CloseRounded sx={{ fontSize: 16, color: 'rgba(255,255,255,0.3)', mt: '2px' }} />
+                    <CloseRounded sx={{ fontSize: 16, color: 'rgba(11,12,18,0.28)', mt: '2px' }} />
                     <Typography fontSize={13.5} color={textFaint}>{row.without}</Typography>
                   </Stack>
                 </Grid>
-                <Grid item xs={6} sm={4} sx={{ p: 2, bgcolor: `${cyan}08` }}>
+                <Grid item xs={6} sm={4} sx={{ p: 2, bgcolor: `${cyan}1c` }}>
                   <Stack direction="row" spacing={1} alignItems="flex-start">
-                    <CheckRounded sx={{ fontSize: 16, color: cyan, mt: '2px' }} />
+                    <CheckRounded sx={{ fontSize: 16, color: cyanDeep, mt: '2px' }} />
                     <Typography fontSize={13.5}>{row.with}</Typography>
                   </Stack>
                 </Grid>
@@ -375,12 +375,12 @@ export function Testimonials() {
                 <Typography fontSize={14.5} lineHeight={1.7} flex={1}>“{t.quote}”</Typography>
                 <Chip
                   size="small"
-                  icon={<TrendingUpRounded sx={{ fontSize: 14, color: `${cyan} !important` }} />}
+                  icon={<TrendingUpRounded sx={{ fontSize: 14, color: `${cyanDeep} !important` }} />}
                   label={t.metric}
-                  sx={{ mt: 2, alignSelf: 'flex-start', bgcolor: 'rgba(37,244,238,0.1)', color: cyan, fontWeight: 700 }}
+                  sx={{ mt: 2, alignSelf: 'flex-start', bgcolor: 'rgba(10,156,151,0.12)', color: cyanDeep, fontWeight: 700 }}
                 />
                 <Stack direction="row" spacing={1.5} alignItems="center" mt={2.5} pt={2.5} borderTop={`1px solid ${line}`}>
-                  <Avatar sx={{ width: 36, height: 36, fontSize: 13, fontWeight: 800, background: `linear-gradient(135deg, ${red}, ${cyan})` }}>
+                  <Avatar sx={{ width: 36, height: 36, fontSize: 13, fontWeight: 800, background: `linear-gradient(135deg, ${red}, ${cyanDeep})` }}>
                     {t.initials}
                   </Avatar>
                   <Box minWidth={0}>
@@ -440,7 +440,7 @@ export function Pricing() {
                   <Stack spacing={1.25} mt={3} flex={1}>
                     {p.perks.map((perk) => (
                       <Stack key={perk} direction="row" spacing={1.25} alignItems="flex-start">
-                        <CheckRounded sx={{ fontSize: 16, color: cyan, mt: '2px' }} />
+                        <CheckRounded sx={{ fontSize: 16, color: cyanDeep, mt: '2px' }} />
                         <Typography fontSize={13.5} color={textDim} lineHeight={1.5}>{perk}</Typography>
                       </Stack>
                     ))}
@@ -454,7 +454,7 @@ export function Pricing() {
                       mt: 3, py: 1.15, fontWeight: 700,
                       ...(p.highlight
                         ? { bgcolor: red, '&:hover': { bgcolor: '#e0264c' } }
-                        : { borderColor: lineStrong, color: '#fff', '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.04)' } }),
+                        : { borderColor: lineStrong, color: textMain, '&:hover': { borderColor: textMain, bgcolor: 'rgba(11,12,18,0.04)' } }),
                     }}
                   >
                     {p.price === 0 ? 'Criar conta grátis' : 'Assinar'}
@@ -490,10 +490,10 @@ function FaqItem({ q, a, open, onToggle }: { q: string; a: string; open: boolean
         ...glass,
         borderRadius: 3,
         overflow: 'hidden',
-        borderColor: open ? `${cyan}44` : line,
-        bgcolor: open ? 'rgba(255,255,255,0.04)' : undefined,
+        borderColor: open ? `${cyanDeep}55` : line,
+        bgcolor: open ? 'rgba(10,156,151,0.05)' : undefined,
         transition: 'border-color .25s ease, background-color .25s ease',
-        '&:hover': { borderColor: open ? `${cyan}66` : lineStrong },
+        '&:hover': { borderColor: open ? `${cyanDeep}88` : lineStrong },
       }}
     >
       <Box
@@ -514,13 +514,13 @@ function FaqItem({ q, a, open, onToggle }: { q: string; a: string; open: boolean
           aria-hidden
           sx={{
             flexShrink: 0, width: 28, height: 28, borderRadius: '50%', display: 'grid', placeItems: 'center',
-            bgcolor: open ? `${cyan}1f` : 'rgba(255,255,255,0.06)',
+            bgcolor: open ? `${cyan}33` : 'rgba(11,12,18,0.06)',
             transition: 'background-color .25s ease',
           }}
         >
           <ExpandMoreRounded
             sx={{
-              fontSize: 19, color: open ? cyan : textDim,
+              fontSize: 19, color: open ? cyanDeep : textDim,
               transform: open ? 'rotate(180deg)' : 'none',
               transition: 'transform .25s ease, color .25s ease',
             }}
@@ -546,13 +546,13 @@ export function Faq() {
 
   return (
     <Box id="faq" sx={{ scrollMarginTop: 72, position: 'relative', overflow: 'hidden' }}>
-      <Box aria-hidden sx={{ position: 'absolute', top: '20%', left: -180, width: 420, height: 420, borderRadius: '50%', filter: 'blur(140px)', background: `${cyan}14`, pointerEvents: 'none' }} />
+      <Box aria-hidden sx={{ position: 'absolute', top: '20%', left: -180, width: 420, height: 420, borderRadius: '50%', filter: 'blur(140px)', background: `${cyan}2e`, pointerEvents: 'none' }} />
       <Container maxWidth={false} sx={{ ...page, py: { xs: 9, md: 12 } }}>
         <Grid container spacing={{ xs: 5, md: 8 }}>
           <Grid item xs={12} md={4}>
             <Reveal>
               <Box sx={{ position: { md: 'sticky' }, top: { md: 110 } }}>
-                <Typography sx={{ color: cyan, fontWeight: 700, letterSpacing: '0.14em', fontSize: 13 }}>
+                <Typography sx={{ color: cyanDeep, fontWeight: 700, letterSpacing: '0.14em', fontSize: 13 }}>
                   DÚVIDAS FREQUENTES
                 </Typography>
                 <Typography
@@ -569,8 +569,8 @@ export function Faq() {
                   to="/login"
                   endIcon={<ArrowForwardRounded />}
                   sx={{
-                    mt: 3, ...glass, borderRadius: 3, color: '#fff', px: 2.5, py: 1.1, fontWeight: 700,
-                    '&:hover': { borderColor: `${cyan}66` },
+                    mt: 3, ...glass, borderRadius: 3, color: textMain, px: 2.5, py: 1.1, fontWeight: 700,
+                    '&:hover': { borderColor: `${cyanDeep}66` },
                   }}
                 >
                   Falar com a gente
@@ -613,7 +613,7 @@ export function FinalCta() {
           }}
         >
           <Box aria-hidden sx={{ position: 'absolute', top: -160, left: '15%', width: 380, height: 380, borderRadius: '50%', filter: 'blur(120px)', background: `${red}2e`, animation: 'lpBlob 18s ease-in-out infinite', pointerEvents: 'none' }} />
-          <Box aria-hidden sx={{ position: 'absolute', bottom: -180, right: '10%', width: 360, height: 360, borderRadius: '50%', filter: 'blur(120px)', background: `${cyan}22`, animation: 'lpBlob 22s ease-in-out infinite reverse', pointerEvents: 'none' }} />
+          <Box aria-hidden sx={{ position: 'absolute', bottom: -180, right: '10%', width: 360, height: 360, borderRadius: '50%', filter: 'blur(120px)', background: `${cyan}3d`, animation: 'lpBlob 22s ease-in-out infinite reverse', pointerEvents: 'none' }} />
           <Box position="relative">
             <Typography sx={{ fontSize: { xs: 30, md: 46 }, fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.1 }}>
               Pronto para vender <Box component="span" sx={gradientText}>antes da tendência</Box>?
@@ -652,8 +652,8 @@ export function FinalCta() {
                 href="#planos"
                 size="large"
                 sx={{
-                  ...glass, color: '#fff', px: 4, py: 1.6, fontSize: 16,
-                  '&:hover': { borderColor: `${cyan}66` },
+                  ...glass, color: textMain, px: 4, py: 1.6, fontSize: 16,
+                  '&:hover': { borderColor: `${cyanDeep}66` },
                 }}
               >
                 Ver planos
@@ -706,7 +706,7 @@ export function Footer() {
                       key={label}
                       component={internal ? RouterLink : 'a'}
                       {...(internal ? { to: href } : { href })}
-                      sx={{ fontSize: 14, color: textDim, textDecoration: 'none', '&:hover': { color: '#fff' } }}
+                      sx={{ fontSize: 14, color: textDim, textDecoration: 'none', '&:hover': { color: textMain } }}
                     >
                       {label}
                     </Box>

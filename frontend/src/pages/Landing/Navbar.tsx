@@ -56,7 +56,7 @@ export function Navbar() {
         aria-hidden
         sx={{
           position: 'absolute', left: 0, bottom: -1, height: 2, width: `${progress * 100}%`,
-          background: `linear-gradient(90deg, ${red}, #25f4ee)`, transition: 'width .1s linear',
+          background: `linear-gradient(90deg, ${red}, ${cyanDeep})`, transition: 'width .1s linear',
         }}
       />
       <Container maxWidth={false} sx={page}>
@@ -76,9 +76,9 @@ export function Navbar() {
                   position: 'relative', transition: 'color .2s ease',
                   '&::after': {
                     content: '""', position: 'absolute', left: 0, bottom: -6, height: 2, width: 0,
-                    background: `linear-gradient(90deg, ${red}, #25f4ee)`, transition: 'width .25s ease',
+                    background: `linear-gradient(90deg, ${red}, ${cyanDeep})`, transition: 'width .25s ease',
                   },
-                  '&:hover': { color: '#fff', '&::after': { width: '100%' } },
+                  '&:hover': { color: textMain, '&::after': { width: '100%' } },
                 }}
               >
                 {l.label}
@@ -94,7 +94,7 @@ export function Navbar() {
               sx={{
                 display: { xs: 'none', sm: 'inline-flex' },
                 color: textDim, transition: 'color .2s ease',
-                '&:hover': { color: '#fff' }, '&:active': { transform: 'scale(0.97)' },
+                '&:hover': { color: textMain }, '&:active': { transform: 'scale(0.97)' },
               }}
             >
               Entrar
@@ -115,7 +115,7 @@ export function Navbar() {
             <IconButton
               aria-label="Abrir menu"
               onClick={() => setOpen(true)}
-              sx={{ display: { xs: 'inline-flex', md: 'none' }, color: '#fff' }}
+              sx={{ display: { xs: 'inline-flex', md: 'none' }, color: textMain }}
             >
               <MenuRounded />
             </IconButton>
@@ -127,11 +127,11 @@ export function Navbar() {
         anchor="right"
         open={open}
         onClose={() => setOpen(false)}
-        PaperProps={{ sx: { bgcolor: '#0e1018', color: '#fff', width: 288, borderLeft: `1px solid ${line}` } }}
+        PaperProps={{ sx: { bgcolor: '#fff', color: textMain, width: 288, borderLeft: `1px solid ${line}` } }}
       >
         <Stack direction="row" alignItems="center" justifyContent="space-between" px={2.5} py={2}>
           {logo(30)}
-          <IconButton aria-label="Fechar menu" onClick={() => setOpen(false)} sx={{ color: '#fff' }}>
+          <IconButton aria-label="Fechar menu" onClick={() => setOpen(false)} sx={{ color: textMain }}>
             <CloseRounded />
           </IconButton>
         </Stack>
@@ -144,7 +144,7 @@ export function Navbar() {
               onClick={() => setOpen(false)}
               sx={{
                 py: 1.4, color: textDim, fontSize: 16, fontWeight: 600, textDecoration: 'none',
-                borderBottom: `1px solid ${line}`, '&:hover': { color: '#fff' },
+                borderBottom: `1px solid ${line}`, '&:hover': { color: textMain },
               }}
             >
               {l.label}
@@ -163,7 +163,7 @@ export function Navbar() {
             component={RouterLink}
             to="/login"
             onClick={() => setOpen(false)}
-            sx={{ ...glass, mt: 1.5, color: '#fff', py: 1.2 }}
+            sx={{ ...glass, mt: 1.5, color: textMain, py: 1.2 }}
           >
             Já tenho conta
           </Button>

@@ -11,7 +11,7 @@ import { Box, Button, Chip, Container, Grid, Stack, Typography } from '@mui/mate
 import { ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { TICKER_WORDS } from './data';
-import { BrowserFrame, cyan, glass, gradientText, page, red, textDim, textFaint, useCountUp } from './theme';
+import { BrowserFrame, cyanDeep, glass, gradientText, page, red, textDim, textFaint, textMain, useCountUp } from './theme';
 
 
 function FloatingBadge({
@@ -36,7 +36,7 @@ function FloatingBadge({
         display: { xs: 'none', lg: 'flex' },
         alignItems: 'center',
         gap: 1,
-        boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
+        boxShadow: '0 16px 40px rgba(11,12,18,0.14)',
         animation: `${alt ? 'lpFloatAlt' : 'lpFloat'} ${duration}s ease-in-out infinite`,
         zIndex: 2,
         ...sx,
@@ -68,7 +68,7 @@ export function Hero() {
           <Grid item xs={12} md={6} lg={5}>
             <Box sx={{ animation: 'lpFadeUp .7s ease both' }}>
               <Chip
-                icon={<BoltRounded sx={{ fontSize: 16, color: `${cyan} !important` }} />}
+                icon={<BoltRounded sx={{ fontSize: 16, color: `${cyanDeep} !important` }} />}
                 label="Inteligência de vendas para o TikTok Shop"
                 sx={{ ...glass, color: textDim, mb: 3, px: 0.5, fontWeight: 600 }}
               />
@@ -130,9 +130,9 @@ export function Hero() {
                 size="large"
                 startIcon={<PlayArrowRounded />}
                 sx={{
-                  ...glass, color: '#fff', px: 3.5, py: 1.5, fontSize: 16,
+                  ...glass, color: textMain, px: 3.5, py: 1.5, fontSize: 16,
                   transition: 'border-color .2s ease, transform .2s ease',
-                  '&:hover': { borderColor: `${cyan}66`, transform: 'translateY(-2px)' },
+                  '&:hover': { borderColor: `${cyanDeep}66`, transform: 'translateY(-2px)' },
                   '&:active': { transform: 'scale(0.97)' },
                 }}
               >
@@ -141,7 +141,7 @@ export function Hero() {
             </Stack>
 
             <Stack direction="row" spacing={1} alignItems="center" mt={3} sx={{ animation: 'lpFadeUp .7s ease .35s both' }}>
-              <VerifiedRounded sx={{ fontSize: 17, color: cyan }} />
+              <VerifiedRounded sx={{ fontSize: 17, color: cyanDeep }} />
               <Typography fontSize={13.5} color={textFaint}>
                 Plano gratuito para sempre · 30 créditos de boas-vindas · sem cartão
               </Typography>
@@ -158,7 +158,7 @@ export function Hero() {
           <Grid item xs={12} md={6} lg={7}>
             <Box sx={{ position: 'relative', animation: 'lpFadeUp .8s ease .25s both' }}>
               <FloatingBadge sx={{ top: -30, right: -18 }} duration={5}>
-                <RocketLaunchRounded sx={{ fontSize: 18, color: cyan }} />
+                <RocketLaunchRounded sx={{ fontSize: 18, color: cyanDeep }} />
                 <Box>
                   <Typography fontSize={12} fontWeight={800} lineHeight={1.2}>Novo viral detectado</Typography>
                   <Typography fontSize={11} color={textDim} lineHeight={1.2}>há 2 minutos</Typography>
@@ -172,7 +172,7 @@ export function Hero() {
                 </Box>
               </FloatingBadge>
               <FloatingBadge sx={{ top: '58%', right: -52 }} duration={7}>
-                <AutoFixHighRounded sx={{ fontSize: 18, color: cyan }} />
+                <AutoFixHighRounded sx={{ fontSize: 18, color: cyanDeep }} />
                 <Typography fontSize={12} fontWeight={800}>Roteiro gerado ✓</Typography>
               </FloatingBadge>
 
