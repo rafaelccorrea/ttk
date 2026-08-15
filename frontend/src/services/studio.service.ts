@@ -41,6 +41,8 @@ export interface GenerateScriptInput {
   productDescription?: string;
   /** Foto do produto já enviada — a IA olha para ela ao escrever as cenas. */
   productImageUrl?: string;
+  /** `pecas`: ganchos, corpos e CTAs soltos, prontos para o Multiplicador. */
+  formato?: 'completo' | 'pecas';
   tone?: string;
 }
 

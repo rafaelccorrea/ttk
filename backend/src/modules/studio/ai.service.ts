@@ -15,6 +15,12 @@ export interface ScriptRequest {
    * com a imagem o roteiro deixa de descrever um produto genérico.
    */
   productImage?: { base64: string; mediaType: string };
+  /**
+   * `pecas` devolve ganchos, corpos e CTAs SOLTOS, numerados, em vez de um
+   * roteiro corrido. É o formato que o Multiplicador consome: cada peça vira
+   * um clipe gravado, e a combinação acontece depois.
+   */
+  formato?: 'completo' | 'pecas';
 }
 
 export interface ScriptResult {
@@ -137,6 +143,27 @@ Escreva um roteiro no formato GANCHO (0-3s, para o scroll) → CORPO (demonstra�
 Inclua indicação de cena para cada fala (o que aparece na tela).
 Gere 3 variações de gancho no final. Português do Brasil, linguagem falada.`;
 
+const PECAS_SYSTEM = `Você escreve PEÇAS soltas para teste A/B de vídeo curto no TikTok Shop Brasil.
+Devolva exatamente três blocos, nesta ordem e com estes títulos:
+
+## Ganchos
+1. … (0-3s; cada um com um ângulo DIFERENTE: dor, curiosidade, prova, preço, erro comum)
+2. …
+3. …
+
+## Corpos
+1. … (demonstração ou prova, 5-12s; cada um mostrando algo diferente na tela)
+2. …
+
+## CTAs
+1. … (comando claro para o carrinho, 2-4s)
+
+Regra que manda em tudo: cada peça precisa funcionar COLADA a qualquer peça dos
+outros blocos. Nada de "como eu falei", "esse aqui" ou qualquer referência ao
+que veio antes — as peças serão embaralhadas entre si.
+Uma frase por peça, linguagem falada, português do Brasil, sem texto na tela.
+No fim de cada peça, entre parênteses, a indicação de imagem em poucas palavras.`;
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
@@ -160,7 +187,12 @@ export class AiService {
       const response = await this.client.messages.create({
         model: 'claude-opus-5',
         max_tokens: 16000,
-        system: request.type === 'live' ? LIVE_SYSTEM : VIDEO_SYSTEM,
+        system:
+          request.formato === 'pecas'
+            ? PECAS_SYSTEM
+            : request.type === 'live'
+              ? LIVE_SYSTEM
+              : VIDEO_SYSTEM,
         messages: [
           {
             role: 'user',
@@ -561,9 +593,11 @@ export class AiService {
     if (r.productDescription) parts.push(`Detalhes: ${r.productDescription}`);
     if (r.tone) parts.push(`Tom desejado: ${r.tone}`);
     parts.push(
-      r.type === 'live'
-        ? 'Gere o roteiro de live agora.'
-        : 'Gere o roteiro de vídeo curto agora.',
+      r.formato === 'pecas'
+        ? 'Gere as peças agora: 3 ganchos, 2 corpos e 1 CTA.'
+        : r.type === 'live'
+          ? 'Gere o roteiro de live agora.'
+          : 'Gere o roteiro de vídeo curto agora.',
     );
     return parts.join('\n');
   }

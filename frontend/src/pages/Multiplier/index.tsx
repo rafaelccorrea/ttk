@@ -36,7 +36,14 @@ import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
 import UploadRoundedIcon from '@mui/icons-material/UploadRounded';
-import { DragEvent, FormEvent, useEffect, useRef, useState } from 'react';
+import {
+  DragEvent,
+  FormEvent,
+  SyntheticEvent,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { resolveApiUrl } from '@/services/api';
 import {
   ClipRole,
@@ -527,6 +534,39 @@ function CodigoChip({ code }: { code: string }) {
  * A prévia usa `<video preload="metadata">`: baixa só o cabeçalho e mostra o
  * primeiro quadro, em vez de puxar dezenas de MP4 inteiros ao abrir a aba.
  */
+/**
+ * Prévia que assume o formato do próprio arquivo.
+ *
+ * O card era fixo em 9:16, então um plano montado em 16:9 ou 1:1 aparecia
+ * espremido no meio de duas tarjas pretas — parecia defeito da montagem,
+ * quando o MP4 estava certo. A proporção real só é conhecida depois que o
+ * cabeçalho carrega, então começa no vertical (o formato mais comum) e se
+ * ajusta quando os metadados chegam.
+ */
+function PreviaDoVideo({ url }: { url: string }) {
+  const [proporcao, setProporcao] = useState('9 / 16');
+
+  return (
+    <Box
+      component="video"
+      src={url}
+      controls
+      preload="metadata"
+      onLoadedMetadata={(e: SyntheticEvent<HTMLVideoElement>) => {
+        const { videoWidth: l, videoHeight: a } = e.currentTarget;
+        if (l && a) setProporcao(`${l} / ${a}`);
+      }}
+      sx={{
+        width: '100%',
+        aspectRatio: proporcao,
+        display: 'block',
+        objectFit: 'contain',
+        bgcolor: '#000',
+      }}
+    />
+  );
+}
+
 function Galeria({
   videos,
   onRecarregar,
@@ -571,19 +611,7 @@ function Galeria({
                     bgcolor: '#000',
                   }}
                 >
-                  <Box
-                    component="video"
-                    src={resolveApiUrl(v.url!)}
-                    controls
-                    preload="metadata"
-                    sx={{
-                      width: '100%',
-                      aspectRatio: '9 / 16',
-                      display: 'block',
-                      objectFit: 'contain',
-                      bgcolor: '#000',
-                    }}
-                  />
+                  <PreviaDoVideo url={resolveApiUrl(v.url!)} />
                   <Box sx={{ p: 1, bgcolor: 'background.paper' }}>
                     <Stack direction="row" alignItems="center" spacing={0.5} mb={0.5}>
                       <CodigoChip code={v.code} />

@@ -22,6 +22,10 @@ export class AppUser {
   @Column({ nullable: true })
   displayName: string;
 
+  /** Foto de perfil no nosso bucket. Nula enquanto ele nao enviar nenhuma. */
+  @Column({ type: 'text', nullable: true })
+  avatarUrl: string | null;
+
   @Column({ default: 'free' })
   plan: string;
 

@@ -202,6 +202,9 @@ export function StudioPage() {
   // Aba da lista da esquerda: catálogo da plataforma × produtos do vendedor.
   const [aba, setAba] = useState<'top' | 'meus'>('top');
   const [mostrarSalvos, setMostrarSalvos] = useState(false);
+  // `pecas` só faz sentido no vídeo: a live é um ciclo contínuo, não peças
+  // avulsas para embaralhar.
+  const [formato, setFormato] = useState<'completo' | 'pecas'>('completo');
   const [imagemUrl, setImagemUrl] = useState<string | null>(null);
   const [enviandoImagem, setEnviandoImagem] = useState(false);
   const [erroImagem, setErroImagem] = useState<string | null>(null);
@@ -288,6 +291,7 @@ export function StudioPage() {
         productName: selecao ? undefined : productName,
         productDescription: productDescription || undefined,
         productImageUrl: imagemUrl ?? undefined,
+        formato,
         tone: tone || undefined,
       });
       setResult(script);
@@ -529,6 +533,30 @@ export function StudioPage() {
                   <ToggleButton value="video">Roteiro de Vídeo</ToggleButton>
                 </ToggleButtonGroup>
 
+                {type === 'video' && (
+                  <ToggleButtonGroup
+                    exclusive
+                    size="small"
+                    value={formato}
+                    onChange={(_e, v) => v && setFormato(v)}
+                    sx={{
+                      mb: 2.5,
+                      ml: { sm: 1 },
+                      '& .MuiToggleButton-root': {
+                        textTransform: 'none',
+                        fontWeight: 700,
+                        borderRadius: 2,
+                        px: 2,
+                      },
+                    }}
+                  >
+                    <ToggleButton value="completo">Roteiro completo</ToggleButton>
+                    <ToggleButton value="pecas">
+                      Peças pro Multiplicador
+                    </ToggleButton>
+                  </ToggleButtonGroup>
+                )}
+
                 <Rotulo>Descreva o produto</Rotulo>
                 <TextField
                   fullWidth
@@ -603,15 +631,29 @@ export function StudioPage() {
                   >
                     {busy
                       ? 'Gerando…'
-                      : `Gerar roteiro ${type === 'live' ? 'de live' : 'do vídeo'}`}
+                      : type === 'video' && formato === 'pecas'
+                        ? 'Gerar peças'
+                        : `Gerar roteiro ${type === 'live' ? 'de live' : 'do vídeo'}`}
                   </Button>
                   <Typography variant="body2" color="text.secondary">
-                    Estrutura:{' '}
-                    <Box component="span" color="primary.main" fontWeight={700}>
-                      {type === 'live'
-                        ? 'Apresentação · Oferta · Garantia · CTA'
-                        : 'Gancho · Corpo · CTA'}
-                    </Box>
+                    {type === 'video' && formato === 'pecas' ? (
+                      <>
+                        Saída:{' '}
+                        <Box component="span" color="primary.main" fontWeight={700}>
+                          3 ganchos · 2 corpos · 1 CTA
+                        </Box>{' '}
+                        — grave cada peça e suba no Multiplicador
+                      </>
+                    ) : (
+                      <>
+                        Estrutura:{' '}
+                        <Box component="span" color="primary.main" fontWeight={700}>
+                          {type === 'live'
+                            ? 'Apresentação · Oferta · Garantia · CTA'
+                            : 'Gancho · Corpo · CTA'}
+                        </Box>
+                      </>
+                    )}
                   </Typography>
                 </Stack>
               </form>

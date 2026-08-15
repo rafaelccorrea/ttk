@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthUser } from '../auth/auth-user';
+import { MediaMirrorService } from '../media/media-mirror.service';
 import { AppUser } from './entities/app-user.entity';
 
 @Injectable()
@@ -9,6 +14,7 @@ export class UsersService {
   constructor(
     @InjectRepository(AppUser)
     private readonly repository: Repository<AppUser>,
+    private readonly mirror: MediaMirrorService,
   ) {}
 
   /**
@@ -42,6 +48,24 @@ export class UsersService {
 
   async updateProfile(id: string, displayName: string): Promise<AppUser> {
     await this.repository.update({ id }, { displayName });
+    return this.findById(id);
+  }
+
+  /**
+   * Troca a foto de perfil.
+   *
+   * A imagem é normalizada e guardada no nosso bucket, como as demais: a URL
+   * fica permanente e não depende de host de terceiro. A chave leva o hash do
+   * conteúdo, então reenviar a mesma foto não cria objeto novo.
+   */
+  async updateAvatar(id: string, buffer: Buffer): Promise<AppUser> {
+    const url = await this.mirror.putImage(buffer, 'avatars', id, 'cover');
+    if (!url) {
+      throw new BadRequestException(
+        'A imagem não pôde ser guardada. Envie um PNG ou JPG.',
+      );
+    }
+    await this.repository.update({ id }, { avatarUrl: url });
     return this.findById(id);
   }
 }

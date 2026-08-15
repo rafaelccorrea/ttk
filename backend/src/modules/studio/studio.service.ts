@@ -141,6 +141,7 @@ export class StudioService {
         price,
         tone: dto.tone,
         productImage,
+        formato: dto.formato,
       });
     const result = this.aiService.enabled
       ? await this.billing.withCharge(userId, 'script', run)

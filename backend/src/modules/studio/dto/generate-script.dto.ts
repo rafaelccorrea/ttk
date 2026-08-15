@@ -51,6 +51,14 @@ export class GenerateScriptDto {
   @MaxLength(500)
   productImageUrl?: string;
 
+  @ApiPropertyOptional({
+    enum: ['completo', 'pecas'],
+    description: '`pecas` devolve ganchos, corpos e CTAs soltos para o Multiplicador',
+  })
+  @IsOptional()
+  @IsIn(['completo', 'pecas'])
+  formato?: 'completo' | 'pecas';
+
   @ApiPropertyOptional({ example: 'divertido e urgente' })
   @IsOptional()
   @IsString()

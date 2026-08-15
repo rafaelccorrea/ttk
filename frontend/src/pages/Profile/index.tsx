@@ -1,4 +1,5 @@
 import LogoutIcon from '@mui/icons-material/Logout';
+import PhotoCameraRoundedIcon from '@mui/icons-material/PhotoCameraRounded';
 import {
   Alert,
   Avatar,
@@ -15,6 +16,7 @@ import {
 import { useEffect, useState } from 'react';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { useAuth } from '@/contexts/AuthContext';
+import { resolveApiUrl } from '@/services/api';
 import { usersService, UserProfile } from '@/services/users.service';
 
 const PLAN_LABELS: Record<string, string> = {
@@ -40,6 +42,7 @@ export function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [displayName, setDisplayName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [feedback, setFeedback] = useState<{
     severity: 'success' | 'error';
     message: string;
@@ -55,6 +58,22 @@ export function ProfilePage() {
       .catch(console.error)
       .finally(() => setIsLoading(false));
   }, []);
+
+  async function trocarFoto(file: File) {
+    setEnviandoFoto(true);
+    try {
+      setProfile(await usersService.uploadAvatar(file));
+      setFeedback({ severity: 'success', message: 'Foto atualizada!' });
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        severity: 'error',
+        message: 'Não foi possível enviar a foto. Tente outra imagem.',
+      });
+    } finally {
+      setEnviandoFoto(false);
+    }
+  }
 
   async function handleSave() {
     setIsSaving(true);
@@ -94,18 +113,55 @@ export function ProfilePage() {
         <Card sx={{ maxWidth: 560 }}>
           <CardContent sx={{ p: 3 }}>
             <Box display="flex" alignItems="center" gap={2.5} mb={3}>
-              <Avatar
-                sx={{
-                  width: 72,
-                  height: 72,
-                  fontSize: 32,
-                  fontWeight: 800,
-                  bgcolor: 'primary.main',
-                  color: '#fff',
-                }}
-              >
-                {initial}
-              </Avatar>
+              <Box sx={{ position: 'relative' }}>
+                <Avatar
+                  component="label"
+                  src={
+                    profile?.avatarUrl
+                      ? resolveApiUrl(profile.avatarUrl)
+                      : undefined
+                  }
+                  sx={{
+                    width: 72,
+                    height: 72,
+                    fontSize: 32,
+                    fontWeight: 800,
+                    bgcolor: 'primary.main',
+                    color: '#fff',
+                    cursor: enviandoFoto ? 'wait' : 'pointer',
+                    '&:hover .trocar-foto': { opacity: 1 },
+                  }}
+                >
+                  {!profile?.avatarUrl && initial}
+                  {/* A camada só aparece no hover: fora dele, o que importa é
+                      a foto, não o convite para trocá-la. */}
+                  <Box
+                    className="trocar-foto"
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'grid',
+                      placeItems: 'center',
+                      bgcolor: 'rgba(0,0,0,0.55)',
+                      opacity: enviandoFoto ? 1 : 0,
+                      transition: 'opacity .15s',
+                    }}
+                  >
+                    <PhotoCameraRoundedIcon fontSize="small" />
+                  </Box>
+                  <input
+                    hidden
+                    type="file"
+                    accept="image/*"
+                    disabled={enviandoFoto}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) void trocarFoto(file);
+                    }}
+                  />
+                </Avatar>
+              </Box>
               <Box>
                 <Typography fontWeight={700} fontSize={18}>
                   {profile?.displayName || shownEmail}
