@@ -218,12 +218,25 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
                 o vídeo dentro do card. Os controles próprios do player não
                 se aplicam aqui — quem manda é o iframe. */}
             {embed && (
+              // Player oficial do TikTok. A moldura dele (banner "Assistir
+              // agora" + legenda) NÃO é removível: o conteúdo é cross-origin e
+              // o layout se ancora na altura do próprio iframe — tentar cortar
+              // por altura não surte efeito. É o preço de não ter o MP4.
+              // Com cota (ou com o MP4 espelhado no S3) o player volta a ser
+              // 100% nosso, sem moldura nenhuma.
               <Box
                 component="iframe"
                 src={embed}
                 title={video.caption}
                 allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-                sx={{ width: '100%', height: '100%', border: 0, display: 'block' }}
+                scrolling="no"
+                sx={{
+                  width: '100%',
+                  height: '100%',
+                  border: 0,
+                  display: 'block',
+                  bgcolor: '#000',
+                }}
               />
             )}
 
