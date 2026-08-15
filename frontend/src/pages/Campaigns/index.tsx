@@ -26,7 +26,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { SmartImage } from '@/components/ui/SmartImage';
+import { CurrencyField } from '@/components/ui/CurrencyField';
 import { resolveApiUrl } from '@/services/api';
+import {
+  LIMITES,
+  avisoFalaLonga,
+  contador,
+  perigoNoContador,
+  validarAcaoVisual,
+  validarFala,
+  validarFoto,
+  validarNomeProduto,
+  validarPreco,
+  validarRotuloPersona,
+  validarTextoLongo,
+} from './validacao';
 import {
   AttributeGroup,
   Campaign,
@@ -67,10 +81,31 @@ function ProdutoCard({
 
   async function enviar(arquivos: FileList | null) {
     if (!arquivos?.length) return;
-    setEnviando(true);
+    const lista = Array.from(arquivos);
     setErro(null);
+
+    // Valida ANTES de subir: 30MB gastos para receber um 413, ou um PDF
+    // renomeado para .jpg recusado só depois de atravessar a rede, é tempo do
+    // usuário jogado fora.
+    const invalida = lista.map(validarFoto).find(Boolean);
+    if (invalida) {
+      setErro(invalida);
+      if (inputRef.current) inputRef.current.value = '';
+      return;
+    }
+
+    const cabem = LIMITES.fotosPorProduto - produto.images.length;
+    if (lista.length > cabem) {
+      setErro(
+        `Cabem mais ${cabem} foto(s) neste produto (limite de ${LIMITES.fotosPorProduto}).`,
+      );
+      if (inputRef.current) inputRef.current.value = '';
+      return;
+    }
+
+    setEnviando(true);
     try {
-      for (const arquivo of Array.from(arquivos)) {
+      for (const arquivo of lista) {
         await campaignsService.addPhoto(produto.id, arquivo);
       }
       onChange();
@@ -140,7 +175,7 @@ function ProdutoCard({
             </Box>
           ))}
 
-          {produto.images.length < 5 && (
+          {produto.images.length < LIMITES.fotosPorProduto && (
             <Button
               component="label"
               variant="outlined"
@@ -185,26 +220,47 @@ function ProdutosTab({
   onChange: () => void;
 }) {
   const [name, setName] = useState('');
-  const [priceBrl, setPriceBrl] = useState('');
+  const [priceBrl, setPriceBrl] = useState<number | null>(null);
   const [benefit, setBenefit] = useState('');
   const [problemSolved, setProblemSolved] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // Erro só aparece depois que o campo perdeu o foco: acusar "obrigatório" na
+  // primeira letra digitada é ruído, não ajuda.
+  const [tocado, setTocado] = useState<Record<string, boolean>>({});
+
+  const erros = {
+    name: validarNomeProduto(name),
+    priceBrl: validarPreco(priceBrl),
+    benefit: validarTextoLongo(benefit, LIMITES.beneficio, 'Benefício'),
+    problemSolved: validarTextoLongo(problemSolved, LIMITES.problema, 'Problema'),
+  };
+  const invalido = Object.values(erros).some(Boolean);
+
+  function mostrar(campo: keyof typeof erros): string | undefined {
+    return tocado[campo] ? (erros[campo] ?? undefined) : undefined;
+  }
 
   async function salvar() {
+    // Ao enviar, tudo passa a ser "tocado": senão o botão fica desabilitado
+    // sem o usuário saber qual campo está errado.
+    setTocado({ name: true, priceBrl: true, benefit: true, problemSolved: true });
+    if (invalido) return;
+
     setSalvando(true);
     setErro(null);
     try {
       await campaignsService.createProduct({
         name: name.trim(),
-        priceBrl: priceBrl ? Number(priceBrl) : undefined,
+        priceBrl: priceBrl ?? undefined,
         benefit: benefit.trim() || undefined,
         problemSolved: problemSolved.trim() || undefined,
       });
       setName('');
-      setPriceBrl('');
+      setPriceBrl(null);
       setBenefit('');
       setProblemSolved('');
+      setTocado({});
       onChange();
     } catch (error) {
       setErro(mensagemDeErro(error));
@@ -223,16 +279,23 @@ function ProdutosTab({
                 Novo produto
               </Typography>
               <TextField
+                required
                 label="Nome do produto"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onBlur={() => setTocado((t) => ({ ...t, name: true }))}
+                error={Boolean(mostrar('name'))}
+                helperText={mostrar('name') ?? contador(name, LIMITES.nomeProduto)}
+                inputProps={{ maxLength: LIMITES.nomeProduto }}
                 fullWidth
               />
-              <TextField
-                label="Preço (R$)"
-                type="number"
+              <CurrencyField
+                label="Preço"
                 value={priceBrl}
-                onChange={(e) => setPriceBrl(e.target.value)}
+                onChange={setPriceBrl}
+                onBlur={() => setTocado((t) => ({ ...t, priceBrl: true }))}
+                error={Boolean(mostrar('priceBrl'))}
+                helperText={mostrar('priceBrl') ?? 'Opcional — entra no CTA do roteiro.'}
                 fullWidth
               />
               <TextField
@@ -240,26 +303,50 @@ function ProdutosTab({
                 placeholder="Corta tudo em segundos, sem sujeira."
                 value={benefit}
                 onChange={(e) => setBenefit(e.target.value)}
+                onBlur={() => setTocado((t) => ({ ...t, benefit: true }))}
+                error={Boolean(mostrar('benefit'))}
                 multiline
                 minRows={2}
                 fullWidth
-                helperText="Vira a promessa do gancho."
+                inputProps={{ maxLength: LIMITES.beneficio }}
+                FormHelperTextProps={{
+                  sx: perigoNoContador(benefit, LIMITES.beneficio)
+                    ? { color: 'warning.main' }
+                    : undefined,
+                }}
+                helperText={
+                  mostrar('benefit') ??
+                  `Vira a promessa do gancho. ${contador(benefit, LIMITES.beneficio)}`
+                }
               />
               <TextField
                 label="Problema que resolve"
                 placeholder="Perder 20 minutos picando cebola."
                 value={problemSolved}
                 onChange={(e) => setProblemSolved(e.target.value)}
+                onBlur={() => setTocado((t) => ({ ...t, problemSolved: true }))}
+                error={Boolean(mostrar('problemSolved'))}
                 multiline
                 minRows={2}
                 fullWidth
-                helperText="Vira a primeira frase do vídeo."
+                inputProps={{ maxLength: LIMITES.problema }}
+                FormHelperTextProps={{
+                  sx: perigoNoContador(problemSolved, LIMITES.problema)
+                    ? { color: 'warning.main' }
+                    : undefined,
+                }}
+                helperText={
+                  mostrar('problemSolved') ??
+                  `Vira a primeira frase do vídeo. ${contador(problemSolved, LIMITES.problema)}`
+                }
               />
               {erro && <Alert severity="error">{erro}</Alert>}
               <Button
                 variant="contained"
                 onClick={salvar}
-                disabled={!name.trim() || salvando}
+                // Não desabilita por campo inválido: botão morto sem explicação
+                // é o pior dos dois mundos. Clicar revela o que falta.
+                disabled={salvando}
               >
                 {salvando ? 'Salvando...' : 'Salvar produto'}
               </Button>
@@ -343,6 +430,12 @@ function PersonasTab({
                 placeholder="Ju da cozinha"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
+                error={Boolean(validarRotuloPersona(label))}
+                inputProps={{ maxLength: LIMITES.rotuloPersona }}
+                helperText={
+                  validarRotuloPersona(label) ??
+                  'Sem apelido, a persona recebe um nome pelos atributos escolhidos.'
+                }
                 fullWidth
               />
               {grupos.map((grupo) => (
@@ -366,7 +459,7 @@ function PersonasTab({
                 variant="contained"
                 startIcon={<AutoAwesomeRoundedIcon />}
                 onClick={criar}
-                disabled={!completo || gerando}
+                disabled={!completo || gerando || Boolean(validarRotuloPersona(label))}
               >
                 {gerando
                   ? 'Gerando retrato...'
@@ -440,6 +533,72 @@ function PersonasTab({
 }
 
 // --------------------------------------------------------------- storyboard
+/**
+ * Campo de texto de uma cena.
+ *
+ * Controlado, e não `defaultValue` com `onBlur`: sem estado local não há
+ * contador nem validação enquanto se digita, e o usuário só descobriria que
+ * passou do limite ao receber um 400 — com o texto já perdido.
+ *
+ * Grava ao sair do campo, mas só se mudou e só se for válido. Texto inválido
+ * fica na tela para ser corrigido, em vez de ser silenciosamente descartado.
+ */
+function CampoDeCena({
+  rotulo,
+  valorSalvo,
+  bloqueado,
+  limite,
+  ajuda,
+  validar,
+  aviso,
+  salvar,
+}: {
+  rotulo: string;
+  valorSalvo: string;
+  bloqueado: boolean;
+  limite: number;
+  ajuda?: string;
+  validar: (valor: string) => string | null;
+  aviso?: (valor: string) => string | null;
+  salvar: (valor: string) => void;
+}) {
+  const [valor, setValor] = useState(valorSalvo);
+
+  // Regeração do roteiro troca o texto por fora; o campo tem que acompanhar.
+  useEffect(() => setValor(valorSalvo), [valorSalvo]);
+
+  const erro = validar(valor);
+  const alerta = !erro && aviso ? aviso(valor) : null;
+
+  return (
+    <TextField
+      label={rotulo}
+      value={valor}
+      onChange={(e) => setValor(e.target.value)}
+      onBlur={() => {
+        if (erro || valor === valorSalvo) return;
+        salvar(valor);
+      }}
+      multiline
+      minRows={2}
+      fullWidth
+      disabled={bloqueado}
+      error={Boolean(erro)}
+      inputProps={{ maxLength: limite }}
+      FormHelperTextProps={{
+        sx: alerta
+          ? { color: 'warning.main' }
+          : perigoNoContador(valor, limite)
+            ? { color: 'warning.main' }
+            : undefined,
+      }}
+      helperText={
+        erro ?? alerta ?? `${ajuda ? `${ajuda} ` : ''}${contador(valor, limite)}`
+      }
+    />
+  );
+}
+
 function Storyboard({
   detalhe,
   precos,
@@ -632,38 +791,31 @@ function Storyboard({
                     color={cena.tipo === 'produto' ? 'primary' : 'default'}
                     sx={{ alignSelf: 'flex-start', fontWeight: 700 }}
                   />
-                  <TextField
-                    label={`Cena ${cena.ordem} — fala`}
-                    defaultValue={cena.fala}
-                    multiline
-                    minRows={2}
-                    fullWidth
-                    disabled={cena.status === 'pronta'}
-                    onBlur={(e) =>
-                      e.target.value !== cena.fala &&
-                      acao(() =>
-                        campaignsService.updateScene(cena.id, { fala: e.target.value }),
-                      )
+                  <CampoDeCena
+                    rotulo={`Cena ${cena.ordem} — fala`}
+                    valorSalvo={cena.fala}
+                    bloqueado={cena.status === 'pronta'}
+                    validar={validarFala}
+                    aviso={avisoFalaLonga}
+                    limite={LIMITES.fala}
+                    salvar={(valor) =>
+                      acao(() => campaignsService.updateScene(cena.id, { fala: valor }))
                     }
                   />
-                  <TextField
-                    label="O que aparece na tela"
-                    defaultValue={cena.acaoVisual}
-                    multiline
-                    minRows={2}
-                    fullWidth
-                    disabled={cena.status === 'pronta'}
-                    helperText={
+                  <CampoDeCena
+                    rotulo="O que aparece na tela"
+                    valorSalvo={cena.acaoVisual}
+                    bloqueado={cena.status === 'pronta'}
+                    validar={validarAcaoVisual}
+                    limite={LIMITES.acaoVisual}
+                    ajuda={
                       cena.tipo === 'produto'
                         ? 'Só o movimento de câmera e do objeto — nesta cena a pessoa não entra em quadro.'
                         : 'Descreva a ação. A aparência do apresentador já está definida.'
                     }
-                    onBlur={(e) =>
-                      e.target.value !== cena.acaoVisual &&
+                    salvar={(valor) =>
                       acao(() =>
-                        campaignsService.updateScene(cena.id, {
-                          acaoVisual: e.target.value,
-                        }),
+                        campaignsService.updateScene(cena.id, { acaoVisual: valor }),
                       )
                     }
                   />
