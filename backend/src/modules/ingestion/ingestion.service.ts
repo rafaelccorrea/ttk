@@ -2,11 +2,13 @@ import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/c
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CronJob } from 'cron';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Creator } from '../creators/entities/creator.entity';
 import { Trend } from '../trends/entities/trend.entity';
 import { Video } from '../videos/entities/video.entity';
+import { Product } from '../products/entities/product.entity';
 import { CreativeCenterSource } from './creative-center.source';
+import { ImageSearchSource } from './image-search.source';
 import { IngestionRun, IngestionTrigger } from './entities/ingestion-run.entity';
 import { IngestionSetting } from './entities/ingestion-setting.entity';
 
@@ -28,7 +30,10 @@ export class IngestionService implements OnModuleInit {
     private readonly runs: Repository<IngestionRun>,
     @InjectRepository(IngestionSetting)
     private readonly settings: Repository<IngestionSetting>,
+    @InjectRepository(Product)
+    private readonly products: Repository<Product>,
     private readonly creativeCenter: CreativeCenterSource,
+    private readonly imageSearch: ImageSearchSource,
     private readonly scheduler: SchedulerRegistry,
   ) {}
 
@@ -164,9 +169,25 @@ export class IngestionService implements OnModuleInit {
         run.videosUpserted += 1;
       }
 
+      // 3) Imagens de produtos sem foto (busca de imagem real; 15 por execução).
+      const missing = await this.products.find({
+        where: { imageUrl: IsNull() },
+        take: 15,
+      });
+      for (const product of missing) {
+        const imageUrl = await this.imageSearch.findProductImage(product.title);
+        if (imageUrl) {
+          product.imageUrl = imageUrl;
+          await this.products.save(product);
+          run.productsEnriched += 1;
+        }
+        // Cadência educada entre buscas.
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+
       run.status = 'success';
       this.logger.log(
-        `Ingestão ok: ${run.hashtagsFetched} hashtags, ${run.creatorsFetched} criadores, ${run.videosUpserted} vídeos`,
+        `Ingestão ok: ${run.hashtagsFetched} hashtags, ${run.creatorsFetched} criadores, ${run.videosUpserted} vídeos, ${run.productsEnriched} imagens de produto`,
       );
     } catch (err) {
       run.status = 'error';

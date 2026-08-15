@@ -77,12 +77,31 @@ export function ProductDetailPage() {
       <Button component={Link} to="/produtos" size="small" sx={{ mb: 2 }}>
         ← Voltar para produtos
       </Button>
-      <Typography variant="h5" gutterBottom>
-        {product.title}
-      </Typography>
-      <Typography color="text.secondary" gutterBottom>
-        {product.storeName ?? '—'} · {product.category}
-      </Typography>
+      <Box display="flex" gap={2.5} alignItems="center" mb={1}>
+        {product.imageUrl && (
+          <Box
+            component="img"
+            src={product.imageUrl}
+            alt={product.title}
+            sx={{
+              width: 96,
+              height: 96,
+              borderRadius: 3,
+              objectFit: 'cover',
+              border: '1px solid rgba(22,24,35,0.08)',
+              boxShadow: '0 4px 14px rgba(22,24,35,0.10)',
+            }}
+          />
+        )}
+        <Box>
+          <Typography variant="h5" gutterBottom>
+            {product.title}
+          </Typography>
+          <Typography color="text.secondary">
+            {product.storeName ?? '—'} · {product.category}
+          </Typography>
+        </Box>
+      </Box>
 
       <Grid container spacing={2} sx={{ my: 1 }}>
         <Grid item xs={6} sm={3}>

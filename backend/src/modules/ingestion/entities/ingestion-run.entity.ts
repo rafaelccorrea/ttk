@@ -30,6 +30,9 @@ export class IngestionRun {
   @Column({ type: 'int', default: 0 })
   videosUpserted: number;
 
+  @Column({ type: 'int', default: 0 })
+  productsEnriched: number;
+
   @Column({ type: 'text', nullable: true })
   error: string | null;
 }

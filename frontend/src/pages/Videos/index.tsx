@@ -23,6 +23,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { TikTokPlayer } from '@/components/ui/TikTokPlayer';
 import { FilterBar, SearchField } from '@/components/ui/Filters';
 import { videosService, ViralVideo } from '@/services/videos.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
@@ -364,52 +365,12 @@ export function VideosPage() {
         />
       </Box>
 
-      {/* Player embed oficial do TikTok */}
-      <Dialog
-        open={Boolean(playingVideo)}
+      {/* Player fullscreen estilo TikTok */}
+      <TikTokPlayer
+        video={playingVideo}
         onClose={() => setPlayingVideo(null)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          {playingVideo?.creatorHandle}
-          {playingVideo?.videoUrl && (
-            <Button
-              size="small"
-              component="a"
-              href={playingVideo.videoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              endIcon={<OpenInNewRoundedIcon sx={{ fontSize: 15 }} />}
-              sx={{ fontWeight: 700 }}
-            >
-              Abrir no TikTok
-            </Button>
-          )}
-        </DialogTitle>
-        <DialogContent sx={{ p: 0, bgcolor: '#000' }}>
-          {/* Player nativo (MP4 do CDN) tem prioridade; embed oficial como fallback. */}
-          {playingVideo?.playbackUrl ? (
-            <Box
-              component="video"
-              src={playingVideo.playbackUrl}
-              poster={playingVideo.thumbnailUrl ?? undefined}
-              controls
-              autoPlay
-              playsInline
-              sx={{ width: '100%', aspectRatio: '9 / 16', display: 'block', bgcolor: '#000' }}
-            />
-          ) : playingVideo && tiktokEmbedId(playingVideo.videoUrl) ? (
-            <Box
-              component="iframe"
-              src={`https://www.tiktok.com/embed/v2/${tiktokEmbedId(playingVideo.videoUrl)}`}
-              title={playingVideo.caption}
-              allow="autoplay; encrypted-media; fullscreen"
-              sx={{ width: '100%', aspectRatio: '9 / 16', border: 0, display: 'block' }}
-            />
-          ) : null}
-        </DialogContent>
-      </Dialog>
+        onToggleSave={toggleSave}
+      />
 
       <Dialog
         open={Boolean(transcriptVideo)}

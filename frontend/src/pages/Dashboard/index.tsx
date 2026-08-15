@@ -22,6 +22,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { TikTokPlayer } from '@/components/ui/TikTokPlayer';
 import { tiktokProfileUrl } from '@/utils/tiktok';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAuth } from '@/contexts/AuthContext';
@@ -314,35 +315,8 @@ export function DashboardPage() {
         </Grid>
       </Grid>
 
-      {/* Player interno dos vídeos em alta */}
-      <Dialog open={Boolean(playingVideo)} onClose={() => setPlayingVideo(null)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          @{playingVideo?.creatorHandle}
-          <Button
-            size="small"
-            component="a"
-            href={playingVideo ? tiktokProfileUrl(playingVideo.creatorHandle) : '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            sx={{ fontWeight: 700 }}
-          >
-            Ver perfil
-          </Button>
-        </DialogTitle>
-        <DialogContent sx={{ p: 0, bgcolor: '#000' }}>
-          {playingVideo?.playbackUrl && (
-            <Box
-              component="video"
-              src={playingVideo.playbackUrl}
-              poster={playingVideo.thumbnailUrl ?? undefined}
-              controls
-              autoPlay
-              playsInline
-              sx={{ width: '100%', aspectRatio: '9 / 16', display: 'block', bgcolor: '#000' }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Player fullscreen estilo TikTok */}
+      <TikTokPlayer video={playingVideo} onClose={() => setPlayingVideo(null)} />
     </>
   );
 }
