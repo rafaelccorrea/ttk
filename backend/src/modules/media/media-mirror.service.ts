@@ -113,25 +113,67 @@ export class MediaMirrorService {
         return null;
       }
 
-      const body = Buffer.from(await response.arrayBuffer());
-      if (body.byteLength > this.maxBytes) {
-        this.logger.warn(`Espelhamento: arquivo grande demais (${body.byteLength}b)`);
+      const original = Buffer.from(await response.arrayBuffer());
+      if (original.byteLength > this.maxBytes) {
+        this.logger.warn(`Espelhamento: arquivo grande demais (${original.byteLength}b)`);
         return null;
       }
+
+      // Imagem é normalizada antes de subir; vídeo vai como está.
+      const tratada = contentType.startsWith('image/')
+        ? await this.normalizarImagem(original)
+        : null;
+      const body = tratada?.body ?? original;
+      const tipoFinal = tratada ? 'image/webp' : contentType;
+      const chaveFinal = tratada ? key.replace(/\.[a-z0-9]+$/i, '.webp') : key;
 
       await this.client.send(
         new PutObjectCommand({
           Bucket: this.bucket,
-          Key: key,
+          Key: chaveFinal,
           Body: body,
-          ContentType: contentType,
+          ContentType: tipoFinal,
           // Imutável: a chave já contém o hash da origem.
           CacheControl: 'public, max-age=31536000, immutable',
         }),
       );
-      return `${this.publicBase}/${key}`;
+      return `${this.publicBase}/${chaveFinal}`;
     } catch (error) {
       this.logger.warn(`Espelhamento falhou (${prefix}/${id}): ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Padroniza a imagem antes de guardar.
+   *
+   * As capas chegam com proporções e pesos muito diferentes — quadrada,
+   * vertical, às vezes centenas de KB. Isso deixava a vitrine irregular e
+   * pesada. Aqui tudo vira o mesmo formato:
+   *
+   *  - recorte 9:16, que é o formato do card (`cover` sem distorcer);
+   *  - largura fixa, suficiente para telas retina sem exagero;
+   *  - WebP, que costuma cortar o peso pela metade.
+   *
+   * Como espelhamos uma única vez, o custo do processamento não se repete.
+   * Se algo falhar, devolve `null` e o original é guardado como veio.
+   */
+  private async normalizarImagem(
+    original: Buffer,
+  ): Promise<{ body: Buffer } | null> {
+    try {
+      const body = await sharp(original)
+        .rotate() // respeita o EXIF antes de recortar
+        .resize(IMAGE_WIDTH, IMAGE_HEIGHT, {
+          fit: 'cover',
+          // Recorte guiado pelo conteúdo: evita cortar o produto ao meio.
+          position: sharp.strategy.attention,
+        })
+        .webp({ quality: 82 })
+        .toBuffer();
+      return { body };
+    } catch (error) {
+      this.logger.warn(`Normalização da imagem falhou: ${error}`);
       return null;
     }
   }

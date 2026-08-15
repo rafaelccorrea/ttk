@@ -118,6 +118,8 @@ export class VideosService {
             FROM videos v
             LEFT JOIN products p ON p.id = v."productId"
            WHERE v.kind = 'product' AND v.category IS NOT NULL
+             -- Produto duplicado sai da vitrine junto com seus vídeos.
+             AND (p.id IS NULL OR p."isDuplicate" = false)
         ), ranked AS (
           SELECT *,
                  ROW_NUMBER() OVER (
@@ -334,6 +336,32 @@ export class VideosService {
       qb.andWhere('(v.caption ILIKE :search OR v.creatorHandle ILIKE :search)', {
         search: `%${query.search}%`,
       });
+    }
+
+    // Diversidade do feed. Duas regras, e as duas atacam a mesma queixa
+    // ("vários vídeos do mesmo produto"):
+    //
+    //  1. produto marcado como duplicata sai — senão o mesmo item aparece
+    //     de novo por baixo de outro anúncio;
+    //  2. no máximo N vídeos por produto, resolvido com uma subconsulta que
+    //     numera os vídeos dentro de cada produto.
+    //
+    // Não vale quando o usuário pediu explicitamente os vídeos DE um produto,
+    // nem na aba "Salvos", onde ele escolheu item a item.
+    if (!query.productId && !query.saved) {
+      qb.andWhere(
+        `(v."productId" IS NULL OR v."productId" NOT IN (
+            SELECT id FROM products WHERE "isDuplicate" = true))`,
+      );
+      qb.andWhere(
+        `(v."productId" IS NULL OR v.id IN (
+            SELECT id FROM (
+              SELECT id, ROW_NUMBER() OVER (
+                PARTITION BY "productId" ORDER BY views DESC, id ASC
+              ) AS rn FROM videos
+            ) ranking WHERE rn <= :maxPorProduto))`,
+        { maxPorProduto: MAX_VIDEOS_POR_PRODUTO },
+      );
     }
 
     const [rows, total] = await qb
