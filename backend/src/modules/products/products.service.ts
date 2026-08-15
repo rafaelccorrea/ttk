@@ -77,7 +77,7 @@ export class ProductsService {
     return {
       sales: 'sales30d',
       revenue: 'revenue30d',
-      salesAnterior: '("sales60d" - "sales30d")',
+      salesAnterior: '(p."sales60d" - p."sales30d")',
     };
   }
 
@@ -105,7 +105,7 @@ export class ProductsService {
       .addSelect(`p."${col.sales}"`, 'salesPeriod')
       .addSelect(`p."${col.revenue}"`, 'revenuePeriod')
       .addSelect(
-        col.salesAnterior ? `p.${col.salesAnterior}` : '0',
+        col.salesAnterior ? `${col.salesAnterior}` : '0',
         'salesPrevious',
       );
 
@@ -173,9 +173,9 @@ export class ProductsService {
       if (col.salesAnterior) {
         // Crescimento = (atual − anterior) / anterior.
         qb.andWhere(
-          `p.${col.salesAnterior} > 0
-           AND ((p."${col.sales}" - p.${col.salesAnterior}) * 100.0
-                / NULLIF(p.${col.salesAnterior}, 0)) >= :minGrowth`,
+          `${col.salesAnterior} > 0
+           AND ((p."${col.sales}" - ${col.salesAnterior}) * 100.0
+                / NULLIF(${col.salesAnterior}, 0)) >= :minGrowth`,
           { minGrowth: query.minGrowth },
         );
       } else {
@@ -191,7 +191,13 @@ export class ProductsService {
     const sortExpression = this.sortExpression(query.sort, col);
     // Desempate por id: sem ele, linhas empatadas trocam de posição entre
     // requisições (sort instável do Postgres) e podem duplicar/sumir na paginação.
-    qb.orderBy(sortExpression, direction).addOrderBy('p.id', 'ASC');
+    // NULLS LAST: produto sem base de comparação não tem crescimento, e o
+    // Postgres jogaria esses nulos para o TOPO no DESC — o "maior
+    // crescimento" apareceria vazio.
+    qb.orderBy(sortExpression, direction, 'NULLS LAST').addOrderBy(
+      'p.id',
+      'ASC',
+    );
 
  // Sem agregação, o total é uma contagem direta da mesma query — não
     // precisa mais materializar todas as linhas só para contá-las.
@@ -264,9 +270,9 @@ export class ProductsService {
         // cai para vendas em vez de fingir uma ordem que não existe.
         if (!col.salesAnterior) return `p."${col.sales}"`;
         return `CASE
-          WHEN p.${col.salesAnterior} <= 0 THEN NULL
-          ELSE (p."${col.sales}" - p.${col.salesAnterior}) * 100.0
-               / p.${col.salesAnterior}
+          WHEN ${col.salesAnterior} <= 0 THEN NULL
+          ELSE (p."${col.sales}" - ${col.salesAnterior}) * 100.0
+               / ${col.salesAnterior}
         END`;
       default:
         return `p."${col.sales}"`;
@@ -319,7 +325,7 @@ export class ProductsService {
                -- 7, 30 e 90 dias devolviam exatamente o mesmo resultado.
                p."${col.sales}"   AS "salesPeriod",
                p."${col.revenue}" AS "revenuePeriod",
-               ${col.salesAnterior ? `p.${col.salesAnterior}` : '0'} AS "salesPrevious"
+               ${col.salesAnterior ? `${col.salesAnterior}` : '0'} AS "salesPrevious"
           FROM products p
          WHERE p."isDuplicate" = false
       ), ranked AS (
