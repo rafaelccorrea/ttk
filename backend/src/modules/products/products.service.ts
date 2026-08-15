@@ -255,6 +255,92 @@ export class ProductsService {
     }
   }
 
+  /**
+   * Catálogo agrupado em seções por categoria, com os melhores de cada uma.
+   *
+   * Existe para a vitrine não virar uma grade misturada onde perfume divide
+   * espaço com furadeira: o usuário varre por nicho. Tudo sai de UMA query,
+   * com `ROW_NUMBER` particionado — buscar categoria a categoria seriam 29
+   * idas ao banco por carregamento de tela.
+   */
+  async sections(
+    period = 30,
+    perSection = 12,
+    maxSections = 10,
+    userId?: string,
+    /** Abaixo disso a categoria não vira seção — 2 produtos não são vitrine. */
+    minItems = 4,
+  ): Promise<{
+    sections: Array<{
+      category: string;
+      total: number;
+      items: RankedProduct[];
+    }>;
+  }> {
+    const current = this.isoDaysAgo(period);
+    const previous = this.isoDaysAgo(period * 2);
+
+    const rows = await this.products.query(
+      `
+      WITH agg AS (
+        SELECT p.id, p.title, p."storeName", p.category, p.price, p."imageUrl",
+               p.images, p.rating, p."radarScore", p."tiktokUrl",
+               COALESCE(SUM(CASE WHEN m.date >= $1 THEN m.sales END), 0)   AS "salesPeriod",
+               COALESCE(SUM(CASE WHEN m.date >= $1 THEN m.revenue END), 0) AS "revenuePeriod",
+               COALESCE(SUM(CASE WHEN m.date <  $1 THEN m.sales END), 0)   AS "salesPrevious"
+          FROM products p
+          LEFT JOIN product_metrics_daily m
+                 ON m."productId" = p.id AND m.date >= $2
+         GROUP BY p.id
+      ), ranked AS (
+        SELECT *,
+               ROW_NUMBER() OVER (
+                 PARTITION BY category ORDER BY "salesPeriod" DESC, id ASC
+               ) AS rn,
+               COUNT(*)  OVER (PARTITION BY category) AS "categoryTotal",
+               SUM("salesPeriod") OVER (PARTITION BY category) AS "categorySales"
+          FROM agg
+      )
+      SELECT * FROM ranked
+       WHERE rn <= $3
+       ORDER BY "categorySales" DESC, category ASC, rn ASC
+      `,
+      [current, previous, perSection],
+    );
+
+    const favoriteIds = userId
+      ? new Set(
+          (await this.favorites.find({ where: { userId } })).map(
+            (f) => f.productId,
+          ),
+        )
+      : new Set<string>();
+
+    // Preserva a ordem que o SQL já definiu (categoria de maior venda primeiro).
+    const byCategory = new Map<
+      string,
+      { category: string; total: number; items: RankedProduct[] }
+    >();
+    for (const row of rows) {
+      let section = byCategory.get(row.category);
+      if (!section) {
+        section = {
+          category: row.category,
+          total: Number(row.categoryTotal),
+          items: [],
+        };
+        byCategory.set(row.category, section);
+      }
+      section.items.push(this.toRanked(row, favoriteIds));
+    }
+
+    return {
+      sections: [...byCategory.values()]
+        .filter((s) => s.items.length >= minItems)
+        .slice(0, maxSections),
+    };
+  }
+
   private toRanked(r: any, favoriteIds: Set<string>): RankedProduct {
     const salesPeriod = Number(r.salesPeriod);
     const salesPrevious = Number(r.salesPrevious);

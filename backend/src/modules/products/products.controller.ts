@@ -27,6 +27,24 @@ export class ProductsController {
     return this.productsService.rank(query, user.id);
   }
 
+  @Get('sections')
+  @ApiOperation({
+    summary: 'Catálogo agrupado por categoria (vitrine, N produtos por seção)',
+  })
+  sections(
+    @CurrentUser() user: AuthUser,
+    @Query('period') period?: string,
+    @Query('perSection') perSection?: string,
+    @Query('maxSections') maxSections?: string,
+  ) {
+    return this.productsService.sections(
+      Math.min(Number(period) || 30, 90),
+      Math.min(Number(perSection) || 12, 24),
+      Math.min(Number(maxSections) || 10, 31),
+      user.id,
+    );
+  }
+
   @Get('categories')
   @ApiOperation({ summary: 'Categorias disponíveis no catálogo' })
   categories() {

@@ -32,6 +32,7 @@ import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { HotBadge } from '@/components/ui/HotBadge';
 import {
   ProductFilterOptions,
+  ProductSection,
   ProductSort,
   productsService,
   RankedProduct,
@@ -337,6 +338,7 @@ export function ProductsPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [sections, setSections] = useState<ProductSection[]>([]);
 
   const categories = options?.categories ?? [];
 
@@ -348,6 +350,24 @@ export function ProductsPage() {
     Object.entries(advanced).filter(([, v]) =>
       typeof v === 'boolean' ? v : String(v).trim() !== '',
     ).length + (category ? 1 : 0);
+
+  // Modo vitrine só vale no estado limpo: qualquer filtro, busca ou ordenação
+  // significa que o usuário quer comparar o catálogo inteiro, não navegar nichos.
+  const showSections =
+    !category &&
+    !search.trim() &&
+    activeCount === 0 &&
+    sort === 'sales' &&
+    page === 1;
+
+  // Busca as seções só quando o modo está ativo — e refaz ao trocar o período.
+  useEffect(() => {
+    if (!showSections) return;
+    productsService
+      .sections(period, 12)
+      .then(setSections)
+      .catch(console.error);
+  }, [showSections, period]);
 
   useEffect(() => {
     productsService.filterOptions().then(setOptions).catch(console.error);
@@ -556,28 +576,83 @@ export function ProductsPage() {
         {loading ? 'Buscando...' : `${total} produto${total === 1 ? '' : 's'} encontrado${total === 1 ? '' : 's'}`}
       </Typography>
 
-      {loading && items.length === 0 && (
+      {loading && items.length === 0 && sections.length === 0 && (
         <BrandLoader label="Carregando produtos..." />
       )}
-      <Grid container spacing={2.5} sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}>
-        {items.map((p, index) => (
-          <Grid item xs={6} sm={4} md={3} lg={2} key={p.id}>
-            <ProductCard
-              product={p}
-              rank={(page - 1) * pageSize + index + 1}
-              onToggleFavorite={toggleFavorite}
-            />
-          </Grid>
-        ))}
-      </Grid>
 
-      <Box display="flex" justifyContent="center" mt={4}>
-        <Pagination
-          count={Math.max(1, Math.ceil(total / pageSize))}
-          page={page}
-          onChange={(_e, value) => setPage(value)}
-        />
-      </Box>
+      {/* Vitrine: sem filtro nenhum, o catálogo aparece separado por nicho.
+          Assim que o usuário filtra ou ordena, vira grade única — misturar os
+          dois modos confundiria o que está sendo comparado. */}
+      {showSections ? (
+        sections.map((section) => (
+          <Box key={section.category} mb={4}>
+            <Box
+              display="flex"
+              alignItems="baseline"
+              justifyContent="space-between"
+              mb={1.5}
+            >
+              <Typography variant="h6" fontWeight={800}>
+                {section.category}
+                <Typography
+                  component="span"
+                  color="text.secondary"
+                  fontSize={13}
+                  fontWeight={500}
+                  ml={1}
+                >
+                  {section.total} produto{section.total === 1 ? '' : 's'}
+                </Typography>
+              </Typography>
+              {section.total > section.items.length && (
+                <Button
+                  size="small"
+                  onClick={() => (setCategory(section.category), setPage(1))}
+                >
+                  Ver todos
+                </Button>
+              )}
+            </Box>
+            <Grid container spacing={2.5}>
+              {section.items.map((p, index) => (
+                <Grid item xs={6} sm={4} md={3} lg={2} key={p.id}>
+                  <ProductCard
+                    product={p}
+                    rank={index + 1}
+                    onToggleFavorite={toggleFavorite}
+                  />
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+        ))
+      ) : (
+        <>
+          <Grid
+            container
+            spacing={2.5}
+            sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}
+          >
+            {items.map((p, index) => (
+              <Grid item xs={6} sm={4} md={3} lg={2} key={p.id}>
+                <ProductCard
+                  product={p}
+                  rank={(page - 1) * pageSize + index + 1}
+                  onToggleFavorite={toggleFavorite}
+                />
+              </Grid>
+            ))}
+          </Grid>
+
+          <Box display="flex" justifyContent="center" mt={4}>
+            <Pagination
+              count={Math.max(1, Math.ceil(total / pageSize))}
+              page={page}
+              onChange={(_e, value) => setPage(value)}
+            />
+          </Box>
+        </>
+      )}
     </>
   );
 }

@@ -30,6 +30,14 @@ export type ProductSort =
   | 'rating'
   | 'radar';
 
+/** Uma categoria da vitrine, com seus melhores produtos. */
+export interface ProductSection {
+  category: string;
+  /** Quantos produtos a categoria tem no total (o card mostra só os melhores). */
+  total: number;
+  items: RankedProduct[];
+}
+
 export interface RankQuery {
   period?: number;
   category?: string;
@@ -64,6 +72,18 @@ export const productsService = {
       page: number;
     }>('/products', { params: query });
     return data;
+  },
+
+  /**
+   * Vitrine agrupada por categoria. Evita a grade misturada onde perfume
+   * aparece ao lado de furadeira — o usuário varre por nicho.
+   */
+  async sections(period = 30, perSection = 12): Promise<ProductSection[]> {
+    const { data } = await api.get<{ sections: ProductSection[] }>(
+      '/products/sections',
+      { params: { period, perSection } },
+    );
+    return data.sections;
   },
 
   async filterOptions(): Promise<ProductFilterOptions> {
