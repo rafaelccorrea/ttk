@@ -129,6 +129,8 @@ export class IngestionService implements OnModuleInit {
       const hashtags = await this.creativeCenter.fetchTrendingHashtags(20);
       run.hashtagsFetched = hashtags.length;
       for (const tag of hashtags) {
+        // Chave normalizada: "#Beleza" e "#beleza" são a mesma hashtag.
+        tag.hashtag = tag.hashtag.toLowerCase();
         const existing = await this.trends.findOne({ where: { hashtag: tag.hashtag } });
         if (existing) {
           existing.title = tag.title;
@@ -153,6 +155,8 @@ export class IngestionService implements OnModuleInit {
       const trendingCreators = await this.creativeCenter.fetchTrendingCreators(8);
       run.creatorsFetched = trendingCreators.length;
       for (const tc of trendingCreators) {
+        // Handles do TikTok são case-insensitive; normaliza para não duplicar.
+        tc.handle = tc.handle.toLowerCase();
         const creator =
           (await this.creators.findOne({ where: { handle: tc.handle } })) ??
           this.creators.create({ handle: tc.handle, category: tc.topic ?? 'geral' });

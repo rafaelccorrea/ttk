@@ -35,7 +35,7 @@ import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { SupportFab } from '@/components/ui/SupportFab';
 import { useAuth } from '@/contexts/AuthContext';
-import { CREDITS_CHANGED_EVENT } from '@/services/api';
+import { api, CREDITS_CHANGED_EVENT } from '@/services/api';
 import { billingService } from '@/services/billing.service';
 
 const DRAWER_WIDTH = 248;
@@ -112,6 +112,38 @@ export function AppLayout() {
   const current = NAV.find((n) => location.pathname.startsWith(n.to));
   const [credits, setCredits] = useState<number | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
+  const [nextUpdate, setNextUpdate] = useState<{
+    nextRunAt: string | null;
+    isRunning: boolean;
+  } | null>(null);
+  const [, forceTick] = useState(0);
+
+  // Timer da próxima leva de análises (visível a todos os planos).
+  useEffect(() => {
+    const load = () =>
+      api
+        .get('/analytics/next-update')
+        .then((r) => setNextUpdate(r.data))
+        .catch(() => setNextUpdate(null));
+    load();
+    const refetch = setInterval(load, 5 * 60_000); // re-sincroniza a cada 5 min
+    const tick = setInterval(() => forceTick((t) => t + 1), 30_000); // contagem
+    return () => {
+      clearInterval(refetch);
+      clearInterval(tick);
+    };
+  }, []);
+
+  const updateLabel = (() => {
+    if (nextUpdate?.isRunning) return 'atualizando agora...';
+    const at = nextUpdate?.nextRunAt ? new Date(nextUpdate.nextRunAt) : null;
+    if (!at) return 'atualizado hoje';
+    const diffMin = Math.max(0, Math.round((at.getTime() - Date.now()) / 60_000));
+    if (diffMin === 0) return 'atualizando agora...';
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    return `próxima análise em ${h > 0 ? `${h}h ` : ''}${m}min`;
+  })();
 
   // Atualiza o saldo a cada navegação E sempre que uma chamada gasta/compra
   // créditos (evento disparado pelo interceptor do axios).
@@ -341,7 +373,7 @@ export function AppLayout() {
           </Typography>
           <Chip
             size="small"
-            label="atualizado hoje"
+            label={updateLabel}
             sx={{
               bgcolor: 'rgba(37,244,238,0.12)',
               color: '#0a8a85',

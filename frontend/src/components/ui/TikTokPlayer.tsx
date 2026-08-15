@@ -13,7 +13,7 @@ import VolumeUpRoundedIcon from '@mui/icons-material/VolumeUpRounded';
 import { Avatar, Backdrop, Box, Button, Fade, IconButton, Stack, Typography } from '@mui/material';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatNumber } from '@/utils/format';
-import { tiktokProfileUrl } from '@/utils/tiktok';
+import { proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
 
 const red = '#fe2c55';
 
@@ -166,7 +166,7 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
               component="video"
               ref={videoRef}
               src={video.playbackUrl ?? undefined}
-              poster={video.thumbnailUrl ?? undefined}
+              poster={proxyImage(video.thumbnailUrl)}
               autoPlay
               playsInline
               onClick={togglePlay}

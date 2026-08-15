@@ -18,6 +18,7 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { productsService, RankedProduct } from '@/services/products.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
+import { proxyImage } from '@/utils/tiktok';
 
 const PAGE_SIZE = 24;
 
@@ -54,19 +55,37 @@ function ProductCard({
         '&:hover': { transform: 'translateY(-2px)' },
       }}
     >
+      {/* Foto estilo catálogo: contain (sem cortes) sobre fundo neutro. */}
       <Box
         sx={{
-          height: 132,
-          // Foto real do produto quando a ingestão populou; gradiente como fallback.
-          background: product.imageUrl
-            ? `linear-gradient(180deg, rgba(0,0,0,0.0) 55%, rgba(0,0,0,0.35)), url(${proxyImage(product.imageUrl)}) center/cover no-repeat`
-            : gradientFor(product.category),
+          position: 'relative',
+          height: 172,
+          background: product.imageUrl ? '#f6f6f8' : gradientFor(product.category),
           display: 'flex',
           alignItems: 'flex-start',
           justifyContent: 'space-between',
           p: 1.25,
+          overflow: 'hidden',
         }}
       >
+        {product.imageUrl && (
+          <Box
+            component="img"
+            src={proxyImage(product.imageUrl)}
+            alt={product.title}
+            loading="lazy"
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              p: 1.5,
+              transition: 'transform .25s ease',
+              '.MuiCard-root:hover &': { transform: 'scale(1.05)' },
+            }}
+          />
+        )}
         <Chip
           size="small"
           label={`#${rank}`}
@@ -75,6 +94,7 @@ function ProductCard({
             color: '#fff',
             fontWeight: 800,
             backdropFilter: 'blur(4px)',
+            zIndex: 1,
           }}
         />
         <IconButton
@@ -85,6 +105,7 @@ function ProductCard({
             bgcolor: 'rgba(0,0,0,0.35)',
             color: product.isFavorite ? '#ffd54f' : '#fff',
             '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' },
+            zIndex: 1,
           }}
         >
           {product.isFavorite ? (

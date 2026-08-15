@@ -63,7 +63,11 @@ export class VideosService {
       ),
     );
 
-    const qb = this.videos.createQueryBuilder('v').orderBy('v.views', 'DESC');
+    // Desempate por id para paginação estável (sort do Postgres não é estável).
+    const qb = this.videos
+      .createQueryBuilder('v')
+      .orderBy('v.views', 'DESC')
+      .addOrderBy('v.id', 'ASC');
 
     if (query.saved) {
       if (savedIds.size === 0) {

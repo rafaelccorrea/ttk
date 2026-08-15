@@ -14,7 +14,8 @@ export class Trend {
   @Column()
   title: string;
 
-  @Column({ nullable: true })
+  // Única (case já normalizado para minúsculas na ingestão); NULLs não colidem.
+  @Column({ nullable: true, unique: true })
   hashtag: string;
 
   @Column({ type: 'bigint', default: 0 })

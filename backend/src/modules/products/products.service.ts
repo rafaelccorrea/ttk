@@ -92,7 +92,9 @@ export class ProductsService {
 
     const sortColumn =
       query.sort === 'revenue' ? '"revenuePeriod"' : '"salesPeriod"';
-    qb.orderBy(sortColumn, 'DESC');
+    // Desempate por id: sem ele, linhas empatadas trocam de posição entre
+    // requisições (sort instável do Postgres) e podem duplicar/sumir na paginação.
+    qb.orderBy(sortColumn, 'DESC').addOrderBy('p.id', 'ASC');
 
     const countQb = this.products.createQueryBuilder('p');
     if (query.category) {

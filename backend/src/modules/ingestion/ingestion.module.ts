@@ -23,6 +23,7 @@ import { IngestionService } from './ingestion.service';
     BillingModule,
   ],
   controllers: [IngestionController],
+  exports: [IngestionService],
   providers: [
     IngestionService,
     CreativeCenterSource,

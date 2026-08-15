@@ -38,7 +38,7 @@ export class TrendsService {
   }
 
   findAll(): Promise<Trend[]> {
-    return this.repository.find({ order: { createdAt: 'DESC' } });
+    return this.repository.find({ order: { createdAt: 'DESC', id: 'ASC' } });
   }
 
   async findOne(id: string): Promise<Trend> {

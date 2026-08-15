@@ -35,10 +35,11 @@ export class AnalyticsService {
         .select('COUNT(DISTINCT p.category)', 'count')
         .getRawOne(),
         this.productsService.rank({ period: 7, page: 1, limit: 5 }, userId),
-        this.videos.find({ order: { views: 'DESC' }, take: 5 }),
+        this.videos.find({ order: { views: 'DESC', id: 'ASC' }, take: 5 }),
         this.creators
           .createQueryBuilder('c')
           .orderBy('c.gmvPeriod', 'DESC')
+          .addOrderBy('c.id', 'ASC')
           .take(5)
           .getMany(),
       ]);

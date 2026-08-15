@@ -7,6 +7,7 @@ import { Video } from '../videos/entities/video.entity';
 import { ProductsModule } from '../products/products.module';
 import { UsersModule } from '../users/users.module';
 import { AnalyticsController } from './analytics.controller';
+import { IngestionModule } from '../ingestion/ingestion.module';
 import { AnalyticsService } from './analytics.service';
 
 @Module({
@@ -14,6 +15,7 @@ import { AnalyticsService } from './analytics.service';
     TypeOrmModule.forFeature([Product, ProductMetricDaily, Video, Creator]),
     ProductsModule,
     UsersModule,
+    IngestionModule,
   ],
   controllers: [AnalyticsController],
   providers: [AnalyticsService],

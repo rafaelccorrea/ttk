@@ -44,6 +44,8 @@ export class CreatorsService {
     } else {
       qb.orderBy('c.gmvPeriod', 'DESC');
     }
+    // Desempate por id para paginação estável.
+    qb.addOrderBy('c.id', 'ASC');
 
     const [rows, total] = await qb
       .skip((page - 1) * limit)
