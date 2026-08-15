@@ -8,6 +8,13 @@ export interface ScriptRequest {
   productDescription?: string;
   price?: number;
   tone?: string;
+  /**
+   * Foto do produto, para o modelo VER o que está sendo vendido.
+   *
+   * Descrição em texto erra o essencial (cor, formato, o que aparece na tela);
+   * com a imagem o roteiro deixa de descrever um produto genérico.
+   */
+  productImage?: { base64: string; mediaType: string };
 }
 
 export interface ScriptResult {
@@ -157,7 +164,25 @@ export class AiService {
         messages: [
           {
             role: 'user',
-            content: this.buildUserPrompt(request),
+            // A foto vem ANTES do texto: é a ordem que a própria Anthropic
+            // recomenda quando a instrução se refere à imagem.
+            content: request.productImage
+              ? [
+                  {
+                    type: 'image' as const,
+                    source: {
+                      type: 'base64' as const,
+                      media_type: request.productImage
+                        .mediaType as 'image/webp',
+                      data: request.productImage.base64,
+                    },
+                  },
+                  {
+                    type: 'text' as const,
+                    text: `${this.buildUserPrompt(request)}\n\nA imagem acima é a foto real do produto: use o que dá para VER nela (formato, cor, uso) nas indicações de cena.`,
+                  },
+                ]
+              : this.buildUserPrompt(request),
           },
         ],
       });

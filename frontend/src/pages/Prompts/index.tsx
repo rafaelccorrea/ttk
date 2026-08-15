@@ -17,7 +17,11 @@ import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiErrorMessage } from '@/contexts/AuthContext';
 import { billingService, Wallet } from '@/services/billing.service';
-import { PromptTemplate, studioService } from '@/services/studio.service';
+import {
+  PromptsRefreshStatus,
+  PromptTemplate,
+  studioService,
+} from '@/services/studio.service';
 import { videogenService } from '@/services/videogen.service';
 
 function PromptCard({ prompt, wallet }: { prompt: PromptTemplate; wallet: Wallet | null }) {
@@ -90,6 +94,12 @@ function PromptCard({ prompt, wallet }: { prompt: PromptTemplate; wallet: Wallet
           {prompt.tags.map((t) => (
             <Chip key={t} size="small" variant="outlined" label={t} />
           ))}
+          {/* Procedência à vista: "em alta" é um formato que a plataforma
+              acabou de extrair dos anúncios que estão vendendo, não do acervo
+              fixo. É a diferença entre um cofre vivo e uma lista velha. */}
+          {prompt.source === 'auto' && (
+            <Chip size="small" color="warning" label="em alta" sx={{ fontWeight: 700 }} />
+          )}
         </Box>
         <Typography fontWeight={600} gutterBottom>
           {prompt.title}
@@ -156,10 +166,12 @@ export function PromptsPage() {
   const [mediaType, setMediaType] = useState<'video' | 'image' | ''>('');
   const [search, setSearch] = useState('');
   const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [refresh, setRefresh] = useState<PromptsRefreshStatus | null>(null);
 
   // Uma leitura só para a página inteira: o preço é o mesmo em todos os cards.
   useEffect(() => {
     billingService.wallet().then(setWallet).catch(console.error);
+    studioService.promptsRefreshStatus().then(setRefresh).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -183,6 +195,26 @@ export function PromptsPage() {
       <Typography color="text.secondary" gutterBottom>
         Prompts prontos de vídeo e imagem IA — preencha os campos e copie.
       </Typography>
+
+      {/* O Cofre se atualiza sozinho toda semana a partir dos anúncios que
+          estão vendendo. Dizer isso é metade do valor: sem a data, o usuário
+          não tem como saber se está olhando um formato atual ou de um ano
+          atrás — e é exatamente essa dúvida que faz ele parar de voltar aqui. */}
+      {refresh?.nextRunAt && (
+        <Typography variant="caption" color="text.secondary" display="block">
+          {refresh.isRunning
+            ? 'Destilando novos formatos agora...'
+            : // Sem ponto final no fim: em pt-BR o mês abreviado já sai com um
+              // ("17 de ago."), e somar o meu produzia "ago..".
+              `Atualizado a partir dos anúncios que mais venderam nos últimos 30 dias. Próxima leva em ${new Date(
+                refresh.nextRunAt,
+              ).toLocaleDateString('pt-BR', {
+                weekday: 'long',
+                day: '2-digit',
+                month: 'short',
+              })}`}
+        </Typography>
+      )}
 
       <FilterBar sx={{ my: 2 }}>
         <ToggleButtonGroup

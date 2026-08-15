@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -7,6 +8,7 @@ import { Repository } from 'typeorm';
 import { BillingService } from '../billing/billing.service';
 import { Product } from '../products/entities/product.entity';
 import { UserProduct } from '../campaigns/entities/user-product.entity';
+import { MEDIA_ROUTE, MediaMirrorService } from '../media/media-mirror.service';
 import { AiService } from './ai.service';
 import { GenerateScriptDto } from './dto/generate-script.dto';
 import { PromptTemplate } from './entities/prompt-template.entity';
@@ -25,7 +27,58 @@ export class StudioService {
     private readonly userProducts: Repository<UserProduct>,
     private readonly aiService: AiService,
     private readonly billing: BillingService,
+    private readonly mirror: MediaMirrorService,
   ) {}
+
+  /** Guarda a foto do produto enviada no roteirizador e devolve a URL. */
+  async salvarFotoDoProduto(userId: string, buffer: Buffer): Promise<{ url: string }> {
+    // `contain` e não `cover`: recortar a foto de um produto corta justamente
+    // a parte que interessa (o produto inteiro no quadro).
+    const url = await this.mirror.putImage(
+      buffer,
+      'studio-products',
+      `${userId}-${Date.now()}`,
+      'contain',
+    );
+    if (!url) {
+      throw new BadRequestException(
+        'A imagem não pôde ser guardada. Envie um PNG ou JPG de até 40MB.',
+      );
+    }
+    return { url };
+  }
+
+  /**
+   * Lê a foto de volta como base64 para mandar ao modelo.
+   *
+   * Só aceita objeto do nosso bucket: a URL vem do cliente, e buscar qualquer
+   * endereço que ele mandar transformaria o servidor em proxy de saída.
+   */
+  private async fotoParaModelo(
+    url?: string,
+  ): Promise<{ base64: string; mediaType: string } | undefined> {
+    if (!url) return undefined;
+    // A tela manda a mesma URL que usa para exibir, às vezes já com a origem
+    // da API na frente. Só o caminho interessa — o host é descartado, então
+    // uma URL de fora não vira busca em servidor de terceiro.
+    const caminho = url.startsWith('http')
+      ? (() => {
+          try {
+            return new URL(url).pathname;
+          } catch {
+            return '';
+          }
+        })()
+      : url;
+    const prefixo = `${MEDIA_ROUTE}/`;
+    if (!caminho.startsWith(prefixo)) return undefined;
+    const objeto = await this.mirror.readObject(caminho.slice(prefixo.length));
+    if (!objeto) return undefined;
+    return {
+      base64: objeto.body.toString('base64'),
+      mediaType: objeto.contentType,
+    };
+  }
 
   /**
    * Ficha do produto cadastrado pelo próprio vendedor.
@@ -77,6 +130,8 @@ export class StudioService {
       productDescription = productDescription ?? (ficha.description || undefined);
     }
 
+    const productImage = await this.fotoParaModelo(dto.productImageUrl);
+
     // Gerador local (sem chave de IA) é gratuito; Claude real cobra créditos.
     const run = () =>
       this.aiService.generateScript({
@@ -85,6 +140,7 @@ export class StudioService {
         productDescription,
         price,
         tone: dto.tone,
+        productImage,
       });
     const result = this.aiService.enabled
       ? await this.billing.withCharge(userId, 'script', run)

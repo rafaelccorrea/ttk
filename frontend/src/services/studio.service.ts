@@ -19,6 +19,17 @@ export interface PromptTemplate {
   tags: string[];
   template: string;
   fields: string[];
+  /** 'seed' = curado à mão; 'auto' = destilado do que está vendendo agora. */
+  source?: 'seed' | 'auto';
+  updatedAt?: string;
+}
+
+export interface PromptsRefreshStatus {
+  enabled: boolean;
+  isRunning: boolean;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastResult: string | null;
 }
 
 export interface GenerateScriptInput {
@@ -28,6 +39,8 @@ export interface GenerateScriptInput {
   userProductId?: string;
   productName?: string;
   productDescription?: string;
+  /** Foto do produto já enviada — a IA olha para ela ao escrever as cenas. */
+  productImageUrl?: string;
   tone?: string;
 }
 
@@ -37,6 +50,18 @@ export const studioService = {
     return data;
   },
 
+  /** Sobe a foto do produto e devolve a URL para mandar junto do roteiro. */
+  async uploadProductImage(file: File): Promise<string> {
+    const form = new FormData();
+    form.append('file', file);
+    const { data } = await api.post<{ url: string }>(
+      '/studio/product-image',
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return data.url;
+  },
+
   async listScripts(): Promise<Script[]> {
     const { data } = await api.get<Script[]>('/studio/scripts');
     return data;
@@ -44,6 +69,13 @@ export const studioService = {
 
   async deleteScript(id: string): Promise<void> {
     await api.delete(`/studio/scripts/${id}`);
+  },
+
+  async promptsRefreshStatus(): Promise<PromptsRefreshStatus> {
+    const { data } = await api.get<PromptsRefreshStatus>(
+      '/studio/prompts/refresh/status',
+    );
+    return data;
   },
 
   async listPrompts(filters?: {

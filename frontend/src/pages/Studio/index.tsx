@@ -4,8 +4,13 @@ import {
   Button,
   Card,
   CardContent,
+  Collapse,
+  Divider,
   Grid,
   IconButton,
+  Stack,
+  Tab,
+  Tabs,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -13,9 +18,17 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
+import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
+import EditNoteRoundedIcon from '@mui/icons-material/EditNoteRounded';
+import FolderOpenRoundedIcon from '@mui/icons-material/FolderOpenRounded';
+import ImageNotSupportedRoundedIcon from '@mui/icons-material/ImageNotSupportedRounded';
+import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { SmartImage } from '@/components/ui/SmartImage';
 import { useSearchParams } from 'react-router-dom';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { ImageDropzone } from '@/components/ui/ImageDropzone';
 import { formatCurrency, formatNumber } from '@/utils/format';
 import { proxyImage } from '@/utils/tiktok';
 import { productsService, RankedProduct } from '@/services/products.service';
@@ -76,6 +89,31 @@ function detalhesDoMeuProduto(p: UserProduct): string {
     .join('\n');
 }
 
+/**
+ * Rótulo em caixa alta acima de cada campo.
+ *
+ * Substitui o `label` flutuante do MUI: com formulário longo, o rótulo dentro
+ * da borda some quando o campo está preenchido e a tela vira uma pilha de
+ * caixas sem nome.
+ */
+function Rotulo({ children }: { children: ReactNode }) {
+  return (
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      sx={{
+        display: 'block',
+        mb: 0.75,
+        fontWeight: 700,
+        letterSpacing: 0.8,
+        textTransform: 'uppercase',
+      }}
+    >
+      {children}
+    </Typography>
+  );
+}
+
 export function StudioPage() {
   const [searchParams] = useSearchParams();
   const [type, setType] = useState<'live' | 'video'>(
@@ -91,6 +129,12 @@ export function StudioPage() {
   const productId = selecao.startsWith('cat:') ? selecao.slice(4) : '';
   const userProductId = selecao.startsWith('meu:') ? selecao.slice(4) : '';
   const [meusProdutos, setMeusProdutos] = useState<UserProduct[]>([]);
+  // Aba da lista da esquerda: catálogo da plataforma × produtos do vendedor.
+  const [aba, setAba] = useState<'top' | 'meus'>('top');
+  const [mostrarSalvos, setMostrarSalvos] = useState(false);
+  const [imagemUrl, setImagemUrl] = useState<string | null>(null);
+  const [enviandoImagem, setEnviandoImagem] = useState(false);
+  const [erroImagem, setErroImagem] = useState<string | null>(null);
   const [productName, setProductName] = useState('');
   const [productDescription, setProductDescription] = useState('');
   const [tone, setTone] = useState('');
@@ -173,6 +217,7 @@ export function StudioPage() {
         userProductId: userProductId || undefined,
         productName: selecao ? undefined : productName,
         productDescription: productDescription || undefined,
+        productImageUrl: imagemUrl ?? undefined,
         tone: tone || undefined,
       });
       setResult(script);
@@ -185,149 +230,401 @@ export function StudioPage() {
     }
   }
 
+  async function handleImagem(file: File) {
+    setErroImagem(null);
+    setEnviandoImagem(true);
+    try {
+      setImagemUrl(await studioService.uploadProductImage(file));
+    } catch (err) {
+      setErroImagem(
+        err instanceof Error ? err.message : 'Falha ao enviar a imagem',
+      );
+    } finally {
+      setEnviandoImagem(false);
+    }
+  }
+
   async function handleDelete(id: string) {
     await studioService.deleteScript(id);
     setScripts((prev) => prev.filter((s) => s.id !== id));
     if (result?.id === id) setResult(null);
   }
 
+  /** Escolhe o produto e já traz a foto dele para o campo de imagem. */
+  function selecionar(valor: string) {
+    setSelecao(valor);
+    const doCatalogo = topProducts.find((p) => `cat:${p.id}` === valor);
+    setEscolhido(doCatalogo ?? null);
+    // Já temos a foto do produto escolhido: usá-la poupa o upload e é a mesma
+    // imagem que a IA precisa ver.
+    const meu = meusProdutos.find((p) => `meu:${p.id}` === valor);
+    const foto = doCatalogo?.imageUrl
+      ? proxyImage(doCatalogo.imageUrl)
+      : (meu?.images[0] ?? null);
+    setImagemUrl(foto ?? null);
+    setErroImagem(null);
+  }
+
+
+  const listaMeus = meusProdutos.filter((p) =>
+    p.name.toLowerCase().includes(busca.trim().toLowerCase()),
+  );
+  const listaTop =
+    escolhido && !topProducts.some((p) => p.id === escolhido.id)
+      ? [escolhido, ...topProducts]
+      : topProducts;
+
+  /** Linha da lista de produtos: miniatura, título e a legenda de cada origem. */
+  function ItemProduto({
+    valor,
+    titulo,
+    legenda,
+    foto,
+  }: {
+    valor: string;
+    titulo: string;
+    legenda: string;
+    foto?: string | null;
+  }) {
+    const ativo = selecao === valor;
+    return (
+      <Box
+        onClick={() => selecionar(valor)}
+        sx={{
+          display: 'flex',
+          gap: 1.25,
+          alignItems: 'center',
+          p: 1,
+          borderRadius: 2,
+          cursor: 'pointer',
+          border: '1px solid',
+          borderColor: ativo ? 'primary.main' : 'transparent',
+          bgcolor: ativo ? 'action.selected' : 'transparent',
+          '&:hover': { bgcolor: 'action.hover' },
+        }}
+      >
+        <Box
+          sx={{
+            width: 44,
+            height: 44,
+            flexShrink: 0,
+            borderRadius: 1.5,
+            overflow: 'hidden',
+            bgcolor: 'action.hover',
+          }}
+        >
+          <SmartImage
+            src={foto ?? null}
+            alt={titulo}
+            fallback={
+              <ImageNotSupportedRoundedIcon sx={{ fontSize: 16, opacity: 0.35 }} />
+            }
+          />
+        </Box>
+        <Box minWidth={0}>
+          <Typography noWrap fontSize={14} fontWeight={600}>
+            {titulo}
+          </Typography>
+          <Typography noWrap fontSize={12.5} color="text.secondary">
+            {legenda}
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <>
-      <Typography variant="h5" gutterBottom>
-        Estúdio — Roteirizar com IA
-      </Typography>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ xs: 'flex-start', sm: 'center' }}
+        spacing={1.5}
+        sx={{ mb: 3 }}
+      >
+        <Box>
+          <Typography variant="overline" color="text.secondary" letterSpacing={1.2}>
+            Estúdio · IA
+          </Typography>
+          <Typography variant="h4" fontWeight={800} lineHeight={1.15}>
+            Roteirizar{' '}
+            <Box component="span" color="primary.main">
+              {type === 'live' ? 'Live' : 'Vídeos'}
+            </Box>
+          </Typography>
+          <Typography color="text.secondary" sx={{ mt: 0.75, maxWidth: 640 }}>
+            {type === 'live'
+              ? 'Escolha um produto do catálogo (ou descreva o seu e suba uma imagem). A IA monta um roteiro em CICLOS: Apresentação → Oferta → Garantia → CTA, repetido em loop.'
+              : 'Escolha um produto do catálogo (ou descreva o seu e suba uma imagem). A IA monta um roteiro de vídeo curto no modelo Gancho → Corpo → CTA, pronto pra gravar.'}
+          </Typography>
+        </Box>
+        <Button
+          variant="outlined"
+          startIcon={<FolderOpenRoundedIcon />}
+          onClick={() => setMostrarSalvos((v) => !v)}
+          sx={{ flexShrink: 0, borderRadius: 2 }}
+        >
+          Roteiros salvos {scripts.length ? `(${scripts.length})` : ''}
+        </Button>
+      </Stack>
 
-      <Grid container spacing={3}>
+      <Grid container spacing={3} alignItems="flex-start">
+        {/* Coluna da esquerda: escolher o produto. */}
         <Grid item xs={12} md={5}>
-          <Card>
+          <Card sx={{ borderRadius: 3 }}>
+            <CardContent>
+              <Tabs
+                value={aba}
+                onChange={(_e, v) => setAba(v)}
+                variant="fullWidth"
+                sx={{ minHeight: 38, mb: 1.5 }}
+              >
+                <Tab
+                  value="top"
+                  label="Top produtos"
+                  sx={{ minHeight: 38, textTransform: 'none', fontWeight: 700 }}
+                />
+                <Tab
+                  value="meus"
+                  label="Meus produtos"
+                  sx={{ minHeight: 38, textTransform: 'none', fontWeight: 700 }}
+                />
+              </Tabs>
+
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Buscar produto…"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <SearchRoundedIcon
+                      fontSize="small"
+                      sx={{ mr: 1, color: 'text.disabled' }}
+                    />
+                  ),
+                }}
+                sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+              />
+
+              {/* Sempre no topo: o produto que não está no catálogo é o caso
+                  mais comum de quem está começando. */}
+              <Box
+                onClick={() => selecionar('')}
+                sx={{
+                  display: 'flex',
+                  gap: 1.25,
+                  alignItems: 'center',
+                  p: 1.25,
+                  mb: 1,
+                  borderRadius: 2,
+                  cursor: 'pointer',
+                  border: '1px solid',
+                  borderColor: selecao ? 'divider' : 'primary.main',
+                  bgcolor: selecao ? 'transparent' : 'action.selected',
+                }}
+              >
+                <EditNoteRoundedIcon color={selecao ? 'disabled' : 'primary'} />
+                <Box minWidth={0}>
+                  <Typography fontSize={14} fontWeight={700}>
+                    Descrever meu produto
+                  </Typography>
+                  <Typography fontSize={12.5} color="text.secondary">
+                    Não está na lista? Descreve ele e sobe a imagem.
+                  </Typography>
+                </Box>
+                {!selecao && (
+                  <CheckCircleRoundedIcon
+                    color="primary"
+                    fontSize="small"
+                    sx={{ ml: 'auto' }}
+                  />
+                )}
+              </Box>
+
+              <Divider sx={{ mb: 1 }} />
+
+              <Box sx={{ maxHeight: 420, overflowY: 'auto', pr: 0.5 }}>
+                {aba === 'top' ? (
+                  buscando && !listaTop.length ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                      Buscando…
+                    </Typography>
+                  ) : listaTop.length ? (
+                    listaTop.map((p) => (
+                      <ItemProduto
+                        key={p.id}
+                        valor={`cat:${p.id}`}
+                        titulo={p.title}
+                        legenda={`${formatCurrency(p.price)} · ${formatNumber(p.salesPeriod)} vendas`}
+                        foto={p.imageUrl ? proxyImage(p.imageUrl) : null}
+                      />
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                      Nenhum produto encontrado para essa busca.
+                    </Typography>
+                  )
+                ) : listaMeus.length ? (
+                  listaMeus.map((p) => (
+                    <ItemProduto
+                      key={p.id}
+                      valor={`meu:${p.id}`}
+                      titulo={p.name}
+                      legenda={
+                        p.benefit ??
+                        (p.priceBrl !== null
+                          ? formatCurrency(p.priceBrl)
+                          : 'Produto seu')
+                      }
+                      foto={p.images[0] ?? null}
+                    />
+                  ))
+                ) : (
+                  <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                    Você ainda não cadastrou produtos. Cadastre em Campanhas, ou
+                    use “Descrever meu produto” aqui em cima.
+                  </Typography>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Coluna da direita: o formulário do roteiro. */}
+        <Grid item xs={12} md={7}>
+          <Card sx={{ borderRadius: 3 }}>
             <CardContent>
               <form onSubmit={handleSubmit}>
                 <ToggleButtonGroup
                   exclusive
-                  fullWidth
                   size="small"
                   value={type}
                   onChange={(_e, value) => value && setType(value)}
-                  sx={{ mb: 2 }}
+                  sx={{
+                    mb: 2.5,
+                    '& .MuiToggleButton-root': {
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderRadius: 2,
+                      px: 2,
+                    },
+                  }}
                 >
                   <ToggleButton value="live">Roteiro de Live</ToggleButton>
                   <ToggleButton value="video">Roteiro de Vídeo</ToggleButton>
                 </ToggleButtonGroup>
 
-                <SearchableSelect
-                  fullWidth
-                  label="Produto do catálogo (opcional)"
-                  placeholder="Buscar produto…"
-                  value={selecao}
-                  onChange={(valor) => {
-                    setSelecao(valor);
-                    setEscolhido(
-                      topProducts.find((p) => `cat:${p.id}` === valor) ?? null,
-                    );
-                  }}
-                  onSearchChange={setBusca}
-                  loading={buscando}
-                  emptyLabel="Descrever meu próprio produto"
-                  sx={{ mt: 2, mb: 1 }}
-                  options={[
-                    ...meusProdutos
-                      .filter((p) =>
-                        p.name
-                          .toLowerCase()
-                          .includes(busca.trim().toLowerCase()),
-                      )
-                      .map((p) => ({
-                        value: `meu:${p.id}`,
-                        label: p.name,
-                        imageUrl: p.images[0] ?? null,
-                        caption: p.benefit ?? undefined,
-                        group: 'Meus produtos',
-                      })),
-                    ...(escolhido &&
-                    !topProducts.some((p) => p.id === escolhido.id)
-                      ? [escolhido, ...topProducts]
-                      : topProducts
-                    ).map((p) => ({
-                      value: `cat:${p.id}`,
-                      label: p.title,
-                      imageUrl: p.imageUrl ? proxyImage(p.imageUrl) : null,
-                      caption: [p.storeName, p.category]
-                        .filter(Boolean)
-                        .join(' · '),
-                      group: 'Catálogo da plataforma',
-                    })),
-                  ]}
-                />
-
-                {!selecao && (
-                  <TextField
-                    fullWidth
-                    size="small"
-                    required
-                    label="Nome do produto"
-                    value={productName}
-                    onChange={(e) => setProductName(e.target.value)}
-                    margin="normal"
-                  />
-                )}
+                <Rotulo>Descreva o produto</Rotulo>
                 <TextField
                   fullWidth
-                  size="small"
+                  required={!selecao}
+                  disabled={Boolean(selecao)}
+                  placeholder="Nome do produto (ex.: Chapinha Profissional Bivolt)"
+                  value={
+                    selecao
+                      ? (escolhido?.title ??
+                        meusProdutos.find((p) => p.id === userProductId)?.name ??
+                        '')
+                      : productName
+                  }
+                  onChange={(e) => setProductName(e.target.value)}
+                  sx={{ mb: 2.5, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+                />
+
+                <Rotulo>Descrição / detalhes</Rotulo>
+                <TextField
+                  fullWidth
                   multiline
-                  minRows={3}
-                  label="Detalhes (preço, diferenciais, garantia...)"
+                  minRows={4}
+                  placeholder="O que é, pra quem serve, preço, diferenciais, garantia, brinde… quanto mais detalhe, melhor o roteiro."
                   value={productDescription}
                   onChange={(e) => setProductDescription(e.target.value)}
-                  margin="normal"
-                  helperText={
-                    productId
-                      ? 'Preenchido com os dados do catálogo — edite à vontade.'
-                      : userProductId
-                        ? 'Preenchido com os dados do seu produto — edite à vontade.'
-                        : undefined
-                  }
+                  sx={{ mb: 2.5, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
                 />
+
+                <Rotulo>Imagem do produto (opcional)</Rotulo>
+                <ImageDropzone
+                  value={imagemUrl}
+                  uploading={enviandoImagem}
+                  error={erroImagem}
+                  onFile={handleImagem}
+                  onClear={() => {
+                    setImagemUrl(null);
+                    setErroImagem(null);
+                  }}
+                />
+
+                <Box sx={{ mt: 2.5 }}>
+                  <Rotulo>Tom (opcional)</Rotulo>
+                </Box>
                 <SearchableSelect
                   fullWidth
                   allowCustom
-                  label="Tom (opcional)"
                   placeholder="Escolha ou escreva o seu"
                   value={tone}
                   onChange={setTone}
-                  sx={{ mt: 2, mb: 1 }}
                   options={TONES.map((t) => ({ value: t, label: t }))}
                 />
-                {error && <Alert severity="error">{error}</Alert>}
-                <Button
-                  type="submit"
-                  variant="contained"
-                  fullWidth
-                  disabled={busy}
-                  sx={{ mt: 2 }}
+
+                {error && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {error}
+                  </Alert>
+                )}
+
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={1.5}
+                  sx={{ mt: 3, flexWrap: 'wrap', gap: 1 }}
                 >
-                  {busy ? 'Gerando...' : 'Gerar roteiro'}
-                </Button>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    size="large"
+                    disabled={busy || enviandoImagem}
+                    startIcon={<AutoAwesomeRoundedIcon />}
+                    sx={{ borderRadius: 2.5, px: 3, fontWeight: 700 }}
+                  >
+                    {busy
+                      ? 'Gerando…'
+                      : `Gerar roteiro ${type === 'live' ? 'de live' : 'do vídeo'}`}
+                  </Button>
+                  <Typography variant="body2" color="text.secondary">
+                    Estrutura:{' '}
+                    <Box component="span" color="primary.main" fontWeight={700}>
+                      {type === 'live'
+                        ? 'Apresentação · Oferta · Garantia · CTA'
+                        : 'Gancho · Corpo · CTA'}
+                    </Box>
+                  </Typography>
+                </Stack>
               </form>
             </CardContent>
           </Card>
-        </Grid>
 
-        <Grid item xs={12} md={7}>
           {result && (
-            <Card sx={{ mb: 2 }}>
+            <Card sx={{ mt: 3, borderRadius: 3 }}>
               <CardContent>
-                <Box display="flex" justifyContent="space-between">
-                  <Typography variant="h6">{result.productName}</Typography>
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  sx={{ mb: 1 }}
+                >
+                  <Typography variant="h6" fontWeight={800}>
+                    {result.productName}
+                  </Typography>
                   <IconButton
                     size="small"
-                    onClick={() =>
-                      navigator.clipboard.writeText(result.content)
-                    }
+                    onClick={() => navigator.clipboard.writeText(result.content)}
                     aria-label="copiar"
                   >
                     <ContentCopyIcon fontSize="small" />
                   </IconButton>
-                </Box>
+                </Stack>
                 <Typography
                   component="pre"
                   variant="body2"
@@ -338,47 +635,59 @@ export function StudioPage() {
               </CardContent>
             </Card>
           )}
-
-          <Typography variant="h6" gutterBottom>
-            Roteiros salvos
-          </Typography>
-          {scripts.length === 0 && (
-            <Typography color="text.secondary">
-              Nenhum roteiro ainda — gere o primeiro ao lado.
-            </Typography>
-          )}
-          {scripts.map((s) => (
-            <Card key={s.id} sx={{ mb: 1 }}>
-              <CardContent
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  py: 1.5,
-                }}
-              >
-                <Box
-                  sx={{ cursor: 'pointer', flexGrow: 1 }}
-                  onClick={() => setResult(s)}
-                >
-                  <Typography>{s.productName}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {s.type === 'live' ? 'Live' : 'Vídeo'} ·{' '}
-                    {new Date(s.createdAt).toLocaleString('pt-BR')}
-                  </Typography>
-                </Box>
-                <IconButton
-                  size="small"
-                  onClick={() => handleDelete(s.id)}
-                  aria-label="excluir"
-                >
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </CardContent>
-            </Card>
-          ))}
         </Grid>
       </Grid>
+
+      {/* Os roteiros salvos só ocupam a tela quando pedidos. */}
+      <Collapse in={mostrarSalvos} unmountOnExit>
+        <Card sx={{ mt: 3, borderRadius: 3 }}>
+          <CardContent>
+            <Typography variant="h6" fontWeight={800} gutterBottom>
+              Roteiros salvos
+            </Typography>
+            {scripts.length === 0 ? (
+              <Typography color="text.secondary">
+                Nenhum roteiro ainda — gere o primeiro aí em cima.
+              </Typography>
+            ) : (
+              <Stack divider={<Divider />}>
+                {scripts.map((s) => (
+                  <Stack
+                    key={s.id}
+                    direction="row"
+                    alignItems="center"
+                    spacing={1}
+                    sx={{ py: 1.25 }}
+                  >
+                    <Box
+                      sx={{ cursor: 'pointer', flexGrow: 1, minWidth: 0 }}
+                      onClick={() => {
+                        setResult(s);
+                        setMostrarSalvos(false);
+                      }}
+                    >
+                      <Typography noWrap fontWeight={600}>
+                        {s.productName}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {s.type === 'live' ? 'Live' : 'Vídeo'} ·{' '}
+                        {new Date(s.createdAt).toLocaleString('pt-BR')}
+                      </Typography>
+                    </Box>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDelete(s.id)}
+                      aria-label="excluir"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                ))}
+              </Stack>
+            )}
+          </CardContent>
+        </Card>
+      </Collapse>
     </>
   );
 }

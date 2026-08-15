@@ -43,6 +43,14 @@ export class GenerateScriptDto {
   @MaxLength(4000)
   productDescription?: string;
 
+  @ApiPropertyOptional({
+    description: 'Foto do produto já enviada (POST /studio/product-image)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  productImageUrl?: string;
+
   @ApiPropertyOptional({ example: 'divertido e urgente' })
   @IsOptional()
   @IsString()

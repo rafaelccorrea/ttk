@@ -4,6 +4,7 @@ import { BillingModule } from '../billing/billing.module';
 import { Product } from '../products/entities/product.entity';
 import { UserProduct } from '../campaigns/entities/user-product.entity';
 import { UsersModule } from '../users/users.module';
+import { MediaModule } from '../media/media.module';
 import { Video } from '../videos/entities/video.entity';
 import { AiService } from './ai.service';
 import { PromptRefreshService } from './prompt-refresh.service';
@@ -19,6 +20,7 @@ import { SingleFlightInterceptor } from '../../common/interceptors/single-flight
     TypeOrmModule.forFeature([Script, PromptTemplate, Product, UserProduct, Video]),
     UsersModule,
     BillingModule,
+    MediaModule,
   ],
   controllers: [StudioController],
   providers: [

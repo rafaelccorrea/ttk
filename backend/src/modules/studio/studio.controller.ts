@@ -65,6 +65,28 @@ export class StudioController {
     );
   }
 
+  @Post('product-image')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary: 'Envia a foto do produto que o roteirizador manda para a IA ver',
+  })
+  productImage(
+    @CurrentUser() user: AuthUser,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 })],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Envie uma imagem do produto.');
+    }
+    // O `mimetype` do multipart é escolhido por quem envia; quem valida de
+    // verdade é a decodificação da imagem, dentro do espelhamento.
+    return this.studioService.salvarFotoDoProduto(user.id, file.buffer);
+  }
+
   @UseInterceptors(SingleFlightInterceptor)
   @Post('analyze')
   @ApiOperation({
