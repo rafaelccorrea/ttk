@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { productsService, RankedProduct } from '@/services/products.service';
 import { Script, studioService } from '@/services/studio.service';
@@ -44,8 +44,15 @@ export function StudioPage() {
     studioService.listScripts().then(setScripts).catch(console.error);
   }, []);
 
+  // Trava síncrona: `busy` só desabilita o botão no próximo render. Num
+  // formulário isso é ainda mais fácil de disparar duas vezes (clique + Enter),
+  // e cada envio extra é um roteiro cobrado de novo do usuário.
+  const busyRef = useRef(false);
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (busyRef.current) return;
+    busyRef.current = true;
     setError(null);
     setBusy(true);
     try {
@@ -61,6 +68,7 @@ export function StudioPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao gerar roteiro');
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }

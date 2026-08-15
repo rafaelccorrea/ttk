@@ -13,7 +13,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { ChangeEvent, useEffect, useState } from 'react';
+import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { apiErrorMessage } from '@/contexts/AuthContext';
 import { api } from '@/services/api';
@@ -37,9 +37,17 @@ export function AnalyzePage() {
       .catch(console.error);
   }, []);
 
+  // Travas síncronas. `transcribing`/`analyzing` só desabilitam o controle no
+  // próximo render — um duplo-clique cabe nessa janela, e cada disparo extra
+  // é uma chamada paga (Whisper/Claude) cobrada de novo do usuário.
+  const transcribingRef = useRef(false);
+  const analyzingRef = useRef(false);
+
   async function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (transcribingRef.current) return;
+    transcribingRef.current = true;
     setError(null);
     setFileName(file.name);
     setTranscribing(true);
@@ -55,12 +63,15 @@ export function AnalyzePage() {
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
+      transcribingRef.current = false;
       setTranscribing(false);
       event.target.value = '';
     }
   }
 
   async function handleAnalyze() {
+    if (analyzingRef.current) return;
+    analyzingRef.current = true;
     setError(null);
     setAnalyzing(true);
     setResult(null);
@@ -73,6 +84,7 @@ export function AnalyzePage() {
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
+      analyzingRef.current = false;
       setAnalyzing(false);
     }
   }

@@ -37,9 +37,9 @@ function PromptCard({ prompt }: { prompt: PromptTemplate }) {
     setTimeout(() => setCopied(false), 1500);
   }
 
-  // Trava síncrona:  só desabilita o botão no próximo render, e
-  // um duplo-clique cabe nessa janela — cada disparo extra é crédito do
-  // usuário queimado numa geração idêntica.
+  // Trava síncrona: o estado `generating` só desabilita o botão no próximo
+  // render, e um duplo-clique cabe nessa janela — cada disparo extra é
+  // crédito do usuário queimado numa geração idêntica.
   const generatingRef = useRef(false);
 
   // Gera a mídia com IA (Higgsfield) e leva o usuário para a galeria.
