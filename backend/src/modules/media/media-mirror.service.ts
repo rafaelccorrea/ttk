@@ -126,15 +126,7 @@ export class MediaMirrorService {
 
       const contentType =
         response.headers.get('content-type') ?? 'application/octet-stream';
-      // Sem essa checagem, uma página de erro do CDN era guardada como se
-      // fosse capa: o objeto respondia 200 com HTML e o card ficava vazio.
-      // Já aconteceu — sobraram 7 thumbnails ".htm" no bucket.
-      if (!/^(image|video)\//.test(contentType)) {
-        this.logger.warn(
-          `Espelhamento recusado: "${contentType}" não é mídia (${sourceUrl.slice(0, 70)})`,
-        );
-        return null;
-      }
+      const ehVideo = contentType.startsWith('video/');
 
       const original = Buffer.from(await response.arrayBuffer());
       if (original.byteLength > this.maxBytes) {
@@ -142,10 +134,22 @@ export class MediaMirrorService {
         return null;
       }
 
-      // Imagem é normalizada antes de subir; vídeo vai como está.
-      const tratada = contentType.startsWith('image/')
-        ? await this.normalizarImagem(original)
-        : null;
+      /**
+       * A validação é por DECODIFICAÇÃO, não pelo `content-type`.
+       *
+       * O CDN do EchoTik entrega capa legítima como "binary/octet-stream", e
+       * confiar no cabeçalho descartava 403 produtos válidos. Por outro lado,
+       * página de erro do CDN chega como HTML e já foi guardada como se fosse
+       * capa (sobraram 7 objetos ".htm" no bucket). Se o `sharp` abre, é
+       * imagem de verdade — nenhum dos dois enganos passa.
+       */
+      const tratada = ehVideo ? null : await this.normalizarImagem(original);
+      if (!tratada && !ehVideo) {
+        this.logger.warn(
+          `Espelhamento recusado: conteúdo não é imagem (${sourceUrl.slice(0, 70)})`,
+        );
+        return null;
+      }
       const body = tratada?.body ?? original;
       const tipoFinal = tratada ? 'image/webp' : contentType;
       const chaveFinal = tratada ? key.replace(/\.[a-z0-9]+$/i, '.webp') : key;

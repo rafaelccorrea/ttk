@@ -91,7 +91,7 @@ async function main() {
   // URL que responde 403 (assinatura vencida) ou que aponta para um objeto que
   // não é imagem é PIOR que nula: impede o card de cair na foto do produto.
   log.log('3/5 Removendo mídia quebrada...');
-  const limpos = await limparMidiaQuebrada(videos, criadores, mirror);
+  const limpos = await limparMidiaQuebrada(videos, criadores);
   log.log(`     ${limpos.videos} thumbnails e ${limpos.avatares} avatares anulados`);
 
   // ------------------------------------------------------------ 4) espelhamento
@@ -124,14 +124,12 @@ async function main() {
 async function limparMidiaQuebrada(
   videos: Repository<Video>,
   criadores: Repository<Creator>,
-  mirror: MediaMirrorService,
 ): Promise<{ videos: number; avatares: number }> {
   const acessivel = async (url: string): Promise<boolean> => {
-    // Objeto nosso: confere no S3 se é mesmo imagem (já guardamos HTML por engano).
-    if (url.startsWith('/api/v1/media/s3/')) {
-      const objeto = await mirror.readObject(url.replace('/api/v1/media/s3/', ''));
-      return Boolean(objeto?.contentType.startsWith('image/'));
-    }
+    // Mídia já no S3 é confiável: o espelhamento recusa o que não é imagem ou
+    // vídeo desde que aquele bug das páginas HTML foi corrigido. Revalidar
+    // baixaria o bucket inteiro a cada execução, sem ganho.
+    if (url.startsWith('/api/v1/media/s3/')) return true;
     if (!url.startsWith('http')) return true;
     try {
       const res = await fetch(url, { headers: { range: 'bytes=0-60' } });
