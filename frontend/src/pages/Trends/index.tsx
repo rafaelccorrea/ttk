@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { TrendsOverview, trendsService } from '@/services/trends.service';
 import { tiktokHashtagUrl } from '@/utils/tiktok';
 import { formatCurrency, formatNumber } from '@/utils/format';
@@ -154,7 +155,8 @@ export function TrendsPage() {
       ) : data.risingProducts.length === 0 ? (
         <Typography color="text.secondary">Sem dados suficientes nos últimos 14 dias.</Typography>
       ) : (
-        <Table size="small">
+        <ScrollX>
+        <Table size="small" sx={{ minWidth: 720 }}>
           <TableHead>
             <TableRow>
               <TableCell>#</TableCell>
@@ -184,6 +186,7 @@ export function TrendsPage() {
             ))}
           </TableBody>
         </Table>
+        </ScrollX>
       )}
     </>
   );

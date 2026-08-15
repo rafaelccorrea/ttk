@@ -30,6 +30,7 @@ import {
   IngestionStatus,
   ingestionService,
 } from '@/services/ingestion.service';
+import { ScrollX } from '@/components/ui/ScrollX';
 
 // Presets amigáveis; "custom" libera o campo de expressão cron.
 const PRESETS: Array<{ label: string; cron: string }> = [
@@ -259,7 +260,8 @@ export function IngestionPage() {
       {runs.length === 0 ? (
         <Typography color="text.secondary">Nenhuma execução registrada ainda.</Typography>
       ) : (
-        <Table size="small">
+        <ScrollX>
+        <Table size="small" sx={{ minWidth: 720 }}>
           <TableHead>
             <TableRow>
               <TableCell>Início</TableCell>
@@ -297,6 +299,7 @@ export function IngestionPage() {
             ))}
           </TableBody>
         </Table>
+        </ScrollX>
       )}
     </>
   );

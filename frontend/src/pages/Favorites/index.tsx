@@ -197,7 +197,7 @@ export function FavoritesPage() {
           </Button>
         </Box>
       ) : (
-        <Grid container spacing={2.5}>
+        <Grid container spacing={{ xs: 1.5, sm: 2.5 }}>
           {items.map((p) => (
             <Grid item xs={12} sm={6} md={4} key={p.id}>
               <FavoriteCard product={p} onRemove={removeFavorite} />

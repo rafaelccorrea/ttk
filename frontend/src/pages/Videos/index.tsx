@@ -619,7 +619,7 @@ export function VideosPage() {
                 </Button>
               )}
             </Box>
-            <Grid container spacing={2.5}>
+            <Grid container spacing={{ xs: 1.5, sm: 2.5 }}>
               {section.items.map((v, index) => (
                 <Grid item xs={6} sm={4} md={3} lg={2} key={v.id}>
                   <VideoCard
@@ -640,7 +640,7 @@ export function VideosPage() {
       ) : (
         <Grid
           container
-          spacing={2.5}
+          spacing={{ xs: 1.5, sm: 2.5 }}
           sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}
         >
           {items.map((v, index) => (

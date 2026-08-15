@@ -266,7 +266,8 @@ function ProductCard({
 
           <Box
             display="flex"
-            gap={1.5}
+            flexWrap="wrap"
+            gap={{ xs: 1, sm: 1.5 }}
             mt={1}
             pt={1}
             borderTop="1px solid rgba(255,255,255,0.16)"
@@ -680,7 +681,7 @@ export function ProductsPage() {
                 </Button>
               )}
             </Box>
-            <Grid container spacing={2.5}>
+            <Grid container spacing={{ xs: 1.5, sm: 2.5 }}>
               {section.items.map((p, index) => (
                 <Grid item xs={6} sm={4} md={3} lg={2} key={p.id}>
                   <ProductCard
@@ -705,7 +706,7 @@ export function ProductsPage() {
         <>
           <Grid
             container
-            spacing={2.5}
+            spacing={{ xs: 1.5, sm: 2.5 }}
             sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}
           >
             {items.map((p, index) => (

@@ -51,6 +51,7 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
   const [progress, setProgress] = useState(0);
   const [showPulse, setShowPulse] = useState<'play' | 'pause' | null>(null);
   const wheelLock = useRef(0);
+  const backdropRef = useRef<HTMLDivElement>(null);
 
   const video = index === null ? null : videos[index] ?? null;
   const hasPrev = index !== null && index > 0;
@@ -179,34 +180,122 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
     el.currentTime = ((event.clientX - rect.left) / rect.width) * el.duration;
   }
 
-  function onWheel(event: React.WheelEvent) {
+  /**
+   * Trava a rolagem da página enquanto o player está aberto.
+   *
+   * Sem isso a roda do mouse rolava a vitrine ATRÁS do overlay — e ainda
+   * disparava o scroll infinito, carregando mais páginas às escondidas. O
+   * `paddingRight` compensa a barra de rolagem que some, senão o conteúdo dá
+   * um pulo lateral ao abrir e ao fechar.
+   */
+  useEffect(() => {
     if (index === null) return;
-    const now = Date.now();
-    if (now - wheelLock.current < 500) return;
-    if (Math.abs(event.deltaY) < 20) return;
-    wheelLock.current = now;
-    goTo(index + (event.deltaY > 0 ? 1 : -1));
-  }
+    const { body } = document;
+    const overflowAnterior = body.style.overflow;
+    const paddingAnterior = body.style.paddingRight;
+    const larguraBarra = window.innerWidth - document.documentElement.clientWidth;
+    body.style.overflow = 'hidden';
+    if (larguraBarra > 0) body.style.paddingRight = `${larguraBarra}px`;
+    return () => {
+      body.style.overflow = overflowAnterior;
+      body.style.paddingRight = paddingAnterior;
+    };
+  }, [index === null]);
+
+  /**
+   * A navegação por roda usa listener NATIVO, não o `onWheel` do React.
+   *
+   * O React registra os handlers de wheel na raiz em modo passivo, então o
+   * `preventDefault` dentro dele é ignorado pelo navegador e a página rola do
+   * mesmo jeito. Registrando aqui com `passive: false` o gesto passa a ser só
+   * do player.
+   */
+  useEffect(() => {
+    const el = backdropRef.current;
+    if (!el || index === null) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const now = Date.now();
+      if (now - wheelLock.current < 500) return;
+      if (Math.abs(event.deltaY) < 20) return;
+      wheelLock.current = now;
+      goTo(index + (event.deltaY > 0 ? 1 : -1));
+    };
+    /**
+     * No mobile o gesto é o mesmo do TikTok: arrastar para cima vai para o
+     * próximo vídeo, para baixo volta. Só bloquear o `touchmove` resolveria a
+     * rolagem de fundo, mas deixaria o feed sem navegação — no celular não há
+     * roda nem teclado, e as setas do rail são alvo pequeno.
+     *
+     * O limiar de 60px separa o arrasto real do toque trêmulo ao dar play.
+     */
+    let inicioY: number | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      inicioY = event.touches[0]?.clientY ?? null;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      // Impede que o arrasto vaze para a vitrine atrás do overlay.
+      event.preventDefault();
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      const fimY = event.changedTouches[0]?.clientY;
+      if (inicioY === null || fimY === undefined) return;
+      const delta = inicioY - fimY;
+      inicioY = null;
+      if (Math.abs(delta) < 60) return;
+      goTo(index + (delta > 0 ? 1 : -1));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [index, goTo]);
 
   if (!video || index === null) return null;
 
   return (
     <Backdrop
       open
+      ref={backdropRef}
       onClick={onClose}
-      onWheel={onWheel}
-      sx={{ zIndex: (t) => t.zIndex.modal + 1, bgcolor: 'rgba(8,9,13,0.92)', backdropFilter: 'blur(8px)' }}
+      sx={{
+        zIndex: (t) => t.zIndex.modal + 1,
+        bgcolor: 'rgba(8,9,13,0.92)',
+        backdropFilter: 'blur(8px)',
+        // Desliga o gesto de rolagem do navegador na área do player: o arrasto
+        // vertical é nosso (troca de vídeo), não da página.
+        touchAction: 'none',
+        overscrollBehavior: 'contain',
+      }}
     >
       <Fade in key={index}>
         <Box
           onClick={(e) => e.stopPropagation()}
-          sx={{ display: 'flex', alignItems: 'center', gap: 2.5, maxHeight: '92vh' }}
+          sx={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            gap: { xs: 0, sm: 2.5 },
+            maxHeight: '92vh',
+            maxWidth: '100vw',
+          }}
         >
           {/* Vídeo (wrapper com overflow hidden segura a barra dentro do raio) */}
           <Box
             sx={{
               position: 'relative',
-              height: 'min(88vh, 780px)',
+              // A altura também é limitada pela largura da tela: sem isso, no
+              // mobile o 9/16 fica mais largo que o viewport e estoura.
+              height: {
+                xs: 'min(88vh, 780px, (100vw - 16px) * 16 / 9)',
+                sm: 'min(88vh, 780px, (100vw - 140px) * 16 / 9)',
+              },
               aspectRatio: '9 / 16',
               borderRadius: 4,
               overflow: 'hidden',
@@ -389,7 +478,22 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
           </Box>
 
           {/* Rail de ações à direita */}
-          <Stack spacing={2.25} alignItems="center" sx={{ color: '#fff' }}>
+          <Stack
+            spacing={{ xs: 1.25, sm: 2.25 }}
+            alignItems="center"
+            sx={{
+              color: '#fff',
+              // No mobile o rail sobe por cima do vídeo (padrão do TikTok):
+              // não há largura sobrando ao lado.
+              position: { xs: 'absolute', sm: 'static' },
+              right: { xs: 6 },
+              bottom: { xs: 76 },
+              zIndex: 4,
+              '& .MuiIconButton-root': {
+                p: { xs: 0.75, sm: 1 },
+              },
+            }}
+          >
             <IconButton
               onClick={() => goTo(index - 1)}
               disabled={!hasPrev}
@@ -411,7 +515,8 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
               target="_blank"
               rel="noopener noreferrer"
               sx={{
-                width: 48, height: 48, fontWeight: 800, textDecoration: 'none',
+                width: { xs: 40, sm: 48 }, height: { xs: 40, sm: 48 },
+                fontWeight: 800, textDecoration: 'none',
                 background: `linear-gradient(135deg, ${red}, #ff7a9c)`,
                 border: '2px solid #fff',
                 transition: 'transform .15s ease',

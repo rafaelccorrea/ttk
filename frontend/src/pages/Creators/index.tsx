@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { creatorsService, RankedCreator } from '@/services/creators.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 import { displayHandle, proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
@@ -118,7 +119,8 @@ export function CreatorsPage() {
       {loading && items.length === 0 && (
         <BrandLoader label="Carregando criadores..." />
       )}
-      <Table size="small" sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}>
+      <ScrollX>
+      <Table size="small" sx={{ minWidth: 720, opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}>
         <TableHead>
           <TableRow>
             <TableCell width={64}>#</TableCell>
@@ -222,6 +224,7 @@ export function CreatorsPage() {
           })}
         </TableBody>
       </Table>
+      </ScrollX>
 
       <Box display="flex" justifyContent="center" mt={4}>
         <Pagination

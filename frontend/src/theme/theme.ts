@@ -1,5 +1,8 @@
 import { createTheme } from '@mui/material';
 
+/** Breakpoint mobile (abaixo de `sm` = 600px) usado nos ajustes responsivos. */
+const SM_DOWN = '@media (max-width:599.95px)';
+
 // Tema claro com as cores do TikTok: vermelho #FE2C55, ciano #25F4EE, preto #161823.
 export const theme = createTheme({
   palette: {
@@ -18,13 +21,44 @@ export const theme = createTheme({
   shape: { borderRadius: 14 },
   typography: {
     fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-    h4: { fontWeight: 800, letterSpacing: '-0.02em' },
-    h5: { fontWeight: 800, letterSpacing: '-0.02em' },
-    h6: { fontWeight: 700, letterSpacing: '-0.01em' },
+    // Títulos encolhem no mobile para não quebrar em várias linhas.
+    h4: {
+      fontWeight: 800,
+      letterSpacing: '-0.02em',
+      [SM_DOWN]: { fontSize: '1.6rem' },
+    },
+    h5: {
+      fontWeight: 800,
+      letterSpacing: '-0.02em',
+      [SM_DOWN]: { fontSize: '1.3rem' },
+    },
+    h6: {
+      fontWeight: 700,
+      letterSpacing: '-0.01em',
+      [SM_DOWN]: { fontSize: '1.075rem' },
+    },
     overline: { letterSpacing: '0.12em', fontWeight: 600 },
     button: { textTransform: 'none', fontWeight: 700 },
   },
   components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        html: { WebkitTextSizeAdjust: '100%' },
+        // Trava o estouro horizontal: no mobile qualquer elemento largo demais
+        // rola dentro do próprio container, nunca empurra a página.
+        body: { overflowX: 'hidden' },
+        // Evita o zoom automático do iOS ao focar campos (<16px dispara zoom).
+        'input, select, textarea': { [SM_DOWN]: { fontSize: '16px' } },
+        img: { maxWidth: '100%' },
+      },
+    },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          [SM_DOWN]: { margin: 16, width: 'calc(100% - 32px)', maxWidth: '100%' },
+        },
+      },
+    },
     MuiCard: {
       styleOverrides: {
         root: {
@@ -161,6 +195,7 @@ export const theme = createTheme({
           border: 0,
           borderRadius: 999,
           padding: '6px 16px',
+          [SM_DOWN]: { padding: '6px 11px', fontSize: 12.5 },
           transition: 'background-color .18s ease, color .18s ease, box-shadow .18s ease',
           '&:hover': { backgroundColor: 'rgba(22,24,35,0.06)' },
           '&.Mui-selected': {
@@ -175,7 +210,10 @@ export const theme = createTheme({
     },
     MuiTableCell: {
       styleOverrides: {
-        root: { borderColor: 'rgba(22,24,35,0.08)' },
+        root: {
+          borderColor: 'rgba(22,24,35,0.08)',
+          [SM_DOWN]: { padding: '8px 10px' },
+        },
       },
     },
   },

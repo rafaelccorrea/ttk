@@ -89,12 +89,12 @@ export function SupportFab() {
           elevation={12}
           sx={{
             position: 'fixed',
-            bottom: 96,
-            right: 24,
+            bottom: { xs: 84, sm: 96 },
+            right: { xs: 16, sm: 24 },
             zIndex: (t) => t.zIndex.tooltip + 1,
             width: { xs: 'calc(100vw - 32px)', sm: 380 },
-            height: 480,
-            maxHeight: 'calc(100vh - 130px)',
+            height: { xs: 'calc(100vh - 116px)', sm: 480 },
+            maxHeight: 'calc(100vh - 116px)',
             borderRadius: 4,
             overflow: 'hidden',
             display: 'flex',
@@ -235,7 +235,13 @@ export function SupportFab() {
             setUnread(false);
           }}
           aria-label="Suporte"
-          sx={{ position: 'fixed', bottom: 24, right: 24, zIndex: (t) => t.zIndex.tooltip + 1 }}
+          size="medium"
+          sx={{
+            position: 'fixed',
+            bottom: { xs: 16, sm: 24 },
+            right: { xs: 16, sm: 24 },
+            zIndex: (t) => t.zIndex.tooltip + 1,
+          }}
         >
           {open ? <CloseRoundedIcon /> : <ChatRoundedIcon />}
           {unread && !open && (

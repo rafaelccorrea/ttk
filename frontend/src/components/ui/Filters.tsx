@@ -28,7 +28,12 @@ export function FilterBar({ children, sx, ...rest }: BoxProps) {
       alignItems="center"
       gap={1.25}
       flexWrap="wrap"
-      sx={{ mb: 3, ...sx }}
+      sx={{
+        mb: 3,
+        // No mobile os campos ocupam a linha inteira em vez de espremer.
+        '& > .MuiFormControl-root': { minWidth: 0 },
+        ...sx,
+      }}
       {...rest}
     >
       {children}
@@ -56,7 +61,14 @@ export function SearchField({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      sx={{ minWidth: 240, ...pillSx, ...sx }}
+      sx={{
+        width: { xs: '100%', sm: 'auto' },
+        minWidth: { xs: 0, sm: 240 },
+        flexGrow: { xs: 0, sm: 1 },
+        maxWidth: { sm: 360 },
+        ...pillSx,
+        ...sx,
+      }}
       InputProps={{
         startAdornment: (
           <InputAdornment position="start" sx={{ ml: 0.75, mr: -0.25 }}>
@@ -106,7 +118,12 @@ export function SelectField({
       size="small"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      sx={{ minWidth: 190, ...pillSx, ...sx }}
+      sx={{
+        width: { xs: '100%', sm: 'auto' },
+        minWidth: { xs: 0, sm: 190 },
+        ...pillSx,
+        ...sx,
+      }}
       InputProps={
         startIcon
           ? {

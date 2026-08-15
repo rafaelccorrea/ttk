@@ -25,6 +25,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { ScrollX } from '@/components/ui/ScrollX';
 import { apiErrorMessage } from '@/contexts/AuthContext';
 import {
   billingService,
@@ -314,7 +315,8 @@ export function PlansPage() {
             Extrato
           </Typography>
           <Card>
-            <Table size="small">
+            <ScrollX>
+            <Table size="small" sx={{ minWidth: 560 }}>
               <TableHead>
                 <TableRow>
                   <TableCell>Data</TableCell>
@@ -351,6 +353,7 @@ export function PlansPage() {
                 ))}
               </TableBody>
             </Table>
+            </ScrollX>
           </Card>
         </>
       )}

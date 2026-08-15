@@ -134,7 +134,7 @@ export function ReferralPage() {
             size="small"
             value={link}
             InputProps={{ readOnly: true }}
-            sx={{ flexGrow: 1, minWidth: 260 }}
+            sx={{ flexGrow: 1, minWidth: { xs: '100%', sm: 260 } }}
           />
           <Button
             variant="contained"

@@ -30,6 +30,8 @@ import {
   ListItemText,
   Tooltip,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
@@ -109,16 +111,31 @@ export function AppLayout() {
   } | null>(null);
   const [, forceTick] = useState(0);
   // Drawer recolhível (só ícones) — preferência persistida no navegador.
-  const [collapsed, setCollapsed] = useState(
+  const [collapsedPref, setCollapsedPref] = useState(
     () => localStorage.getItem(DRAWER_COLLAPSED_KEY) === '1',
   );
+  const theme = useTheme();
+  // < md o menu vira gaveta temporária (overlay) e nunca fica recolhido.
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const collapsed = isMobile ? false : collapsedPref;
   const drawerWidth = collapsed ? DRAWER_WIDTH_COLLAPSED : DRAWER_WIDTH;
 
-  const toggleDrawer = () =>
-    setCollapsed((c) => {
+  const toggleDrawer = () => {
+    if (isMobile) {
+      setMobileOpen((o) => !o);
+      return;
+    }
+    setCollapsedPref((c) => {
       localStorage.setItem(DRAWER_COLLAPSED_KEY, c ? '0' : '1');
       return !c;
     });
+  };
+
+  // Fecha a gaveta ao navegar (mobile).
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
 
   // Timer da próxima leva de análises (visível a todos os planos).
   useEffect(() => {
@@ -167,9 +184,12 @@ export function AppLayout() {
   return (
     <Box display="flex" minHeight="100vh" bgcolor="background.default">
       <Drawer
-        variant="permanent"
+        variant={isMobile ? 'temporary' : 'permanent'}
+        open={isMobile ? mobileOpen : true}
+        onClose={() => setMobileOpen(false)}
+        ModalProps={{ keepMounted: true }}
         sx={{
-          width: drawerWidth,
+          width: isMobile ? 0 : drawerWidth,
           flexShrink: 0,
           transition: 'width .22s ease',
           '& .MuiDrawer-paper': {
@@ -389,11 +409,11 @@ export function AppLayout() {
             position: 'sticky',
             top: 0,
             zIndex: 5,
-            px: { xs: 2, md: 3 },
-            py: 2,
+            px: { xs: 1.5, md: 3 },
+            py: { xs: 1.25, md: 2 },
             display: 'flex',
             alignItems: 'center',
-            gap: 1.5,
+            gap: { xs: 0.75, md: 1.5 },
             borderBottom: '1px solid rgba(22,24,35,0.06)',
             bgcolor: 'rgba(250,250,250,0.85)',
             backdropFilter: 'blur(10px)',
@@ -405,16 +425,23 @@ export function AppLayout() {
               onClick={toggleDrawer}
               aria-label={collapsed ? 'expandir menu lateral' : 'recolher menu lateral'}
             >
-              {collapsed ? <MenuRoundedIcon /> : <MenuOpenRoundedIcon />}
+              {isMobile || collapsed ? <MenuRoundedIcon /> : <MenuOpenRoundedIcon />}
             </IconButton>
           </Tooltip>
-          <Typography variant="h6" fontWeight={800} letterSpacing="-0.01em">
+          <Typography
+            variant="h6"
+            fontWeight={800}
+            letterSpacing="-0.01em"
+            noWrap
+            sx={{ fontSize: { xs: 15, sm: 20 }, minWidth: 0 }}
+          >
             {current?.label ?? 'Perfil'}
           </Typography>
           <Chip
             size="small"
             label={updateLabel}
             sx={{
+              display: { xs: 'none', md: 'inline-flex' },
               bgcolor: 'rgba(37,244,238,0.12)',
               color: '#0a8a85',
               fontWeight: 700,
@@ -431,6 +458,7 @@ export function AppLayout() {
               icon={<BoltRoundedIcon sx={{ fontSize: 16 }} />}
               label={`${credits} créditos`}
               sx={{
+                flexShrink: 0,
                 bgcolor: 'rgba(254,44,85,0.10)',
                 color: red,
                 fontWeight: 700,
