@@ -35,6 +35,13 @@ interface SearchableSelectProps {
    * livre e ganham sugestões — a lista vira atalho, não camisa de força.
    */
   allowCustom?: boolean;
+  /**
+   * Busca no servidor. Quando presente, o filtro local do Autocomplete é
+   * desligado: a lista já vem filtrada de quem chama, e filtrar de novo aqui
+   * esconderia resultados que o backend acabou de trazer.
+   */
+  onSearchChange?: (texto: string) => void;
+  loading?: boolean;
   disabled?: boolean;
   helperText?: string;
   fullWidth?: boolean;
@@ -97,6 +104,8 @@ export function SearchableSelect({
   variant = 'field',
   showImages,
   allowCustom,
+  onSearchChange,
+  loading,
   disabled,
   helperText,
   fullWidth,
@@ -130,7 +139,11 @@ export function SearchableSelect({
       // demais, digitar apenas filtra a lista.
       onInputChange={(_e, texto, motivo) => {
         if (allowCustom && motivo === 'input') onChange(texto);
+        if (onSearchChange && motivo !== 'reset') onSearchChange(texto);
       }}
+      filterOptions={onSearchChange ? (x) => x : undefined}
+      loading={loading}
+      noOptionsText={loading ? 'Buscando…' : 'Nenhum resultado'}
       // Limpar o campo volta para a opção "todos" quando ela existe; sem ela,
       // o X não faria sentido e some.
       disableClearable={!emptyLabel && !value}

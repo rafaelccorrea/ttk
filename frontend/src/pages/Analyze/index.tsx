@@ -25,18 +25,39 @@ export function AnalyzePage() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [transcript, setTranscript] = useState('');
   const [products, setProducts] = useState<RankedProduct[]>([]);
+  const [busca, setBusca] = useState('');
+  const [buscando, setBuscando] = useState(false);
   const [productId, setProductId] = useState('');
+  // O escolhido pode não estar na lista atual (a busca seguinte troca as 50
+  // opções). Guardá-lo à parte mantém título e foto no campo.
+  const [escolhido, setEscolhido] = useState<RankedProduct | null>(null);
   const [result, setResult] = useState<Script | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
 
+  // A lista é só o topo do catálogo: um produto fora dos 50 mais vendidos
+  // existe mas nunca aparecia, porque o filtro do select era local. Agora a
+  // busca vai ao servidor a cada digitação (com debounce).
   useEffect(() => {
-    productsService
-      .rank({ period: 30, limit: 50 })
-      .then((data) => setProducts(data.items))
-      .catch(console.error);
-  }, []);
+    let cancelado = false;
+    setBuscando(true);
+    const timer = setTimeout(() => {
+      productsService
+        .rank({ period: 30, limit: 50, search: busca.trim() || undefined })
+        .then((data) => {
+          if (!cancelado) setProducts(data.items);
+        })
+        .catch(console.error)
+        .finally(() => {
+          if (!cancelado) setBuscando(false);
+        });
+    }, 350);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [busca]);
 
   // Travas síncronas. `transcribing`/`analyzing` só desabilitam o controle no
   // próximo render — um duplo-clique cabe nessa janela, e cada disparo extra
@@ -145,10 +166,18 @@ export function AnalyzePage() {
                 label="Adaptar para o produto"
                 placeholder="Buscar produto…"
                 value={productId}
-                onChange={setProductId}
+                onChange={(id) => {
+                  setProductId(id);
+                  setEscolhido(products.find((p) => p.id === id) ?? null);
+                }}
+                onSearchChange={setBusca}
+                loading={buscando}
                 emptyLabel="Nenhum — só analisar a estrutura"
                 sx={{ mt: 1, mb: 0.5 }}
-                options={products.map((p) => ({
+                options={(escolhido && !products.some((p) => p.id === escolhido.id)
+                  ? [escolhido, ...products]
+                  : products
+                ).map((p) => ({
                   value: p.id,
                   label: p.title,
                   imageUrl: p.imageUrl ? proxyImage(p.imageUrl) : null,
