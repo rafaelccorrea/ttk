@@ -187,6 +187,7 @@ export const FAQ = [
   },
 ];
 
+/** Espelha `backend/src/modules/billing/billing.config.ts` — mantenha os dois lados iguais. */
 export const PRICING = [
   {
     id: 'free',
@@ -196,26 +197,19 @@ export const PRICING = [
     perks: ['30 créditos de boas-vindas', 'Descoberta completa de produtos, vídeos e criadores', 'Roteiros com gerador local ilimitados'],
   },
   {
-    id: 'starter',
-    name: 'Starter',
-    price: 49.9,
-    tagline: 'Para quem já publica toda semana',
-    perks: ['500 créditos/mês', 'Roteiros e análises com IA', 'Transcrição de vídeos', 'Imagens com IA', 'Multiplicador de conteúdo'],
-  },
-  {
     id: 'pro',
     name: 'Pro',
-    price: 99.9,
-    tagline: 'Para escalar de verdade',
+    price: 79.9,
+    tagline: 'Para quem publica toda semana',
     highlight: true,
-    perks: ['1.100 créditos/mês', 'Tudo do Starter', 'Vídeos com IA', 'Minhas Lojas (importação de pedidos)', 'Suporte prioritário'],
+    perks: ['800 créditos/mês', 'Roteiros e análises com IA', 'Transcrição de vídeos', 'Imagens e vídeos com IA', 'Minhas Lojas (importação de pedidos)', 'Multiplicador de conteúdo'],
   },
   {
     id: 'business',
     name: 'Business',
-    price: 199.9,
+    price: 249.9,
     tagline: 'Para times e agências',
-    perks: ['2.300 créditos/mês', 'Tudo do Pro', 'Coleta de dados automatizada', 'Onboarding dedicado'],
+    perks: ['2.800 créditos/mês (11% mais barato por crédito)', 'Tudo do Pro', 'Coleta de dados automatizada', 'Onboarding dedicado', 'Suporte prioritário'],
   },
 ];
 

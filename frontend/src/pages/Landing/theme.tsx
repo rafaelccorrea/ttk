@@ -95,7 +95,16 @@ export const landingKeyframes = (
 );
 
 /** Revela o conteúdo com fade-up quando entra no viewport. */
-export function Reveal({ children, delay = 0 }: { children: ReactNode; delay?: number }) {
+export function Reveal({
+  children,
+  delay = 0,
+  full = false,
+}: {
+  children: ReactNode;
+  delay?: number;
+  /** Ocupa a altura do Grid item — para cards que precisam ficar do mesmo tamanho. */
+  full?: boolean;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [shown, setShown] = useState(false);
   useEffect(() => {
@@ -117,6 +126,7 @@ export function Reveal({ children, delay = 0 }: { children: ReactNode; delay?: n
     <Box
       ref={ref}
       sx={{
+        height: full ? '100%' : undefined,
         opacity: shown ? 1 : 0,
         transform: shown ? 'none' : 'translateY(32px)',
         transition: `opacity .7s ease ${delay}ms, transform .7s cubic-bezier(.2,.8,.2,1) ${delay}ms`,

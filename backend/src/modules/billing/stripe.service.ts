@@ -9,7 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 // Sem esModuleInterop no tsconfig, o default import do stripe vira undefined.
 import Stripe = require('stripe');
 import { Repository } from 'typeorm';
-import { CREDIT_PACKS, PLANS } from './billing.config';
+import { CREDIT_PACKS, PLANS, findPlan } from './billing.config';
 import { BillingService } from './billing.service';
 import { CreditTransaction } from './entities/credit-transaction.entity';
 
@@ -210,7 +210,9 @@ export class StripeService {
       );
       this.logger.log(`Pack ${itemId} creditado para ${userId} (${stripeRef})`);
     } else if (kind === 'plan') {
-      const plan = PLANS.find((p) => p.id === itemId);
+      // `findPlan` (e não `PLANS`) porque a renovação mensal também chega para
+      // quem assinou um plano que já saiu do catálogo.
+      const plan = itemId ? findPlan(itemId) : undefined;
       if (!plan) return;
       await this.billing.setPlan(userId, plan.id);
       await this.billing.grantPaid(

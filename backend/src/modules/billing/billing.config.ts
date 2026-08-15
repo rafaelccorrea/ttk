@@ -51,7 +51,15 @@ export interface Plan {
 /**
  * Planos: o preço do plano SEMPRE cobre o pior caso de gasto dos créditos
  * inclusos (créditos × pior custo/crédito da tabela) — checado no boot.
- * Pior custo/crédito da tabela ≈ R$ 0,06 (vídeo: 3,60/60).
+ * Pior custo/crédito da tabela ≈ R$ 0,06 (vídeo: 3,60/60), ou seja o piso
+ * com a margem mínima é R$ 0,084 por crédito.
+ *
+ * Três degraus, de propósito: Free para provar o valor, Pro para quem produz
+ * e Business para quem escala. Preço por crédito:
+ *   Pro      R$ 79,90 / 800 cr   = R$ 0,0999/cr → 1,66× o pior custo
+ *   Business R$ 249,90 / 2.800 cr = R$ 0,0892/cr → 1,49× o pior custo
+ * O Business é ~11% mais barato por crédito — o desconto de volume sai da
+ * margem, nunca do custo.
  */
 export const PLANS: Plan[] = [
   {
@@ -66,50 +74,62 @@ export const PLANS: Plan[] = [
     ],
   },
   {
-    id: 'starter',
-    name: 'Starter',
-    priceBrl: 49.9,
-    monthlyCredits: 500,
-    perks: [
-      '500 créditos/mês',
-      'Roteiros e análises com Claude',
-      'Transcrição Whisper',
-      'Imagens com IA',
-      'Multiplicador de conteúdo',
-    ],
-  },
-  {
     id: 'pro',
     name: 'Pro',
-    priceBrl: 99.9,
-    monthlyCredits: 1100,
+    priceBrl: 79.9,
+    monthlyCredits: 800,
     highlight: true,
     perks: [
-      '1.100 créditos/mês',
-      'Tudo do Starter',
-      'Vídeos com IA (Higgsfield)',
+      '800 créditos/mês',
+      'Roteiros e análises com Claude',
+      'Transcrição Whisper',
+      'Imagens e vídeos com IA',
       'Minhas Lojas (importação de pedidos)',
-      'Suporte prioritário',
+      'Multiplicador de conteúdo',
     ],
   },
   {
     id: 'business',
     name: 'Business',
-    priceBrl: 199.9,
-    monthlyCredits: 2300,
+    priceBrl: 249.9,
+    monthlyCredits: 2800,
     perks: [
-      '2.300 créditos/mês',
+      '2.800 créditos/mês (11% mais barato por crédito)',
       'Tudo do Pro',
       'Coleta de dados automatizada',
       'Onboarding dedicado',
+      'Suporte prioritário',
     ],
   },
 ];
 
+/**
+ * Planos que saíram do catálogo mas ainda têm assinantes ativos. Não aparecem
+ * no /planos nem no checkout — existem só para a renovação mensal continuar
+ * creditando quem assinou antes da mudança.
+ */
+export const LEGACY_PLANS: Plan[] = [
+  {
+    id: 'starter',
+    name: 'Starter',
+    priceBrl: 49.9,
+    monthlyCredits: 500,
+    perks: ['500 créditos/mês', 'Plano descontinuado'],
+  },
+];
+
+/** Busca um plano vendável ou legado — use em renovação, nunca em checkout. */
+export function findPlan(id: string): Plan | undefined {
+  return [...PLANS, ...LEGACY_PLANS].find((p) => p.id === id);
+}
+
 /** Créditos de boas-vindas do cadastro (custo máximo p/ nós: 30 × R$0,06 = R$1,80/usuário). */
 export const SIGNUP_BONUS_CREDITS = 30;
 
-/** Hierarquia dos planos (maior = mais acesso). */
+/**
+ * Hierarquia dos planos (maior = mais acesso). `starter` continua aqui como
+ * degrau legado: quem assinou antes mantém exatamente o acesso que pagou.
+ */
 export const PLAN_RANK: Record<string, number> = {
   free: 0,
   starter: 1,
@@ -198,7 +218,7 @@ export function assertProfitability(): string[] {
       );
     }
   }
-  for (const plan of PLANS) {
+  for (const plan of [...PLANS, ...LEGACY_PLANS]) {
     if (plan.monthlyCredits === 0) continue;
     const worstSpend = plan.monthlyCredits * perCredit;
     if (plan.priceBrl < worstSpend * MIN_MARGIN) {

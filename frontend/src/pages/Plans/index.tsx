@@ -151,7 +151,7 @@ export function PlansPage() {
         {plans.map((plan) => {
           const current = wallet?.plan === plan.id;
           return (
-            <Grid item xs={12} sm={6} md={3} key={plan.id}>
+            <Grid item xs={12} sm={6} md={4} key={plan.id}>
               <Card
                 sx={{
                   height: '100%',

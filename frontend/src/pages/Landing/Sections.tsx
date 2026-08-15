@@ -412,8 +412,8 @@ export function Pricing() {
         </Reveal>
         <Grid container spacing={3} alignItems="stretch">
           {PRICING.map((p, i) => (
-            <Grid item xs={12} sm={6} md={3} key={p.id}>
-              <Reveal delay={i * 100}>
+            <Grid item xs={12} sm={6} md={4} key={p.id}>
+              <Reveal delay={i * 100} full>
                 <Box
                   sx={{
                     ...glass, p: 3.25, height: '100%', display: 'flex', flexDirection: 'column',
