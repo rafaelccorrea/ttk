@@ -1,28 +1,64 @@
 import {
+  ArrowBackRounded,
+  AutoFixHighRounded,
+  LocalFireDepartmentRounded,
+  OndemandVideoRounded,
+  Visibility,
+  VisibilityOff,
+} from '@mui/icons-material';
+import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
+  IconButton,
+  InputAdornment,
+  Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import { FormEvent, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+
+// Mensagens do Supabase Auth traduzidas para o usuário.
+function translateAuthError(err: unknown): string {
+  const message = err instanceof Error ? err.message : '';
+  const map: Array<[RegExp, string]> = [
+    [/email not confirmed/i, 'Confirme seu e-mail antes de entrar — enviamos um link de confirmação para sua caixa de entrada.'],
+    [/invalid login credentials/i, 'E-mail ou senha incorretos.'],
+    [/user already registered/i, 'Este e-mail já tem conta — use "Já tenho conta".'],
+    [/password should be at least/i, 'A senha precisa ter pelo menos 6 caracteres.'],
+    [/rate limit/i, 'Muitas tentativas — aguarde um instante e tente de novo.'],
+  ];
+  for (const [pattern, text] of map) {
+    if (pattern.test(message)) return text;
+  }
+  return message || 'Falha no login';
+}
+
+const red = '#fe2c55';
+const cyan = '#25f4ee';
+const textDim = 'rgba(255,255,255,0.66)';
+
+const BRAND_POINTS = [
+  { icon: <LocalFireDepartmentRounded fontSize="small" />, text: 'Produtos em alta com receita estimada em tempo real' },
+  { icon: <OndemandVideoRounded fontSize="small" />, text: 'Os vídeos e criadores que mais convertem por nicho' },
+  { icon: <AutoFixHighRounded fontSize="small" />, text: 'Roteiros gerados por IA prontos para gravar' },
+];
 
 export function LoginPage() {
   const { isAuthenticated, isDemoMode, signIn, signUp } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   if (isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -35,30 +71,106 @@ export function LoginPage() {
       } else {
         await signIn(email, password);
       }
-      navigate('/');
+      navigate('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha no login');
+      setError(translateAuthError(err));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Box
-      display="flex"
-      justifyContent="center"
-      alignItems="center"
-      minHeight="100vh"
-      px={2}
-    >
-      <Card sx={{ width: '100%', maxWidth: 420 }}>
-        <CardContent>
-          <Typography variant="h5" gutterBottom>
-            PikPok
+    <Box display="flex" minHeight="100vh">
+      {/* Painel de marca (esquerda, some no mobile) */}
+      <Box
+        sx={{
+          flex: 1,
+          display: { xs: 'none', md: 'flex' },
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          p: 6,
+          color: '#fff',
+          background: `radial-gradient(60% 50% at 20% 10%, ${red}30 0%, transparent 60%), radial-gradient(50% 45% at 90% 90%, ${cyan}26 0%, transparent 60%), #0d0e14`,
+        }}
+      >
+        <Typography
+          component={RouterLink}
+          to="/"
+          fontWeight={800}
+          fontSize={22}
+          sx={{ color: '#fff', textDecoration: 'none', letterSpacing: '-0.02em' }}
+        >
+          Pik<Box component="span" sx={{ color: red }}>Pok</Box>
+        </Typography>
+
+        <Box maxWidth={440}>
+          <Typography sx={{ fontSize: 36, fontWeight: 800, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
+            Venda antes da tendência virar{' '}
+            <Box
+              component="span"
+              sx={{
+                background: `linear-gradient(92deg, ${red}, ${cyan})`,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              concorrência
+            </Box>
           </Typography>
-          <Typography color="text.secondary" gutterBottom>
-            Inteligência de produtos para o TikTok Shop
+          <Stack spacing={2.5} mt={5}>
+            {BRAND_POINTS.map((p) => (
+              <Stack key={p.text} direction="row" spacing={1.5} alignItems="center">
+                <Box
+                  sx={{
+                    width: 36, height: 36, borderRadius: 2.5, display: 'grid', placeItems: 'center',
+                    flexShrink: 0, background: `linear-gradient(135deg, ${red}30, ${cyan}30)`,
+                  }}
+                >
+                  {p.icon}
+                </Box>
+                <Typography fontSize={15} color={textDim}>{p.text}</Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+
+        <Typography fontSize={13} color="rgba(255,255,255,0.4)">
+          © {new Date().getFullYear()} PikPok — inteligência de produtos para o TikTok Shop
+        </Typography>
+      </Box>
+
+      {/* Formulário (direita) */}
+      <Box
+        sx={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          px: { xs: 3, sm: 6 },
+          py: 6,
+          bgcolor: 'background.default',
+        }}
+      >
+        <Box width="100%" maxWidth={400}>
+          <Button
+            component={RouterLink}
+            to="/"
+            startIcon={<ArrowBackRounded />}
+            size="small"
+            sx={{ mb: 3, color: 'text.secondary' }}
+          >
+            Voltar para o início
+          </Button>
+
+          <Typography variant="h4" gutterBottom>
+            {isSignUp ? 'Crie sua conta' : 'Bem-vindo de volta'}
           </Typography>
+          <Typography color="text.secondary" mb={3}>
+            {isSignUp
+              ? 'Comece grátis — sem cartão de crédito.'
+              : 'Entre para acessar seu painel do TikTok Shop.'}
+          </Typography>
+
           {isDemoMode && (
             <Chip
               label="Modo demo — sem Supabase configurado, qualquer e-mail entra"
@@ -67,12 +179,15 @@ export function LoginPage() {
               sx={{ mb: 2 }}
             />
           )}
+
           <form onSubmit={handleSubmit}>
             <TextField
               label="E-mail"
               type="email"
               fullWidth
               required
+              autoFocus
+              autoComplete="email"
               margin="normal"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -80,12 +195,26 @@ export function LoginPage() {
             {!isDemoMode && (
               <TextField
                 label="Senha"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 fullWidth
                 required
+                autoComplete={isSignUp ? 'new-password' : 'current-password'}
                 margin="normal"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                        onClick={() => setShowPassword((v) => !v)}
+                        edge="end"
+                      >
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
             )}
             {error && (
@@ -96,24 +225,35 @@ export function LoginPage() {
             <Button
               type="submit"
               variant="contained"
+              size="large"
               fullWidth
               disabled={busy}
-              sx={{ mt: 2 }}
+              sx={{ mt: 3, py: 1.4 }}
             >
-              {isSignUp ? 'Criar conta' : 'Entrar'}
+              {busy ? 'Aguarde…' : isSignUp ? 'Criar conta grátis' : 'Entrar'}
             </Button>
             {!isDemoMode && (
-              <Button
-                fullWidth
-                sx={{ mt: 1 }}
-                onClick={() => setIsSignUp((v) => !v)}
-              >
-                {isSignUp ? 'Já tenho conta' : 'Criar uma conta'}
-              </Button>
+              <Typography textAlign="center" fontSize={14} color="text.secondary" mt={2.5}>
+                {isSignUp ? 'Já tem conta?' : 'Ainda não tem conta?'}{' '}
+                <Box
+                  component="button"
+                  type="button"
+                  onClick={() => {
+                    setIsSignUp((v) => !v);
+                    setError(null);
+                  }}
+                  sx={{
+                    border: 0, p: 0, background: 'none', cursor: 'pointer',
+                    color: 'primary.main', fontWeight: 700, fontSize: 'inherit', fontFamily: 'inherit',
+                  }}
+                >
+                  {isSignUp ? 'Entrar' : 'Criar uma conta'}
+                </Box>
+              </Typography>
             )}
           </form>
-        </CardContent>
-      </Card>
+        </Box>
+      </Box>
     </Box>
   );
 }

@@ -21,20 +21,26 @@ interface AuthContextValue {
   signOut(): Promise<void>;
 }
 
+const EMAIL_STORAGE_KEY = 'pikpok.email';
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem(TOKEN_STORAGE_KEY),
   );
-  const [email, setEmail] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(() =>
+    localStorage.getItem(EMAIL_STORAGE_KEY),
+  );
   const [isLoading, setIsLoading] = useState(Boolean(supabase));
 
   const persist = useCallback((accessToken: string | null, mail: string | null) => {
     if (accessToken) {
       localStorage.setItem(TOKEN_STORAGE_KEY, accessToken);
+      if (mail) localStorage.setItem(EMAIL_STORAGE_KEY, mail);
     } else {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
+      localStorage.removeItem(EMAIL_STORAGE_KEY);
     }
     setToken(accessToken);
     setEmail(mail);

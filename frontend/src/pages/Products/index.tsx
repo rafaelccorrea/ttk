@@ -16,13 +16,170 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  productsService,
-  RankedProduct,
-} from '@/services/products.service';
+import { productsService, RankedProduct } from '@/services/products.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 
 const PAGE_SIZE = 24;
+
+// Gradiente estável por categoria para o topo do card (sem imagens reais ainda).
+const GRADIENTS = [
+  'linear-gradient(135deg, #fe2c55 0%, #7c3aed 100%)',
+  'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)',
+  'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
+  'linear-gradient(135deg, #10b981 0%, #06b6d4 100%)',
+  'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
+  'linear-gradient(135deg, #f43f5e 0%, #f59e0b 100%)',
+];
+function gradientFor(category: string): string {
+  let hash = 0;
+  for (const ch of category) hash = (hash * 31 + ch.charCodeAt(0)) % 997;
+  return GRADIENTS[hash % GRADIENTS.length];
+}
+
+function ProductCard({
+  product,
+  rank,
+  onToggleFavorite,
+}: {
+  product: RankedProduct;
+  rank: number;
+  onToggleFavorite: (id: string) => void;
+}) {
+  return (
+    <Card
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        '&:hover': { transform: 'translateY(-2px)' },
+      }}
+    >
+      <Box
+        sx={{
+          height: 88,
+          background: gradientFor(product.category),
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          p: 1.25,
+        }}
+      >
+        <Chip
+          size="small"
+          label={`#${rank}`}
+          sx={{
+            bgcolor: 'rgba(0,0,0,0.45)',
+            color: '#fff',
+            fontWeight: 800,
+            backdropFilter: 'blur(4px)',
+          }}
+        />
+        <IconButton
+          size="small"
+          onClick={() => onToggleFavorite(product.id)}
+          aria-label="favoritar"
+          sx={{
+            bgcolor: 'rgba(0,0,0,0.35)',
+            color: product.isFavorite ? '#ffd54f' : '#fff',
+            '&:hover': { bgcolor: 'rgba(0,0,0,0.55)' },
+          }}
+        >
+          {product.isFavorite ? (
+            <StarIcon fontSize="small" />
+          ) : (
+            <StarBorderIcon fontSize="small" />
+          )}
+        </IconButton>
+      </Box>
+
+      <CardContent
+        sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, pt: 1.5 }}
+      >
+        <Typography
+          component={Link}
+          to={`/produtos/${product.id}`}
+          sx={{
+            color: 'inherit',
+            textDecoration: 'none',
+            fontWeight: 700,
+            fontSize: 15,
+            lineHeight: 1.35,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            minHeight: '2.7em',
+            '&:hover': { color: 'primary.main' },
+          }}
+        >
+          {product.title}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" mt={0.5}>
+          {product.storeName ?? '—'} · {product.category}
+          {product.rating ? ` · ★ ${product.rating}` : ''}
+        </Typography>
+
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+          mt={1.5}
+        >
+          <Typography variant="h6">{formatCurrency(product.price)}</Typography>
+          {product.growthPct !== null && (
+            <Chip
+              size="small"
+              sx={{
+                fontWeight: 700,
+                bgcolor:
+                  product.growthPct >= 0
+                    ? 'rgba(74,222,128,0.14)'
+                    : 'rgba(248,113,113,0.14)',
+                color: product.growthPct >= 0 ? '#4ade80' : '#f87171',
+              }}
+              label={`${product.growthPct >= 0 ? '▲' : '▼'} ${Math.abs(product.growthPct)}%`}
+            />
+          )}
+        </Box>
+
+        <Box
+          display="flex"
+          gap={2}
+          mt={1.5}
+          pt={1.5}
+          borderTop="1px solid rgba(22,24,35,0.08)"
+        >
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              Vendas
+            </Typography>
+            <Typography fontWeight={700}>
+              {formatNumber(product.salesPeriod)}
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              Faturamento
+            </Typography>
+            <Typography fontWeight={700} color="primary.main">
+              {formatCurrency(product.revenuePeriod)}
+            </Typography>
+          </Box>
+          {product.radarScore !== null && (
+            <Box ml="auto" textAlign="right">
+              <Typography variant="caption" color="text.secondary">
+                Radar
+              </Typography>
+              <Typography fontWeight={700} color="secondary.main">
+                {product.radarScore}
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function ProductsPage() {
   const [items, setItems] = useState<RankedProduct[]>([]);
@@ -65,11 +222,13 @@ export function ProductsPage() {
 
   return (
     <>
-      <Typography variant="h5" gutterBottom>
-        Produtos em alta
+      <Typography variant="h5">Produtos em alta</Typography>
+      <Typography color="text.secondary" mb={3}>
+        Os produtos que mais venderam no período — ranqueados pelo volume real
+        de vendas.
       </Typography>
 
-      <Box display="flex" gap={2} flexWrap="wrap" mb={2}>
+      <Box display="flex" gap={2} flexWrap="wrap" mb={3}>
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -97,68 +256,26 @@ export function ProductsPage() {
         </TextField>
         <TextField
           size="small"
-          label="Buscar"
+          label="Buscar produto ou loja"
           value={search}
           onChange={(e) => (setSearch(e.target.value), setPage(1))}
+          sx={{ minWidth: 220 }}
         />
       </Box>
 
-      <Grid container spacing={2}>
+      <Grid container spacing={2.5}>
         {items.map((p, index) => (
           <Grid item xs={12} sm={6} md={4} key={p.id}>
-            <Card sx={{ height: '100%' }}>
-              <CardContent>
-                <Box display="flex" justifyContent="space-between">
-                  <Chip
-                    size="small"
-                    label={`#${(page - 1) * PAGE_SIZE + index + 1}`}
-                  />
-                  <IconButton
-                    size="small"
-                    color="primary"
-                    onClick={() => toggleFavorite(p.id)}
-                    aria-label="favoritar"
-                  >
-                    {p.isFavorite ? <StarIcon /> : <StarBorderIcon />}
-                  </IconButton>
-                </Box>
-                <Typography
-                  component={Link}
-                  to={`/produtos/${p.id}`}
-                  sx={{
-                    color: 'inherit',
-                    textDecoration: 'none',
-                    fontWeight: 600,
-                    display: 'block',
-                    my: 1,
-                  }}
-                >
-                  {p.title}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {p.storeName ?? '—'} · {p.category}
-                </Typography>
-                <Box display="flex" justifyContent="space-between" mt={1}>
-                  <Typography variant="h6">{formatCurrency(p.price)}</Typography>
-                  {p.growthPct !== null && (
-                    <Chip
-                      size="small"
-                      color={p.growthPct >= 0 ? 'success' : 'error'}
-                      label={`${p.growthPct >= 0 ? '▲' : '▼'} ${Math.abs(p.growthPct)}%`}
-                    />
-                  )}
-                </Box>
-                <Typography variant="body2" color="text.secondary" mt={1}>
-                  {formatNumber(p.salesPeriod)} vendas ·{' '}
-                  {formatCurrency(p.revenuePeriod)} no período
-                </Typography>
-              </CardContent>
-            </Card>
+            <ProductCard
+              product={p}
+              rank={(page - 1) * PAGE_SIZE + index + 1}
+              onToggleFavorite={toggleFavorite}
+            />
           </Grid>
         ))}
       </Grid>
 
-      <Box display="flex" justifyContent="center" mt={3}>
+      <Box display="flex" justifyContent="center" mt={4}>
         <Pagination
           count={Math.max(1, Math.ceil(total / PAGE_SIZE))}
           page={page}
