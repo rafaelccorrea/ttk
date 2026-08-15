@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { typeOrmConfig } from './config/typeorm.config';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CombinationsModule } from './modules/combinations/combinations.module';
 import { CreatorsModule } from './modules/creators/creators.module';
 import { ProductsModule } from './modules/products/products.module';
 import { StudioModule } from './modules/studio/studio.module';
@@ -19,6 +20,7 @@ import { UsersModule } from './modules/users/users.module';
       useFactory: typeOrmConfig,
     }),
     AuthModule,
+    CombinationsModule,
     CreatorsModule,
     UsersModule,
     ProductsModule,

@@ -1,6 +1,8 @@
 import {
   ArrowBackRounded,
   AutoFixHighRounded,
+  LoginRounded,
+  PersonAddRounded,
   LocalFireDepartmentRounded,
   OndemandVideoRounded,
   Visibility,
@@ -11,6 +13,7 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   IconButton,
   InputAdornment,
   Stack,
@@ -19,11 +22,11 @@ import {
 } from '@mui/material';
 import { FormEvent, useState } from 'react';
 import { Link as RouterLink, Navigate, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { apiErrorMessage, useAuth } from '@/contexts/AuthContext';
 
-// Mensagens do Supabase Auth traduzidas para o usuário.
+// Mensagens de erro de autenticação traduzidas para o usuário.
 function translateAuthError(err: unknown): string {
-  const message = err instanceof Error ? err.message : '';
+  const message = apiErrorMessage(err);
   const map: Array<[RegExp, string]> = [
     [/email not confirmed/i, 'Confirme seu e-mail antes de entrar — enviamos um link de confirmação para sua caixa de entrada.'],
     [/invalid login credentials/i, 'E-mail ou senha incorretos.'],
@@ -55,6 +58,8 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   if (isAuthenticated) {
@@ -64,14 +69,20 @@ export function LoginPage() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setInfo(null);
+    setPreviewUrl(null);
     setBusy(true);
     try {
       if (isSignUp) {
-        await signUp(email, password);
+        // Cadastro exige confirmação de e-mail (link enviado via Nodemailer).
+        const result = await signUp(email, password);
+        setInfo(result.message);
+        setPreviewUrl(result.previewUrl ?? null);
+        setIsSignUp(false);
       } else {
         await signIn(email, password);
+        navigate('/dashboard');
       }
-      navigate('/dashboard');
     } catch (err) {
       setError(translateAuthError(err));
     } finally {
@@ -217,6 +228,19 @@ export function LoginPage() {
                 }}
               />
             )}
+            {info && (
+              <Alert severity="success" sx={{ mt: 1 }}>
+                {info}
+                {previewUrl && (
+                  <>
+                    {' '}
+                    <a href={previewUrl} target="_blank" rel="noreferrer">
+                      Ver e-mail de teste
+                    </a>
+                  </>
+                )}
+              </Alert>
+            )}
             {error && (
               <Alert severity="error" sx={{ mt: 1 }}>
                 {error}
@@ -228,7 +252,21 @@ export function LoginPage() {
               size="large"
               fullWidth
               disabled={busy}
-              sx={{ mt: 3, py: 1.4 }}
+              startIcon={
+                busy ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : isSignUp ? (
+                  <PersonAddRounded />
+                ) : (
+                  <LoginRounded />
+                )
+              }
+              sx={{
+                mt: 3, py: 1.4,
+                transition: 'transform .15s ease, box-shadow .2s ease',
+                '&:hover': { transform: 'translateY(-1px)' },
+                '&:active': { transform: 'scale(0.98)' },
+              }}
             >
               {busy ? 'Aguarde…' : isSignUp ? 'Criar conta grátis' : 'Entrar'}
             </Button>

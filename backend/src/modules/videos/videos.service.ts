@@ -65,6 +65,9 @@ export class VideosService {
       }
       qb.andWhere('v.id IN (:...savedIds)', { savedIds: [...savedIds] });
     }
+    if (query.productId) {
+      qb.andWhere('v.productId = :productId', { productId: query.productId });
+    }
     if (query.category) {
       qb.andWhere('v.category = :category', { category: query.category });
     }

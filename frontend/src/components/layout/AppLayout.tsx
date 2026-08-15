@@ -1,4 +1,7 @@
 import AutoFixHighRoundedIcon from '@mui/icons-material/AutoFixHighRounded';
+import CardGiftcardRoundedIcon from '@mui/icons-material/CardGiftcardRounded';
+import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
+import SchoolRoundedIcon from '@mui/icons-material/SchoolRounded';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import LocalFireDepartmentRoundedIcon from '@mui/icons-material/LocalFireDepartmentRounded';
@@ -9,6 +12,7 @@ import StyleRoundedIcon from '@mui/icons-material/StyleRounded';
 import {
   Avatar,
   Box,
+  Chip,
   Divider,
   Drawer,
   IconButton,
@@ -20,9 +24,12 @@ import {
   Typography,
 } from '@mui/material';
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { SupportFab } from '@/components/ui/SupportFab';
 import { useAuth } from '@/contexts/AuthContext';
 
-const DRAWER_WIDTH = 232;
+const DRAWER_WIDTH = 248;
+const red = '#fe2c55';
+const cyan = '#25f4ee';
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: <DashboardRoundedIcon /> },
@@ -30,16 +37,20 @@ const NAV = [
   { to: '/videos', label: 'Vídeos que Vendem', icon: <OndemandVideoRoundedIcon /> },
   { to: '/criadores', label: 'Criadores', icon: <GroupsRoundedIcon /> },
   { to: '/estudio', label: 'Estúdio IA', icon: <AutoFixHighRoundedIcon /> },
+  { to: '/multiplicador', label: 'Multiplicador', icon: <DynamicFeedRoundedIcon /> },
   { to: '/prompts', label: 'Cofre de Prompts', icon: <StyleRoundedIcon /> },
   { to: '/favoritos', label: 'Favoritos', icon: <StarRoundedIcon /> },
+  { to: '/academy', label: 'PikPok Educa', icon: <SchoolRoundedIcon /> },
+  { to: '/indique', label: 'Indique e Ganhe', icon: <CardGiftcardRoundedIcon /> },
 ];
 
 export function AppLayout() {
   const { email, signOut } = useAuth();
   const location = useLocation();
+  const current = NAV.find((n) => location.pathname.startsWith(n.to));
 
   return (
-    <Box display="flex" minHeight="100vh">
+    <Box display="flex" minHeight="100vh" bgcolor="background.default">
       <Drawer
         variant="permanent"
         sx={{
@@ -48,32 +59,30 @@ export function AppLayout() {
           '& .MuiDrawer-paper': {
             width: DRAWER_WIDTH,
             boxSizing: 'border-box',
-            backgroundColor: '#ffffff',
-            borderRight: '1px solid rgba(22,24,35,0.08)',
+            color: '#fff',
+            background: `radial-gradient(70% 30% at 0% 0%, ${red}26 0%, transparent 60%), radial-gradient(60% 24% at 100% 100%, ${cyan}1a 0%, transparent 60%), #12131b`,
+            borderRight: '1px solid rgba(255,255,255,0.06)',
             display: 'flex',
             flexDirection: 'column',
           },
         }}
       >
-        <Box px={2.5} py={2.5}>
-          <Typography variant="h6" fontWeight={800}>
+        <Box px={2.5} py={2.75}>
+          <Typography variant="h6" fontWeight={800} letterSpacing="-0.02em">
             Pik
-            <Box component="span" sx={{ color: 'primary.main' }}>
+            <Box component="span" sx={{ color: red }}>
               Pok
             </Box>
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
             Inteligência TikTok Shop
           </Typography>
         </Box>
-        <Divider />
+        <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
 
         <List sx={{ px: 1.5, py: 2, flexGrow: 1 }}>
           {NAV.map((item) => {
-            const selected =
-              item.to === '/'
-                ? location.pathname === '/'
-                : location.pathname.startsWith(item.to);
+            const selected = location.pathname.startsWith(item.to);
             return (
               <ListItemButton
                 key={item.to}
@@ -83,12 +92,29 @@ export function AppLayout() {
                 sx={{
                   borderRadius: 2.5,
                   mb: 0.5,
-                  color: 'text.secondary',
+                  color: 'rgba(255,255,255,0.62)',
+                  position: 'relative',
+                  transition: 'background-color .2s ease, color .2s ease, transform .15s ease',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255,255,255,0.06)',
+                    color: '#fff',
+                    transform: 'translateX(2px)',
+                  },
                   '&.Mui-selected': {
-                    backgroundColor: 'rgba(254,44,85,0.10)',
-                    color: '#161823',
-                    '& .MuiListItemIcon-root': { color: 'primary.main' },
-                    '&:hover': { backgroundColor: 'rgba(254,44,85,0.16)' },
+                    backgroundColor: 'rgba(254,44,85,0.16)',
+                    color: '#fff',
+                    '& .MuiListItemIcon-root': { color: red },
+                    '&:hover': { backgroundColor: 'rgba(254,44,85,0.22)' },
+                    '&::before': {
+                      content: '""',
+                      position: 'absolute',
+                      left: 0,
+                      top: 10,
+                      bottom: 10,
+                      width: 3,
+                      borderRadius: 2,
+                      background: `linear-gradient(180deg, ${red}, ${cyan})`,
+                    },
                   },
                 }}
               >
@@ -104,7 +130,7 @@ export function AppLayout() {
           })}
         </List>
 
-        <Divider />
+        <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
         <Box
           px={2}
           py={1.75}
@@ -116,16 +142,17 @@ export function AppLayout() {
           sx={{
             textDecoration: 'none',
             color: 'inherit',
-            '&:hover': { backgroundColor: 'rgba(22,24,35,0.04)' },
+            transition: 'background-color .2s ease',
+            '&:hover': { backgroundColor: 'rgba(255,255,255,0.05)' },
           }}
         >
           <Avatar
             sx={{
-              width: 34,
-              height: 34,
-              bgcolor: 'primary.main',
+              width: 36,
+              height: 36,
               fontSize: 14,
               fontWeight: 700,
+              background: `linear-gradient(135deg, ${red}, #ff7a9c)`,
             }}
           >
             {(email ?? '?').slice(0, 1).toUpperCase()}
@@ -134,23 +161,65 @@ export function AppLayout() {
             <Typography variant="body2" noWrap fontWeight={600}>
               {email ?? '—'}
             </Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
               plano free
             </Typography>
           </Box>
           <Tooltip title="Sair">
-            <IconButton size="small" onClick={signOut} aria-label="sair">
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.preventDefault();
+                signOut();
+              }}
+              aria-label="sair"
+              sx={{ color: 'rgba(255,255,255,0.6)', '&:hover': { color: '#fff' } }}
+            >
               <LogoutRoundedIcon fontSize="small" />
             </IconButton>
           </Tooltip>
         </Box>
       </Drawer>
 
-      <Box component="main" flexGrow={1} px={{ xs: 2, md: 5 }} py={4}>
-        <Box maxWidth={1200} mx="auto">
-          <Outlet />
+      <Box component="main" flexGrow={1} minWidth={0} display="flex" flexDirection="column">
+        {/* Header da página */}
+        <Box
+          sx={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 5,
+            px: { xs: 2.5, md: 4, xl: 6 },
+            py: 2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            borderBottom: '1px solid rgba(22,24,35,0.06)',
+            bgcolor: 'rgba(250,250,250,0.85)',
+            backdropFilter: 'blur(10px)',
+          }}
+        >
+          <Typography variant="h6" fontWeight={800} letterSpacing="-0.01em">
+            {current?.label ?? 'Perfil'}
+          </Typography>
+          <Chip
+            size="small"
+            label="atualizado hoje"
+            sx={{
+              bgcolor: 'rgba(37,244,238,0.12)',
+              color: '#0a8a85',
+              fontWeight: 700,
+              height: 22,
+            }}
+          />
+        </Box>
+
+        <Box px={{ xs: 2.5, md: 4, xl: 6 }} py={{ xs: 3, md: 4 }} flexGrow={1}>
+          <Box maxWidth={1440} mx="auto">
+            <Outlet />
+          </Box>
         </Box>
       </Box>
+      <SupportFab />
     </Box>
   );
 }

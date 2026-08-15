@@ -1,12 +1,31 @@
 import { api } from './api';
 import { RankedProduct } from './products.service';
 
+export interface TopVideo {
+  id: string;
+  caption: string;
+  creatorHandle: string;
+  views: number;
+  revenueEstimate: number;
+  category: string;
+}
+
+export interface TopCreator {
+  id: string;
+  name: string;
+  handle: string;
+  followers: number;
+  gmvPeriod: number;
+}
+
 export interface Overview {
   totalSales: number;
   totalRevenue: number;
   totalProducts: number;
   totalCategories: number;
   topProducts: RankedProduct[];
+  topVideos: TopVideo[];
+  topCreators: TopCreator[];
 }
 
 export const analyticsService = {

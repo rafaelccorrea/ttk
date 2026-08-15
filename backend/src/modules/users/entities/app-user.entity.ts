@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   PrimaryColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -20,6 +21,20 @@ export class AppUser {
 
   @Column({ default: 'free' })
   plan: string;
+
+  // Auth local (cadastro por senha com confirmação de e-mail via Nodemailer).
+  @Column({ nullable: true })
+  passwordHash: string;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  emailConfirmedAt: Date;
+
+  @Column({ nullable: true })
+  @Index()
+  confirmationToken: string;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  confirmationSentAt: Date;
 
   @CreateDateColumn()
   createdAt: Date;

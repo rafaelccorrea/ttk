@@ -1,8 +1,21 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class QueryVideosDto {
+  @ApiPropertyOptional({ description: 'Filtra vídeos vinculados a um produto' })
+  @IsOptional()
+  @IsUUID()
+  productId?: string;
+
   @ApiPropertyOptional({ example: 'achadinhos' })
   @IsOptional()
   @IsString()

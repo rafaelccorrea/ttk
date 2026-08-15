@@ -41,9 +41,41 @@ export const theme = createTheme({
     },
     MuiButton: {
       styleOverrides: {
-        root: { borderRadius: 10 },
+        root: {
+          borderRadius: 10,
+          transition: 'transform .15s ease, box-shadow .2s ease, background-color .2s ease',
+          '&:hover': { transform: 'translateY(-1px)' },
+          '&:active': { transform: 'scale(0.98)' },
+        },
         containedPrimary: {
           boxShadow: '0 4px 18px rgba(254,44,85,0.30)',
+          '&:hover': { boxShadow: '0 8px 26px rgba(254,44,85,0.40)' },
+        },
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: 10,
+          transition: 'box-shadow .2s ease',
+          '&.Mui-focused': { boxShadow: '0 0 0 4px rgba(254,44,85,0.10)' },
+        },
+      },
+    },
+    MuiTableRow: {
+      styleOverrides: {
+        root: {
+          transition: 'background-color .15s ease',
+          '&:hover': { backgroundColor: 'rgba(22,24,35,0.025)' },
+        },
+      },
+    },
+    MuiLink: {
+      styleOverrides: {
+        root: {
+          textDecorationColor: 'rgba(254,44,85,0.3)',
+          transition: 'text-decoration-color .2s ease',
+          '&:hover': { textDecorationColor: '#fe2c55' },
         },
       },
     },

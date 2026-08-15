@@ -3,25 +3,34 @@ import {
   ReactNode,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
 } from 'react';
 import { api, TOKEN_STORAGE_KEY } from '@/services/api';
-import { supabase } from '@/services/supabase';
+import { authService, RegisterResult } from '@/services/auth.service';
+
+const EMAIL_STORAGE_KEY = 'pikpok.email';
+
+export interface SignUpResult {
+  /** true quando o cadastro exige confirmação de e-mail antes do login. */
+  needsConfirmation: boolean;
+  message: string;
+  /** URL de preview do e-mail (apenas dev, sem SMTP real configurado). */
+  previewUrl?: string;
+}
 
 interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   email: string | null;
-  /** true quando o projeto Supabase não está configurado (modo demo). */
+  /** Mantido por compatibilidade — auth agora é sempre do backend. */
   isDemoMode: boolean;
   signIn(email: string, password: string): Promise<void>;
-  signUp(email: string, password: string): Promise<void>;
+  signUp(email: string, password: string): Promise<SignUpResult>;
+  /** Autentica com um token já emitido (ex.: após confirmar o e-mail). */
+  acceptSession(accessToken: string, email: string): void;
   signOut(): Promise<void>;
 }
-
-const EMAIL_STORAGE_KEY = 'pikpok.email';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -32,91 +41,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState<string | null>(() =>
     localStorage.getItem(EMAIL_STORAGE_KEY),
   );
-  const [isLoading, setIsLoading] = useState(Boolean(supabase));
 
-  const persist = useCallback((accessToken: string | null, mail: string | null) => {
-    if (accessToken) {
-      localStorage.setItem(TOKEN_STORAGE_KEY, accessToken);
-      if (mail) localStorage.setItem(EMAIL_STORAGE_KEY, mail);
-    } else {
-      localStorage.removeItem(TOKEN_STORAGE_KEY);
-      localStorage.removeItem(EMAIL_STORAGE_KEY);
-    }
-    setToken(accessToken);
-    setEmail(mail);
-  }, []);
-
-  // Mantém o token sincronizado com a sessão do Supabase (refresh automático).
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
-      persist(
-        data.session?.access_token ?? null,
-        data.session?.user.email ?? null,
-      );
-      setIsLoading(false);
-    });
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        persist(session?.access_token ?? null, session?.user.email ?? null);
-      },
-    );
-    return () => subscription.subscription.unsubscribe();
-  }, [persist]);
+  const persist = useCallback(
+    (accessToken: string | null, mail: string | null) => {
+      if (accessToken) {
+        localStorage.setItem(TOKEN_STORAGE_KEY, accessToken);
+        if (mail) localStorage.setItem(EMAIL_STORAGE_KEY, mail);
+      } else {
+        localStorage.removeItem(TOKEN_STORAGE_KEY);
+        localStorage.removeItem(EMAIL_STORAGE_KEY);
+      }
+      setToken(accessToken);
+      setEmail(mail);
+    },
+    [],
+  );
 
   const signIn = useCallback(
     async (mail: string, password: string) => {
-      if (supabase) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: mail,
-          password,
-        });
-        if (error) throw new Error(error.message);
-        return;
-      }
-      // Modo demo: backend emite um JWT local por e-mail.
-      const { data } = await api.post<{ accessToken: string }>(
-        '/auth/dev-login',
-        { email: mail },
-      );
-      persist(data.accessToken, mail);
+      const { accessToken, user } = await authService.login(mail, password);
+      persist(accessToken, user.email);
     },
     [persist],
   );
 
   const signUp = useCallback(
-    async (mail: string, password: string) => {
-      if (supabase) {
-        const { error } = await supabase.auth.signUp({
-          email: mail,
-          password,
-        });
-        if (error) throw new Error(error.message);
-        return;
-      }
-      await signIn(mail, password);
+    async (mail: string, password: string): Promise<SignUpResult> => {
+      const result: RegisterResult = await authService.register(mail, password);
+      return {
+        needsConfirmation: true,
+        message: result.message,
+        previewUrl: result.previewUrl,
+      };
     },
-    [signIn],
+    [],
+  );
+
+  const acceptSession = useCallback(
+    (accessToken: string, mail: string) => {
+      persist(accessToken, mail);
+    },
+    [persist],
   );
 
   const signOut = useCallback(async () => {
-    if (supabase) {
-      await supabase.auth.signOut();
-    }
     persist(null, null);
   }, [persist]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       isAuthenticated: Boolean(token),
-      isLoading,
+      isLoading: false,
       email,
-      isDemoMode: !supabase,
+      isDemoMode: false,
       signIn,
       signUp,
+      acceptSession,
       signOut,
     }),
-    [token, isLoading, email, signIn, signUp, signOut],
+    [token, email, signIn, signUp, acceptSession, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -128,4 +111,15 @@ export function useAuth(): AuthContextValue {
     throw new Error('useAuth deve ser usado dentro de <AuthProvider>');
   }
   return context;
+}
+
+// Extrai a mensagem de erro da API (axios) ou de um Error comum.
+export function apiErrorMessage(err: unknown): string {
+  const anyErr = err as {
+    response?: { data?: { message?: string | string[] } };
+    message?: string;
+  };
+  const message = anyErr?.response?.data?.message;
+  if (Array.isArray(message)) return message.join(' ');
+  return message ?? anyErr?.message ?? 'Algo deu errado. Tente novamente.';
 }

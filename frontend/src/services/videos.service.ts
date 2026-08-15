@@ -27,6 +27,7 @@ export interface VideoDetail extends ViralVideo {
 export interface VideosQuery {
   search?: string;
   category?: string;
+  productId?: string;
   page?: number;
   limit?: number;
   saved?: boolean;
