@@ -10,7 +10,7 @@ import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded';
 import VolumeOffRoundedIcon from '@mui/icons-material/VolumeOffRounded';
 import VolumeUpRoundedIcon from '@mui/icons-material/VolumeUpRounded';
-import { Avatar, Backdrop, Box, Button, Fade, IconButton, Stack, Typography } from '@mui/material';
+import { Avatar, Backdrop, Box, Button, CircularProgress, Fade, IconButton, Stack, Typography } from '@mui/material';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { videosService } from '@/services/videos.service';
 import { formatNumber } from '@/utils/format';
@@ -78,6 +78,24 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
       cancelled = true;
     };
   }, [video?.id, video?.playbackUrl, resolved]);
+
+  // Adianta o próximo enquanto o atual toca: resolver custa segundos no
+  // fornecedor, então quem navega no feed não espera de novo.
+  useEffect(() => {
+    if (index === null) return;
+    const next = videos[index + 1];
+    if (!next?.id || next.playbackUrl || resolved[next.id]) return;
+    let cancelled = false;
+    videosService
+      .playback(next.id)
+      .then((url) => {
+        if (!cancelled && url) setResolved((prev) => ({ ...prev, [next.id!]: url }));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [index, videos, resolved]);
 
   const goTo = useCallback(
     (next: number) => {
@@ -193,6 +211,7 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
               poster={proxyImage(video.thumbnailUrl)}
               autoPlay
               playsInline
+              preload="auto"
               onClick={togglePlay}
               onEnded={() => (hasNext ? goTo(index + 1) : videoRef.current?.play())}
               onTimeUpdate={(e) => {
@@ -201,6 +220,30 @@ export function TikTokPlayer({ videos, index, onClose, onIndexChange, onToggleSa
               }}
               sx={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer', display: 'block' }}
             />
+
+            {/* Enquanto a URL do MP4 não chega, mostra que está carregando —
+                sem isso a tela fica parada no poster e parece travada. */}
+            {resolving && !src && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'grid',
+                  placeItems: 'center',
+                  gap: 1.5,
+                  bgcolor: 'rgba(0,0,0,0.45)',
+                  backdropFilter: 'blur(2px)',
+                  pointerEvents: 'none',
+                }}
+              >
+                <Stack alignItems="center" spacing={1.5}>
+                  <CircularProgress size={44} thickness={4} sx={{ color: red }} />
+                  <Typography fontSize={13} fontWeight={600} color="#fff">
+                    Carregando vídeo…
+                  </Typography>
+                </Stack>
+              </Box>
+            )}
 
             {/* Pulso play/pause ao tocar */}
             {showPulse && (

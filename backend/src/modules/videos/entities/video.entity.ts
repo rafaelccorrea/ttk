@@ -48,6 +48,17 @@ export class Video {
   @Column({ nullable: true })
   playbackUrl: string;
 
+  /**
+   * Até quando `playbackUrl` vale.
+   *
+   * Resolver a URL no fornecedor custa de 6 a 17 segundos — é o que fazia o
+   * player parecer travado. Guardando com validade, só a primeira exibição
+   * paga esse preço, e o cache sobrevive a restart (diferente do de memória).
+   * Nulo quando a URL é permanente (espelhada no S3) ou inexistente.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  playbackExpiresAt: Date | null;
+
   @Column({ type: 'text', nullable: true })
   transcript: string | null;
 

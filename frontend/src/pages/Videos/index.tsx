@@ -16,6 +16,7 @@ import {
   Grid,
   IconButton,
   Pagination,
+  Skeleton,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -72,6 +73,8 @@ function VideoCard({
   // produto, então mantemos `contain` com a cópia borrada preenchendo as bordas.
   const fillsCard = Boolean(video.thumbnailUrl);
   const playable = Boolean(video.playbackUrl || tiktokEmbedId(video.videoUrl));
+  // Skeleton no lugar da thumb até o `onLoad`.
+  const [imgLoaded, setImgLoaded] = useState(false);
   // Botões flutuantes no canto direito, no estilo da barra de ações do TikTok.
   const railButton = {
     bgcolor: 'rgba(0,0,0,0.42)',
@@ -101,8 +104,15 @@ function VideoCard({
       />
       {thumb && (
         <>
+          {!imgLoaded && (
+            <Skeleton
+              variant="rectangular"
+              animation="wave"
+              sx={{ position: 'absolute', inset: 0, bgcolor: 'rgba(255,255,255,0.07)' }}
+            />
+          )}
           {/* Cópia desfocada preenche as bordas sem cortar a thumb real */}
-          {!fillsCard && (
+          {!fillsCard && imgLoaded && (
             <Box
               component="img"
               src={proxyImage(thumb)}
@@ -126,6 +136,8 @@ function VideoCard({
             src={proxyImage(thumb)}
             alt={video.caption}
             loading="lazy"
+            onLoad={() => setImgLoaded(true)}
+            onError={() => setImgLoaded(true)}
             sx={{
               position: 'absolute',
               inset: 0,
@@ -133,7 +145,8 @@ function VideoCard({
               height: '100%',
               objectFit: fillsCard ? 'cover' : 'contain',
               objectPosition: 'center top',
-              transition: 'transform .35s ease',
+              opacity: imgLoaded ? 1 : 0,
+              transition: 'transform .35s ease, opacity .3s ease',
               '.MuiCard-root:hover &': { transform: 'scale(1.05)' },
             }}
           />

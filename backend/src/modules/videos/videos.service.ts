@@ -55,9 +55,14 @@ export class VideosService {
     const video = await this.videos.findOneBy({ id });
     if (!video) throw new NotFoundException(`Vídeo ${id} não encontrado`);
 
-    // Já espelhado: nada a fazer.
-    if (video.playbackUrl && this.mirror.enabled) {
+    // Espelhado no S3: permanente, nada a resolver.
+    if (video.playbackUrl && video.playbackExpiresAt === null) {
       return { playbackUrl: video.playbackUrl, permanent: true };
+    }
+
+    // URL temporária ainda válida: evita os 6–17s da chamada ao fornecedor.
+    if (video.playbackUrl && (video.playbackExpiresAt?.getTime() ?? 0) > Date.now()) {
+      return { playbackUrl: video.playbackUrl, permanent: false };
     }
 
     // `externalId` guarda "echotik-v-<video_id>".
@@ -72,16 +77,24 @@ export class VideosService {
     // Sem marca d'água quando o fornecedor entrega; senão o play normal.
     const source = media.playUrl;
 
+    // Aproveita para corrigir a URL canônica, se ainda faltava.
+    if (!video.videoUrl && media.homeUrl) video.videoUrl = media.homeUrl;
+
     if (this.mirror.enabled) {
       const mirrored = await this.mirror.mirror(source, 'videos', tiktokId);
       if (mirrored) {
         video.playbackUrl = mirrored;
-        // Aproveita para corrigir a URL canônica, se ainda faltava.
-        if (!video.videoUrl && media.homeUrl) video.videoUrl = media.homeUrl;
+        video.playbackExpiresAt = null; // nossa URL, não expira
         await this.videos.save(video);
         return { playbackUrl: mirrored, permanent: true };
       }
     }
+
+    // Sem S3: guarda a URL temporária com validade conservadora. A assinatura
+    // da TikTok dura horas; 2h dá margem de sobra antes de renovar.
+    video.playbackUrl = source;
+    video.playbackExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    await this.videos.save(video);
 
     return { playbackUrl: source, permanent: false };
   }

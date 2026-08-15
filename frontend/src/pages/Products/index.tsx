@@ -20,6 +20,7 @@ import {
   Grid,
   IconButton,
   Pagination,
+  Skeleton,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
@@ -65,6 +66,9 @@ function ProductCard({
   onToggleFavorite: (id: string) => void;
 }) {
   const growth = product.growthPct;
+  // Skeleton no lugar da foto até o `onLoad` — evita o card piscar preto
+  // enquanto a imagem vem do proxy.
+  const [imgLoaded, setImgLoaded] = useState(false);
   return (
     <Card
       sx={{
@@ -97,11 +101,20 @@ function ProductCard({
                 quadrada com margem sobrando nas bordas, então o corte do
                 `cover` come a margem, não o produto — e some com as faixas
                 borradas que desperdiçavam metade do card. */}
+            {!imgLoaded && (
+              <Skeleton
+                variant="rectangular"
+                animation="wave"
+                sx={{ position: 'absolute', inset: 0, bgcolor: 'rgba(255,255,255,0.07)' }}
+              />
+            )}
             <Box
               component="img"
               src={proxyImage(product.imageUrl)}
               alt={product.title}
               loading="lazy"
+              onLoad={() => setImgLoaded(true)}
+              onError={() => setImgLoaded(true)}
               sx={{
                 position: 'absolute',
                 inset: 0,
@@ -109,7 +122,8 @@ function ProductCard({
                 height: '100%',
                 objectFit: 'cover',
                 objectPosition: 'center 40%',
-                transition: 'transform .35s ease',
+                opacity: imgLoaded ? 1 : 0,
+                transition: 'transform .35s ease, opacity .3s ease',
                 '.MuiCard-root:hover &': { transform: 'scale(1.05)' },
               }}
             />
