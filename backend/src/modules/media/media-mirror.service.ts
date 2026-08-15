@@ -7,6 +7,11 @@ import {
 } from '@aws-sdk/client-s3';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
+import sharp from 'sharp';
+
+/** Formato único das capas: 9:16, o mesmo do card da vitrine. */
+const IMAGE_WIDTH = 540;
+const IMAGE_HEIGHT = 960;
 
 /** Rota que serve os objetos quando o bucket é privado (opção padrão). */
 export const MEDIA_ROUTE = '/api/v1/media/s3';
