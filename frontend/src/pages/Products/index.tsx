@@ -392,7 +392,7 @@ export function ProductsPage() {
       .finally(() => setLoadingSections(false));
   }
 
-  const sentinelRef = useInfiniteScroll({
+  useInfiniteScroll({
     hasMore: showSections && sectionsMore,
     loading: loadingSections,
     onLoadMore: loadMoreSections,
@@ -657,9 +657,8 @@ export function ProductsPage() {
         ))
       ) : null}
 
-      {/* Sentinela do scroll infinito: entra em cena antes do fim da lista e
-          puxa o próximo lote de categorias. */}
-      {showSections && sectionsMore && <Box ref={sentinelRef} sx={{ height: 1 }} />}
+      {/* O scroll infinito é controlado pelo hook, que observa a posição da
+          página — não há sentinela no DOM. */}
       {showSections && loadingSections && sections.length > 0 && (
         <BrandLoader label="Carregando mais categorias..." minHeight={140} />
       )}

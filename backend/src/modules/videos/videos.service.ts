@@ -26,6 +26,14 @@ export interface VideoItem {
   productImageUrl: string | null;
 }
 
+/**
+ * Quantos vídeos do MESMO produto podem aparecer numa seção.
+ *
+ * Sem esse teto, um produto com muitos criadores (fatiador, produto de
+ * limpeza) enche a seção sozinho e a vitrine vira repetição.
+ */
+const MAX_VIDEOS_POR_PRODUTO = 2;
+
 /** Validade do cache da vitrine — curto o bastante para não servir dado velho. */
 const SECTIONS_TTL_MS = 60 * 1000;
 
@@ -87,7 +95,7 @@ export class VideosService {
     // infinito pede lote após lote com os MESMOS parâmetros (só muda o
     // offset), guardamos o resultado por pouco tempo: a primeira rolagem paga,
     // as seguintes vêm de memória.
-    const cacheKey = `sections:${perSection}`;
+    const cacheKey = `sections:${perSection}:${MAX_VIDEOS_POR_PRODUTO}`;
     const cached = VideosService.sectionsCache.get(cacheKey);
     const rows: Array<
       Video & { categoryTotal: string; productImageUrl: string | null }
@@ -95,26 +103,36 @@ export class VideosService {
       ? cached.rows
       : await this.videos.query(
         `
-        WITH ranked AS (
+        WITH porProduto AS (
           SELECT v.*,
                  -- Foto do produto: é o fallback do card quando o vídeo não
                  -- tem thumbnail própria. Sem este join o card cai no
                  -- gradiente de categoria, que fica horrível na vitrine.
                  p."imageUrl" AS "productImageUrl",
+                 -- Posição do vídeo DENTRO do seu produto. É o que limita um
+                 -- só produto (o fatiador, o produto de limpeza) a dominar a
+                 -- seção com 6 vídeos quase iguais.
                  ROW_NUMBER() OVER (
-                   PARTITION BY v.category ORDER BY v.views DESC, v.id ASC
-                 ) AS rn,
-                 COUNT(*) OVER (PARTITION BY v.category)   AS "categoryTotal",
-                 SUM(v.views) OVER (PARTITION BY v.category) AS "categoryViews"
+                   PARTITION BY v."productId" ORDER BY v.views DESC, v.id ASC
+                 ) AS rnProduto
             FROM videos v
             LEFT JOIN products p ON p.id = v."productId"
            WHERE v.kind = 'product' AND v.category IS NOT NULL
+        ), ranked AS (
+          SELECT *,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY category ORDER BY views DESC, id ASC
+                 ) AS rn,
+                 COUNT(*)  OVER (PARTITION BY category) AS "categoryTotal",
+                 SUM(views) OVER (PARTITION BY category) AS "categoryViews"
+            FROM porProduto
+           WHERE rnProduto <= $2
         )
         SELECT * FROM ranked
          WHERE rn <= $1
          ORDER BY "categoryViews" DESC, category ASC, rn ASC
         `,
-        [perSection],
+        [perSection, MAX_VIDEOS_POR_PRODUTO],
       );
 
     if (!cached || cached.expiresAt <= Date.now()) {
