@@ -16,7 +16,6 @@ import {
   DialogTitle,
   Grid,
   IconButton,
-  Pagination,
   Skeleton,
   ToggleButton,
   ToggleButtonGroup,
@@ -496,7 +495,13 @@ export function VideosPage() {
           limit: PAGE_SIZE,
         })
         .then((data) => {
-          setItems(data.items);
+          // Página 1 substitui; as seguintes acumulam (scroll infinito).
+          // O filtro por id evita repetir item quando duas buscas se cruzam.
+          setItems((prev) => {
+            if (page === 1) return data.items;
+            const vistos = new Set(prev.map((v) => v.id));
+            return [...prev, ...data.items.filter((v) => !vistos.has(v.id))];
+          });
           setTotal(data.total);
         })
         .catch(console.error)
@@ -504,6 +509,19 @@ export function VideosPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [search, savedOnly, category, page]);
+
+  // Qualquer mudança de filtro volta para a página 1 — senão o acúmulo
+  // misturaria resultados de buscas diferentes.
+  useEffect(() => {
+    setPage(1);
+  }, [search, savedOnly, category]);
+
+  // Scroll infinito também na grade filtrada: sem paginação por clique.
+  useInfiniteScroll({
+    hasMore: !showSections && items.length < total,
+    loading,
+    onLoadMore: () => setPage((p) => p + 1),
+  });
 
   async function toggleSave(id: string) {
     const isSaved = await videosService.toggleSave(id);
@@ -647,15 +665,14 @@ export function VideosPage() {
         </Typography>
       )}
 
-      {/* A vitrine não pagina: cada seção já mostra o topo do seu nicho. */}
-      {!showSections && (
-        <Box display="flex" justifyContent="center" mt={4}>
-          <Pagination
-            count={Math.max(1, Math.ceil(total / PAGE_SIZE))}
-            page={page}
-            onChange={(_e, value) => setPage(value)}
-          />
-        </Box>
+      {/* Sem paginação por clique: o scroll traz a próxima página. */}
+      {!showSections && loading && items.length > 0 && (
+        <BrandLoader label="Carregando mais vídeos..." minHeight={120} />
+      )}
+      {!showSections && !loading && items.length >= total && total > 0 && (
+        <Typography color="text.secondary" textAlign="center" fontSize={13} mt={4}>
+          Você viu todos os {total} vídeos.
+        </Typography>
       )}
 
       {/* Player fullscreen estilo TikTok */}

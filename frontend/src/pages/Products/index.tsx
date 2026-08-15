@@ -19,7 +19,6 @@ import {
   Chip,
   Grid,
   IconButton,
-  Pagination,
   Skeleton,
   ToggleButton,
   ToggleButtonGroup,
@@ -432,7 +431,13 @@ export function ProductsPage() {
           limit: pageSize,
         })
         .then((data) => {
-          setItems(data.items);
+          // Página 1 substitui; as seguintes acumulam (scroll infinito).
+          // O filtro por id evita repetir item quando duas buscas se cruzam.
+          setItems((prev) => {
+            if (page === 1) return data.items;
+            const vistos = new Set(prev.map((p) => p.id));
+            return [...prev, ...data.items.filter((p) => !vistos.has(p.id))];
+          });
           setTotal(data.total);
         })
         .catch(console.error)
@@ -440,6 +445,19 @@ export function ProductsPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [period, category, search, sort, order, page, pageSize, advanced]);
+
+  // Qualquer mudança de filtro volta para a página 1 — senão o acúmulo
+  // misturaria resultados de buscas diferentes.
+  useEffect(() => {
+    setPage(1);
+  }, [period, category, search, sort, order, advanced]);
+
+  // Scroll infinito também na grade filtrada: sem paginação por clique.
+  useInfiniteScroll({
+    hasMore: !showSections && items.length < total,
+    loading,
+    onLoadMore: () => setPage((p) => p + 1),
+  });
 
   async function toggleFavorite(id: string) {
     const isFavorite = await productsService.toggleFavorite(id);
@@ -689,13 +707,20 @@ export function ProductsPage() {
             ))}
           </Grid>
 
-          <Box display="flex" justifyContent="center" mt={4}>
-            <Pagination
-              count={Math.max(1, Math.ceil(total / pageSize))}
-              page={page}
-              onChange={(_e, value) => setPage(value)}
-            />
-          </Box>
+          {/* Sem paginação por clique: o scroll traz a próxima página. */}
+          {loading && items.length > 0 && (
+            <BrandLoader label="Carregando mais produtos..." minHeight={120} />
+          )}
+          {!loading && items.length >= total && total > 0 && (
+            <Typography
+              color="text.secondary"
+              textAlign="center"
+              fontSize={13}
+              mt={4}
+            >
+              Você viu todos os {total} produtos.
+            </Typography>
+          )}
         </>
       )}
     </>
