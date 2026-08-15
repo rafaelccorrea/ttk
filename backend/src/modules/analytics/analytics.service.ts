@@ -35,7 +35,12 @@ export class AnalyticsService {
         .select('COUNT(DISTINCT p.category)', 'count')
         .getRawOne(),
         this.productsService.rank({ period: 7, page: 1, limit: 5 }, userId),
-        this.videos.find({ order: { views: 'DESC', id: 'ASC' }, take: 5 }),
+        // Traz o produto para usar a foto dele como capa quando falta thumbnail.
+        this.videos.find({
+          order: { views: 'DESC', id: 'ASC' },
+          take: 5,
+          relations: { product: true },
+        }),
         this.creators
           .createQueryBuilder('c')
           .orderBy('c.gmvPeriod', 'DESC')
@@ -60,6 +65,7 @@ export class AnalyticsService {
         thumbnailUrl: v.thumbnailUrl ?? null,
         videoUrl: v.videoUrl ?? null,
         playbackUrl: v.playbackUrl ?? null,
+        productImageUrl: v.product?.imageUrl ?? null,
       })),
       topCreators: topCreators.map((c) => ({
         id: c.id,

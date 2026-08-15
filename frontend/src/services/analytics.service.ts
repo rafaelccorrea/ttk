@@ -11,6 +11,7 @@ export interface TopVideo {
   thumbnailUrl: string | null;
   videoUrl: string | null;
   playbackUrl: string | null;
+  productImageUrl: string | null;
 }
 
 export interface TopCreator {

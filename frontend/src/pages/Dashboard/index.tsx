@@ -233,8 +233,10 @@ export function DashboardPage() {
                 borderRadius: 3,
                 aspectRatio: '3 / 4',
                 // Thumbnail real quando a ingestão populou; gradiente como fallback.
-                background: v.thumbnailUrl
-                  ? `linear-gradient(180deg, rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.72)), url(${proxyImage(v.thumbnailUrl)}) center/cover no-repeat`
+                background: v.thumbnailUrl ?? v.productImageUrl
+                  ? `linear-gradient(180deg, rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.72)), url(${proxyImage(
+                      v.thumbnailUrl ?? v.productImageUrl,
+                    )}) center/cover no-repeat`
                   : gradientFor(v.category),
                 color: '#fff',
                 display: 'flex',
