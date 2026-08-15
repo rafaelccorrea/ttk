@@ -8,6 +8,8 @@ export interface TrendingCreator {
   topic: string | null;
   avatarUrl: string | null;
   thumbnailUrl: string | null;
+  /** MP4 do CDN do TikTok (expira em horas; renovado a cada ingestão). */
+  playbackUrl: string | null;
   rank: number;
 }
 
@@ -178,6 +180,7 @@ export class CreativeCenterSource {
         const row = cards.rows[i];
         let handle: string | null = null;
         let avatarUrl: string | null = null;
+        let playbackUrl: string | null = null;
         try {
           await detailButtons.nth(i).scrollIntoViewIfNeeded();
           await detailButtons.nth(i).click({ force: true });
@@ -188,10 +191,18 @@ export class CreativeCenterSource {
             const avatar = el
               ? [...el.querySelectorAll('img')].map((im) => im.src).find((s) => /avt|cropcenter/.test(s)) ?? null
               : null;
-            return { firstLine: text.split('\n')[0]?.trim() ?? '', avatar };
+            const videoEl = document.querySelector('video');
+            const video = videoEl
+              ? videoEl.currentSrc ||
+                videoEl.src ||
+                [...videoEl.querySelectorAll('source')].map((s) => s.src)[0] ||
+                null
+              : null;
+            return { firstLine: text.split('\n')[0]?.trim() ?? '', avatar, video };
           });
           if (/^[\w.]+$/.test(modal.firstLine)) handle = modal.firstLine;
           avatarUrl = modal.avatar;
+          playbackUrl = modal.video?.startsWith('http') ? modal.video : null;
           await page.keyboard.press('Escape');
           await page.waitForTimeout(1_200);
         } catch {
@@ -206,6 +217,7 @@ export class CreativeCenterSource {
           topic: row.topic,
           avatarUrl,
           thumbnailUrl: cards.thumbs[i] ?? null,
+          playbackUrl,
           rank: i + 1,
         });
       }

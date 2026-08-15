@@ -47,4 +47,9 @@ export const billingService = {
     api.post<Wallet>('/billing/packs/purchase', { packId }).then((r) => r.data),
   subscribe: (planId: string) =>
     api.post<Wallet>('/billing/subscribe', { planId }).then((r) => r.data),
+  // Stripe: cria a sessão e devolve a URL de pagamento.
+  checkout: (item: { packId?: string; planId?: string }) =>
+    api.post<{ url: string }>('/billing/checkout', item).then((r) => r.data),
+  confirmCheckout: (sessionId: string) =>
+    api.post<Wallet>('/billing/checkout/confirm', { sessionId }).then((r) => r.data),
 };

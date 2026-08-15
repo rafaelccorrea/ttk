@@ -61,33 +61,41 @@ export function PlansPage() {
       .catch((err) => setError(apiErrorMessage(err)));
   }, []);
 
-  async function buyPack(packId: string) {
-    setBusy(packId);
+  // Volta do Stripe: ?session_id=... → confirma server-side e credita.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session_id');
+    if (params.get('canceled')) {
+      setToast('Pagamento cancelado.');
+      window.history.replaceState({}, '', '/planos');
+      return;
+    }
+    if (!sessionId) return;
+    window.history.replaceState({}, '', '/planos');
+    billingService
+      .confirmCheckout(sessionId)
+      .then((w) => {
+        setWallet(w);
+        setToast('Pagamento confirmado — créditos adicionados!');
+      })
+      .catch((err) => setError(apiErrorMessage(err)));
+  }, []);
+
+  async function goToCheckout(item: { packId?: string; planId?: string }) {
+    const id = item.packId ?? item.planId!;
+    setBusy(id);
     setError(null);
     try {
-      const w = await billingService.purchasePack(packId);
-      setWallet(w);
-      setToast('Créditos adicionados à sua carteira!');
+      const { url } = await billingService.checkout(item);
+      window.location.href = url; // página de pagamento do Stripe
     } catch (err) {
       setError(apiErrorMessage(err));
-    } finally {
       setBusy(null);
     }
   }
 
-  async function subscribe(planId: string) {
-    setBusy(planId);
-    setError(null);
-    try {
-      const w = await billingService.subscribe(planId);
-      setWallet(w);
-      setToast('Plano ativado — créditos mensais adicionados!');
-    } catch (err) {
-      setError(apiErrorMessage(err));
-    } finally {
-      setBusy(null);
-    }
-  }
+  const buyPack = (packId: string) => goToCheckout({ packId });
+  const subscribe = (planId: string) => goToCheckout({ planId });
 
   if (!wallet && !error) return <BrandLoader label="Carregando sua carteira..." />;
 

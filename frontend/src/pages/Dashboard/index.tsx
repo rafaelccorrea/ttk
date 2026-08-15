@@ -11,6 +11,9 @@ import {
   Card,
   CardActionArea,
   Chip,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Grid,
   Link as MuiLink,
   Stack,
@@ -22,7 +25,7 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { tiktokProfileUrl } from '@/utils/tiktok';
 import { StatCard } from '@/components/ui/StatCard';
 import { useAuth } from '@/contexts/AuthContext';
-import { analyticsService, Overview } from '@/services/analytics.service';
+import { analyticsService, Overview, TopVideo } from '@/services/analytics.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 
 const GRADIENTS = [
@@ -53,6 +56,7 @@ function SectionHeader({ title, to }: { title: string; to: string }) {
 export function DashboardPage() {
   const { email } = useAuth();
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [playingVideo, setPlayingVideo] = useState<TopVideo | null>(null);
 
   useEffect(() => {
     analyticsService.overview().then(setOverview).catch(console.error);
@@ -164,11 +168,14 @@ export function DashboardPage() {
         {overview?.topVideos.map((v) => (
           <Grid item xs={12} sm={6} md={2.4} key={v.id}>
             <Box
-              component={v.videoUrl || v.creatorHandle ? 'a' : 'div'}
-              href={v.videoUrl ?? tiktokProfileUrl(v.creatorHandle)}
-              target="_blank"
-              rel="noopener noreferrer"
+              // Com MP4 disponível, toca dentro da plataforma; senão abre o TikTok.
+              component={v.playbackUrl ? 'div' : 'a'}
+              href={v.playbackUrl ? undefined : v.videoUrl ?? tiktokProfileUrl(v.creatorHandle)}
+              target={v.playbackUrl ? undefined : '_blank'}
+              rel={v.playbackUrl ? undefined : 'noopener noreferrer'}
+              onClick={v.playbackUrl ? () => setPlayingVideo(v) : undefined}
               sx={{
+                cursor: 'pointer',
                 borderRadius: 3,
                 aspectRatio: '3 / 4',
                 // Thumbnail real quando a ingestão populou; gradiente como fallback.
@@ -306,6 +313,36 @@ export function DashboardPage() {
           </Button>
         </Grid>
       </Grid>
+
+      {/* Player interno dos vídeos em alta */}
+      <Dialog open={Boolean(playingVideo)} onClose={() => setPlayingVideo(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          @{playingVideo?.creatorHandle}
+          <Button
+            size="small"
+            component="a"
+            href={playingVideo ? tiktokProfileUrl(playingVideo.creatorHandle) : '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{ fontWeight: 700 }}
+          >
+            Ver perfil
+          </Button>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, bgcolor: '#000' }}>
+          {playingVideo?.playbackUrl && (
+            <Box
+              component="video"
+              src={playingVideo.playbackUrl}
+              poster={playingVideo.thumbnailUrl ?? undefined}
+              controls
+              autoPlay
+              playsInline
+              sx={{ width: '100%', aspectRatio: '9 / 16', display: 'block', bgcolor: '#000' }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -118,7 +118,7 @@ function VideoCard({
           </IconButton>
         </Box>
 
-        {tiktokEmbedId(video.videoUrl) ? (
+        {video.playbackUrl || tiktokEmbedId(video.videoUrl) ? (
           <IconButton
             onClick={() => onPlay(video)}
             aria-label="assistir vídeo"
@@ -388,7 +388,18 @@ export function VideosPage() {
           )}
         </DialogTitle>
         <DialogContent sx={{ p: 0, bgcolor: '#000' }}>
-          {playingVideo && tiktokEmbedId(playingVideo.videoUrl) && (
+          {/* Player nativo (MP4 do CDN) tem prioridade; embed oficial como fallback. */}
+          {playingVideo?.playbackUrl ? (
+            <Box
+              component="video"
+              src={playingVideo.playbackUrl}
+              poster={playingVideo.thumbnailUrl ?? undefined}
+              controls
+              autoPlay
+              playsInline
+              sx={{ width: '100%', aspectRatio: '9 / 16', display: 'block', bgcolor: '#000' }}
+            />
+          ) : playingVideo && tiktokEmbedId(playingVideo.videoUrl) ? (
             <Box
               component="iframe"
               src={`https://www.tiktok.com/embed/v2/${tiktokEmbedId(playingVideo.videoUrl)}`}
@@ -396,7 +407,7 @@ export function VideosPage() {
               allow="autoplay; encrypted-media; fullscreen"
               sx={{ width: '100%', aspectRatio: '9 / 16', border: 0, display: 'block' }}
             />
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
 

@@ -14,6 +14,7 @@ export interface ViralVideo {
   isSaved: boolean;
   videoUrl: string | null;
   thumbnailUrl: string | null;
+  playbackUrl: string | null;
 }
 
 export interface VideoDetail extends ViralVideo {

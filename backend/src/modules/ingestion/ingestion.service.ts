@@ -1,27 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { SchedulerRegistry } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
+import { CronJob } from 'cron';
 import { Repository } from 'typeorm';
 import { Creator } from '../creators/entities/creator.entity';
 import { Trend } from '../trends/entities/trend.entity';
 import { Video } from '../videos/entities/video.entity';
 import { CreativeCenterSource } from './creative-center.source';
+import { IngestionRun, IngestionTrigger } from './entities/ingestion-run.entity';
+import { IngestionSetting } from './entities/ingestion-setting.entity';
 
-export interface IngestionRunResult {
-  source: string;
-  fetched: number;
-  created: number;
-  updated: number;
-  creatorsFetched: number;
-  videosUpserted: number;
-  ranAt: string;
-  error?: string;
-}
+const JOB_NAME = 'ingestion-cron';
 
 @Injectable()
-export class IngestionService {
+export class IngestionService implements OnModuleInit {
   private readonly logger = new Logger(IngestionService.name);
-  private lastRun: IngestionRunResult | null = null;
+  private running = false;
 
   constructor(
     @InjectRepository(Trend)
@@ -30,32 +24,95 @@ export class IngestionService {
     private readonly creators: Repository<Creator>,
     @InjectRepository(Video)
     private readonly videos: Repository<Video>,
+    @InjectRepository(IngestionRun)
+    private readonly runs: Repository<IngestionRun>,
+    @InjectRepository(IngestionSetting)
+    private readonly settings: Repository<IngestionSetting>,
     private readonly creativeCenter: CreativeCenterSource,
+    private readonly scheduler: SchedulerRegistry,
   ) {}
 
-  // 1x/dia às 06:00 — cadência educada com a área pública do Creative Center.
-  @Cron('0 0 6 * * *')
-  async scheduledRun() {
-    await this.run();
+  // Registra o cron a partir da configuração persistida.
+  async onModuleInit() {
+    const setting = await this.getSetting();
+    this.applySchedule(setting);
+    // Marca como interrompida qualquer execução que ficou "running" (crash/restart).
+    await this.runs.update({ status: 'running' }, { status: 'error', error: 'Interrompida por reinício do servidor' });
   }
 
-  status(): IngestionRunResult | null {
-    return this.lastRun;
+  private async getSetting(): Promise<IngestionSetting> {
+    let setting = await this.settings.findOneBy({ id: 1 });
+    if (!setting) {
+      setting = await this.settings.save(this.settings.create({ id: 1 }));
+    }
+    return setting;
   }
 
-  async run(): Promise<IngestionRunResult> {
-    const result: IngestionRunResult = {
-      source: 'tiktok-creative-center',
-      fetched: 0,
-      created: 0,
-      updated: 0,
-      creatorsFetched: 0,
-      videosUpserted: 0,
-      ranAt: new Date().toISOString(),
+  private applySchedule(setting: IngestionSetting) {
+    if (this.scheduler.doesExist('cron', JOB_NAME)) {
+      this.scheduler.deleteCronJob(JOB_NAME);
+    }
+    if (!setting.enabled) {
+      this.logger.log('Agendamento da ingestão desativado');
+      return;
+    }
+    const job = new CronJob(setting.cronExpr, () => void this.run('cron'));
+    this.scheduler.addCronJob(JOB_NAME, job);
+    job.start();
+    this.logger.log(`Ingestão agendada: "${setting.cronExpr}"`);
+  }
+
+  async getSchedule() {
+    const setting = await this.getSetting();
+    let nextRunAt: string | null = null;
+    if (setting.enabled && this.scheduler.doesExist('cron', JOB_NAME)) {
+      const job = this.scheduler.getCronJob(JOB_NAME);
+      nextRunAt = job.nextDate()?.toJSDate().toISOString() ?? null;
+    }
+    return {
+      cronExpr: setting.cronExpr,
+      enabled: setting.enabled,
+      nextRunAt,
+      isRunning: this.running,
     };
+  }
+
+  async updateSchedule(input: { cronExpr?: string; enabled?: boolean }) {
+    const setting = await this.getSetting();
+    if (input.cronExpr !== undefined) {
+      try {
+        // Valida a expressão criando um job descartável.
+        new CronJob(input.cronExpr, () => undefined);
+      } catch {
+        throw new BadRequestException(`Expressão cron inválida: "${input.cronExpr}"`);
+      }
+      setting.cronExpr = input.cronExpr;
+    }
+    if (input.enabled !== undefined) setting.enabled = input.enabled;
+    await this.settings.save(setting);
+    this.applySchedule(setting);
+    return this.getSchedule();
+  }
+
+  listRuns(limit = 20): Promise<IngestionRun[]> {
+    return this.runs.find({ order: { startedAt: 'DESC' }, take: limit });
+  }
+
+  async status() {
+    const [schedule, lastRuns] = await Promise.all([this.getSchedule(), this.listRuns(1)]);
+    return { ...schedule, lastRun: lastRuns[0] ?? null };
+  }
+
+  async run(trigger: IngestionTrigger = 'manual'): Promise<IngestionRun> {
+    if (this.running) {
+      throw new BadRequestException('Já existe uma ingestão em andamento');
+    }
+    this.running = true;
+    const run = await this.runs.save(this.runs.create({ trigger, status: 'running' }));
     try {
+      // 1) Hashtags em alta (BR) → tabela trends.
       const hashtags = await this.creativeCenter.fetchTrendingHashtags(20);
-      result.fetched = hashtags.length;
+      run.hashtagsFetched = hashtags.length;
       for (const tag of hashtags) {
         const existing = await this.trends.findOne({ where: { hashtag: tag.hashtag } });
         if (existing) {
@@ -64,7 +121,6 @@ export class IngestionService {
           existing.growthRate = tag.growthRate.toFixed(2);
           existing.category = tag.category ?? existing.category;
           await this.trends.save(existing);
-          result.updated += 1;
         } else {
           await this.trends.save(
             this.trends.create({
@@ -75,12 +131,12 @@ export class IngestionService {
               category: tag.category ?? undefined,
             }),
           );
-          result.created += 1;
         }
       }
-      // Criadores/vídeos em alta (reais, com handle/avatar/thumbnail do TikTok).
+
+      // 2) Criadores/vídeos em alta (com avatar, thumbnail e MP4 reais).
       const trendingCreators = await this.creativeCenter.fetchTrendingCreators(4);
-      result.creatorsFetched = trendingCreators.length;
+      run.creatorsFetched = trendingCreators.length;
       for (const tc of trendingCreators) {
         const creator =
           (await this.creators.findOne({ where: { handle: tc.handle } })) ??
@@ -91,8 +147,6 @@ export class IngestionService {
         creator.avatarUrl = tc.avatarUrl ?? creator.avatarUrl;
         await this.creators.save(creator);
 
-        // Vídeo em alta associado (thumbnail real; sem URL pública do vídeo,
-        // o card linka para o perfil do criador).
         const externalId = `cc-top-${tc.handle}`;
         const video =
           (await this.videos.findOne({ where: { externalId } })) ??
@@ -105,18 +159,24 @@ export class IngestionService {
         video.views = tc.videoViews;
         video.category = tc.topic ?? 'geral';
         video.thumbnailUrl = tc.thumbnailUrl ?? video.thumbnailUrl;
+        video.playbackUrl = tc.playbackUrl ?? video.playbackUrl;
         await this.videos.save(video);
-        result.videosUpserted += 1;
+        run.videosUpserted += 1;
       }
 
+      run.status = 'success';
       this.logger.log(
-        `Ingestão ok: ${result.fetched} hashtags (${result.created} novas, ${result.updated} atualizadas), ${result.creatorsFetched} criadores, ${result.videosUpserted} vídeos`,
+        `Ingestão ok: ${run.hashtagsFetched} hashtags, ${run.creatorsFetched} criadores, ${run.videosUpserted} vídeos`,
       );
     } catch (err) {
-      result.error = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Ingestão falhou: ${result.error}`);
+      run.status = 'error';
+      run.error = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Ingestão falhou: ${run.error}`);
+    } finally {
+      run.finishedAt = new Date();
+      await this.runs.save(run);
+      this.running = false;
     }
-    this.lastRun = result;
-    return result;
+    return run;
   }
 }

@@ -8,6 +8,7 @@ import LocalFireDepartmentRoundedIcon from '@mui/icons-material/LocalFireDepartm
 import OndemandVideoRoundedIcon from '@mui/icons-material/OndemandVideoRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
+import SmartToyRoundedIcon from '@mui/icons-material/SmartToyRounded';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import StyleRoundedIcon from '@mui/icons-material/StyleRounded';
 import TroubleshootRoundedIcon from '@mui/icons-material/TroubleshootRounded';
@@ -75,6 +76,12 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/multiplicador', label: 'Multiplicador', icon: <DynamicFeedRoundedIcon /> },
       { to: '/prompts', label: 'Cofre de Prompts', icon: <StyleRoundedIcon /> },
       { to: '/geracoes', label: 'Minhas Gerações', icon: <MovieFilterRoundedIcon /> },
+    ],
+  },
+  {
+    title: 'Admin',
+    items: [
+      { to: '/coleta', label: 'Coleta de Dados', icon: <SmartToyRoundedIcon /> },
     ],
   },
   {

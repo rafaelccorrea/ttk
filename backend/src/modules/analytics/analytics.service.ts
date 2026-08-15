@@ -58,6 +58,7 @@ export class AnalyticsService {
         category: v.category,
         thumbnailUrl: v.thumbnailUrl ?? null,
         videoUrl: v.videoUrl ?? null,
+        playbackUrl: v.playbackUrl ?? null,
       })),
       topCreators: topCreators.map((c) => ({
         id: c.id,

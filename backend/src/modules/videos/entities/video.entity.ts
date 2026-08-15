@@ -44,6 +44,10 @@ export class Video {
   @Column({ nullable: true })
   thumbnailUrl: string;
 
+  // MP4 reproduzível dentro da plataforma (CDN; renovado a cada ingestão).
+  @Column({ nullable: true })
+  playbackUrl: string;
+
   @Column({ type: 'text', nullable: true })
   transcript: string | null;
 

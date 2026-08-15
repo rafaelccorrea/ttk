@@ -8,6 +8,7 @@ import { CreatorsPage } from '@/pages/Creators';
 import { DashboardPage } from '@/pages/Dashboard';
 import { FavoritesPage } from '@/pages/Favorites';
 import { GenerationsPage } from '@/pages/Generations';
+import { IngestionPage } from '@/pages/Ingestion';
 import { LandingPage } from '@/pages/Landing';
 import { LoginPage } from '@/pages/Login';
 import { MultiplierPage } from '@/pages/Multiplier';
@@ -50,6 +51,7 @@ export function AppRoutes() {
           <Route path="/indique" element={<ReferralPage />} />
           <Route path="/prompts" element={<PromptsPage />} />
           <Route path="/geracoes" element={<GenerationsPage />} />
+          <Route path="/coleta" element={<IngestionPage />} />
           <Route path="/analisar" element={<AnalyzePage />} />
           <Route path="/planos" element={<PlansPage />} />
         </Route>

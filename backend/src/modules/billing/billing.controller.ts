@@ -1,10 +1,11 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsString } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { BillingService } from './billing.service';
+import { StripeService } from './stripe.service';
 
 class PurchasePackDto {
   @IsString()
@@ -16,12 +17,45 @@ class SubscribeDto {
   planId: string;
 }
 
+class CheckoutDto {
+  @IsOptional()
+  @IsString()
+  packId?: string;
+
+  @IsOptional()
+  @IsString()
+  planId?: string;
+}
+
+class ConfirmDto {
+  @IsString()
+  sessionId: string;
+}
+
 @ApiTags('billing')
 @ApiBearerAuth()
 @UseGuards(SupabaseAuthGuard)
 @Controller('billing')
 export class BillingController {
-  constructor(private readonly billing: BillingService) {}
+  constructor(
+    private readonly billing: BillingService,
+    private readonly stripeService: StripeService,
+  ) {}
+
+  @Post('checkout')
+  @ApiOperation({ summary: 'Cria uma sessão de pagamento no Stripe (pack ou plano)' })
+  checkout(@CurrentUser() user: AuthUser, @Body() dto: CheckoutDto) {
+    return this.stripeService.createCheckout(user.id, user.email, {
+      packId: dto.packId,
+      planId: dto.planId,
+    });
+  }
+
+  @Post('checkout/confirm')
+  @ApiOperation({ summary: 'Confirma o pagamento (verificado na API do Stripe) e credita' })
+  confirm(@CurrentUser() user: AuthUser, @Body() dto: ConfirmDto) {
+    return this.stripeService.confirmSession(user.id, dto.sessionId);
+  }
 
   @Get('wallet')
   @ApiOperation({ summary: 'Saldo, preços das ações e extrato do usuário' })

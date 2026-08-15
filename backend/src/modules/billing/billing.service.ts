@@ -198,6 +198,21 @@ export class BillingService implements OnModuleInit {
     return this.getWallet(userId);
   }
 
+  /** Crédito confirmado por pagamento (Stripe) — reference = session/invoice id. */
+  async grantPaid(
+    userId: string,
+    amount: number,
+    kind: TransactionKind,
+    reference: string,
+    description: string,
+  ) {
+    await this.addCredits(userId, amount, kind, reference, description);
+  }
+
+  async setPlan(userId: string, planId: string) {
+    await this.users.update({ id: userId }, { plan: planId });
+  }
+
   private async addCredits(
     userId: string,
     amount: number,

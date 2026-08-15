@@ -10,6 +10,7 @@ export interface TopVideo {
   category: string;
   thumbnailUrl: string | null;
   videoUrl: string | null;
+  playbackUrl: string | null;
 }
 
 export interface TopCreator {
