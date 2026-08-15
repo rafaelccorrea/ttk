@@ -57,11 +57,11 @@ export class TrendsService {
     const latestRow = await this.metrics
       .createQueryBuilder('m')
       .select('MAX(m.date)', 'max')
-      .getRawOne<{ max: string | null }>();
-    const latest = latestRow?.max;
-    if (!latest) {
+      .getRawOne<{ max: string | Date | null }>();
+    if (!latestRow?.max) {
       return { referenceDate: null, categories: [], risingProducts: [], curated: await this.findAll() };
     }
+    const latest = this.toIsoDate(latestRow.max);
 
     const mid = this.shiftDate(latest, -7);
     const start = this.shiftDate(latest, -14);
@@ -133,6 +133,22 @@ export class TrendsService {
   private growth(recent: number, previous: number): number | null {
     if (previous <= 0) return null;
     return Math.round(((recent - previous) / previous) * 1000) / 10;
+  }
+
+  /**
+   * Colunas `date` voltam do driver `pg` como Date (meia-noite no fuso local)
+   * quando lidas via getRawOne/getRawMany — sem a conversão do TypeORM. Aqui
+   * normalizamos para 'YYYY-MM-DD' usando os componentes locais, para não
+   * escorregar um dia por causa do offset.
+   */
+  private toIsoDate(value: string | Date): string {
+    if (value instanceof Date) {
+      const year = value.getFullYear();
+      const month = String(value.getMonth() + 1).padStart(2, '0');
+      const day = String(value.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    return String(value).slice(0, 10);
   }
 
   private shiftDate(date: string, days: number): string {

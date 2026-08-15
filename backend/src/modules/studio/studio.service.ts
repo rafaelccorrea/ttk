@@ -59,6 +59,40 @@ export class StudioService {
     );
   }
 
+  /** Analisa a transcrição de um vídeo viral e salva como roteiro do usuário. */
+  async analyze(
+    userId: string,
+    transcript: string,
+    productId?: string,
+  ): Promise<Script> {
+    let productName: string | undefined;
+    let price: number | undefined;
+    if (productId) {
+      const product = await this.products.findOneBy({ id: productId });
+      if (!product) {
+        throw new NotFoundException(`Produto ${productId} não encontrado`);
+      }
+      productName = product.title;
+      price = Number(product.price);
+    }
+
+    const result = await this.aiService.analyzeTranscript(
+      transcript,
+      productName,
+      price,
+    );
+    return this.scripts.save(
+      this.scripts.create({
+        userId,
+        type: 'video',
+        productName: productName ?? 'Análise de vídeo viral',
+        productDescription: `Transcrição analisada: ${transcript.slice(0, 500)}`,
+        content: result.content,
+        model: result.model,
+      }),
+    );
+  }
+
   listScripts(userId: string): Promise<Script[]> {
     return this.scripts.find({
       where: { userId },

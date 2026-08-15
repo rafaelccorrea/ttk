@@ -10,6 +10,7 @@ import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import StyleRoundedIcon from '@mui/icons-material/StyleRounded';
+import TroubleshootRoundedIcon from '@mui/icons-material/TroubleshootRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import {
   Avatar,
@@ -65,6 +66,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Estúdio',
     items: [
       { to: '/estudio', label: 'Roteirizar com IA', icon: <AutoFixHighRoundedIcon /> },
+      { to: '/analisar', label: 'Analisar Vídeo', icon: <TroubleshootRoundedIcon /> },
       { to: '/multiplicador', label: 'Multiplicador', icon: <DynamicFeedRoundedIcon /> },
       { to: '/prompts', label: 'Cofre de Prompts', icon: <StyleRoundedIcon /> },
       { to: '/geracoes', label: 'Minhas Gerações', icon: <MovieFilterRoundedIcon /> },

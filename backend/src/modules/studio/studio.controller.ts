@@ -1,28 +1,64 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
   HttpCode,
   Param,
+  ParseFilePipe,
+  MaxFileSizeValidator,
   ParseUUIDPipe,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
+import { AnalyzeDto } from './dto/analyze.dto';
 import { GenerateScriptDto } from './dto/generate-script.dto';
 import { StudioService } from './studio.service';
+import { TranscriptionService } from './transcription.service';
 
 @ApiTags('studio')
 @ApiBearerAuth()
 @UseGuards(SupabaseAuthGuard)
 @Controller('studio')
 export class StudioController {
-  constructor(private readonly studioService: StudioService) {}
+  constructor(
+    private readonly studioService: StudioService,
+    private readonly transcriptionService: TranscriptionService,
+  ) {}
+
+  @Post('transcribe')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({ summary: 'Transcreve um vídeo/áudio (Whisper, máx. 25MB)' })
+  transcribe(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: 25 * 1024 * 1024 })],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Envie um arquivo de vídeo ou áudio.');
+    }
+    return this.transcriptionService.transcribe(file);
+  }
+
+  @Post('analyze')
+  @ApiOperation({
+    summary: 'Decompõe a transcrição de um vídeo viral e adapta ao produto',
+  })
+  analyze(@CurrentUser() user: AuthUser, @Body() dto: AnalyzeDto) {
+    return this.studioService.analyze(user.id, dto.transcript, dto.productId);
+  }
 
   @Post('scripts/generate')
   @ApiOperation({ summary: 'Gera um roteiro de live ou vídeo com IA' })

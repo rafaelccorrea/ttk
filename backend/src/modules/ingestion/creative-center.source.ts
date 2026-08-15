@@ -47,7 +47,7 @@ export class CreativeCenterSource {
         code?: number;
         data?: { list?: Array<Record<string, unknown>> };
       };
-      return this.parseList(body?.data?.list ?? []);
+      return this.parseList(body?.data?.list ?? [], true);
     } catch {
       return [];
     }
@@ -63,24 +63,39 @@ export class CreativeCenterSource {
         locale: 'pt-BR',
         viewport: { width: 1366, height: 900 },
       });
-      await page.goto(
-        'https://ads.tiktok.com/creative/creativeCenter/trends/hashtag?region=BR&period=7',
-        { waitUntil: 'domcontentloaded', timeout: 60_000 },
-      );
-      await page.waitForTimeout(10_000);
-
-      // Expande a lista ("View more") até atingir o limite pedido.
-      for (let i = 0; i < 5; i++) {
-        const count = await page.locator('text=/^#[\\w\\d_]+$/').count().catch(() => 0);
-        if (count >= limit) break;
-        const more = page.getByText(/view more|ver mais/i).first();
-        if (!(await more.isVisible().catch(() => false))) break;
-        await more.click().catch(() => undefined);
-        await page.waitForTimeout(2_500);
+      // Sem login a UI mostra só as 3 primeiras posições por página ("View more"
+      // exige conta). Coletamos vários períodos e acumulamos no banco dia a dia.
+      const collected: Array<{ tag: string; ctx: string }> = [];
+      const seenTags = new Set<string>();
+      for (const period of [7, 30, 120]) {
+        await page.goto(
+          `https://ads.tiktok.com/creative/creativeCenter/trends/hashtag?region=BR&period=${period}`,
+          { waitUntil: 'domcontentloaded', timeout: 60_000 },
+        );
+        await page.waitForTimeout(8_000);
+        const rows = await this.extractRows(page);
+        for (const row of rows) {
+          if (seenTags.has(row.tag)) continue;
+          seenTags.add(row.tag);
+          collected.push(row);
+        }
+        if (collected.length >= limit) break;
       }
 
-      // Raspagem do DOM: a lista vem renderizada no SSR, sem XHR interceptável.
-      const rows = await page.evaluate(() => {
+      return collected
+        .slice(0, limit)
+        .map((r, index) => this.parseDomRow(r.tag, r.ctx, index))
+        .filter((t): t is TrendingHashtag => t !== null);
+    } finally {
+      await browser.close();
+    }
+  }
+
+  // Raspagem do DOM: a lista vem renderizada no SSR, sem XHR interceptável.
+  private async extractRows(page: {
+    evaluate: <T>(fn: () => T) => Promise<T>;
+  }): Promise<Array<{ tag: string; ctx: string }>> {
+    return page.evaluate(() => {
         const seen = new Set<string>();
         const out: Array<{ tag: string; ctx: string }> = [];
         document.querySelectorAll('*').forEach((el) => {
@@ -100,14 +115,6 @@ export class CreativeCenterSource {
         });
         return out;
       });
-
-      return rows
-        .slice(0, limit)
-        .map((r, index) => this.parseDomRow(r.tag, r.ctx, index))
-        .filter((t): t is TrendingHashtag => t !== null);
-    } finally {
-      await browser.close();
-    }
   }
 
   // Linha vinda do DOM: "1|#tag|Categoria|29K|Posts|25.5M|Views|See analytics".
@@ -138,9 +145,9 @@ export class CreativeCenterSource {
     return Math.round(value * factor);
   }
 
-  private parseList(list: Array<Record<string, unknown>>): TrendingHashtag[] {
+  private parseList(list: Array<Record<string, unknown>>, quiet = false): TrendingHashtag[] {
     if (!Array.isArray(list) || list.length === 0) {
-      this.logger.warn('Creative Center sem resultados — formato pode ter mudado');
+      if (!quiet) this.logger.warn('Creative Center sem resultados — formato pode ter mudado');
       return [];
     }
     return list

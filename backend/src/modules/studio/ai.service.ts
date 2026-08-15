@@ -22,6 +22,18 @@ O espectador médio fica ~20 segundos na live, então cada ciclo precisa funcion
 Gere 2 ciclos completos com falas prontas para ler, em português do Brasil, linguagem falada e direta.
 Termine com 3 respostas prontas para perguntas comuns do chat.`;
 
+const ANALYZE_SYSTEM = `Você é um estrategista de conteúdo do TikTok Shop Brasil.
+Você recebe a transcrição de um vídeo que viralizou e, opcionalmente, um produto do usuário.
+Responda em português do Brasil, em Markdown, com exatamente estas seções:
+## Por que esse vídeo funciona (análise rápida em 3 bullets)
+## Estrutura decomposta
+- **GANCHO:** (a fala/momento que segura o scroll)
+- **CORPO:** (como demonstra/prova)
+- **CTA:** (como converte)
+## Roteiro adaptado para o seu produto
+Reescreva o vídeo na MESMA estrutura, mas vendendo o produto informado (com indicação de cena por fala).
+Se nenhum produto for informado, gere um template genérico com placeholders [PRODUTO], [BENEFÍCIO], [PREÇO].`;
+
 const VIDEO_SYSTEM = `Você é um roteirista especialista em vídeos curtos que vendem no TikTok Shop Brasil.
 Escreva um roteiro no formato GANCHO (0-3s, para o scroll) → CORPO (demonstração, prova, benefício) → CTA (comando claro).
 Inclua indicação de cena para cada fala (o que aparece na tela).
@@ -66,6 +78,66 @@ export class AiService {
       this.logger.error(`Falha na API de IA: ${error}. Usando template.`);
       return this.templateFallback(request);
     }
+  }
+
+  /** Decompõe a transcrição de um vídeo viral e adapta ao produto do usuário. */
+  async analyzeTranscript(
+    transcript: string,
+    productName?: string,
+    price?: number,
+  ): Promise<ScriptResult> {
+    if (!this.client) {
+      return this.analyzeFallback(transcript, productName);
+    }
+    try {
+      const parts = [`Transcrição do vídeo viral:\n"""${transcript}"""`];
+      if (productName) {
+        parts.push(
+          `Produto do usuário: ${productName}${price ? ` (R$ ${price.toFixed(2)})` : ''}`,
+        );
+      }
+      const response = await this.client.messages.create({
+        model: 'claude-opus-5',
+        max_tokens: 16000,
+        system: ANALYZE_SYSTEM,
+        messages: [{ role: 'user', content: parts.join('\n\n') }],
+      });
+      if (response.stop_reason === 'refusal') {
+        return this.analyzeFallback(transcript, productName);
+      }
+      const content = response.content
+        .filter((b) => b.type === 'text')
+        .map((b: any) => b.text)
+        .join('\n');
+      return { content, model: response.model };
+    } catch (error) {
+      this.logger.error(`Falha na análise: ${error}. Usando template.`);
+      return this.analyzeFallback(transcript, productName);
+    }
+  }
+
+  private analyzeFallback(
+    transcript: string,
+    productName?: string,
+  ): ScriptResult {
+    const alvo = productName ?? '[PRODUTO]';
+    const content = [
+      `# Análise do vídeo`,
+      ``,
+      `## Transcrição capturada`,
+      transcript,
+      ``,
+      `## Estrutura sugerida (preencha a partir da transcrição)`,
+      `- **GANCHO:** primeira frase/cena que segura o scroll`,
+      `- **CORPO:** demonstração e prova`,
+      `- **CTA:** comando final para o carrinho`,
+      ``,
+      `## Roteiro adaptado — ${alvo}`,
+      `**GANCHO:** "Eu não acreditei no que o ${alvo} fez até testar..."`,
+      `**CORPO:** [demonstre o ${alvo} no mesmo formato do vídeo original]`,
+      `**CTA:** "Toca no carrinho laranja e garante o seu ${alvo}."`,
+    ].join('\n');
+    return { content, model: 'template-local' };
   }
 
   private buildUserPrompt(r: ScriptRequest): string {

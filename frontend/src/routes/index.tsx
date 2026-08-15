@@ -1,6 +1,7 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { AcademyPage } from '@/pages/Academy';
+import { AnalyzePage } from '@/pages/Analyze';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmEmailPage } from '@/pages/ConfirmEmail';
 import { CreatorsPage } from '@/pages/Creators';
@@ -48,6 +49,7 @@ export function AppRoutes() {
           <Route path="/indique" element={<ReferralPage />} />
           <Route path="/prompts" element={<PromptsPage />} />
           <Route path="/geracoes" element={<GenerationsPage />} />
+          <Route path="/analisar" element={<AnalyzePage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
