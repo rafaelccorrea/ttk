@@ -14,7 +14,7 @@ import {
   TrendingProduct,
 } from './creative-center-products.source';
 import { ExternalDataProvider } from './external-data.provider';
-import { evaluateProduct } from './product-gate';
+import { evaluateProduct, filterSourcedProducts } from './product-gate';
 import { ProductExtractorService } from './product-extractor.service';
 import { ImageSearchSource } from './image-search.source';
 import { IngestionRun, IngestionTrigger } from './entities/ingestion-run.entity';
@@ -297,12 +297,29 @@ export class IngestionService implements OnModuleInit {
     const today = new Date().toISOString().slice(0, 10);
     let count = 0;
 
-    // 3a) Fornecedor pago (Kalodata etc.) — dado real, prioridade máxima.
+    // 3a) Fornecedor pago (EchoTik) — dado real, prioridade máxima.
     const external = await this.externalData.fetchTopProducts(50);
-    for (const ext of external) {
+
+    // Portão estruturado: só entra no catálogo quem tem product_id + seller_id
+    // + região BR + venda registrada. Sem isso, descarta.
+    const { accepted, rejected } = filterSourcedProducts(external, {
+      region: 'BR',
+      minSales: 1,
+    });
+
+    for (const { reason } of rejected.slice(0, 10)) {
+      this.logger.debug(`Produto externo recusado: ${reason}`);
+    }
+    if (rejected.length > 0) {
+      this.logger.log(
+        `${rejected.length} de ${external.length} produtos externos recusados pelo portão`,
+      );
+    }
+
+    for (const ext of accepted) {
       const product = await this.upsertProduct({
         externalId: ext.externalId,
-        title: ext.title,
+        title: ext.cleanTitle,
         category: ext.category,
         price: ext.price,
         imageUrl: ext.imageUrl,
@@ -313,8 +330,10 @@ export class IngestionService implements OnModuleInit {
       await this.upsertDailyMetric(product.id, today, ext.salesDaily, ext.revenueDaily);
       count += 1;
     }
-    if (external.length > 0) {
-      this.logger.log(`${external.length} produtos do fornecedor externo (dado real)`);
+    if (count > 0) {
+      this.logger.log(
+        `${count} produtos do EchoTik (dado real, ${this.externalData.requestsUsed} requests gastos)`,
+      );
       return count;
     }
 

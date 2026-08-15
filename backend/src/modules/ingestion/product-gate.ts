@@ -102,6 +102,109 @@ export function evaluateProduct(candidate: ProductCandidate): GateResult {
   return { accepted: true, cleanTitle: cleaned };
 }
 
+// ---------------------------------------------------------------------------
+// Portão para dado ESTRUTURADO (fornecedor pago: EchoTik).
+//
+// Aqui a confiança vem da estrutura, não do texto: se o fornecedor entrega
+// product_id + seller_id + região + venda registrada, é produto de verdade e o
+// nome não precisa passar pelas heurísticas de legenda. Aliás, NÃO PODE: título
+// real de TikTok Shop é longo e cheio de palavra-chave ("Talheres Luxo Dourado
+// Mesa Jantar Festas Kit 24 Peças Inox"), e o portão de texto o recusaria.
+// ---------------------------------------------------------------------------
+
+export interface SourcedProductCandidate {
+  tiktokProductId?: string | null;
+  sellerId?: string | null;
+  region?: string | null;
+  title?: string | null;
+  salesTotal?: number;
+  revenueTotal?: number;
+  price?: number;
+}
+
+export interface SourcedGateOptions {
+  /** Região exigida. */
+  region?: string;
+  /** Mínimo de unidades vendidas acumuladas. */
+  minSales?: number;
+  /** Mínimo de receita acumulada (BRL). */
+  minRevenue?: number;
+}
+
+/** Título de loja pode ser longo, mas ainda tem limite físico de coluna. */
+const SOURCED_MAX_LEN = 255;
+
+export function evaluateSourcedProduct(
+  candidate: SourcedProductCandidate,
+  options: SourcedGateOptions = {},
+): GateResult {
+  const { region = 'BR', minSales = 1, minRevenue = 0 } = options;
+
+  if (!candidate.tiktokProductId) {
+    return { accepted: false, reason: 'sem product_id da TikTok Shop' };
+  }
+  if (!candidate.sellerId) {
+    return { accepted: false, reason: 'sem seller_id (vendedor desconhecido)' };
+  }
+  if ((candidate.region ?? '').toUpperCase() !== region.toUpperCase()) {
+    return {
+      accepted: false,
+      reason: `região "${candidate.region ?? 'vazia'}" fora de ${region}`,
+    };
+  }
+
+  const title = (candidate.title ?? '').replace(/\s+/g, ' ').trim();
+  if (!title) return { accepted: false, reason: 'título vazio' };
+
+  // Sem venda registrada é produto cadastrado, não produto que vende — que é
+  // exatamente o que o PikPok promete mostrar.
+  const sales = candidate.salesTotal ?? 0;
+  if (sales < minSales) {
+    return { accepted: false, reason: `${sales} vendas (mínimo ${minSales})` };
+  }
+  const revenue = candidate.revenueTotal ?? 0;
+  if (revenue < minRevenue) {
+    return {
+      accepted: false,
+      reason: `receita ${revenue.toFixed(2)} abaixo do mínimo ${minRevenue}`,
+    };
+  }
+  if ((candidate.price ?? 0) <= 0) {
+    return { accepted: false, reason: 'preço ausente ou zerado' };
+  }
+
+  // Alfabeto não latino continua sendo sinal de outro mercado.
+  if (/[Ѐ-ӿ؀-ۿ぀-ヿ一-鿿가-힯]/.test(title)) {
+    return { accepted: false, reason: 'idioma fora do mercado brasileiro' };
+  }
+
+  return { accepted: true, cleanTitle: title.slice(0, SOURCED_MAX_LEN) };
+}
+
+/** Versão em lote do portão estruturado. */
+export function filterSourcedProducts<T extends SourcedProductCandidate>(
+  candidates: T[],
+  options: SourcedGateOptions = {},
+): {
+  accepted: Array<T & { cleanTitle: string }>;
+  rejected: Array<{ title: string; reason: string }>;
+} {
+  const accepted: Array<T & { cleanTitle: string }> = [];
+  const rejected: Array<{ title: string; reason: string }> = [];
+  for (const candidate of candidates) {
+    const result = evaluateSourcedProduct(candidate, options);
+    if (result.accepted && result.cleanTitle) {
+      accepted.push({ ...candidate, cleanTitle: result.cleanTitle });
+    } else {
+      rejected.push({
+        title: (candidate.title ?? '').slice(0, 60),
+        reason: result.reason ?? 'desconhecido',
+      });
+    }
+  }
+  return { accepted, rejected };
+}
+
 /** Aplica o portão em lote e devolve aprovados + relatório de recusas. */
 export function filterProducts<T extends ProductCandidate>(
   candidates: T[],
