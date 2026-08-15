@@ -8,7 +8,7 @@ import { Box, Button, Container, Drawer, IconButton, Stack, Typography } from '@
 import { useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { NAV_LINKS } from './data';
-import { glass, line, page, red, textDim } from './theme';
+import { cyanDeep, glass, line, page, red, textDim, textMain } from './theme';
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -46,7 +46,7 @@ export function Navbar() {
       sx={{
         position: 'sticky', top: 0, zIndex: 20,
         borderBottom: `1px solid ${scrolled ? line : 'transparent'}`,
-        bgcolor: scrolled ? 'rgba(8,9,15,0.78)' : 'transparent',
+        bgcolor: scrolled ? 'rgba(255,255,255,0.82)' : 'transparent',
         backdropFilter: scrolled ? 'blur(16px)' : 'none',
         transition: 'background-color .3s ease, border-color .3s ease',
       }}

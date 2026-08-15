@@ -395,13 +395,16 @@ export class IngestionService implements OnModuleInit {
       });
       if (accepted.length === 0) continue;
 
+      // Só a CAPA é assinada aqui. Assinar custa 1 request por 10 imagens e a
+      // galeria tem ~8 fotos por produto — assinar tudo dobraria o custo da
+      // descoberta para fotos que a vitrine nem mostra. A galeria completa é
+      // resolvida na tela de detalhe (ou espelhada no S3, quando disponível).
       const signed = await this.externalData.signImageUrls(
-        accepted.flatMap((p) => p.images),
+        accepted.map((p) => p.images[0]).filter((u): u is string => !!u),
       );
       for (const ext of accepted) {
-        const gallery = ext.images
-          .map((u) => signed.get(u) ?? u)
-          .filter((u): u is string => !!u);
+        const cover = ext.images[0] ? signed.get(ext.images[0]) : undefined;
+        const gallery = cover ? [cover] : [];
         const product = await this.upsertProduct({
           externalId: ext.externalId,
           tiktokProductId: ext.tiktokProductId,

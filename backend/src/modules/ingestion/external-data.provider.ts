@@ -504,7 +504,13 @@ export class ExternalDataProvider {
    * As URLs cruas do domínio `echosell-images...volces.com` respondem 403 por
    * proteção de hotlink — era por isso que produto, vídeo e criador apareciam
    * sem imagem. Este endpoint devolve a mesma URL assinada, válida por ~3 dias,
-   * em lotes de 10. Segundo a documentação do fornecedor, NÃO consome cota.
+   * em lotes de 10.
+   *
+   * ATENÇÃO: a documentação afirma "does not consume call counts", mas MEDIMOS
+   * o contrário — o painel cobrou 1 request por lote. Por isso conta na cota.
+   * Consequência prática: assinar galeria inteira é caro (8 fotos por produto
+   * = quase 1 request por produto). Assine só o que a tela vai exibir, e
+   * espelhe no S3 para não pagar de novo a cada execução.
    */
   async signImageUrls(urls: string[]): Promise<Map<string, string>> {
     const out = new Map<string, string>();
@@ -517,7 +523,6 @@ export class ExternalDataProvider {
       const rows = await this.get<Array<Record<string, string>>>(
         '/echotik/batch/cover/download',
         { cover_urls: chunk.join(',') },
-        false,
       );
       if (!rows) continue;
       for (const row of rows) {

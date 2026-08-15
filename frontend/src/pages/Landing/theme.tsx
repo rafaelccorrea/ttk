@@ -1,16 +1,23 @@
 import { Box, GlobalStyles } from '@mui/material';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 
-// Paleta local da landing: página dark independente do tema claro do app.
-export const ink = '#08090f';
-export const inkSoft = '#0e1018';
-export const inkCard = '#12141d';
-export const line = 'rgba(255,255,255,0.08)';
-export const lineStrong = 'rgba(255,255,255,0.16)';
-export const textDim = 'rgba(255,255,255,0.64)';
-export const textFaint = 'rgba(255,255,255,0.42)';
+// Paleta local da landing: página clara, com o vermelho e o ciano do TikTok
+// como acento. `ink*` continuam nomeando os fundos (agora claros) para não
+// espalhar renomeação por todos os blocos.
+export const ink = '#ffffff';
+export const inkSoft = '#f6f7f9';
+export const inkCard = '#ffffff';
+export const line = 'rgba(8,9,15,0.10)';
+export const lineStrong = 'rgba(8,9,15,0.22)';
+/** Texto principal — quase preto, para contraste AAA no branco. */
+export const textMain = '#0b0c12';
+export const textDim = 'rgba(11,12,18,0.66)';
+export const textFaint = 'rgba(11,12,18,0.45)';
 export const red = '#fe2c55';
+/** Ciano do TikTok: ótimo em fundo escuro, ilegível como texto no branco. */
 export const cyan = '#25f4ee';
+/** Versão fechada do ciano, para texto e ícones sobre o branco. */
+export const cyanDeep = '#0a9c97';
 export const violet = '#8b5cf6';
 
 /**
@@ -32,7 +39,8 @@ export const pageNarrow = {
 } as const;
 
 export const gradientText = {
-  background: `linear-gradient(92deg, ${red} 0%, #ff7a9c 45%, ${cyan} 100%)`,
+  // Fecha o gradiente no ciano escuro: no branco, o #25f4ee some.
+  background: `linear-gradient(92deg, ${red} 0%, #e0186f 40%, ${cyanDeep} 100%)`,
   backgroundSize: '200% 100%',
   WebkitBackgroundClip: 'text',
   WebkitTextFillColor: 'transparent',
@@ -42,7 +50,8 @@ export const gradientText = {
 export const glass = {
   border: `1px solid ${line}`,
   borderRadius: 4,
-  background: 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
+  background: 'linear-gradient(180deg, #ffffff 0%, #fbfbfd 100%)',
+  boxShadow: '0 1px 2px rgba(11,12,18,0.04), 0 8px 24px rgba(11,12,18,0.05)',
   backdropFilter: 'blur(12px)',
 } as const;
 
@@ -54,8 +63,8 @@ export const glowCard = {
   transition: 'transform .25s ease, border-color .25s ease, box-shadow .25s ease',
   '&:hover': {
     transform: 'translateY(-6px)',
-    borderColor: `${red}55`,
-    boxShadow: `0 22px 54px rgba(0,0,0,0.5), 0 0 0 1px ${red}22`,
+    borderColor: `${red}66`,
+    boxShadow: `0 22px 48px rgba(11,12,18,0.12), 0 0 0 1px ${red}22`,
   },
 } as const;
 
@@ -166,13 +175,13 @@ export function BrowserFrame({
         ...glass,
         p: 0,
         overflow: 'hidden',
-        boxShadow: '0 30px 80px rgba(0,0,0,0.55)',
+        boxShadow: '0 24px 70px rgba(11,12,18,0.16)',
       }}
     >
       <Box
         sx={{
           display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.25,
-          borderBottom: `1px solid ${line}`, bgcolor: 'rgba(255,255,255,0.03)',
+          borderBottom: `1px solid ${line}`, bgcolor: '#f2f3f6',
         }}
       >
         <Box sx={{ display: 'flex', gap: 0.75 }} aria-hidden>
@@ -183,7 +192,7 @@ export function BrowserFrame({
         <Box
           sx={{
             flex: 1, maxWidth: 320, borderRadius: 999, px: 1.5, py: 0.4,
-            bgcolor: 'rgba(255,255,255,0.06)', fontSize: 11.5, color: textFaint,
+            bgcolor: 'rgba(11,12,18,0.06)', fontSize: 11.5, color: textFaint,
             overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
           }}
         >
@@ -218,7 +227,7 @@ export function SectionHeading({
     <Box textAlign={align} mb={7} maxWidth={align === 'center' ? 760 : undefined} mx={align === 'center' ? 'auto' : 0}>
       <Box
         component="p"
-        sx={{ color: cyan, fontWeight: 700, letterSpacing: '0.14em', fontSize: 13, m: 0 }}
+        sx={{ color: cyanDeep, fontWeight: 700, letterSpacing: '0.14em', fontSize: 13, m: 0 }}
       >
         {eyebrow}
       </Box>

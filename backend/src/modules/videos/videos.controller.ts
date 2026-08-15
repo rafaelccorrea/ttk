@@ -27,6 +27,20 @@ export class VideosController {
     return this.videosService.list(query, user.id);
   }
 
+  @Get('sections')
+  @ApiOperation({ summary: 'Vídeos agrupados por categoria (vitrine)' })
+  sections(
+    @CurrentUser() user: AuthUser,
+    @Query('perSection') perSection?: string,
+    @Query('maxSections') maxSections?: string,
+  ) {
+    return this.videosService.sections(
+      Math.min(Number(perSection) || 12, 24),
+      Math.min(Number(maxSections) || 10, 31),
+      user.id,
+    );
+  }
+
   @Get('categories')
   @ApiOperation({ summary: 'Categorias com vídeos disponíveis (para o filtro)' })
   categories() {

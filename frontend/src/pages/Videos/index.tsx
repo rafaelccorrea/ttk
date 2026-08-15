@@ -7,6 +7,7 @@ import SubtitlesOutlinedIcon from '@mui/icons-material/SubtitlesOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import {
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
@@ -28,7 +29,7 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { TikTokPlayer } from '@/components/ui/TikTokPlayer';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { HotBadge } from '@/components/ui/HotBadge';
-import { videosService, ViralVideo } from '@/services/videos.service';
+import { videosService, VideoSection, ViralVideo } from '@/services/videos.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 import { displayHandle, proxyImage, tiktokProfileUrl } from '@/utils/tiktok';
 
@@ -413,6 +414,7 @@ export function VideosPage() {
   const [savedOnly, setSavedOnly] = useState(false);
   const [category, setCategory] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
+  const [sections, setSections] = useState<VideoSection[]>([]);
   const [page, setPage] = useState(1);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [transcriptVideo, setTranscriptVideo] = useState<ViralVideo | null>(
@@ -420,10 +422,22 @@ export function VideosPage() {
   );
   const [loading, setLoading] = useState(true);
 
+  // Vitrine por nicho só no estado limpo — com filtro, busca ou aba "Salvos"
+  // o usuário quer varrer tudo, não navegar categorias.
+  const showSections = !category && !search.trim() && !savedOnly && page === 1;
+
+  /** Lista achatada usada pelo player: o índice precisa bater com a tela. */
+  const feed = showSections ? sections.flatMap((s) => s.items) : items;
+
   // Categorias vêm do banco: só aparecem as que realmente têm vídeo.
   useEffect(() => {
     videosService.categories().then(setCategories).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    if (!showSections) return;
+    videosService.sections(12).then(setSections).catch(console.error);
+  }, [showSections]);
 
   useEffect(() => {
     setLoading(true);
@@ -498,28 +512,84 @@ export function VideosPage() {
       {loading && items.length === 0 && (
         <BrandLoader label="Carregando vídeos..." />
       )}
-      <Grid container spacing={2.5} sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}>
-        {items.map((v, index) => (
-          <Grid item xs={6} sm={4} md={3} lg={2} key={v.id}>
-            <VideoCard
-              video={v}
-              rank={(page - 1) * PAGE_SIZE + index + 1}
-              onToggleSave={toggleSave}
-              onShowTranscript={setTranscriptVideo}
-              onPlay={(video) => {
-                // O MP4 é resolvido pelo player no momento do play, então
-                // filtrar por `playbackUrl` (sempre nulo) zerava a lista e o
-                // player nunca abria. Basta ter id.
-                const playable = items.filter((it) => it.id);
-                const idx = playable.findIndex((it) => it.id === video.id);
-                if (idx >= 0) setPlayingIndex(idx);
-              }}
-            />
-          </Grid>
-        ))}
-      </Grid>
+      {/* Vitrine por nicho no estado limpo; grade única assim que o usuário
+          filtra. O player recebe SEMPRE a lista achatada `feed`, senão o
+          índice de reprodução não bate com o que está na tela. */}
+      {showSections ? (
+        sections.map((section) => (
+          <Box key={section.category} mb={4}>
+            <Box
+              display="flex"
+              alignItems="baseline"
+              justifyContent="space-between"
+              mb={1.5}
+            >
+              <Typography variant="h6" fontWeight={800}>
+                {section.category}
+                <Typography
+                  component="span"
+                  color="text.secondary"
+                  fontSize={13}
+                  fontWeight={500}
+                  ml={1}
+                >
+                  {section.total} vídeo{section.total === 1 ? '' : 's'}
+                </Typography>
+              </Typography>
+              {section.total > section.items.length && (
+                <Button
+                  size="small"
+                  onClick={() => (setCategory(section.category), setPage(1))}
+                >
+                  Ver todos
+                </Button>
+              )}
+            </Box>
+            <Grid container spacing={2.5}>
+              {section.items.map((v, index) => (
+                <Grid item xs={6} sm={4} md={3} lg={2} key={v.id}>
+                  <VideoCard
+                    video={v}
+                    rank={index + 1}
+                    onToggleSave={toggleSave}
+                    onShowTranscript={setTranscriptVideo}
+                    onPlay={(video) => {
+                      const idx = feed.findIndex((it) => it.id === video.id);
+                      if (idx >= 0) setPlayingIndex(idx);
+                    }}
+                  />
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+        ))
+      ) : (
+        <Grid
+          container
+          spacing={2.5}
+          sx={{ opacity: loading ? 0.5 : 1, transition: 'opacity .2s' }}
+        >
+          {items.map((v, index) => (
+            <Grid item xs={6} sm={4} md={3} lg={2} key={v.id}>
+              <VideoCard
+                video={v}
+                rank={(page - 1) * PAGE_SIZE + index + 1}
+                onToggleSave={toggleSave}
+                onShowTranscript={setTranscriptVideo}
+                onPlay={(video) => {
+                  // O MP4 é resolvido pelo player no momento do play, então
+                  // filtrar por `playbackUrl` (sempre nulo) zerava a lista e o
+                  // player nunca abria. Basta ter id.
+                  const idx = feed.findIndex((it) => it.id === video.id);
+                  if (idx >= 0) setPlayingIndex(idx);
+                }}
+              />
+            </Grid>
+          ))}
+        </Grid>
+      )}
 
-      {!loading && items.length === 0 && (
+      {!loading && feed.length === 0 && (
         <Typography color="text.secondary" textAlign="center" mt={6}>
           {savedOnly
             ? 'Você ainda não salvou nenhum vídeo.'
@@ -527,17 +597,20 @@ export function VideosPage() {
         </Typography>
       )}
 
-      <Box display="flex" justifyContent="center" mt={4}>
-        <Pagination
-          count={Math.max(1, Math.ceil(total / PAGE_SIZE))}
-          page={page}
-          onChange={(_e, value) => setPage(value)}
-        />
-      </Box>
+      {/* A vitrine não pagina: cada seção já mostra o topo do seu nicho. */}
+      {!showSections && (
+        <Box display="flex" justifyContent="center" mt={4}>
+          <Pagination
+            count={Math.max(1, Math.ceil(total / PAGE_SIZE))}
+            page={page}
+            onChange={(_e, value) => setPage(value)}
+          />
+        </Box>
+      )}
 
       {/* Player fullscreen estilo TikTok */}
       <TikTokPlayer
-        videos={items.filter((it) => it.id)}
+        videos={feed}
         index={playingIndex}
         onIndexChange={setPlayingIndex}
         onClose={() => setPlayingIndex(null)}

@@ -53,6 +53,73 @@ export class VideosService {
   }
 
   /**
+   * Vídeos agrupados em seções por categoria — mesma vitrine dos produtos.
+   *
+   * Numa query só, com `ROW_NUMBER` particionado: buscar categoria a categoria
+   * seriam dezenas de idas ao banco por carregamento de tela.
+   */
+  async sections(
+    perSection = 12,
+    maxSections = 10,
+    userId?: string,
+    /** Abaixo disso a categoria não vira seção. */
+    minItems = 4,
+  ): Promise<{
+    sections: Array<{ category: string; total: number; items: VideoItem[] }>;
+  }> {
+    const rows: Array<Video & { categoryTotal: string }> =
+      await this.videos.query(
+        `
+        WITH ranked AS (
+          SELECT v.*,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY v.category ORDER BY v.views DESC, v.id ASC
+                 ) AS rn,
+                 COUNT(*) OVER (PARTITION BY v.category)   AS "categoryTotal",
+                 SUM(v.views) OVER (PARTITION BY v.category) AS "categoryViews"
+            FROM videos v
+           WHERE v.kind = 'product' AND v.category IS NOT NULL
+        )
+        SELECT * FROM ranked
+         WHERE rn <= $1
+         ORDER BY "categoryViews" DESC, category ASC, rn ASC
+        `,
+        [perSection],
+      );
+
+    const savedIds = userId
+      ? new Set(
+          (await this.savedVideos.find({ where: { userId } })).map(
+            (s) => s.videoId,
+          ),
+        )
+      : new Set<string>();
+
+    const byCategory = new Map<
+      string,
+      { category: string; total: number; items: VideoItem[] }
+    >();
+    for (const row of rows) {
+      let section = byCategory.get(row.category);
+      if (!section) {
+        section = {
+          category: row.category,
+          total: Number(row.categoryTotal),
+          items: [],
+        };
+        byCategory.set(row.category, section);
+      }
+      section.items.push(this.toItem(row, savedIds));
+    }
+
+    return {
+      sections: [...byCategory.values()]
+        .filter((s) => s.items.length >= minItems)
+        .slice(0, maxSections),
+    };
+  }
+
+  /**
    * Devolve um MP4 tocável para o vídeo.
    *
    * Por que não fica no banco: a URL que a TikTok assina expira em poucas horas

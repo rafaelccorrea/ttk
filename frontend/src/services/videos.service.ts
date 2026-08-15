@@ -1,5 +1,13 @@
 import { api } from './api';
 
+/** Uma categoria da vitrine de vídeos, com os seus mais vistos. */
+export interface VideoSection {
+  category: string;
+  /** Total de vídeos da categoria (a seção mostra só os melhores). */
+  total: number;
+  items: ViralVideo[];
+}
+
 export interface ViralVideo {
   id: string;
   caption: string;
@@ -50,6 +58,18 @@ export const videosService = {
   async detail(id: string): Promise<VideoDetail> {
     const { data } = await api.get<VideoDetail>(`/videos/${id}`);
     return data;
+  },
+
+  /**
+   * Vitrine agrupada por categoria — mesma lógica dos produtos, para o feed
+   * não misturar nichos.
+   */
+  async sections(perSection = 12): Promise<VideoSection[]> {
+    const { data } = await api.get<{ sections: VideoSection[] }>(
+      '/videos/sections',
+      { params: { perSection } },
+    );
+    return data.sections;
   },
 
   /** Categorias que têm vídeo, para o filtro da tela. */
