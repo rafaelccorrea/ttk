@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
 export interface TrendingProduct {
   /** Chave estável para upsert (derivada do título quando a API não dá id). */
@@ -18,6 +20,10 @@ export interface TrendingProduct {
 
 const API_URL =
   'https://ads.tiktok.com/creative_radar_api/v1/popular_trend/product/list';
+
+// Sessão logada do Creative Center (criada por `npm run cc:login`). O ranking
+// de produtos exige login; com a sessão salva o scraping funciona sem captcha.
+const SESSION_FILE = join(process.cwd(), 'cc-session.json');
 
 const HEADERS: Record<string, string> = {
   'user-agent':
@@ -93,13 +99,39 @@ export class CreativeCenterProductsSource {
 
   private async fetchViaBrowser(limit: number): Promise<TrendingProduct[]> {
     const { chromium } = await import('playwright');
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({
+      headless: true,
+      args: ['--disable-blink-features=AutomationControlled'],
+    });
     try {
-      const page = await browser.newPage({
+      const hasSession = existsSync(SESSION_FILE);
+      if (!hasSession) {
+        this.logger.warn(
+          'Sem sessão do Creative Center (cc-session.json). Rode `npm run cc:login` uma vez para habilitar o ranking de produtos.',
+        );
+      }
+      const context = await browser.newContext({
         userAgent: HEADERS['user-agent'],
         locale: 'pt-BR',
         viewport: { width: 1366, height: 2000 },
+        ...(hasSession ? { storageState: SESSION_FILE } : {}),
       });
+      const page = await context.newPage();
+
+      // Com sessão logada, chama a API de DENTRO da página: os cookies e a
+      // assinatura vão automáticos, igual ao navegador de verdade.
+      if (hasSession) {
+        await page.goto(
+          'https://ads.tiktok.com/business/creativecenter/inspiration/popular/product/pc/pt',
+          { waitUntil: 'domcontentloaded', timeout: 60_000 },
+        );
+        await page.waitForTimeout(6_000);
+        const viaSession = await this.fetchInPage(page, limit);
+        if (viaSession.length > 0) return viaSession;
+        this.logger.warn(
+          'Sessão do Creative Center não retornou produtos (expirou? rode cc:login de novo). Tentando fallback anônimo.',
+        );
+      }
       // Intercepta a resposta da própria API quando a página a dispara.
       const apiRows: Array<Record<string, unknown>> = [];
       page.on('response', (res) => {
@@ -156,6 +188,45 @@ export class CreativeCenterProductsSource {
     } finally {
       await browser.close();
     }
+  }
+
+  /**
+   * Executa o fetch da API dentro do contexto da página (sessão logada):
+   * cookies, msToken e headers anti-bot vão como num navegador comum.
+   * Pagina de 20 em 20 até `limit`.
+   */
+  private async fetchInPage(
+    page: { evaluate: <T, A>(fn: (arg: A) => T | Promise<T>, arg: A) => Promise<T> },
+    limit: number,
+  ): Promise<TrendingProduct[]> {
+    const rows: Array<Record<string, unknown>> = [];
+    const pages = Math.max(1, Math.ceil(limit / 20));
+    for (let p = 1; p <= pages; p++) {
+      const batch = await page.evaluate(
+        async ({ apiUrl, pageNum }: { apiUrl: string; pageNum: number }) => {
+          const url = `${apiUrl}?page=${pageNum}&limit=20&period=7&country_code=BR&sort_by=popular`;
+          const res = await fetch(url, {
+            credentials: 'include',
+            headers: { accept: 'application/json' },
+          });
+          if (!res.ok) return [] as Array<Record<string, unknown>>;
+          const body = (await res.json()) as {
+            data?: { list?: Array<Record<string, unknown>> };
+          };
+          return body?.data?.list ?? [];
+        },
+        { apiUrl: API_URL, pageNum: p },
+      );
+      if (!batch.length) break;
+      rows.push(...batch);
+      if (rows.length >= limit) break;
+      // Cadência educada entre páginas.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    return rows
+      .slice(0, limit)
+      .map((row, i) => this.parseApiItem(row, i))
+      .filter((prod): prod is TrendingProduct => prod !== null);
   }
 
   private categoryFromCtx(ctx: string): string {
