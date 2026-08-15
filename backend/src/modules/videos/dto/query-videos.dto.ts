@@ -22,6 +22,12 @@ export class QueryVideosDto {
   @IsString()
   search?: string;
 
+  @ApiPropertyOptional({ description: 'false inclui videos sem midia (padrao: so reproduziveis)' })
+  @IsOptional()
+  @Transform(({ value }) => value !== 'false' && value !== false)
+  @IsBoolean()
+  playable?: boolean;
+
   @ApiPropertyOptional({ enum: ['product','trending'], description: 'product = vende produto; trending = viral sem produto' })
   @IsOptional()
   @IsIn(['product','trending'])

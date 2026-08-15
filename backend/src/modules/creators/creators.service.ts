@@ -39,10 +39,28 @@ export class CreatorsService {
       });
     }
 
+    if (query.source) {
+      qb.andWhere('c.source = :source', { source: query.source });
+    }
+    if (query.minFollowers !== undefined) {
+      qb.andWhere('c.followers >= :minFollowers', {
+        minFollowers: query.minFollowers,
+      });
+    }
+    if (query.maxFollowers !== undefined) {
+      qb.andWhere('c.followers <= :maxFollowers', {
+        maxFollowers: query.maxFollowers,
+      });
+    }
+
+    // Criador real do TikTok vem antes do dado de demonstração: o usuário
+    // reclamou que "criadores parece não ser real" justamente porque o seed
+    // dominava o topo do ranking.
+    qb.orderBy(`CASE WHEN c.source = 'tiktok' THEN 0 ELSE 1 END`, 'ASC');
     if (query.sort === 'followers') {
-      qb.orderBy('c.followers', 'DESC');
+      qb.addOrderBy('c.followers', 'DESC');
     } else {
-      qb.orderBy('c.gmvPeriod', 'DESC');
+      qb.addOrderBy('c.gmvPeriod', 'DESC');
     }
     // Desempate por id para paginação estável.
     qb.addOrderBy('c.id', 'ASC');

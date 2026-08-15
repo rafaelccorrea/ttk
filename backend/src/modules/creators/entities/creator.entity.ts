@@ -34,6 +34,15 @@ export class Creator {
   @Column()
   category: string;
 
+  /**
+   * 'tiktok' = coletado do TikTok (handle, seguidores e avatar verdadeiros).
+   * 'seed'   = dado de demonstração. Separar evita apresentar como real algo
+   *            que não é — os reais vêm primeiro na listagem.
+   */
+  @Index()
+  @Column({ default: 'seed' })
+  source: 'tiktok' | 'seed';
+
   @Column({ nullable: true })
   avatarUrl: string;
 

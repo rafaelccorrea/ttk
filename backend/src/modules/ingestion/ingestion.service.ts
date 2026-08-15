@@ -156,7 +156,7 @@ export class IngestionService implements OnModuleInit {
       //    São virais genéricos, não vídeos de produto: por isso entram
       //    marcados como 'trending' e a tela de Vídeos que Vendem os separa
       //    do conteúdo com produto atrelado.
-      const trendingCreators = await this.creativeCenter.fetchTrendingCreators(8);
+      const trendingCreators = await this.creativeCenter.fetchTrendingCreators(24);
       run.creatorsFetched = trendingCreators.length;
       for (const tc of trendingCreators) {
         // Handles do TikTok são case-insensitive; normaliza para não duplicar.
@@ -164,6 +164,7 @@ export class IngestionService implements OnModuleInit {
         const creator =
           (await this.creators.findOne({ where: { handle: tc.handle } })) ??
           this.creators.create({ handle: tc.handle, category: tc.topic ?? 'geral' });
+        creator.source = 'tiktok';
         creator.name = tc.name;
         creator.followers = tc.followers;
         creator.category = tc.topic ?? creator.category ?? 'geral';
@@ -203,15 +204,22 @@ export class IngestionService implements OnModuleInit {
       //    com fornecedor externo configurado (EXTERNAL_DATA_*).
       run.productsIngested = await this.ingestProducts();
 
-      // 4) Imagens de produtos sem foto (busca de imagem real; 15 por execução).
-      const missing = await this.products.find({
-        where: { imageUrl: IsNull() },
-        take: 15,
-      });
-      for (const product of missing) {
-        const imageUrl = await this.imageSearch.findProductImage(product.title);
-        if (imageUrl) {
-          product.imageUrl = imageUrl;
+      // 4) Galeria de imagens reais. Cobre tanto quem não tem foto nenhuma
+      //    quanto quem tem só uma — a tela de detalhe mostra várias.
+      const needImages = await this.products
+        .createQueryBuilder('p')
+        .where('p."imageUrl" IS NULL')
+        .orWhere('p.images IS NULL')
+        .orWhere('jsonb_array_length(p.images) < 2')
+        .orderBy('p."imageUrl" IS NULL', 'DESC') // sem foto primeiro
+        .take(40)
+        .getMany();
+
+      for (const product of needImages) {
+        const images = await this.imageSearch.findProductImages(product.title, 5);
+        if (images.length > 0) {
+          product.images = images;
+          product.imageUrl = product.imageUrl ?? images[0];
           await this.products.save(product);
           run.productsEnriched += 1;
         }

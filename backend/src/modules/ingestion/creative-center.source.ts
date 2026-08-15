@@ -183,6 +183,19 @@ export class CreativeCenterSource {
       );
       await page.waitForTimeout(9_000);
 
+      // Logado, "Ver mais" carrega além dos primeiros cards — é daqui que sai
+      // o volume de vídeos reais (com MP4) que a tela precisa para tocar.
+      if (hasSession) {
+        for (let round = 0; round < 5; round++) {
+          const more = page.getByText(/Ver mais|View More|Carregar mais/i).first();
+          if (!(await more.count().catch(() => 0))) break;
+          await more.click({ timeout: 5_000 }).catch(() => undefined);
+          await page.waitForTimeout(4_000);
+        }
+        await page.mouse.wheel(0, 3000);
+        await page.waitForTimeout(2_500);
+      }
+
       // Cards visíveis: nome, seguidores, views, tópico e thumbnail (em ordem).
       const cards = await page.evaluate(() => {
         const text = document.body.innerText;
@@ -205,7 +218,8 @@ export class CreativeCenterSource {
         return { rows, thumbs };
       });
 
-      const detailButtons = page.getByText('View details');
+      // Rótulo varia com o idioma da conta (pt-BR vs en).
+      const detailButtons = page.getByText(/View details|Ver detalhes/i);
       const total = Math.min(await detailButtons.count(), limit, cards.rows.length);
       const creators: TrendingCreator[] = [];
 

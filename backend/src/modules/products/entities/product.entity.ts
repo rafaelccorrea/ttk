@@ -33,6 +33,10 @@ export class Product {
   @Column({ nullable: true })
   imageUrl: string;
 
+  /** Galeria: várias fotos reais do produto (a primeira costuma ser imageUrl). */
+  @Column({ type: 'jsonb', nullable: true })
+  images: string[] | null;
+
   @Column({ type: 'decimal', precision: 3, scale: 1, nullable: true })
   rating: string;
 
