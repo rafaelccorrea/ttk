@@ -30,7 +30,7 @@ export class StoreImport {
   @Column({ default: 'csv' })
   source: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   fileName: string | null;
 
   @Column({ type: 'int', default: 0 })

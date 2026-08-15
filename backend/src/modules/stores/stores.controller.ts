@@ -25,6 +25,10 @@ import {
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
+import {
+  PlanFeatureGuard,
+  RequiresPlanFeature,
+} from '../billing/plan-feature.guard';
 import { CreateStoreDto } from './dto/create-store.dto';
 import {
   QueryPeriodDto,
@@ -47,7 +51,8 @@ const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 @ApiTags('stores')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@RequiresPlanFeature('stores')
 @Controller('stores')
 export class StoresController {
   constructor(

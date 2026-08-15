@@ -47,6 +47,16 @@ npm run dev
 - **Estúdio IA**: roteiros de live (ciclos Apresentação→Oferta→Garantia→CTA) e de vídeo (Gancho→Corpo→CTA) via API da Anthropic (`ANTHROPIC_API_KEY`; sem a chave, gerador de template local). Roteiros salvos por usuário.
 - **Cofre de Prompts**: prompts de vídeo/imagem IA com campos a preencher e copiar.
 - **Dashboard**: números agregados do catálogo + top produtos da semana.
+- **Minha Loja**: o seller cadastra a loja e importa os relatórios CSV do Seller Center
+  (Pedidos, Produtos, Extrato financeiro). A partir daí a plataforma entrega faturamento
+  bruto e líquido, taxas efetivas, ticket médio, pedidos com prazo de envio estourado,
+  curva ABC e margem real por SKU, calculadora de preço/ponto de equilíbrio e o
+  cruzamento do catálogo com o radar de produtos em alta ("em alta que você ainda não vende").
+
+  A entrada de dados fica atrás do contrato `StoreSyncSource` (`modules/stores/sources/`).
+  Hoje só existe `CsvImportSource`, que **não depende de homologação na TikTok**. Quando o
+  app público for aprovado, basta adicionar `TikTokShopApiSource` implementando o mesmo
+  contrato — entidades, endpoints e telas não mudam.
 
 ## Testes
 

@@ -48,10 +48,10 @@ export class StoreOrder {
   @Column({ type: 'timestamptz', nullable: true })
   shippedAt: Date | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   shippingProvider: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   trackingCode: string | null;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })

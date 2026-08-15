@@ -29,13 +29,13 @@ export class StoreProduct {
   @Column()
   sku: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   externalId: string | null;
 
   @Column()
   title: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   category: string | null;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
@@ -52,10 +52,10 @@ export class StoreProduct {
   @Column({ type: 'int', nullable: true })
   stockAlert: number | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   status: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   imageUrl: string | null;
 
   @CreateDateColumn()

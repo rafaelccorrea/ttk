@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BillingModule } from '../billing/billing.module';
 import { ProductsModule } from '../products/products.module';
 import { UsersModule } from '../users/users.module';
 import { StoreImport } from './entities/store-import.entity';
@@ -23,6 +24,7 @@ import { StoresService } from './stores.service';
       StoreSettlement,
       StoreImport,
     ]),
+    BillingModule,
     UsersModule,
     ProductsModule,
   ],

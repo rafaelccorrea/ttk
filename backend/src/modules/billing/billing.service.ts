@@ -10,10 +10,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AppUser } from '../users/entities/app-user.entity';
 import {
+  ACTION_MIN_PLAN,
   ACTION_PRICES,
   assertProfitability,
   BillableAction,
   CREDIT_PACKS,
+  FEATURE_MIN_PLAN,
+  PLAN_RANK,
+  planAllows,
+  PlanFeature,
   PLANS,
   SIGNUP_BONUS_CREDITS,
 } from './billing.config';
@@ -50,12 +55,34 @@ export class BillingService implements OnModuleInit {
       order: { createdAt: 'DESC' },
       take: 30,
     });
+    // Mapa recurso→liberado para o plano do usuário (o front usa para bloquear telas).
+    const features = Object.fromEntries(
+      (Object.keys(FEATURE_MIN_PLAN) as PlanFeature[]).map((f) => [
+        f,
+        planAllows(user.plan, f),
+      ]),
+    );
     return {
       credits: user.credits,
       plan: user.plan,
       prices: ACTION_PRICES,
+      features,
+      featureMinPlan: FEATURE_MIN_PLAN,
       history,
     };
+  }
+
+  /** Bloqueia o recurso se o plano do usuário não alcança o mínimo (403). */
+  async assertFeature(userId: string, feature: PlanFeature): Promise<void> {
+    const user = await this.users.findOneBy({ id: userId });
+    const plan = user?.plan ?? 'free';
+    if (!planAllows(plan, feature)) {
+      const min = FEATURE_MIN_PLAN[feature];
+      throw new HttpException(
+        `Este recurso está disponível a partir do plano ${min.charAt(0).toUpperCase() + min.slice(1)}. Faça upgrade em Planos & Créditos.`,
+        403,
+      );
+    }
   }
 
   listPlans() {
@@ -89,6 +116,15 @@ export class BillingService implements OnModuleInit {
    */
   async charge(userId: string, action: BillableAction): Promise<void> {
     await this.ensureSignupBonus(userId);
+    // Plano mínimo da ação (ex.: vídeo IA só no Pro+).
+    const owner = await this.users.findOneBy({ id: userId });
+    const minPlan = ACTION_MIN_PLAN[action];
+    if ((PLAN_RANK[owner?.plan ?? 'free'] ?? 0) < (PLAN_RANK[minPlan] ?? 0)) {
+      throw new HttpException(
+        `"${ACTION_PRICES[action].label}" está disponível a partir do plano ${minPlan.charAt(0).toUpperCase() + minPlan.slice(1)}. Faça upgrade em Planos & Créditos.`,
+        403,
+      );
+    }
     const price = ACTION_PRICES[action];
     const result = await this.users
       .createQueryBuilder()
@@ -160,6 +196,7 @@ export class BillingService implements OnModuleInit {
   async purchasePack(userId: string, packId: string) {
     const pack = CREDIT_PACKS.find((p) => p.id === packId);
     if (!pack) throw new NotFoundException(`Pacote ${packId} não existe`);
+    await this.assertSubscriber(userId);
     if (process.env.ALLOW_DEV_CHECKOUT !== 'true') {
       throw new BadRequestException(
         'Pagamentos ainda não estão habilitados. Fale com o suporte.',
@@ -196,6 +233,17 @@ export class BillingService implements OnModuleInit {
       `Créditos mensais do plano ${plan.name}`,
     );
     return this.getWallet(userId);
+  }
+
+  /** Pacote avulso é exclusivo de assinantes (Free precisa assinar primeiro). */
+  async assertSubscriber(userId: string): Promise<void> {
+    const user = await this.users.findOneBy({ id: userId });
+    if ((PLAN_RANK[user?.plan ?? 'free'] ?? 0) < PLAN_RANK.starter) {
+      throw new HttpException(
+        'Pacotes avulsos são exclusivos para assinantes. Assine um plano para desbloquear.',
+        403,
+      );
+    }
   }
 
   /** Crédito confirmado por pagamento (Stripe) — reference = session/invoice id. */

@@ -75,6 +75,7 @@ export const PLANS: Plan[] = [
       'Roteiros e análises com Claude',
       'Transcrição Whisper',
       'Imagens com IA',
+      'Multiplicador de conteúdo',
     ],
   },
   {
@@ -87,6 +88,7 @@ export const PLANS: Plan[] = [
       '1.100 créditos/mês',
       'Tudo do Starter',
       'Vídeos com IA (Higgsfield)',
+      'Minhas Lojas (importação de pedidos)',
       'Suporte prioritário',
     ],
   },
@@ -98,7 +100,7 @@ export const PLANS: Plan[] = [
     perks: [
       '2.300 créditos/mês',
       'Tudo do Pro',
-      'Multi-projetos',
+      'Coleta de dados automatizada',
       'Onboarding dedicado',
     ],
   },
@@ -106,6 +108,59 @@ export const PLANS: Plan[] = [
 
 /** Créditos de boas-vindas do cadastro (custo máximo p/ nós: 30 × R$0,06 = R$1,80/usuário). */
 export const SIGNUP_BONUS_CREDITS = 30;
+
+/** Hierarquia dos planos (maior = mais acesso). */
+export const PLAN_RANK: Record<string, number> = {
+  free: 0,
+  starter: 1,
+  pro: 2,
+  business: 3,
+};
+
+export type PlanFeature =
+  | 'discovery' // produtos, vídeos, criadores, tendências, favoritos
+  | 'studio_templates' // roteiros com gerador local
+  | 'ai_scripts' // roteiros com Claude
+  | 'ai_analyze' // análise de vídeo viral (Claude)
+  | 'ai_transcribe' // transcrição Whisper
+  | 'ai_images' // imagens Higgsfield
+  | 'ai_videos' // vídeos Higgsfield
+  | 'multiplier' // multiplicador G×C×A
+  | 'stores' // minhas lojas / importação de pedidos
+  | 'ingestion'; // coleta de dados (admin)
+
+/**
+ * Plano mínimo para cada recurso — a divisão oficial do produto.
+ * IAs básicas ficam abertas ao Free para gastar os créditos de boas-vindas
+ * (degustação); a continuidade exige assinar, porque pacote avulso é só
+ * para assinantes (regra em purchasePack/checkout).
+ */
+export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
+  discovery: 'free',
+  studio_templates: 'free',
+  ai_scripts: 'free',
+  ai_analyze: 'free',
+  ai_transcribe: 'free',
+  ai_images: 'free',
+  ai_videos: 'pro',
+  multiplier: 'free',
+  stores: 'pro',
+  ingestion: 'business',
+};
+
+/** Plano mínimo por ação cobrada (deriva de FEATURE_MIN_PLAN). */
+export const ACTION_MIN_PLAN: Record<BillableAction, string> = {
+  script: FEATURE_MIN_PLAN.ai_scripts,
+  analyze: FEATURE_MIN_PLAN.ai_analyze,
+  transcribe: FEATURE_MIN_PLAN.ai_transcribe,
+  image: FEATURE_MIN_PLAN.ai_images,
+  video: FEATURE_MIN_PLAN.ai_videos,
+};
+
+export function planAllows(userPlan: string, feature: PlanFeature): boolean {
+  const need = PLAN_RANK[FEATURE_MIN_PLAN[feature]] ?? 0;
+  return (PLAN_RANK[userPlan] ?? 0) >= need;
+}
 
 export interface CreditPack {
   id: string;

@@ -6,7 +6,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import Stripe from 'stripe';
+// Sem esModuleInterop no tsconfig, o default import do stripe vira undefined.
+import Stripe = require('stripe');
 import { Repository } from 'typeorm';
 import { CREDIT_PACKS, PLANS } from './billing.config';
 import { BillingService } from './billing.service';
@@ -69,6 +70,7 @@ export class StripeService {
     if (item.packId) {
       const pack = CREDIT_PACKS.find((p) => p.id === item.packId);
       if (!pack) throw new NotFoundException(`Pacote ${item.packId} não existe`);
+      await this.billing.assertSubscriber(userId);
       session = await stripe.checkout.sessions.create({
         ...common,
         mode: 'payment',

@@ -20,6 +20,10 @@ export interface Wallet {
   credits: number;
   plan: string;
   prices: Record<string, ActionPrice>;
+  /** recurso → liberado no plano atual (ex.: ai_videos, stores, ingestion). */
+  features?: Record<string, boolean>;
+  /** recurso → plano mínimo. */
+  featureMinPlan?: Record<string, string>;
   history: CreditTransaction[];
 }
 

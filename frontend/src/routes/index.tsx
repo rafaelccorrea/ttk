@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { PlanGate } from '@/components/ui/PlanGate';
 import { AcademyPage } from '@/pages/Academy';
 import { AnalyzePage } from '@/pages/Analyze';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,6 +19,7 @@ import { ReferralPage } from '@/pages/Referral';
 import { ProductDetailPage } from '@/pages/ProductDetail';
 import { ProductsPage } from '@/pages/Products';
 import { PromptsPage } from '@/pages/Prompts';
+import { StorePage } from '@/pages/Store';
 import { StudioPage } from '@/pages/Studio';
 import { TrendsPage } from '@/pages/Trends';
 import { VideosPage } from '@/pages/Videos';
@@ -38,6 +40,14 @@ export function AppRoutes() {
       <Route element={<ProtectedRoutes />}>
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route
+            path="/loja"
+            element={
+              <PlanGate feature="stores">
+                <StorePage />
+              </PlanGate>
+            }
+          />
           <Route path="/produtos" element={<ProductsPage />} />
           <Route path="/produtos/:id" element={<ProductDetailPage />} />
           <Route path="/videos" element={<VideosPage />} />
@@ -51,7 +61,14 @@ export function AppRoutes() {
           <Route path="/indique" element={<ReferralPage />} />
           <Route path="/prompts" element={<PromptsPage />} />
           <Route path="/geracoes" element={<GenerationsPage />} />
-          <Route path="/coleta" element={<IngestionPage />} />
+          <Route
+            path="/coleta"
+            element={
+              <PlanGate feature="ingestion">
+                <IngestionPage />
+              </PlanGate>
+            }
+          />
           <Route path="/analisar" element={<AnalyzePage />} />
           <Route path="/planos" element={<PlansPage />} />
         </Route>

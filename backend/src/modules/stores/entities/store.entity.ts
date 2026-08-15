@@ -34,7 +34,7 @@ export class Store {
   source: StoreSourceKind;
 
   /** ID da loja no marketplace — preenchido quando houver integração por API. */
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   externalShopId: string | null;
 
   @Column({ default: 'BRL' })

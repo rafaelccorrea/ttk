@@ -10,6 +10,7 @@ import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
 import SmartToyRoundedIcon from '@mui/icons-material/SmartToyRounded';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
+import StorefrontRoundedIcon from '@mui/icons-material/StorefrontRounded';
 import StyleRoundedIcon from '@mui/icons-material/StyleRounded';
 import TroubleshootRoundedIcon from '@mui/icons-material/TroubleshootRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
@@ -56,6 +57,12 @@ const NAV_SECTIONS: NavSection[] = [
     title: null,
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: <DashboardRoundedIcon /> },
+    ],
+  },
+  {
+    title: 'Minha Loja',
+    items: [
+      { to: '/loja', label: 'Painel da Loja', icon: <StorefrontRoundedIcon /> },
     ],
   },
   {

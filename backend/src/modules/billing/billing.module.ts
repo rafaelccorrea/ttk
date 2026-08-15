@@ -5,6 +5,7 @@ import { UsersModule } from '../users/users.module';
 import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
 import { CreditTransaction } from './entities/credit-transaction.entity';
+import { PlanFeatureGuard } from './plan-feature.guard';
 import { StripeService } from './stripe.service';
 import { StripeWebhookController } from './stripe-webhook.controller';
 
@@ -14,7 +15,7 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     UsersModule,
   ],
   controllers: [BillingController, StripeWebhookController],
-  providers: [BillingService, StripeService],
-  exports: [BillingService],
+  providers: [BillingService, StripeService, PlanFeatureGuard],
+  exports: [BillingService, PlanFeatureGuard],
 })
 export class BillingModule {}

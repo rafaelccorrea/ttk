@@ -25,7 +25,7 @@ export class StoreOrderItem {
   @Column()
   sku: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   title: string | null;
 
   @Column({ type: 'int', default: 1 })
