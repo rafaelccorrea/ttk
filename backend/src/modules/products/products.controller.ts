@@ -33,6 +33,14 @@ export class ProductsController {
     return this.productsService.categories();
   }
 
+  @Get('filters')
+  @ApiOperation({
+    summary: 'Opções para montar os filtros (categorias, lojas e faixas reais)',
+  })
+  filters() {
+    return this.productsService.filterOptions();
+  }
+
   @Get('favorites')
   @ApiOperation({ summary: 'Produtos favoritos do usuário' })
   favorites(@CurrentUser() user: AuthUser) {

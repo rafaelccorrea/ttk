@@ -14,13 +14,11 @@ import {
   TrendingUpRounded,
 } from '@mui/icons-material';
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Avatar,
   Box,
   Button,
   Chip,
+  Collapse,
   Container,
   Grid,
   Stack,
@@ -561,39 +559,122 @@ export function Pricing() {
 
 /* -------------------------------------------------------------------- faq */
 
-export function Faq() {
+/**
+ * Acordeão próprio: o `Accordion` do MUI herda o Paper do tema claro do app
+ * e briga com a paleta dark da landing.
+ */
+function FaqItem({ q, a, open, onToggle }: { q: string; a: string; open: boolean; onToggle: () => void }) {
   return (
-    <Container id="faq" maxWidth={false} sx={{ ...pageNarrow, py: { xs: 9, md: 12 }, scrollMarginTop: 88 }}>
-      <Reveal>
-        <SectionHeading eyebrow="DÚVIDAS FREQUENTES" title="Perguntas que todo mundo faz" />
-      </Reveal>
-      <Reveal>
-        <Stack spacing={1.5}>
-          {FAQ.map((item) => (
-            <Accordion
-              key={item.q}
-              disableGutters
-              elevation={0}
-              sx={{
-                ...glass,
-                '&::before': { display: 'none' },
-                '&.Mui-expanded': { borderColor: `${cyan}44` },
-              }}
-            >
-              <AccordionSummary
-                expandIcon={<ExpandMoreRounded sx={{ color: textDim }} />}
-                sx={{ px: 3, py: 1, '& .MuiAccordionSummary-content': { my: 1.75 } }}
-              >
-                <Typography fontSize={16} fontWeight={700}>{item.q}</Typography>
-              </AccordionSummary>
-              <AccordionDetails sx={{ px: 3, pb: 3, pt: 0 }}>
-                <Typography fontSize={14.5} color={textDim} lineHeight={1.75}>{item.a}</Typography>
-              </AccordionDetails>
-            </Accordion>
-          ))}
-        </Stack>
-      </Reveal>
-    </Container>
+    <Box
+      sx={{
+        ...glass,
+        borderRadius: 3,
+        overflow: 'hidden',
+        borderColor: open ? `${cyan}44` : line,
+        bgcolor: open ? 'rgba(255,255,255,0.04)' : undefined,
+        transition: 'border-color .25s ease, background-color .25s ease',
+        '&:hover': { borderColor: open ? `${cyan}66` : lineStrong },
+      }}
+    >
+      <Box
+        component="button"
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        sx={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 2, textAlign: 'left',
+          px: { xs: 2.25, md: 3 }, py: 2.25,
+          bgcolor: 'transparent', border: 'none', color: 'inherit', font: 'inherit', cursor: 'pointer',
+        }}
+      >
+        <Typography flex={1} fontSize={{ xs: 15, md: 16.5 }} fontWeight={700} lineHeight={1.4}>
+          {q}
+        </Typography>
+        <Box
+          aria-hidden
+          sx={{
+            flexShrink: 0, width: 28, height: 28, borderRadius: '50%', display: 'grid', placeItems: 'center',
+            bgcolor: open ? `${cyan}1f` : 'rgba(255,255,255,0.06)',
+            transition: 'background-color .25s ease',
+          }}
+        >
+          <ExpandMoreRounded
+            sx={{
+              fontSize: 19, color: open ? cyan : textDim,
+              transform: open ? 'rotate(180deg)' : 'none',
+              transition: 'transform .25s ease, color .25s ease',
+            }}
+          />
+        </Box>
+      </Box>
+      <Collapse in={open} timeout={260} unmountOnExit>
+        <Typography
+          fontSize={14.5}
+          color={textDim}
+          lineHeight={1.75}
+          sx={{ px: { xs: 2.25, md: 3 }, pb: 2.75, pr: { md: 7 } }}
+        >
+          {a}
+        </Typography>
+      </Collapse>
+    </Box>
+  );
+}
+
+export function Faq() {
+  const [open, setOpen] = useState<string | null>(FAQ[0].q);
+
+  return (
+    <Box id="faq" sx={{ scrollMarginTop: 72, position: 'relative', overflow: 'hidden' }}>
+      <Box aria-hidden sx={{ position: 'absolute', top: '20%', left: -180, width: 420, height: 420, borderRadius: '50%', filter: 'blur(140px)', background: `${cyan}14`, pointerEvents: 'none' }} />
+      <Container maxWidth={false} sx={{ ...page, py: { xs: 9, md: 12 } }}>
+        <Grid container spacing={{ xs: 5, md: 8 }}>
+          <Grid item xs={12} md={4}>
+            <Reveal>
+              <Box sx={{ position: { md: 'sticky' }, top: { md: 110 } }}>
+                <Typography sx={{ color: cyan, fontWeight: 700, letterSpacing: '0.14em', fontSize: 13 }}>
+                  DÚVIDAS FREQUENTES
+                </Typography>
+                <Typography
+                  component="h2"
+                  sx={{ fontSize: { xs: 30, md: 40 }, fontWeight: 800, letterSpacing: '-0.025em', mt: 1.5, lineHeight: 1.15 }}
+                >
+                  Perguntas que <Box component="span" sx={gradientText}>todo mundo faz</Box>
+                </Typography>
+                <Typography color={textDim} fontSize={16} mt={2} lineHeight={1.7}>
+                  Não achou o que procurava? A gente responde direto no painel, assim que você criar sua conta.
+                </Typography>
+                <Button
+                  component={RouterLink}
+                  to="/login"
+                  endIcon={<ArrowForwardRounded />}
+                  sx={{
+                    mt: 3, ...glass, borderRadius: 3, color: '#fff', px: 2.5, py: 1.1, fontWeight: 700,
+                    '&:hover': { borderColor: `${cyan}66` },
+                  }}
+                >
+                  Falar com a gente
+                </Button>
+              </Box>
+            </Reveal>
+          </Grid>
+          <Grid item xs={12} md={8}>
+            <Stack spacing={1.5}>
+              {FAQ.map((item, i) => (
+                <Reveal key={item.q} delay={Math.min(i, 3) * 80}>
+                  <FaqItem
+                    q={item.q}
+                    a={item.a}
+                    open={open === item.q}
+                    onToggle={() => setOpen((cur) => (cur === item.q ? null : item.q))}
+                  />
+                </Reveal>
+              ))}
+            </Stack>
+          </Grid>
+        </Grid>
+      </Container>
+    </Box>
   );
 }
 

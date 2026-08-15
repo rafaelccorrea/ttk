@@ -81,37 +81,6 @@ export class ProductsService {
       .setParameter('current', current)
       .groupBy('p.id');
 
-    if (query.category) {
-      qb.andWhere('p.category = :category', { category: query.category });
-    }
-    if (query.search) {
-      qb.andWhere('(p.title ILIKE :search OR p.storeName ILIKE :search)', {
-        search: `%${query.search}%`,
-      });
-    }
-
-    const sortColumn =
-      query.sort === 'revenue' ? '"revenuePeriod"' : '"salesPeriod"';
-    // Desempate por id: sem ele, linhas empatadas trocam de posição entre
-    // requisições (sort instável do Postgres) e podem duplicar/sumir na paginação.
-    qb.orderBy(sortColumn, 'DESC').addOrderBy('p.id', 'ASC');
-
-    const countQb = this.products.createQueryBuilder('p');
-    if (query.category) {
-      countQb.andWhere('p.category = :category', { category: query.category });
-    }
-    if (query.search) {
-      countQb.andWhere('(p.title ILIKE :search OR p.storeName ILIKE :search)', {
-        search: `%${query.search}%`,
-      });
-    }
-    const total = await countQb.getCount();
-
-    const rows = await qb
-      .offset((page - 1) * limit)
-      .limit(limit)
-      .getRawMany();
-
     const favoriteIds = userId
       ? new Set(
           (await this.favorites.find({ where: { userId } })).map(
@@ -120,8 +89,167 @@ export class ProductsService {
         )
       : new Set<string>();
 
+    // Filtros sobre colunas do produto (WHERE). Aplicados igualmente na
+    // query principal e na de contagem, para o total bater com a lista.
+    const applyWhere = (target: typeof qb) => {
+      if (query.category) {
+        target.andWhere('p.category = :category', { category: query.category });
+      }
+      if (query.store) {
+        target.andWhere('p.storeName ILIKE :store', { store: `%${query.store}%` });
+      }
+      if (query.search) {
+        target.andWhere('(p.title ILIKE :search OR p.storeName ILIKE :search)', {
+          search: `%${query.search}%`,
+        });
+      }
+      if (query.minPrice !== undefined) {
+        target.andWhere('p.price >= :minPrice', { minPrice: query.minPrice });
+      }
+      if (query.maxPrice !== undefined) {
+        target.andWhere('p.price <= :maxPrice', { maxPrice: query.maxPrice });
+      }
+      if (query.minRating !== undefined) {
+        target.andWhere('p.rating >= :minRating', { minRating: query.minRating });
+      }
+      if (query.withImage) {
+        target.andWhere('p.imageUrl IS NOT NULL');
+      }
+      if (query.onlyFavorites) {
+        // Sem favoritos, força resultado vazio em vez de ignorar o filtro.
+        if (favoriteIds.size === 0) {
+          target.andWhere('1 = 0');
+        } else {
+          target.andWhere('p.id IN (:...favoriteIds)', {
+            favoriteIds: [...favoriteIds],
+          });
+        }
+      }
+      return target;
+    };
+
+    applyWhere(qb);
+
+    // Filtros sobre agregados do período (HAVING).
+    if (query.minSales !== undefined) {
+      qb.andHaving(
+        'COALESCE(SUM(CASE WHEN m.date >= :current THEN m.sales END), 0) >= :minSales',
+        { minSales: query.minSales },
+      );
+    }
+    if (query.minRevenue !== undefined) {
+      qb.andHaving(
+        'COALESCE(SUM(CASE WHEN m.date >= :current THEN m.revenue END), 0) >= :minRevenue',
+        { minRevenue: query.minRevenue },
+      );
+    }
+    if (query.minGrowth !== undefined) {
+      // Crescimento = (atual - anterior) / anterior. Sem base anterior não dá
+      // para calcular percentual, então esses produtos ficam de fora do filtro.
+      qb.andHaving(
+        `COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0) > 0
+         AND ((COALESCE(SUM(CASE WHEN m.date >= :current THEN m.sales END), 0)
+               - COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0))
+              * 100.0
+              / NULLIF(COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0), 0)
+             ) >= :minGrowth`,
+        { minGrowth: query.minGrowth },
+      );
+    }
+
+    const direction = query.order === 'asc' ? 'ASC' : 'DESC';
+    const sortExpression = this.sortExpression(query.sort);
+    // Desempate por id: sem ele, linhas empatadas trocam de posição entre
+    // requisições (sort instável do Postgres) e podem duplicar/sumir na paginação.
+    qb.orderBy(sortExpression, direction).addOrderBy('p.id', 'ASC');
+
+    // Total: com filtros de agregado, contar linhas do produto não basta —
+    // é preciso contar o resultado agrupado já filtrado.
+    const hasAggregateFilter =
+      query.minSales !== undefined ||
+      query.minRevenue !== undefined ||
+      query.minGrowth !== undefined;
+
+    let total: number;
+    if (hasAggregateFilter) {
+      const countRows = await qb.clone().getRawMany();
+      total = countRows.length;
+    } else {
+      const countQb = this.products.createQueryBuilder('p');
+      applyWhere(countQb as unknown as typeof qb);
+      total = await countQb.getCount();
+    }
+
+    const rows = await qb
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getRawMany();
+
     const items = rows.map((r) => this.toRanked(r, favoriteIds));
     return { items, total, page };
+  }
+
+  /**
+   * Opções para a barra de filtros. As faixas vêm do catálogo real, então os
+   * controles nunca oferecem um intervalo que não existe em produto nenhum.
+   */
+  async filterOptions() {
+    const [categories, stores, range] = await Promise.all([
+      this.categories(),
+      this.products
+        .createQueryBuilder('p')
+        .select('DISTINCT p.storeName', 'storeName')
+        .where('p.storeName IS NOT NULL')
+        .orderBy('p.storeName', 'ASC')
+        .getRawMany<{ storeName: string }>(),
+      this.products
+        .createQueryBuilder('p')
+        .select('MIN(p.price)', 'minPrice')
+        .addSelect('MAX(p.price)', 'maxPrice')
+        .getRawOne<{ minPrice: string; maxPrice: string }>(),
+    ]);
+
+    return {
+      categories,
+      stores: stores.map((s) => s.storeName),
+      priceRange: {
+        min: Math.floor(Number(range?.minPrice ?? 0)),
+        max: Math.ceil(Number(range?.maxPrice ?? 0)),
+      },
+      sorts: [
+        { value: 'sales', label: 'Mais vendidos' },
+        { value: 'revenue', label: 'Maior receita' },
+        { value: 'growth', label: 'Maior crescimento' },
+        { value: 'radar', label: 'Radar PikPok' },
+        { value: 'rating', label: 'Melhor avaliados' },
+        { value: 'price', label: 'Preço' },
+      ],
+    };
+  }
+
+  /** Coluna/expressão de ordenação para cada opção de sort. */
+  private sortExpression(sort: QueryProductsDto['sort']): string {
+    switch (sort) {
+      case 'revenue':
+        return '"revenuePeriod"';
+      case 'price':
+        return 'p.price';
+      case 'rating':
+        // Sem nota, o produto vai para o fim em vez de virar "melhor avaliado".
+        return 'COALESCE(p.rating, 0)';
+      case 'radar':
+        return 'COALESCE(p."radarScore", 0)';
+      case 'growth':
+        return `CASE
+          WHEN COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0) = 0 THEN NULL
+          ELSE (COALESCE(SUM(CASE WHEN m.date >= :current THEN m.sales END), 0)
+                - COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0))
+               * 100.0
+               / COALESCE(SUM(CASE WHEN m.date < :current THEN m.sales END), 0)
+        END`;
+      default:
+        return '"salesPeriod"';
+    }
   }
 
   private toRanked(r: any, favoriteIds: Set<string>): RankedProduct {
