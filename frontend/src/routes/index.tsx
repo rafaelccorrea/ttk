@@ -19,7 +19,6 @@ import { ReferralPage } from '@/pages/Referral';
 import { ProductDetailPage } from '@/pages/ProductDetail';
 import { ProductsPage } from '@/pages/Products';
 import { PromptsPage } from '@/pages/Prompts';
-import { StorePage } from '@/pages/Store';
 import { StudioPage } from '@/pages/Studio';
 import { TrendsPage } from '@/pages/Trends';
 import { VideosPage } from '@/pages/Videos';
@@ -40,14 +39,6 @@ export function AppRoutes() {
       <Route element={<ProtectedRoutes />}>
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route
-            path="/loja"
-            element={
-              <PlanGate feature="stores">
-                <StorePage />
-              </PlanGate>
-            }
-          />
           <Route path="/produtos" element={<ProductsPage />} />
           <Route path="/produtos/:id" element={<ProductDetailPage />} />
           <Route path="/videos" element={<VideosPage />} />

@@ -84,7 +84,6 @@ export const PLANS: Plan[] = [
       'Roteiros e análises com Claude',
       'Transcrição Whisper',
       'Imagens e vídeos com IA',
-      'Minhas Lojas (importação de pedidos)',
       'Multiplicador de conteúdo',
     ],
   },
@@ -146,7 +145,6 @@ export type PlanFeature =
   | 'ai_images' // imagens Higgsfield
   | 'ai_videos' // vídeos Higgsfield
   | 'multiplier' // multiplicador G×C×A
-  | 'stores' // minhas lojas / importação de pedidos
   | 'ingestion'; // coleta de dados (admin)
 
 /**
@@ -164,7 +162,6 @@ export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
   ai_images: 'free',
   ai_videos: 'pro',
   multiplier: 'free',
-  stores: 'pro',
   ingestion: 'business',
 };
 

@@ -14,7 +14,7 @@ const PLAN_LABEL: Record<string, string> = {
 };
 
 interface PlanGateProps {
-  /** Chave do recurso (igual ao backend: stores, ingestion, ai_videos...). */
+  /** Chave do recurso (igual ao backend: ingestion, ai_videos...). */
   feature: string;
   children: ReactNode;
 }

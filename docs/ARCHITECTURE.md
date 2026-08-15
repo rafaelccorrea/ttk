@@ -2,7 +2,7 @@
 
 ## Backend (`backend/`)
 
-NestJS organizado por **módulos de domínio** — cada funcionalidade vive em `src/modules/<dominio>/` com controller, service, module, `dto/`, `entities/` e testes `*.spec.ts` ao lado do código. O módulo `trends` é o modelo de referência: novos módulos (auth, users, stores, products, analytics — pastas já criadas) devem seguir o mesmo formato.
+NestJS organizado por **módulos de domínio** — cada funcionalidade vive em `src/modules/<dominio>/` com controller, service, module, `dto/`, `entities/` e testes `*.spec.ts` ao lado do código. O módulo `trends` é o modelo de referência: novos módulos (auth, users, products, analytics — pastas já criadas) devem seguir o mesmo formato.
 
 ```
 backend/src/

@@ -6,7 +6,6 @@ import {
   MovieFilterRounded,
   OndemandVideoRounded,
   SchoolRounded,
-  StorefrontRounded,
   StyleRounded,
 } from '@mui/icons-material';
 import { ReactNode } from 'react';
@@ -57,12 +56,6 @@ export const FEATURES: Feature[] = [
     tag: 'Produção',
     title: 'Multiplicador de conteúdo',
     desc: 'Transforme um vídeo campeão em dezenas de variações prontas para testar em escala.',
-  },
-  {
-    icon: <StorefrontRounded />,
-    tag: 'Operação',
-    title: 'Minhas lojas',
-    desc: 'Conecte sua loja, importe pedidos e cruze o que você vende com o que está bombando.',
   },
   {
     icon: <SchoolRounded />,
@@ -163,7 +156,7 @@ export const TESTIMONIALS = [
 export const FAQ = [
   {
     q: 'Preciso ter loja no TikTok Shop para usar?',
-    a: 'Não. O PikPok funciona tanto para afiliados quanto para sellers. Se você tem loja, pode conectá-la para cruzar seus pedidos com os dados de tendência — mas isso é opcional.',
+    a: 'Não. O PikPok funciona tanto para afiliados quanto para sellers — a descoberta de produtos, vídeos e criadores independe de você ter loja própria.',
   },
   {
     q: 'De onde vêm os dados?',
@@ -202,7 +195,7 @@ export const PRICING = [
     price: 79.9,
     tagline: 'Para quem publica toda semana',
     highlight: true,
-    perks: ['800 créditos/mês', 'Roteiros e análises com IA', 'Transcrição de vídeos', 'Imagens e vídeos com IA', 'Minhas Lojas (importação de pedidos)', 'Multiplicador de conteúdo'],
+    perks: ['800 créditos/mês', 'Roteiros e análises com IA', 'Transcrição de vídeos', 'Imagens e vídeos com IA', 'Multiplicador de conteúdo'],
   },
   {
     id: 'business',

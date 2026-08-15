@@ -47,20 +47,10 @@ npm run dev
 - **Estúdio IA**: roteiros de live (ciclos Apresentação→Oferta→Garantia→CTA) e de vídeo (Gancho→Corpo→CTA) via API da Anthropic (`ANTHROPIC_API_KEY`; sem a chave, gerador de template local). Roteiros salvos por usuário.
 - **Cofre de Prompts**: prompts de vídeo/imagem IA com campos a preencher e copiar.
 - **Dashboard**: números agregados do catálogo + top produtos da semana.
-- **Minha Loja**: o seller cadastra a loja e importa os relatórios CSV do Seller Center
-  (Pedidos, Produtos, Extrato financeiro). A partir daí a plataforma entrega faturamento
-  bruto e líquido, taxas efetivas, ticket médio, pedidos com prazo de envio estourado,
-  curva ABC e margem real por SKU, calculadora de preço/ponto de equilíbrio e o
-  cruzamento do catálogo com o radar de produtos em alta ("em alta que você ainda não vende").
-
-  Aceita **XLSX e CSV**, exporta os relatórios de volta em CSV (catálogo, pedidos, curva ABC)
-  e envia um **aviso diário por e-mail** quando há pedido com prazo estourado ou SKU em ruptura
-  (desligável com `STORE_ALERTS_ENABLED=false`).
-
-  A entrada de dados fica atrás do contrato `StoreSyncSource` (`modules/stores/sources/`).
-  Hoje só existe `SpreadsheetImportSource`, que **não depende de homologação na TikTok**.
-  Quando o app público for aprovado, basta adicionar `TikTokShopApiSource` implementando o
-  mesmo contrato — entidades, endpoints e telas não mudam.
+> **Minha Loja foi descontinuada.** O módulo `stores` (cadastro de loja, importação de
+> planilhas do Seller Center, curva ABC, alertas por e-mail) saiu do produto. As tabelas
+> `stores*` continuam no banco pela migration `1786665600000-AddStores` — se quiser
+> derrubá-las, crie uma migration de drop.
 
 ## Banco de dados e migrations
 

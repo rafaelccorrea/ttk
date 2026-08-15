@@ -17,7 +17,7 @@ export const RequiresPlanFeature = (feature: PlanFeature) =>
 /**
  * Use SEMPRE depois do SupabaseAuthGuard:
  * @UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
- * @RequiresPlanFeature('stores')
+ * @RequiresPlanFeature('ingestion')
  */
 @Injectable()
 export class PlanFeatureGuard implements CanActivate {
