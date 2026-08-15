@@ -6,6 +6,7 @@ import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
 import LocalFireDepartmentRoundedIcon from '@mui/icons-material/LocalFireDepartmentRounded';
 import OndemandVideoRoundedIcon from '@mui/icons-material/OndemandVideoRounded';
+import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
 import SmartToyRoundedIcon from '@mui/icons-material/SmartToyRounded';
@@ -45,6 +46,8 @@ interface NavItem {
   to: string;
   label: string;
   icon: JSX.Element;
+  /** Recurso de plano (chave do backend); sem acesso → cadeado no drawer. */
+  feature?: string;
 }
 
 interface NavSection {
@@ -62,7 +65,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Minha Loja',
     items: [
-      { to: '/loja', label: 'Painel da Loja', icon: <StorefrontRoundedIcon /> },
+      { to: '/loja', label: 'Painel da Loja', icon: <StorefrontRoundedIcon />, feature: 'stores' },
     ],
   },
   {
@@ -88,7 +91,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Admin',
     items: [
-      { to: '/coleta', label: 'Coleta de Dados', icon: <SmartToyRoundedIcon /> },
+      { to: '/coleta', label: 'Coleta de Dados', icon: <SmartToyRoundedIcon />, feature: 'ingestion' },
     ],
   },
   {
@@ -108,6 +111,7 @@ export function AppLayout() {
   const location = useLocation();
   const current = NAV.find((n) => location.pathname.startsWith(n.to));
   const [credits, setCredits] = useState<number | null>(null);
+  const [features, setFeatures] = useState<Record<string, boolean>>({});
 
   // Atualiza o saldo a cada navegação E sempre que uma chamada gasta/compra
   // créditos (evento disparado pelo interceptor do axios).
@@ -115,7 +119,10 @@ export function AppLayout() {
     const load = () =>
       billingService
         .wallet()
-        .then((w) => setCredits(w.credits))
+        .then((w) => {
+          setCredits(w.credits);
+          setFeatures(w.features ?? {});
+        })
         .catch(() => setCredits(null));
     load();
     window.addEventListener(CREDITS_CHANGED_EVENT, load);
@@ -197,6 +204,9 @@ export function AppLayout() {
             >
               {section.items.map((item) => {
                 const selected = location.pathname.startsWith(item.to);
+                // Cadeado quando o plano não inclui o recurso (clique leva ao upgrade).
+                const locked =
+                  !!item.feature && features[item.feature] === false;
                 return (
               <ListItemButton
                 key={item.to}
@@ -238,8 +248,19 @@ export function AppLayout() {
                 </ListItemIcon>
                 <ListItemText
                   primary={item.label}
-                  primaryTypographyProps={{ fontWeight: 600, fontSize: 14.5 }}
+                  primaryTypographyProps={{
+                    fontWeight: 600,
+                    fontSize: 14.5,
+                    sx: locked ? { opacity: 0.55 } : undefined,
+                  }}
                 />
+                {locked && (
+                  <Tooltip title="Disponível em planos superiores — clique para ver">
+                    <LockRoundedIcon
+                      sx={{ fontSize: 15, color: 'rgba(255,255,255,0.45)' }}
+                    />
+                  </Tooltip>
+                )}
               </ListItemButton>
                 );
               })}
