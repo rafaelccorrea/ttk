@@ -113,12 +113,22 @@ export function AppLayout() {
         </Box>
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
 
-        <Box sx={{ flexGrow: 1, overflowY: 'auto', px: 1.5, py: 1 }}>
+        <Box
+          sx={{
+            flexGrow: 1,
+            overflowY: 'auto',
+            px: 1.5,
+            py: 0.5,
+            // Sem barra de rolagem visível (continua rolável em telas baixas)
+            scrollbarWidth: 'none',
+            '&::-webkit-scrollbar': { display: 'none' },
+          }}
+        >
           {NAV_SECTIONS.map((section, sectionIndex) => (
             <List
               key={section.title ?? sectionIndex}
               disablePadding
-              sx={{ py: 1 }}
+              sx={{ py: 0.75 }}
               subheader={
                 section.title ? (
                   <Typography
@@ -147,7 +157,8 @@ export function AppLayout() {
                 selected={selected}
                 sx={{
                   borderRadius: 2.5,
-                  mb: 0.5,
+                  mb: 0.25,
+                  py: 0.65,
                   color: 'rgba(255,255,255,0.62)',
                   position: 'relative',
                   transition: 'background-color .2s ease, color .2s ease, transform .15s ease',
