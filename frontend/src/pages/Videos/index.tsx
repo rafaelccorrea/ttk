@@ -144,18 +144,22 @@ function VideoCard({
           />
         )}
 
-        <Chip
-          size="small"
-          icon={<VisibilityOutlinedIcon sx={{ fontSize: 16, color: '#fff !important' }} />}
-          label={`${formatNumber(video.views)} views`}
-          sx={{
-            alignSelf: 'flex-start',
-            bgcolor: 'rgba(0,0,0,0.45)',
-            color: '#fff',
-            fontWeight: 700,
-            backdropFilter: 'blur(4px)',
-          }}
-        />
+        {/* Anúncio do Top Ads não expõe views: mostrar "0 views" passaria a
+            impressão de vídeo sem audiência. Sem o número, não exibimos. */}
+        {video.views > 0 && (
+          <Chip
+            size="small"
+            icon={<VisibilityOutlinedIcon sx={{ fontSize: 16, color: '#fff !important' }} />}
+            label={`${formatNumber(video.views)} views`}
+            sx={{
+              alignSelf: 'flex-start',
+              bgcolor: 'rgba(0,0,0,0.45)',
+              color: '#fff',
+              fontWeight: 700,
+              backdropFilter: 'blur(4px)',
+            }}
+          />
+        )}
       </Box>
 
       <CardContent
@@ -199,15 +203,18 @@ function VideoCard({
         </Typography>
 
         <Box display="flex" gap={1} flexWrap="wrap" mt={1.5}>
-          <Chip
-            size="small"
-            label={`Faturamento ~${formatCurrency(video.revenueEstimate)}`}
-            sx={{
-              fontWeight: 700,
-              bgcolor: 'rgba(0,194,187,0.12)',
-              color: 'secondary.main',
-            }}
-          />
+          {/* Só mostramos faturamento quando existe estimativa de verdade. */}
+          {video.revenueEstimate > 0 && (
+            <Chip
+              size="small"
+              label={`Faturamento ~${formatCurrency(video.revenueEstimate)}`}
+              sx={{
+                fontWeight: 700,
+                bgcolor: 'rgba(0,194,187,0.12)',
+                color: 'secondary.main',
+              }}
+            />
+          )}
           <Chip
             size="small"
             label={`♥ ${formatNumber(video.likes)}`}

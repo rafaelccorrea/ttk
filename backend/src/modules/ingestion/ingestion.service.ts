@@ -204,6 +204,9 @@ export class IngestionService implements OnModuleInit {
       // 2b) Vídeos de anúncios BRASILEIROS (Top Ads) — reais e reproduzíveis.
       const adVideos = await this.ccProducts.fetchAdVideos(60);
       for (const ad of adVideos) {
+        // O feed BR às vezes traz anúncio de outro mercado (árabe, asiático).
+        // Alfabeto não latino = fora do Brasil, não entra.
+        if (/[Ѐ-ӿ؀-ۿ぀-ヿ一-鿿가-힯]/.test(ad.caption)) continue;
         const video =
           (await this.videos.findOne({ where: { externalId: ad.externalId } })) ??
           this.videos.create({
