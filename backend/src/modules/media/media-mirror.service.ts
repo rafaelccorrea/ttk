@@ -5,7 +5,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 
@@ -375,6 +375,29 @@ export class MediaMirrorService {
     } catch (error) {
       this.logger.warn(`Leitura do S3 falhou (${key}): ${error}`);
       return null;
+    }
+  }
+
+  /**
+   * Apaga um objeto do bucket.
+   *
+   * Devolve `false` em vez de estourar: quem chama está removendo um registro,
+   * e um objeto órfão no S3 é bem menos grave do que uma linha que o usuário
+   * mandou apagar continuar aparecendo na tela.
+   */
+  async deleteObject(key: string): Promise<boolean> {
+    if (!this.client || !key) return false;
+    try {
+      await this.client.send(
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      // O cache guarda o corpo por chave: sem isto, um `readObject` seguinte
+      // ainda serviria o vídeo apagado.
+      MediaMirrorService.objectCache.delete(key);
+      return true;
+    } catch (error) {
+      this.logger.warn(`Remoção no S3 falhou (${key}): ${error}`);
+      return false;
     }
   }
 

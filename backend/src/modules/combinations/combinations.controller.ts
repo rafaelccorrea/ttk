@@ -93,6 +93,18 @@ export class CombinationsController {
     return this.combinationsService.deleteClip(user.id, id);
   }
 
+  // Antes de `@Delete(':id')`: sem isto o Nest casaria "videos" como um id de
+  // plano e a rota nunca seria alcançada.
+  @Delete('videos/:id')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Descarta um vídeo montado (remove o arquivo também)' })
+  deleteVideo(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.combinationsService.deleteVideo(user.id, id);
+  }
+
   @Get('gallery')
   @ApiOperation({ summary: 'Todos os vídeos já montados pelo usuário' })
   gallery(@CurrentUser() user: AuthUser) {

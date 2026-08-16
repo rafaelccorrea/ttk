@@ -158,4 +158,9 @@ export const combinationsService = {
     const { data } = await api.get<CombinationVideo[]>('/combinations/gallery');
     return data;
   },
+
+  /** Descarta um vídeo montado — o arquivo sai do bucket junto. */
+  async deleteVideo(id: string): Promise<void> {
+    await api.delete(`/combinations/videos/${id}`);
+  },
 };

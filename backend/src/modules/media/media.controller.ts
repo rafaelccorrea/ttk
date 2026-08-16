@@ -1,4 +1,12 @@
-import { BadRequestException, Controller, Get, Param, Query, Res } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Query,
+  Res,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
@@ -84,7 +92,11 @@ export class MediaController {
   // precisa ser wildcard e não um :param simples.
   @Get('s3/*')
   @ApiOperation({ summary: 'Serve mídia espelhada no S3 (bucket privado)' })
-  async fromS3(@Param('0') key: string, @Res() res: Response) {
+  async fromS3(
+    @Param('0') key: string,
+    @Res() res: Response,
+    @Headers('range') range?: string,
+  ) {
     // Allowlist em vez de bloquear "..": a chave é montada por nós (prefixo +
     // hash + extensão), então tudo que foge desse formato é tentativa de
     // alcançar outro objeto do bucket. Decodifica antes de validar, senão
@@ -110,7 +122,49 @@ export class MediaController {
     res.setHeader('Content-Type', object.contentType);
     // A chave contém o hash da origem: o conteúdo nunca muda.
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    res.send(object.body);
+
+    /*
+     * Range é o que torna o vídeo navegável.
+     *
+     * Sem `Accept-Ranges` e sem resposta 206, o Chrome trata o MP4 como um
+     * fluxo que só dá para assistir do começo: `video.seekable` fica vazio, a
+     * barra do player não arrasta e qualquer `currentTime = x` é ignorado em
+     * silêncio. Conferir um vídeo montado virava assistir ao vídeo inteiro.
+     *
+     * O corpo já está inteiro em memória (`readObject` lê e cacheia), então
+     * atender o pedido é fatiar o Buffer — não há segunda ida ao S3.
+     */
+    const total = object.body.length;
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    const pedido = /^bytes=(\d*)-(\d*)$/.exec(range?.trim() ?? '');
+    if (!pedido) {
+      res.setHeader('Content-Length', total);
+      res.send(object.body);
+      return;
+    }
+
+    // `bytes=-500` pede os últimos 500; `bytes=500-` pede do 500 ao fim.
+    const [, inicioBruto, fimBruto] = pedido;
+    const inicio = inicioBruto
+      ? Number(inicioBruto)
+      : Math.max(total - Number(fimBruto || 0), 0);
+    const fim = inicioBruto
+      ? Math.min(fimBruto ? Number(fimBruto) : total - 1, total - 1)
+      : total - 1;
+
+    if (!Number.isFinite(inicio) || inicio > fim || inicio >= total) {
+      // 416 precisa dizer qual é o tamanho real, senão o player fica repetindo
+      // o mesmo pedido inválido.
+      res.setHeader('Content-Range', `bytes */${total}`);
+      res.status(416).end();
+      return;
+    }
+
+    res.status(206);
+    res.setHeader('Content-Range', `bytes ${inicio}-${fim}/${total}`);
+    res.setHeader('Content-Length', fim - inicio + 1);
+    res.end(object.body.subarray(inicio, fim + 1));
   }
 
   @Get('proxy')

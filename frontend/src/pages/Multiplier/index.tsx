@@ -33,8 +33,10 @@ import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
 import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
+import Forward5RoundedIcon from '@mui/icons-material/Forward5Rounded';
 import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
+import Replay5RoundedIcon from '@mui/icons-material/Replay5Rounded';
 import UploadRoundedIcon from '@mui/icons-material/UploadRounded';
 import {
   DragEvent,
@@ -600,6 +602,19 @@ function CodigoChip({ code }: { code: string }) {
  * primeiro quadro, em vez de puxar dezenas de MP4 inteiros ao abrir a aba.
  */
 /**
+ * Velocidades de revisão.
+ *
+ * Conferir dezenas de vídeos que só diferem em um pedaço é trabalho de
+ * varredura, não de assistir: em 2x dá para ver se o corte ficou certo em
+ * metade do tempo. O 0.5x existe para o caso oposto — checar quadro a quadro
+ * a emenda entre gancho e corpo, que é onde a montagem falha.
+ */
+const VELOCIDADES = [0.5, 1, 1.5, 2] as const;
+
+/** Quantos segundos os botões de pular avançam/voltam. */
+const PULO_SEGUNDOS = 5;
+
+/**
  * Prévia que assume o formato do próprio arquivo.
  *
  * O card era fixo em 9:16, então um plano montado em 16:9 ou 1:1 aparecia
@@ -610,25 +625,96 @@ function CodigoChip({ code }: { code: string }) {
  */
 function PreviaDoVideo({ url }: { url: string }) {
   const [proporcao, setProporcao] = useState('9 / 16');
+  const [velocidade, setVelocidade] = useState(1);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  // `playbackRate` volta para 1 sempre que o elemento recarrega a fonte, então
+  // é reaplicado no `loadedmetadata` além do clique.
+  function aplicarVelocidade(taxa: number) {
+    setVelocidade(taxa);
+    if (videoRef.current) videoRef.current.playbackRate = taxa;
+  }
+
+  function pular(segundos: number) {
+    const video = videoRef.current;
+    if (!video) return;
+    const destino = video.currentTime + segundos;
+    // `duration` é NaN enquanto os metadados não chegam; sem o guarda o seek
+    // vira NaN e o player trava no primeiro quadro.
+    const limite = Number.isFinite(video.duration) ? video.duration : destino;
+    video.currentTime = Math.min(Math.max(destino, 0), limite);
+  }
 
   return (
-    <Box
-      component="video"
-      src={url}
-      controls
-      preload="metadata"
-      onLoadedMetadata={(e: SyntheticEvent<HTMLVideoElement>) => {
-        const { videoWidth: l, videoHeight: a } = e.currentTarget;
-        if (l && a) setProporcao(`${l} / ${a}`);
-      }}
-      sx={{
-        width: '100%',
-        aspectRatio: proporcao,
-        display: 'block',
-        objectFit: 'contain',
-        bgcolor: '#000',
-      }}
-    />
+    <Box>
+      <Box
+        component="video"
+        ref={videoRef}
+        src={url}
+        controls
+        preload="metadata"
+        onLoadedMetadata={(e: SyntheticEvent<HTMLVideoElement>) => {
+          const { videoWidth: l, videoHeight: a } = e.currentTarget;
+          if (l && a) setProporcao(`${l} / ${a}`);
+          e.currentTarget.playbackRate = velocidade;
+        }}
+        sx={{
+          width: '100%',
+          aspectRatio: proporcao,
+          display: 'block',
+          objectFit: 'contain',
+          bgcolor: '#000',
+        }}
+      />
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={0.5}
+        sx={{ px: 0.75, py: 0.5, bgcolor: '#000', flexWrap: 'wrap', rowGap: 0.5 }}
+      >
+        <Tooltip title={`Voltar ${PULO_SEGUNDOS}s`}>
+          <IconButton
+            size="small"
+            onClick={() => pular(-PULO_SEGUNDOS)}
+            sx={{ color: 'grey.400' }}
+          >
+            <Replay5RoundedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={`Avançar ${PULO_SEGUNDOS}s`}>
+          <IconButton
+            size="small"
+            onClick={() => pular(PULO_SEGUNDOS)}
+            sx={{ color: 'grey.400' }}
+          >
+            <Forward5RoundedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Box sx={{ flexGrow: 1 }} />
+        {VELOCIDADES.map((taxa) => (
+          <Box
+            key={taxa}
+            component="button"
+            type="button"
+            onClick={() => aplicarVelocidade(taxa)}
+            sx={{
+              border: 0,
+              cursor: 'pointer',
+              px: 0.75,
+              py: 0.25,
+              borderRadius: 1,
+              fontSize: 11,
+              fontWeight: 700,
+              fontFamily: 'inherit',
+              color: taxa === velocidade ? '#000' : 'grey.400',
+              bgcolor: taxa === velocidade ? 'primary.main' : 'transparent',
+            }}
+          >
+            {taxa}x
+          </Box>
+        ))}
+      </Stack>
+    </Box>
   );
 }
 
@@ -640,6 +726,25 @@ function Galeria({
   onRecarregar: () => void;
 }) {
   const prontos = videos.filter((v) => v.status === 'pronto' && v.url);
+  // Ids já removidos da tela mas ainda em voo no servidor: some na hora, sem
+  // esperar o round-trip, e volta se a chamada falhar.
+  const [descartados, setDescartados] = useState<string[]>([]);
+  const [erroDescarte, setErroDescarte] = useState<string | null>(null);
+  const visiveis = prontos.filter((v) => !descartados.includes(v.id));
+
+  async function handleDescartar(video: CombinationVideo) {
+    setErroDescarte(null);
+    setDescartados((prev) => [...prev, video.id]);
+    try {
+      await combinationsService.deleteVideo(video.id);
+      onRecarregar();
+    } catch (err) {
+      setDescartados((prev) => prev.filter((id) => id !== video.id));
+      setErroDescarte(
+        err instanceof Error ? err.message : 'Não foi possível descartar o vídeo.',
+      );
+    }
+  }
 
   return (
     <Card>
@@ -648,8 +753,8 @@ function Galeria({
           <Box sx={{ flexGrow: 1 }}>
             <Typography variant="h6">Meus vídeos</Typography>
             <Typography variant="caption" color="text.secondary">
-              {prontos.length
-                ? `${prontos.length} vídeo(s) montados e prontos para postar`
+              {visiveis.length
+                ? `${visiveis.length} vídeo(s) montados e prontos para postar`
                 : 'Os vídeos que você montar ficam guardados aqui'}
             </Typography>
           </Box>
@@ -658,14 +763,20 @@ function Galeria({
           </Button>
         </Stack>
 
-        {prontos.length === 0 ? (
+        {erroDescarte && (
+          <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setErroDescarte(null)}>
+            {erroDescarte}
+          </Alert>
+        )}
+
+        {visiveis.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             Nenhum vídeo montado ainda. Gere uma matriz e clique em “Montar
             vídeos”.
           </Typography>
         ) : (
           <Grid container spacing={1.5}>
-            {prontos.map((v) => (
+            {visiveis.map((v) => (
               <Grid item xs={6} sm={4} md={3} key={v.id}>
                 <Box
                   sx={{
@@ -680,6 +791,16 @@ function Galeria({
                   <Box sx={{ p: 1, bgcolor: 'background.paper' }}>
                     <Stack direction="row" alignItems="center" spacing={0.5} mb={0.5}>
                       <CodigoChip code={v.code} />
+                      <Box sx={{ flexGrow: 1 }} />
+                      <Tooltip title="Descartar — apaga o arquivo. Remontar o plano recria este vídeo.">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDescartar(v)}
+                          sx={{ color: 'text.disabled', '&:hover': { color: 'error.main' } }}
+                        >
+                          <DeleteOutlineRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                     </Stack>
                     <Tooltip title={v.filename}>
                       <Typography

@@ -320,6 +320,29 @@ export class CombinationsService {
     });
   }
 
+  /**
+   * Remove um vídeo montado que o usuário descartou.
+   *
+   * O arquivo sai junto do bucket: guardar MP4 que o dono já rejeitou é conta
+   * de storage sem contrapartida. A linha some mesmo se o S3 recusar — o que
+   * manda é o que o usuário pediu, e um objeto órfão é problema menor.
+   *
+   * O plano continua de pé: remontar recria esta combinação. É descarte de
+   * arquivo, não edição da matriz.
+   */
+  async deleteVideo(userId: string, id: string): Promise<void> {
+    const video = await this.videos.findOneBy({ id, userId });
+    if (!video) {
+      throw new NotFoundException(`Vídeo ${id} não encontrado`);
+    }
+
+    const prefixo = `${MEDIA_ROUTE}/`;
+    if (video.url?.startsWith(prefixo)) {
+      await this.mirror.deleteObject(video.url.slice(prefixo.length));
+    }
+    await this.videos.delete({ id, userId });
+  }
+
   /** Galeria: tudo que o usuário já montou, do mais novo para o mais velho. */
   listGallery(userId: string): Promise<CombinationVideo[]> {
     return this.videos.find({
