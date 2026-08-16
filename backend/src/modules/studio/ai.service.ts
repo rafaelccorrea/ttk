@@ -21,6 +21,32 @@ export interface ScriptRequest {
    * um clipe gravado, e a combinação acontece depois.
    */
   formato?: 'completo' | 'pecas';
+  /**
+   * Quantas peças de cada bloco gerar, quando `formato = 'pecas'`.
+   *
+   * Os tetos são os do Multiplicador (10/5/3): pedir mais do que a tela aceita
+   * só produziria peças que o vendedor não consegue usar.
+   */
+  pecas?: { hooks?: number; bodies?: number; ctas?: number };
+}
+
+/** Quantidades pedidas quando a tela não manda nada. */
+export const PECAS_PADRAO = { hooks: 5, bodies: 2, ctas: 2 } as const;
+
+/** Tetos por bloco — os mesmos do Multiplicador. */
+export const PECAS_MAX = { hooks: 10, bodies: 5, ctas: 3 } as const;
+
+/** Encaixa o pedido nos limites, para o prompt nunca pedir 200 ganchos. */
+export function normalizarPecas(
+  pedido: ScriptRequest['pecas'],
+): { hooks: number; bodies: number; ctas: number } {
+  const limitar = (valor: number | undefined, padrao: number, max: number) =>
+    Math.min(Math.max(Math.trunc(valor ?? padrao) || padrao, 1), max);
+  return {
+    hooks: limitar(pedido?.hooks, PECAS_PADRAO.hooks, PECAS_MAX.hooks),
+    bodies: limitar(pedido?.bodies, PECAS_PADRAO.bodies, PECAS_MAX.bodies),
+    ctas: limitar(pedido?.ctas, PECAS_PADRAO.ctas, PECAS_MAX.ctas),
+  };
 }
 
 export interface ScriptResult {
@@ -143,26 +169,34 @@ Escreva um roteiro no formato GANCHO (0-3s, para o scroll) → CORPO (demonstra�
 Inclua indicação de cena para cada fala (o que aparece na tela).
 Gere 3 variações de gancho no final. Português do Brasil, linguagem falada.`;
 
-const PECAS_SYSTEM = `Você escreve PEÇAS soltas para teste A/B de vídeo curto no TikTok Shop Brasil.
-Devolva exatamente três blocos, nesta ordem e com estes títulos:
+/** O prompt das peças depende de quantas o vendedor pediu de cada bloco. */
+const pecasSystem = (q: { hooks: number; bodies: number; ctas: number }) => {
+  // A lista numerada vai explícita no prompt: pedir "gere N" em texto corrido
+  // faz o modelo entregar 3 quando N é 8. Enumerar as linhas prende a conta.
+  const linhas = (n: number, dica: string) =>
+    Array.from({ length: n }, (_, i) =>
+      i === 0 ? `1. … (${dica})` : `${i + 1}. …`,
+    ).join('\n');
+
+  return `Você escreve PEÇAS soltas para teste A/B de vídeo curto no TikTok Shop Brasil.
+Devolva exatamente três blocos, nesta ordem e com estes títulos, com EXATAMENTE
+a quantidade de itens numerados mostrada abaixo — nem um a mais, nem um a menos:
 
 ## Ganchos
-1. … (0-3s; cada um com um ângulo DIFERENTE: dor, curiosidade, prova, preço, erro comum)
-2. …
-3. …
+${linhas(q.hooks, '0-3s; cada um com um ângulo DIFERENTE: dor, curiosidade, prova, preço, erro comum')}
 
 ## Corpos
-1. … (demonstração ou prova, 5-12s; cada um mostrando algo diferente na tela)
-2. …
+${linhas(q.bodies, 'demonstração ou prova, 5-12s; cada um mostrando algo diferente na tela')}
 
 ## CTAs
-1. … (comando claro para o carrinho, 2-4s)
+${linhas(q.ctas, 'comando claro para o carrinho, 2-4s')}
 
 Regra que manda em tudo: cada peça precisa funcionar COLADA a qualquer peça dos
 outros blocos. Nada de "como eu falei", "esse aqui" ou qualquer referência ao
 que veio antes — as peças serão embaralhadas entre si.
 Uma frase por peça, linguagem falada, português do Brasil, sem texto na tela.
 No fim de cada peça, entre parênteses, a indicação de imagem em poucas palavras.`;
+};
 
 @Injectable()
 export class AiService {
@@ -189,7 +223,7 @@ export class AiService {
         max_tokens: 16000,
         system:
           request.formato === 'pecas'
-            ? PECAS_SYSTEM
+            ? pecasSystem(normalizarPecas(request.pecas))
             : request.type === 'live'
               ? LIVE_SYSTEM
               : VIDEO_SYSTEM,
@@ -592,9 +626,10 @@ export class AiService {
     if (r.price) parts.push(`Preço: R$ ${r.price.toFixed(2)}`);
     if (r.productDescription) parts.push(`Detalhes: ${r.productDescription}`);
     if (r.tone) parts.push(`Tom desejado: ${r.tone}`);
+    const q = normalizarPecas(r.pecas);
     parts.push(
       r.formato === 'pecas'
-        ? 'Gere as peças agora: 3 ganchos, 2 corpos e 1 CTA.'
+        ? `Gere as peças agora: ${q.hooks} ganchos, ${q.bodies} corpos e ${q.ctas} CTAs.`
         : r.type === 'live'
           ? 'Gere o roteiro de live agora.'
           : 'Gere o roteiro de vídeo curto agora.',
@@ -606,6 +641,9 @@ export class AiService {
   private templateFallback(r: ScriptRequest): ScriptResult {
     const name = r.productName;
     const price = r.price ? `R$ ${r.price.toFixed(2)}` : 'preço promocional';
+    if (r.formato === 'pecas') {
+      return this.pecasFallback(r, name, price);
+    }
     const content =
       r.type === 'live'
         ? [
@@ -641,6 +679,64 @@ export class AiService {
             `2. "O achadinho que a internet tentou esconder de você:"`,
             `3. "POV: você descobriu o ${name} antes de viralizar."`,
           ].join('\n');
+    return { content, model: 'template-local' };
+  }
+
+  /**
+   * Peças sem ANTHROPIC_API_KEY.
+   *
+   * O formato importa mais que o texto: a tela do Multiplicador lê os três
+   * títulos e a numeração para separar os blocos, então o fallback precisa
+   * devolver a mesma estrutura — com a quantidade pedida — em vez de um
+   * roteiro corrido que a tela não conseguiria dividir.
+   */
+  private pecasFallback(
+    r: ScriptRequest,
+    name: string,
+    price: string,
+  ): ScriptResult {
+    const q = normalizarPecas(r.pecas);
+    const ganchos = [
+      `"Eu testei o ${name} por 7 dias e ninguém te conta isso." (close no produto)`,
+      `"Se você ainda não conhece o ${name}, você tá perdendo dinheiro." (rosto, tom de alerta)`,
+      `"POV: você descobriu o ${name} antes de viralizar." (produto na mão)`,
+      `"Para de gastar com o que não resolve — olha isso aqui." (comparação lado a lado)`,
+      `"O erro que todo mundo comete antes de comprar ${name}." (rosto, tom de segredo)`,
+      `"${price} nisso aqui e eu não gasto mais com outra coisa." (etiqueta de preço)`,
+      `"Ninguém acreditou até eu mostrar o antes e depois." (antes e depois)`,
+      `"Isso aqui esgotou três vezes esse mês e eu entendo o porquê." (estoque/caixas)`,
+      `"Comprei achando que era exagero da internet." (unboxing)`,
+      `"Se você sofre com isso todo dia, presta atenção 10 segundos." (problema na tela)`,
+    ];
+    const corpos = [
+      `"Olha o resultado na prática — sem edição, sem truque." (demonstração de uso)`,
+      `"${r.productDescription ?? 'É simples de usar e resolve na primeira vez.'}" (detalhe do produto)`,
+      `"Já são milhares vendidos só esse mês, e a avaliação fala por si." (prints de avaliação)`,
+      `"Testei do lado do que eu usava antes: não tem comparação." (comparativo)`,
+      `"Dura o dia inteiro e não precisa de nada além disso." (uso contínuo)`,
+    ];
+    const ctas = [
+      `"Toca no carrinho laranja aqui embaixo antes que volte pro preço normal." (aponta pro carrinho)`,
+      `"Corre que tá saindo por ${price} e o estoque não segura." (etiqueta de preço)`,
+      `"Clica no carrinho, escolhe a sua variação e finaliza — leva 1 minuto." (tela do carrinho)`,
+    ];
+
+    // `slice` basta: as listas já têm o tamanho máximo de cada bloco (10/5/3).
+    const bloco = (titulo: string, itens: string[], n: number) =>
+      [
+        `## ${titulo}`,
+        ...itens.slice(0, n).map((item, i) => `${i + 1}. ${item}`),
+      ].join('\n');
+
+    const content = [
+      `# Peças para o Multiplicador — ${name}`,
+      ``,
+      bloco('Ganchos', ganchos, q.hooks),
+      ``,
+      bloco('Corpos', corpos, q.bodies),
+      ``,
+      bloco('CTAs', ctas, q.ctas),
+    ].join('\n');
     return { content, model: 'template-local' };
   }
 }

@@ -43,8 +43,16 @@ export interface GenerateScriptInput {
   productImageUrl?: string;
   /** `pecas`: ganchos, corpos e CTAs soltos, prontos para o Multiplicador. */
   formato?: 'completo' | 'pecas';
+  /** Quantas peças de cada bloco gerar — os tetos são os do Multiplicador. */
+  hooksCount?: number;
+  bodiesCount?: number;
+  ctasCount?: number;
   tone?: string;
 }
+
+/** Quantas peças de cada bloco, e até onde o Multiplicador aceita. */
+export const PECAS_PADRAO = { hooks: 5, bodies: 2, ctas: 2 } as const;
+export const PECAS_MAX = { hooks: 10, bodies: 5, ctas: 3 } as const;
 
 export const studioService = {
   async generate(input: GenerateScriptInput): Promise<Script> {

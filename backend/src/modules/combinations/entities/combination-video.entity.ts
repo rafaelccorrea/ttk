@@ -9,6 +9,15 @@ import {
 export type CombinationVideoStatus = 'pendente' | 'montando' | 'pronto' | 'falhou';
 
 /**
+ * Quão diferente este vídeo é dos que vêm antes dele na ordem de postagem.
+ *
+ * A matriz G×C×A produz vídeos que reaproveitam pedaços entre si — postar dois
+ * seguidos que compartilham o gancho é o jeito mais rápido de o algoritmo tratar
+ * o segundo como repost. A etiqueta diz o que postar primeiro.
+ */
+export type CombinationOriginality = 'original' | 'parecido' | 'muito-parecido';
+
+/**
  * Um vídeo já concatenado (gancho + corpo + CTA) pronto para postar.
  *
  * Cada linha corresponde a uma célula da matriz do plano. A montagem é lenta
@@ -45,6 +54,19 @@ export class CombinationVideo {
   /** Motivo da falha, para a tela não mostrar só "falhou". */
   @Column({ type: 'text', nullable: true })
   error: string | null;
+
+  /** Etiqueta de originalidade — ver {@link CombinationOriginality}. */
+  @Column({ length: 20, default: 'original' })
+  originality: CombinationOriginality;
+
+  /**
+   * Posição na ordem recomendada de postagem, começando em 1.
+   *
+   * Não é a ordem da matriz: `montarTudo` reordena para espalhar os ganchos
+   * repetidos o mais longe possível uns dos outros.
+   */
+  @Column({ type: 'int', default: 0 })
+  postOrder: number;
 
   @CreateDateColumn()
   createdAt: Date;

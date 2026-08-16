@@ -32,7 +32,12 @@ import { ImageDropzone } from '@/components/ui/ImageDropzone';
 import { formatCurrency, formatNumber } from '@/utils/format';
 import { proxyImage } from '@/utils/tiktok';
 import { productsService, RankedProduct } from '@/services/products.service';
-import { Script, studioService } from '@/services/studio.service';
+import {
+  PECAS_MAX,
+  PECAS_PADRAO,
+  Script,
+  studioService,
+} from '@/services/studio.service';
 import { campaignsService, UserProduct } from '@/services/campaigns.service';
 
 /**
@@ -205,6 +210,9 @@ export function StudioPage() {
   // `pecas` só faz sentido no vídeo: a live é um ciclo contínuo, não peças
   // avulsas para embaralhar.
   const [formato, setFormato] = useState<'completo' | 'pecas'>('completo');
+  // Quantas peças de cada bloco. O padrão (5/2/2) já dá 20 combinações no
+  // Multiplicador — bastante para um teste A/B sem virar uma tarde de gravação.
+  const [pecas, setPecas] = useState({ ...PECAS_PADRAO });
   const [imagemUrl, setImagemUrl] = useState<string | null>(null);
   const [enviandoImagem, setEnviandoImagem] = useState(false);
   const [erroImagem, setErroImagem] = useState<string | null>(null);
@@ -292,6 +300,13 @@ export function StudioPage() {
         productDescription: productDescription || undefined,
         productImageUrl: imagemUrl ?? undefined,
         formato,
+        ...(type === 'video' && formato === 'pecas'
+          ? {
+              hooksCount: pecas.hooks,
+              bodiesCount: pecas.bodies,
+              ctasCount: pecas.ctas,
+            }
+          : {}),
         tone: tone || undefined,
       });
       setResult(script);
@@ -609,6 +624,47 @@ export function StudioPage() {
                   options={TONES.map((t) => ({ value: t, label: t }))}
                 />
 
+                {type === 'video' && formato === 'pecas' && (
+                  <Box sx={{ mt: 2.5 }}>
+                    <Rotulo>Quantas peças de cada?</Rotulo>
+                    <Stack direction="row" spacing={1.5} sx={{ mt: 1 }}>
+                      {(
+                        [
+                          ['hooks', 'Ganchos'],
+                          ['bodies', 'Corpos'],
+                          ['ctas', 'CTAs'],
+                        ] as const
+                      ).map(([campo, rotulo]) => (
+                        <TextField
+                          key={campo}
+                          type="number"
+                          label={rotulo}
+                          value={pecas[campo]}
+                          // Os tetos são os do Multiplicador: pedir mais peças do
+                          // que a tela de upload aceita só geraria texto perdido.
+                          inputProps={{ min: 1, max: PECAS_MAX[campo] }}
+                          helperText={`até ${PECAS_MAX[campo]}`}
+                          onChange={(e) => {
+                            const n = Number(e.target.value);
+                            if (!Number.isFinite(n)) return;
+                            setPecas((prev) => ({
+                              ...prev,
+                              [campo]: Math.min(
+                                Math.max(Math.trunc(n), 1),
+                                PECAS_MAX[campo],
+                              ),
+                            }));
+                          }}
+                          sx={{
+                            width: 110,
+                            '& .MuiOutlinedInput-root': { borderRadius: 2.5 },
+                          }}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+
                 {error && (
                   <Alert severity="error" sx={{ mt: 2 }}>
                     {error}
@@ -640,9 +696,14 @@ export function StudioPage() {
                       <>
                         Saída:{' '}
                         <Box component="span" color="primary.main" fontWeight={700}>
-                          3 ganchos · 2 corpos · 1 CTA
+                          {pecas.hooks} ganchos · {pecas.bodies} corpos ·{' '}
+                          {pecas.ctas} CTAs
                         </Box>{' '}
-                        — grave cada peça e suba no Multiplicador
+                        — grave as {pecas.hooks + pecas.bodies + pecas.ctas} peças
+                        e suba no Multiplicador para virar{' '}
+                        <Box component="span" color="primary.main" fontWeight={700}>
+                          {pecas.hooks * pecas.bodies * pecas.ctas} vídeos
+                        </Box>
                       </>
                     ) : (
                       <>

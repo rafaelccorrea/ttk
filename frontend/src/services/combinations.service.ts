@@ -2,12 +2,37 @@ import { api } from './api';
 
 export type PlanFormat = '9:16' | '16:9' | '1:1';
 
+/**
+ * Quanto este vídeo repete os que vêm antes dele na ordem de postagem.
+ *
+ * `original` — nenhum vídeo anterior usou este gancho.
+ * `parecido` — o gancho já apareceu, mas o corpo é novo.
+ * `muito-parecido` — gancho e corpo já apareceram; só o CTA muda.
+ */
+export type CombinationOriginality = 'original' | 'parecido' | 'muito-parecido';
+
+export const ORIGINALITY_LABEL: Record<CombinationOriginality, string> = {
+  original: 'Original',
+  parecido: 'Repete um pouco',
+  'muito-parecido': 'Bem parecido',
+};
+
+export const ORIGINALITY_HINT: Record<CombinationOriginality, string> = {
+  original: 'Gancho inédito — poste estes primeiro.',
+  parecido: 'O gancho já foi ao ar; o corpo é novo. Deixe para o meio da fila.',
+  'muito-parecido':
+    'Gancho e corpo já foram ao ar; só o CTA muda. Deixe por último.',
+};
+
 export interface Combination {
   code: string;
   filename: string;
   hook: string;
   body: string;
   cta: string;
+  originality: CombinationOriginality;
+  /** Posição na ordem recomendada de postagem, começando em 1. */
+  postOrder: number;
 }
 
 export interface CombinationPlan {
@@ -66,6 +91,9 @@ export interface CombinationVideo {
   url: string | null;
   status: CombinationVideoStatus;
   error: string | null;
+  /** Zero nas montagens anteriores à etiqueta — a tela não mostra ordem. */
+  postOrder: number;
+  originality: CombinationOriginality;
   createdAt: string;
 }
 

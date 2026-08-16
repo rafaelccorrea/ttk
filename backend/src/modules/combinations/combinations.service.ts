@@ -12,7 +12,10 @@ import { MEDIA_ROUTE, MediaMirrorService } from '../media/media-mirror.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { ClipRole, CombinationClip } from './entities/combination-clip.entity';
 import { CombinationPlan } from './entities/combination-plan.entity';
-import { CombinationVideo } from './entities/combination-video.entity';
+import {
+  CombinationOriginality,
+  CombinationVideo,
+} from './entities/combination-video.entity';
 
 export interface Combination {
   code: string;
@@ -20,6 +23,10 @@ export interface Combination {
   hook: string;
   body: string;
   cta: string;
+  /** Quão repetido este vídeo é em relação aos anteriores na ordem sugerida. */
+  originality: CombinationOriginality;
+  /** Posição na ordem recomendada de postagem, começando em 1. */
+  postOrder: number;
 }
 
 /** Teto por bloco — o mesmo que a tela oferece. */
@@ -28,11 +35,17 @@ const LIMITES: Record<ClipRole, number> = { hook: 10, body: 5, cta: 3 };
 /**
  * Quantos vídeos uma montagem produz de uma vez.
  *
- * 10 × 5 × 3 dá 150 arquivos, e cada um custa alguns segundos de ffmpeg no
- * mesmo processo que atende a API. Acima deste teto a montagem é recusada com
- * a conta explicada, em vez de derrubar o servidor por meia hora.
+ * 10 × 5 × 3 dá 150 arquivos — a matriz cheia que a tela oferece. O teto é
+ * exatamente esse número, e não menos: prometer 10 ganchos, 5 corpos e 3 CTAs
+ * e depois recusar a combinação completa é vender o que não se entrega.
+ *
+ * Cada arquivo custa alguns segundos de ffmpeg no mesmo processo que atende a
+ * API, então a fila roda um por vez (ver `montarTudo`) e a resposta sai antes,
+ * com as linhas `pendente`. O teto existe só para barrar um plano corrompido
+ * com mais itens do que os blocos permitem.
  */
-const MAX_VIDEOS_POR_MONTAGEM = 60;
+const MAX_VIDEOS_POR_MONTAGEM =
+  LIMITES.hook * LIMITES.body * LIMITES.cta; // 150
 
 /** Resolução final por formato. */
 const DIMENSOES = {
@@ -137,11 +150,85 @@ export class CombinationsService {
             hook,
             body,
             cta,
+            originality: 'original',
+            postOrder: 0,
           });
         });
       });
     });
-    return result;
+    return this.ordenarParaPostar(result);
+  }
+
+  /**
+   * Ordena a matriz pela ordem em que vale a pena postar, e etiqueta cada
+   * vídeo com o quanto ele repete o que já foi postado antes.
+   *
+   * O problema: na ordem do código (G1C1A1, G1C1A2, G1C2A1…) os primeiros
+   * vídeos da fila são justamente os que compartilham o mesmo gancho. Postar
+   * nessa ordem entrega ao algoritmo três aberturas idênticas seguidas — e os
+   * 3 primeiros segundos são o que decide se o vídeo é servido ou tratado como
+   * repost.
+   *
+   * A solução é gulosa: a cada passo escolhe a combinação que traz mais peça
+   * inédita, com o gancho pesando mais que o corpo e o corpo mais que o CTA.
+   * Isso naturalmente coloca os N ganchos distintos na frente, um por vez, e só
+   * depois começa a reciclar. Empate desempata pelo que menos repete o vídeo
+   * imediatamente anterior, e depois pela posição original — para o mesmo plano
+   * sempre render a mesma ordem.
+   */
+  private ordenarParaPostar(matriz: Combination[]): Combination[] {
+    // Peso por bloco: o gancho é o que segura o scroll, o CTA é o que menos
+    // muda a percepção de "já vi esse vídeo".
+    const PESOS = { hook: 4, body: 2, cta: 1 } as const;
+
+    const usados = { hook: new Set<string>(), body: new Set<string>(), cta: new Set<string>() };
+    const restantes = matriz.map((c, indice) => ({ c, indice }));
+    const ordenado: Combination[] = [];
+    let anterior: Combination | null = null;
+
+    const ineditos = (c: Combination) =>
+      (usados.hook.has(c.hook) ? 0 : PESOS.hook) +
+      (usados.body.has(c.body) ? 0 : PESOS.body) +
+      (usados.cta.has(c.cta) ? 0 : PESOS.cta);
+
+    const repeteOAnterior = (c: Combination) =>
+      anterior
+        ? Number(c.hook === anterior.hook) +
+          Number(c.body === anterior.body) +
+          Number(c.cta === anterior.cta)
+        : 0;
+
+    while (restantes.length) {
+      let melhor = 0;
+      for (let i = 1; i < restantes.length; i++) {
+        const a = restantes[i].c;
+        const b = restantes[melhor].c;
+        const ganho = ineditos(a) - ineditos(b);
+        if (ganho > 0) melhor = i;
+        else if (ganho === 0 && repeteOAnterior(a) < repeteOAnterior(b)) melhor = i;
+      }
+
+      const { c } = restantes.splice(melhor, 1)[0];
+
+      // A etiqueta é lida ANTES de marcar as peças como usadas: ela descreve o
+      // que este vídeo acrescenta em relação a tudo que já veio na fila.
+      const ganchoInedito = !usados.hook.has(c.hook);
+      const corpoInedito = !usados.body.has(c.body);
+      c.originality = ganchoInedito
+        ? 'original'
+        : corpoInedito
+          ? 'parecido'
+          : 'muito-parecido';
+      c.postOrder = ordenado.length + 1;
+
+      usados.hook.add(c.hook);
+      usados.body.add(c.body);
+      usados.cta.add(c.cta);
+      anterior = c;
+      ordenado.push(c);
+    }
+
+    return ordenado;
   }
 
   async create(userId: string, dto: CreatePlanDto) {
@@ -220,10 +307,16 @@ export class CombinationsService {
 
   // ------------------------------------------------------------- montagem
 
+  /**
+   * Vídeos do plano na ordem sugerida de postagem.
+   *
+   * `postOrder` é 0 nas montagens anteriores à etiqueta de originalidade; o
+   * desempate por código mantém essas listas antigas estáveis.
+   */
   listVideos(userId: string, planId: string): Promise<CombinationVideo[]> {
     return this.videos.find({
       where: { userId, planId },
-      order: { code: 'ASC' },
+      order: { postOrder: 'ASC', code: 'ASC' },
     });
   }
 
@@ -277,6 +370,8 @@ export class CombinationsService {
           code: c.code,
           filename: c.filename,
           status: 'pendente' as const,
+          originality: c.originality,
+          postOrder: c.postOrder,
         }),
       ),
     );
@@ -304,9 +399,11 @@ export class CombinationsService {
       return buffer;
     };
 
+    // Monta na ordem de postagem: o vendedor pode começar a baixar e postar os
+    // primeiros enquanto a fila ainda roda, e são justamente os mais originais.
     const linhas = await this.videos.find({
       where: { planId: plan.id, userId: plan.userId },
-      order: { code: 'ASC' },
+      order: { postOrder: 'ASC', code: 'ASC' },
     });
 
     // A ordem das linhas é a mesma de `expand`, mas o casamento é pelo código:

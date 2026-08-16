@@ -51,8 +51,11 @@ import {
   CombinationClip,
   CombinationPlanDetail,
   CombinationPlanSummary,
+  CombinationOriginality,
   CombinationVideo,
   CombinationVideoStatus,
+  ORIGINALITY_HINT,
+  ORIGINALITY_LABEL,
   PlanFormat,
   combinationsService,
 } from '@/services/combinations.service';
@@ -102,8 +105,14 @@ const BLOCOS = [
 /** Teto do backend (`MaxFileSizeValidator`), replicado para recusar antes de subir. */
 const MAX_BYTES = 40 * 1024 * 1024;
 
-/** Teto de montagem do backend (`MAX_VIDEOS_POR_MONTAGEM`). */
-const MAX_VIDEOS = 60;
+/**
+ * Teto de montagem do backend (`MAX_VIDEOS_POR_MONTAGEM`).
+ *
+ * É a matriz cheia dos blocos — 10 × 5 × 3. Nunca menos que isso: a tela
+ * oferece os três limites, então recusar a combinação completa seria prometer
+ * o que não se entrega.
+ */
+const MAX_VIDEOS = BLOCOS.reduce((total, bloco) => total * bloco.max, 1);
 
 function truncate(text: string, max = 30) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
@@ -195,7 +204,7 @@ interface ClipDropzoneProps {
  *
  * Antes isto era uma lista de campos de texto: o vendedor digitava o NOME do
  * clipe e a plataforma devolvia uma planilha de nomes de arquivo, deixando a
- * montagem de cada um dos 60 vídeos para ele fazer no celular. O trabalho que
+ * montagem de cada um dos 150 vídeos para ele fazer no celular. O trabalho que
  * o produto promete economizar era exatamente o que sobrava para ele.
  *
  * O rótulo agora sai do nome do arquivo enviado — digitar o nome à parte era
@@ -435,7 +444,13 @@ function RenderProgress({ videos }: { videos: CombinationVideo[] }) {
         <Table size="small">
           <TableHead>
             <TableRow>
+              <TableCell align="right">#</TableCell>
               <TableCell>Código</TableCell>
+              <TableCell>
+                <Tooltip title="Quanto o vídeo repete os que vêm antes dele nesta ordem. Postar dois ganchos iguais em sequência é o jeito mais rápido de o algoritmo tratar o segundo como repost.">
+                  <span>Originalidade</span>
+                </Tooltip>
+              </TableCell>
               <TableCell>Arquivo</TableCell>
               <TableCell>Status</TableCell>
               <TableCell align="right">Vídeo</TableCell>
@@ -444,8 +459,17 @@ function RenderProgress({ videos }: { videos: CombinationVideo[] }) {
           <TableBody>
             {videos.map((v) => (
               <TableRow key={v.id} hover>
+                <TableCell
+                  align="right"
+                  sx={{ color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {v.postOrder || '—'}
+                </TableCell>
                 <TableCell>
                   <CodigoChip code={v.code} />
+                </TableCell>
+                <TableCell>
+                  <OriginalidadeChip originality={v.originality} />
                 </TableCell>
                 <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>
                   {v.filename}
@@ -487,6 +511,47 @@ function RenderProgress({ videos }: { videos: CombinationVideo[] }) {
         </Table>
       </Box>
     </Box>
+  );
+}
+
+/** Cor da etiqueta: verde no que é inédito, âmbar no meio, cinza no repetido. */
+const COR_ORIGINALIDADE: Record<
+  CombinationOriginality,
+  'success' | 'warning' | 'default'
+> = {
+  original: 'success',
+  parecido: 'warning',
+  'muito-parecido': 'default',
+};
+
+/**
+ * Etiqueta de originalidade.
+ *
+ * Vídeos antigos, montados antes desta feature, vêm sem etiqueta do banco —
+ * mostrar "Original" neles seria mentira, então a célula fica vazia.
+ */
+function OriginalidadeChip({
+  originality,
+}: {
+  originality: CombinationOriginality | null | undefined;
+}) {
+  if (!originality || !ORIGINALITY_LABEL[originality]) {
+    return (
+      <Typography variant="caption" color="text.disabled">
+        —
+      </Typography>
+    );
+  }
+  return (
+    <Tooltip title={ORIGINALITY_HINT[originality]}>
+      <Chip
+        size="small"
+        variant="outlined"
+        color={COR_ORIGINALIDADE[originality]}
+        label={ORIGINALITY_LABEL[originality]}
+        sx={{ fontWeight: 600 }}
+      />
+    </Tooltip>
   );
 }
 
@@ -832,9 +897,21 @@ export function MultiplierPage() {
   }
 
   function handleDownloadCsv(plan: CombinationPlanDetail) {
+    // A ordem das linhas já é a de postagem, e as duas primeiras colunas dizem
+    // isso — a planilha vira o calendário de postagem, não só uma lista.
     const rows = [
-      'code;filename;hook;body;cta',
-      ...plan.combinations.map((c) => [c.code, c.filename, c.hook, c.body, c.cta].join(';')),
+      'ordem;originalidade;code;filename;hook;body;cta',
+      ...plan.combinations.map((c) =>
+        [
+          c.postOrder,
+          ORIGINALITY_LABEL[c.originality] ?? '',
+          c.code,
+          c.filename,
+          c.hook,
+          c.body,
+          c.cta,
+        ].join(';'),
+      ),
     ];
     // BOM na frente: sem ele o Excel em pt-BR abre o CSV em ANSI e os acentos
     // dos rótulos viram lixo.
@@ -883,7 +960,9 @@ export function MultiplierPage() {
         <Table size="small">
           <TableHead>
             <TableRow>
+              <TableCell align="right">#</TableCell>
               <TableCell>Código</TableCell>
+              <TableCell>Originalidade</TableCell>
               <TableCell>Arquivo</TableCell>
               <TableCell>Gancho</TableCell>
               <TableCell>Corpo</TableCell>
@@ -893,8 +972,17 @@ export function MultiplierPage() {
           <TableBody>
             {combinations.map((c) => (
               <TableRow key={c.code} hover>
+                <TableCell
+                  align="right"
+                  sx={{ color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {c.postOrder || '—'}
+                </TableCell>
                 <TableCell>
                   <CodigoChip code={c.code} />
+                </TableCell>
+                <TableCell>
+                  <OriginalidadeChip originality={c.originality} />
                 </TableCell>
                 <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>
                   {c.filename}

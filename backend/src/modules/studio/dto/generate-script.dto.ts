@@ -1,11 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
   ValidateIf,
 } from 'class-validator';
 
@@ -58,6 +61,42 @@ export class GenerateScriptDto {
   @IsOptional()
   @IsIn(['completo', 'pecas'])
   formato?: 'completo' | 'pecas';
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 10,
+    default: 5,
+    description: 'Quantos ganchos gerar (só com formato=pecas)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  hooksCount?: number;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 5,
+    default: 2,
+    description: 'Quantos corpos gerar (só com formato=pecas)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  bodiesCount?: number;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 3,
+    default: 2,
+    description: 'Quantos CTAs gerar (só com formato=pecas)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(3)
+  ctasCount?: number;
 
   @ApiPropertyOptional({ example: 'divertido e urgente' })
   @IsOptional()

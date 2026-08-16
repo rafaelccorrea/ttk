@@ -21,12 +21,25 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
+import {
+  PlanFeatureGuard,
+  RequiresPlanFeature,
+} from '../billing/plan-feature.guard';
 import { CombinationsService } from './combinations.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 
+/**
+ * O multiplicador é recurso de plano pago, e o gate precisa estar AQUI.
+ *
+ * Esconder a tela no front não protege nada: o upload guarda MP4 no bucket e a
+ * montagem gasta CPU de ffmpeg, os dois pagos por nós. Sem este guard qualquer
+ * conta autenticada — inclusive `free` — chamava `POST /combinations/:id/render`
+ * direto e consumia servidor de graça.
+ */
 @ApiTags('combinations')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@RequiresPlanFeature('multiplier')
 @Controller('combinations')
 export class CombinationsController {
   constructor(private readonly combinationsService: CombinationsService) {}

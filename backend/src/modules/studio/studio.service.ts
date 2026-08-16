@@ -142,6 +142,11 @@ export class StudioService {
         tone: dto.tone,
         productImage,
         formato: dto.formato,
+        pecas: {
+          hooks: dto.hooksCount,
+          bodies: dto.bodiesCount,
+          ctas: dto.ctasCount,
+        },
       });
     const result = this.aiService.enabled
       ? await this.billing.withCharge(userId, 'script', run)

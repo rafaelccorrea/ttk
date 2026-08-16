@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BillingModule } from '../billing/billing.module';
 import { UsersModule } from '../users/users.module';
 import { MediaModule } from '../media/media.module';
 import { VideoAssemblyService } from '../campaigns/video-assembly.service';
@@ -14,6 +15,8 @@ import { CombinationVideo } from './entities/combination-video.entity';
     TypeOrmModule.forFeature([CombinationPlan, CombinationClip, CombinationVideo]),
     UsersModule,
     MediaModule,
+    // Traz o PlanFeatureGuard: o multiplicador é recurso de plano pago.
+    BillingModule,
   ],
   controllers: [CombinationsController],
   // A montagem é a mesma das campanhas — um só caminho até o ffmpeg.
