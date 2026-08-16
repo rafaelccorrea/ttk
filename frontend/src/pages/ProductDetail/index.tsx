@@ -427,24 +427,14 @@ export function ProductDetailPage() {
                     >
                       {v.caption}
                     </Typography>
-                    {/* Faturamento só aparece quando existe.
-                        "R$ 0,00" não informa nada: o fornecedor atribui receita
-                        a poucos vídeos, e o zero era lido como "não vendeu" —
-                        num produto campeão de vendas, isso desmentia a própria
-                        página. Sem o número, o card mostra o que ele tem de
-                        concreto: quem postou e o que disse. */}
-                    {Number(v.revenueEstimate) > 0 && (
-                      <Chip
-                        size="small"
-                        label={formatCurrency(v.revenueEstimate)}
-                        sx={{
-                          mt: 1,
-                          fontWeight: 700,
-                          bgcolor: 'rgba(0,194,187,0.12)',
-                          color: 'secondary.main',
-                        }}
-                      />
-                    )}
+                    {/* Sem faturamento por vídeo nesta lista.
+                        O fornecedor atribui receita a poucos criativos: uns
+                        cards mostravam "R$ 21,6 mil", os vizinhos não mostravam
+                        nada, e a leitura virava "esse vendeu, aquele não" —
+                        conclusão que o dado não sustenta. A régua confiável do
+                        criativo aqui é o alcance, que aparece na capa. O
+                        faturamento continua na página de Vídeos, onde a
+                        comparação é entre vídeos e não dentro de um produto. */}
                   </CardContent>
                 </Card>
               </Grid>
