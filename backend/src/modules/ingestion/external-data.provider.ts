@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  ApiQuotaService,
+  FinalidadeDaChamada,
+} from './api-quota.service';
 import { categoryName } from './product-categories';
 
 /**
@@ -142,6 +146,8 @@ const MEDIA_TTL_MS = 90 * 60 * 1000;
 const MEDIA_CACHE_MAX = 2000;
 /** `product_sort_field`: 7 = total_sale_gmv_30d_amt. */
 const PRODUCT_SORT_GMV_30D = 7;
+/** Piso de criativos para um produto entrar no catálogo. */
+const MIN_VIDEOS_POR_PRODUTO = 1;
 /** Quanto tempo parar de chamar o fornecedor depois de bater no limite. */
 const QUOTA_COOLDOWN_MS = 10 * 60 * 1000;
 /** Só URLs deste host podem (e precisam) ser assinadas. */
@@ -184,7 +190,10 @@ export class ExternalDataProvider {
    */
   private quotaBlockedUntil = 0;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    private readonly quota: ApiQuotaService,
+  ) {
     this.baseUrl = (
       config.get<string>('ECHOTIK_BASE_URL') ?? DEFAULT_BASE_URL
     ).replace(/\/+$/, '');
@@ -256,6 +265,13 @@ export class ExternalDataProvider {
           sort_type: 1,
           // Corta a cauda longa antes de gastar página com quem não vende.
           min_total_sale_30d_cnt: this.minSales30d,
+          // Produto sem criativo é ficha sem prova: a vitrine mostrava o item
+          // mais vendido do mês sem um único vídeo, e isso derruba a
+          // credibilidade inteira. O fornecedor filtra na origem, então nem
+          // gastamos página com quem entraria só para ficar vazio.
+          min_total_video_cnt: MIN_VIDEOS_POR_PRODUTO,
+          // Só o que está à venda.
+          off_mark: 0,
         },
       );
       if (!rows?.length) break;
@@ -297,6 +313,9 @@ export class ExternalDataProvider {
           product_sort_field: PRODUCT_SORT_GMV_30D,
           sort_type: 1,
           min_total_sale_30d_cnt: this.minSales30d,
+          // Mesmo piso da lista global: produto sem criativo não entra.
+          min_total_video_cnt: MIN_VIDEOS_POR_PRODUTO,
+          off_mark: 0,
         },
       );
       if (!rows?.length) break;
@@ -487,6 +506,9 @@ export class ExternalDataProvider {
     const data = await this.get<Record<string, unknown>>(
       '/realtime/video/download-url',
       { url: `https://www.tiktok.com/@tiktok/video/${videoId}` },
+      true,
+      // Debita da cota do player: é gasto por uso do usuário, não por coleta.
+      'player',
     );
     const playUrl =
       this.str(data?.no_watermark_download_url) ??
@@ -567,6 +589,8 @@ export class ExternalDataProvider {
     params: Record<string, string | number>,
     /** `false` para endpoints que o fornecedor não cobra (download de capa). */
     countsAgainstQuota = true,
+    /** Contra qual cota mensal debitar. */
+    finalidade: FinalidadeDaChamada = 'coleta',
   ): Promise<T | null> {
     // Cota esgotada há pouco: nem tenta. Economiza os ~7s do erro.
     if (Date.now() < this.quotaBlockedUntil) return null;
@@ -575,6 +599,12 @@ export class ExternalDataProvider {
       this.logger.warn(
         `Cota da execução esgotada (${this.requestCount}); ${path} não foi chamado.`,
       );
+      return null;
+    }
+
+    // Corte rígido do mês, por finalidade. Vale para TODA chamada cobrada —
+    // inclusive as do player, que antes não entravam em conta nenhuma.
+    if (countsAgainstQuota && !(await this.quota.registrar(finalidade))) {
       return null;
     }
 

@@ -31,6 +31,20 @@ export class IngestionSetting {
   @Column({ type: 'int', default: 0 })
   apiMonthlyBudget: number;
 
+  /**
+   * Requests do player (resolver o MP4 na hora de tocar) no mês corrente.
+   *
+   * Contado à parte porque é gasto por USO, não por agendamento: sem separar,
+   * uma varredura de catálogo consome tudo e o play para de funcionar — ou o
+   * contrário, e a coleta nunca acontece.
+   */
+  @Column({ type: 'int', default: 0 })
+  apiPlaybackUsed: number;
+
+  /** Percentual do teto mensal reservado ao player. O resto é da coleta. */
+  @Column({ type: 'int', default: 30 })
+  apiPlaybackSharePct: number;
+
   // ------------------------------------------------------------ estratégia
   // Reguláveis sem deploy. As camadas se dimensionam a partir daqui e do
   // orçamento restante, então subir de plano não exige mexer em código.
@@ -46,6 +60,10 @@ export class IngestionSetting {
   /** Páginas por categoria na varredura de descoberta (10 produtos por página). */
   @Column({ type: 'int', default: 3 })
   discoveryPagesPerCategory: number;
+
+  /** Produtos da vitrine sem vídeo a tapar por execução (2 requests cada). */
+  @Column({ type: 'int', default: 15 })
+  videoGapPerRun: number;
 
   /** Hora do dia (0-23) em que a descoberta por categoria roda. */
   @Column({ type: 'int', default: 6 })

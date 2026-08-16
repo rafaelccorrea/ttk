@@ -339,6 +339,8 @@ export class IngestionService implements OnModuleInit {
     }
     this.logger.log(`Orçamento desta execução: ${allowance} requests`);
 
+    // A vitrine primeiro: produto sem vídeo é o que derruba a credibilidade.
+    const comVideo = await this.layerVideoGap(setting);
     const refreshed = await this.layerRefresh(setting);
     const discovered = await this.layerDiscovery(setting);
     const enriched = await this.layerEnrich(setting);
@@ -465,6 +467,74 @@ export class IngestionService implements OnModuleInit {
    * receita e, entre iguais, o mais antigo — assim o topo do catálogo fica
    * sempre fresco sem abandonar a cauda.
    */
+  /**
+   * Roda SÓ a camada de vídeo, com teto explícito de requisições.
+   *
+   * Serve para a operação pontual: consertar a vitrine agora, sem disparar
+   * refresh, descoberta e enriquecimento junto — e sabendo exatamente quanto
+   * vai custar antes de começar.
+   */
+  async taparBuracoDeVideo(
+    maxProdutos: number,
+    maxRequests: number,
+  ): Promise<{ produtos: number; requisicoes: number }> {
+    const setting = await this.getSetting();
+    this.externalData.beginRun(maxRequests);
+    const produtos = await this.layerVideoGap({
+      ...setting,
+      videoGapPerRun: maxProdutos,
+    } as IngestionSetting);
+    return { produtos, requisicoes: this.externalData.requestsUsed };
+  }
+
+  /**
+   * Camada 0 — a vitrine não pode ter produto sem vídeo.
+   *
+   * É a primeira a rodar, antes de descobrir qualquer produto novo. O motivo é
+   * de credibilidade, não de completude: o usuário abre o item mais vendido do
+   * mês, não vê um único criativo e conclui que o número é inventado. Um
+   * catálogo menor com prova vale mais que um catálogo grande sem ela.
+   *
+   * Custa 2 requests por produto (vídeos + @handles dos autores) e mira só
+   * quem realmente aparece — os mais vendidos, em ordem.
+   */
+  private async layerVideoGap(setting: IngestionSetting): Promise<number> {
+    if (this.externalData.budgetExhausted) return 0;
+
+    const semVideo = await this.products
+      .createQueryBuilder('p')
+      .where('p."tiktokProductId" IS NOT NULL')
+      .andWhere('p."isDuplicate" = false')
+      .andWhere(
+        'NOT EXISTS (SELECT 1 FROM videos v WHERE v."productId" = p.id)',
+      )
+      .orderBy('p."sales30d"', 'DESC')
+      .take(setting.videoGapPerRun)
+      .getMany();
+
+    if (semVideo.length === 0) return 0;
+
+    const detalhes = await this.externalData.fetchProductDetails(
+      semVideo.map((p) => p.tiktokProductId!).filter(Boolean),
+    );
+
+    let preenchidos = 0;
+    for (const product of semVideo) {
+      if (this.externalData.budgetExhausted) break;
+      const ext = detalhes.get(product.tiktokProductId!);
+      if (!ext) continue;
+      const salvos = await this.ingestProductVideos(product, ext);
+      if (salvos > 0) preenchidos += 1;
+    }
+
+    if (preenchidos > 0) {
+      this.logger.log(
+        `Vitrine: ${preenchidos} de ${semVideo.length} produtos ganharam vídeo.`,
+      );
+    }
+    return preenchidos;
+  }
+
   private async layerEnrich(setting: IngestionSetting): Promise<number> {
     if (this.externalData.budgetExhausted) return 0;
 

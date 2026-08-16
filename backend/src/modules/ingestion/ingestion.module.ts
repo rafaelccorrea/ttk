@@ -7,6 +7,7 @@ import { Trend } from '../trends/entities/trend.entity';
 import { UsersModule } from '../users/users.module';
 import { Video } from '../videos/entities/video.entity';
 import { Product } from '../products/entities/product.entity';
+import { ApiQuotaService } from './api-quota.service';
 import { CreativeCenterSource } from './creative-center.source';
 import { CreativeCenterProductsSource } from './creative-center-products.source';
 import { ExternalDataProvider } from './external-data.provider';
@@ -28,8 +29,9 @@ import { IngestionService } from './ingestion.service';
   ],
   controllers: [IngestionController],
   // O provider é exportado para o módulo de vídeos resolver o MP4 sob demanda.
-  exports: [IngestionService, ExternalDataProvider],
+  exports: [IngestionService, ExternalDataProvider, ApiQuotaService],
   providers: [
+    ApiQuotaService,
     IngestionService,
     CreativeCenterSource,
     CreativeCenterProductsSource,

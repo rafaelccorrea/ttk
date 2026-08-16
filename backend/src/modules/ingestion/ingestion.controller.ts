@@ -6,6 +6,7 @@ import {
   RequiresPlanFeature,
 } from '../billing/plan-feature.guard';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
+import { ApiQuotaService } from './api-quota.service';
 import { IngestionService } from './ingestion.service';
 
 @ApiTags('ingestion')
@@ -14,12 +15,23 @@ import { IngestionService } from './ingestion.service';
 @RequiresPlanFeature('ingestion')
 @Controller('ingestion')
 export class IngestionController {
-  constructor(private readonly ingestionService: IngestionService) {}
+  constructor(
+    private readonly ingestionService: IngestionService,
+    private readonly quota: ApiQuotaService,
+  ) {}
 
   @Post('run')
   @ApiOperation({ summary: 'Executa a ingestão agora (manual)' })
   run() {
     return this.ingestionService.run('manual');
+  }
+
+  @Get('quota')
+  @ApiOperation({
+    summary: 'Consumo da cota do fornecedor no mês, por finalidade',
+  })
+  quotaStatus() {
+    return this.quota.situacao();
   }
 
   @Get('status')
