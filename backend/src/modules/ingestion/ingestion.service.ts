@@ -22,6 +22,7 @@ import { ImageSearchSource } from './image-search.source';
 import { TikTokOembedSource } from './tiktok-oembed.source';
 import { IngestionRun, IngestionTrigger } from './entities/ingestion-run.entity';
 import { IngestionSetting } from './entities/ingestion-setting.entity';
+import { VitrineAuditService } from './vitrine-audit.service';
 
 const JOB_NAME = 'ingestion-cron';
 
@@ -52,6 +53,7 @@ export class IngestionService implements OnModuleInit {
     private readonly imageSearch: ImageSearchSource,
     private readonly oembed: TikTokOembedSource,
     private readonly mirror: MediaMirrorService,
+    private readonly audit: VitrineAuditService,
     private readonly scheduler: SchedulerRegistry,
   ) {}
 
@@ -296,6 +298,14 @@ export class IngestionService implements OnModuleInit {
       this.logger.log(
         `Ingestão ok: ${run.hashtagsFetched} hashtags, ${run.creatorsFetched} criadores, ${run.videosUpserted} vídeos, ${run.productsIngested} produtos, ${run.productsEnriched} imagens de produto`,
       );
+
+      // Ausculta a vitrine com olhos de cético. Não gasta cota (é só banco) e
+      // é o que faz o defeito aparecer no log ANTES de aparecer para o
+      // usuário — que até aqui era como a gente descobria.
+      await this.audit.auditar().catch((erro) => {
+        this.logger.warn(`Auditoria da vitrine falhou: ${erro}`);
+        return null;
+      });
     } catch (err) {
       run.status = 'error';
       run.error = err instanceof Error ? err.message : String(err);

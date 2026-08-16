@@ -8,6 +8,7 @@ import {
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { ApiQuotaService } from './api-quota.service';
 import { IngestionService } from './ingestion.service';
+import { VitrineAuditService } from './vitrine-audit.service';
 
 @ApiTags('ingestion')
 @ApiBearerAuth()
@@ -18,6 +19,7 @@ export class IngestionController {
   constructor(
     private readonly ingestionService: IngestionService,
     private readonly quota: ApiQuotaService,
+    private readonly audit: VitrineAuditService,
   ) {}
 
   @Post('run')
@@ -32,6 +34,14 @@ export class IngestionController {
   })
   quotaStatus() {
     return this.quota.situacao();
+  }
+
+  @Get('vitrine-audit')
+  @ApiOperation({
+    summary: 'Ausculta a vitrine: card mudo, vídeo sem receita, sem preço…',
+  })
+  vitrineAudit() {
+    return this.audit.auditar();
   }
 
   @Get('status')
