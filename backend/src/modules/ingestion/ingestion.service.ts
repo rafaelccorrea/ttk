@@ -71,7 +71,28 @@ export class IngestionService implements OnModuleInit {
   ): Promise<string | null> {
     if (!url) return null;
     if (!this.mirror.enabled) return url;
-    return (await this.mirror.mirror(url, prefix, id)) ?? url;
+
+    const espelhada = await this.mirror.mirror(url, prefix, id);
+    if (espelhada) return espelhada;
+
+    /**
+     * Espelhamento recusado e a origem é URL ASSINADA do fornecedor: devolver
+     * `null` é melhor do que devolver o link.
+     *
+     * O espelhamento só recusa quando o conteúdo não decodifica como imagem —
+     * e o CDN deles às vezes responde HTTP 200 com uma página de erro 504
+     * dentro. Guardar esse link deixava o card com foto quebrada por três
+     * dias, até a assinatura expirar; e como o produto passava a "ter imagem",
+     * ninguém tentava de novo. Com `null`, a tela mostra o espaço reservado e
+     * a próxima execução tenta outra vez.
+     */
+    if (url.includes(SIGNABLE_IMAGE_HOST)) {
+      this.logger.warn(
+        `Imagem de ${prefix}/${id} não pôde ser espelhada; será tentada de novo na próxima execução.`,
+      );
+      return null;
+    }
+    return url;
   }
 
   // Registra o cron a partir da configuração persistida.

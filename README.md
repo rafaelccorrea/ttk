@@ -71,9 +71,20 @@ por visitante e entregava justamente aquilo que se vende. Então:
 > Segurança: as tabelas do Supabase estavam "Unrestricted" — com RLS desligado,
 > a `anon key` (pública, vai no bundle) permitia ler e escrever tudo via
 > PostgREST, inclusive `app_users.plan`. A migration `EnableRowLevelSecurity`
-> revoga `anon`/`authenticated` e liga RLS sem policies em todas as tabelas.
-> **Tabela nova nasce desprotegida** — ao criar uma, ligue o RLS na mesma
-> migration.
+> revoga `anon`/`authenticated` e liga RLS sem policies em todas as tabelas, e
+> a `HardenRlsDefaults` fecha a recaída: ela revoga também os *default
+> privileges* do schema, para que tabela criada daqui em diante já nasça sem
+> acesso público. Isso não é hipotético — `api_raw_responses` foi criada entre
+> as duas e ficou, em produção, legível e truncável por qualquer um com a
+> `anon key`.
+>
+> Ainda assim, **RLS não tem default em Postgres**: ao criar uma tabela nova,
+> ligue o RLS dela na mesma migration. Para conferir o estado do banco:
+> `SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname='public'`.
+>
+> A API atravessa o RLS porque conecta como dono das tabelas (`postgres`, com
+> `rolbypassrls`). Se um dia ela passar a usar um role comum, será preciso criar
+> policies — senão o deny-all vale para ela também.
 
 ## Funcionalidades
 
