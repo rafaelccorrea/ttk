@@ -30,8 +30,10 @@ export class Product {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   price: string;
 
-  @Column({ nullable: true })
-  imageUrl: string;
+  // Nula quando nenhuma capa do fornecedor decodificou como imagem — a tela
+  // mostra o espaço reservado, e a próxima execução tenta de novo.
+  @Column({ type: 'varchar', nullable: true })
+  imageUrl: string | null;
 
   /** Galeria: várias fotos reais do produto (a primeira costuma ser imageUrl). */
   @Column({ type: 'jsonb', nullable: true })

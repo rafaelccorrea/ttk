@@ -92,7 +92,10 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Programa',
     items: [
       { to: '/planos', label: 'Planos & Créditos', icon: <WorkspacePremiumRoundedIcon /> },
-      { to: '/academy', label: 'PikPok Educa', icon: <SchoolRoundedIcon /> },
+      // PikPok Educa fora do menu enquanto o conteúdo não está pronto. A rota
+      // /academy continua de pé: quem tem o link direto acessa, e devolver o
+      // item ao menu é descomentar esta linha.
+      // { to: '/academy', label: 'PikPok Educa', icon: <SchoolRoundedIcon /> },
       { to: '/indique', label: 'Indique e Ganhe', icon: <CardGiftcardRoundedIcon /> },
     ],
   },

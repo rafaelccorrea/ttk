@@ -26,6 +26,9 @@ import { VitrineAuditService } from './vitrine-audit.service';
 
 const JOB_NAME = 'ingestion-cron';
 
+/** Host das imagens assinadas do fornecedor — o link expira em ~3 dias. */
+const SIGNABLE_IMAGE_HOST = 'echosell-images.tos-ap-southeast-1.volces.com';
+
 @Injectable()
 export class IngestionService implements OnModuleInit {
   private readonly logger = new Logger(IngestionService.name);

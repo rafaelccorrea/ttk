@@ -120,7 +120,19 @@ export class VitrineAuditService {
        WHERE p."imageUrl" IS NULL`,
     );
 
-    // 5. Sem @handle a URL do post não existe e o vídeo não abre.
+    // 5. Imagem que não é nossa tem prazo de validade — e quebra calada.
+    await consulta(
+      'imagem-nao-espelhada',
+      'Produtos do topo com imagem fora do nosso bucket',
+      'URL assinada do fornecedor expira em ~3 dias: o card fica com foto quebrada sem ninguém perceber.',
+      0,
+      `SELECT t.title FROM (${topo}) t
+       JOIN products p ON p.id = t.id
+       WHERE p."imageUrl" IS NOT NULL
+         AND p."imageUrl" NOT LIKE '/api/v1/media/s3/%'`,
+    );
+
+    // 6. Sem @handle a URL do post não existe e o vídeo não abre.
     await consulta(
       'video-sem-link',
       'Vídeos da vitrine sem link do post',
