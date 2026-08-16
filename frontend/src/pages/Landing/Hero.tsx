@@ -123,7 +123,7 @@ export function Hero() {
                   },
                 }}
               >
-                Começar grátis
+                Assinar agora
               </Button>
               <Button
                 href="#como-funciona"
@@ -143,7 +143,7 @@ export function Hero() {
             <Stack direction="row" spacing={1} alignItems="center" mt={3} sx={{ animation: 'lpFadeUp .7s ease .35s both' }}>
               <VerifiedRounded sx={{ fontSize: 17, color: cyanDeep }} />
               <Typography fontSize={13.5} color={textFaint}>
-                Plano gratuito para sempre · 30 créditos de boas-vindas · sem cartão
+                Dados reais atualizados todo dia · Cancele quando quiser
               </Typography>
             </Stack>
 

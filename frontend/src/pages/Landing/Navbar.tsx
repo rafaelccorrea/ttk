@@ -112,7 +112,7 @@ export function Navbar() {
                 '&:active': { transform: 'scale(0.97)' },
               }}
             >
-              Começar grátis
+              Assinar
             </Button>
             <IconButton
               aria-label="Abrir menu"
@@ -159,7 +159,7 @@ export function Navbar() {
             variant="contained"
             sx={{ mt: 3, bgcolor: red, py: 1.2, '&:hover': { bgcolor: '#e0264c' } }}
           >
-            Começar grátis
+            Assinar
           </Button>
           <Button
             component={RouterLink}

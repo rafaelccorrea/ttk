@@ -263,7 +263,7 @@ export function LoginPage() {
             {isSignUp
               ? waitlistMode
                 ? 'Estamos liberando o acesso aos poucos. Deixe seu e-mail e senha para garantir seu lugar na fila.'
-                : 'Comece grátis — sem cartão de crédito.'
+                : 'Crie sua conta e escolha um plano para começar.'
               : 'Entre para acessar seu painel do TikTok Shop.'}
           </Typography>
 
@@ -374,7 +374,7 @@ export function LoginPage() {
                 : isSignUp
                   ? waitlistMode
                     ? 'Garantir meu lugar'
-                    : 'Criar conta grátis'
+                    : 'Criar conta'
                   : 'Entrar'}
             </Button>
             {!isDemoMode && (

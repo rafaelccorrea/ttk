@@ -83,33 +83,51 @@ export function planCredits(plan: Plan, cycle: BillingCycle = 'month'): number {
  * Pior custo/crédito da tabela ≈ R$ 0,06 (vídeo: 3,60/60), ou seja o piso
  * com a margem mínima é R$ 0,084 por crédito.
  *
- * Dois degraus vendáveis: Pro para quem produz e Business para quem escala.
- * Não existe plano gratuito — o dado de mercado que o PikPok entrega é comprado
- * de fornecedor pago (EchoTik), então conta grátis queima custo por visitante.
- * A prova de valor acontece ANTES do cadastro, na demo pública da landing.
- * Preço por crédito:
- *   Pro (oferta) R$ 39,90 / 450 cr   = R$ 0,0887/cr → 1,48× o pior custo
- *   Pro anual    R$ 199,90 / 2.300 cr = R$ 0,0869/cr → 1,45× o pior custo
- *   Business     R$ 249,90 / 2.800 cr = R$ 0,0892/cr → 1,49× o pior custo
- * O desconto de volume (e o de lançamento) sai da margem, nunca do custo — é
- * por isso que a cota de créditos do Pro acompanha o preço promocional.
+ * Três degraus vendáveis, e nenhum gratuito: o dado de mercado que o PikPok
+ * entrega é comprado de fornecedor pago (EchoTik), então conta grátis queima
+ * custo por visitante. A prova de valor acontece ANTES do cadastro, na amostra
+ * pública da landing.
+ *
+ * Os três existem para dar uma escolha do meio: com só dois, a decisão vira
+ * "o barato ou o caro" e a maioria trava no barato. O Pro é a âncora — por isso
+ * ele leva o `highlight` e o salto de recursos (vídeo com IA e multiplicador),
+ * não só mais créditos.
+ *
+ * Preço por crédito (o piso com a margem mínima é R$ 0,084):
+ *   Essencial       R$ 39,90 / 450 cr    = R$ 0,0887/cr → 1,48× o pior custo
+ *   Essencial anual R$ 399,90 / 4.600 cr = R$ 0,0869/cr → 1,45× o pior custo
+ *   Pro             R$ 89,90 / 1.000 cr  = R$ 0,0899/cr → 1,50× o pior custo
+ *   Pro anual       R$ 899,90 / 10.400 cr= R$ 0,0865/cr → 1,44× o pior custo
+ *   Business        R$ 249,90 / 2.800 cr = R$ 0,0892/cr → 1,49× o pior custo
+ * O desconto de volume (e o anual) sai da margem, nunca do custo — é por isso
+ * que a cota de créditos acompanha o preço, e não o contrário.
  */
 export const PLANS: Plan[] = [
   {
-    id: 'pro',
-    name: 'Pro',
+    id: 'essencial',
+    name: 'Essencial',
     priceBrl: 39.9,
     monthlyCredits: 450,
-    highlight: true,
-    // Sem data de fim por enquanto: para encerrar a promoção, troque o
-    // `priceBrl` pelo `listPriceBrl` e apague o bloco `offer`.
-    offer: { listPriceBrl: 79.9, label: 'Oferta de lançamento' },
-    annual: { priceBrl: 199.9, credits: 2300 },
+    annual: { priceBrl: 399.9, credits: 4600 },
     perks: [
-      '450 créditos/mês (ou 2.300 no plano anual)',
+      '450 créditos/mês (ou 4.600 no plano anual)',
+      'Descoberta completa: produtos, vídeos e criadores',
       'Roteiros e análises com Claude',
-      'Transcrição Whisper',
-      'Imagens e vídeos com IA',
+      'Transcrição de vídeos',
+      'Imagens com IA',
+    ],
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    priceBrl: 89.9,
+    monthlyCredits: 1000,
+    highlight: true,
+    annual: { priceBrl: 899.9, credits: 10400 },
+    perks: [
+      '1.000 créditos/mês (ou 10.400 no plano anual)',
+      'Tudo do Essencial',
+      'Vídeos com IA',
       'Multiplicador de conteúdo',
     ],
   },
@@ -119,7 +137,7 @@ export const PLANS: Plan[] = [
     priceBrl: 249.9,
     monthlyCredits: 2800,
     perks: [
-      '2.800 créditos/mês (11% mais barato por crédito)',
+      '2.800 créditos/mês',
       'Tudo do Pro',
       'Coleta de dados automatizada',
       'Onboarding dedicado',
@@ -164,12 +182,12 @@ export const SIGNUP_BONUS_CREDITS = 0;
  */
 export const PLAN_RANK: Record<string, number> = {
   free: 0,
-  // Starter empata com Pro de propósito: era mais caro por crédito (R$ 49,90
-  // por 500 cr) e, quando `discovery` subiu para Pro, deixá-lo num degrau
-  // abaixo teria tirado de assinantes pagantes o acesso que eles compraram.
+  // Starter empata com Essencial de propósito: é o legado equivalente (R$ 49,90
+  // por 500 cr) e assinante pagante não pode perder o acesso que comprou.
   starter: 1,
-  pro: 1,
-  business: 2,
+  essencial: 1,
+  pro: 2,
+  business: 3,
 };
 
 /**
@@ -209,18 +227,23 @@ export type PlanFeature =
 
 /**
  * Plano mínimo para cada recurso — a divisão oficial do produto.
- * Tudo começa no Pro: `discovery` é o dado de mercado que compramos do EchoTik
- * (custo por consulta) e as features de IA custam por chamada, então nenhuma
- * delas pode ficar aberta a quem não pagou. `starter` é legado e fica abaixo do
- * Pro de propósito — quem assinou antes mantém o que pagou, sem herdar o resto.
+ *
+ * Nada começa no `free`: `discovery` é o dado que compramos do EchoTik (custo
+ * por consulta) e as features de IA custam por chamada, então nenhuma delas
+ * pode ficar aberta a quem não pagou.
+ *
+ * A diferença entre os planos pagos é de recurso, não só de cota. Se o Pro
+ * fosse "o Essencial com mais créditos", os três degraus não teriam sentido
+ * próprio: o que separa é o que cada um destrava — o Pro abre a produção de
+ * vídeo (o item mais caro da tabela) e o Business abre a coleta.
  */
 export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
-  discovery: 'pro',
-  studio_templates: 'pro',
-  ai_scripts: 'pro',
-  ai_analyze: 'pro',
-  ai_transcribe: 'pro',
-  ai_images: 'pro',
+  discovery: 'essencial',
+  studio_templates: 'essencial',
+  ai_scripts: 'essencial',
+  ai_analyze: 'essencial',
+  ai_transcribe: 'essencial',
+  ai_images: 'essencial',
   ai_videos: 'pro',
   multiplier: 'pro',
   ingestion: 'business',

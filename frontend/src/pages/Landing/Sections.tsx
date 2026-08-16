@@ -406,7 +406,7 @@ export function Pricing() {
         <Reveal>
           <SectionHeading
             eyebrow="PLANOS"
-            title="Comece grátis, escale quando fizer sentido"
+            title="Escolha o plano do seu ritmo de produção"
             subtitle="Todo plano inclui a descoberta completa. Os créditos cobrem as ações com IA — roteiro, análise, transcrição, imagem e vídeo."
           />
         </Reveal>
@@ -474,7 +474,7 @@ export function Pricing() {
                         : { borderColor: lineStrong, color: textMain, '&:hover': { borderColor: textMain, bgcolor: 'rgba(11,12,18,0.04)' } }),
                     }}
                   >
-                    {p.price === 0 ? 'Criar conta grátis' : 'Assinar'}
+                    {'Assinar'}
                   </Button>
                 </Box>
               </Reveal>
@@ -663,7 +663,7 @@ export function FinalCta() {
                   },
                 }}
               >
-                Criar conta grátis
+                Assinar agora
               </Button>
               <Button
                 href="#planos"
@@ -737,7 +737,7 @@ export function Footer() {
               COMEÇAR
             </Typography>
             <Typography fontSize={14} color={textDim} mb={2} lineHeight={1.6}>
-              Plano gratuito para sempre, com 30 créditos de boas-vindas.
+              Assine e destrave o radar completo. Cancele quando quiser.
             </Typography>
             <Button
               component={RouterLink}

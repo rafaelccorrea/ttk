@@ -97,6 +97,32 @@ export function SubscribePage() {
     <Box sx={{ minHeight: '100vh', bgcolor: '#f6f7f9', py: { xs: 5, md: 8 } }}>
       <Container maxWidth="md">
         <Stack alignItems="center" spacing={1.5} mb={4} textAlign="center">
+          {/* A marca precisa estar aqui: esta tela fica fora do AppLayout, então
+              é a única do fluxo logado sem o cabeçalho — sem a logo, a pessoa
+              cai numa página de cobrança que não parece ser do PikPok. */}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Box
+              component="img"
+              src="/icon-192.png"
+              alt="PikPok"
+              sx={{
+                width: 38,
+                height: 38,
+                borderRadius: 2,
+                boxShadow: '0 4px 14px #fe2c5544',
+              }}
+            />
+            <Typography
+              fontWeight={800}
+              fontSize={22}
+              sx={{ letterSpacing: '-0.02em' }}
+            >
+              Pik
+              <Box component="span" sx={{ color: '#fe2c55' }}>
+                Pok
+              </Box>
+            </Typography>
+          </Stack>
           <LockRounded sx={{ fontSize: 40, color: '#fe2c55' }} />
           <Typography variant="h4" fontWeight={800}>
             {expirou ? 'Sua assinatura terminou' : 'Escolha seu plano'}

@@ -181,31 +181,53 @@ export const FAQ = [
 ];
 
 /** Espelha `backend/src/modules/billing/billing.config.ts` — mantenha os dois lados iguais. */
-export const PRICING = [
+// Sem plano Free: ele saiu do produto quando o acesso passou a ser só para
+// assinantes. A landing anunciava "Free — descoberta completa", justamente o
+// que o paywall fecha; quem se cadastrasse por essa promessa bateria na tela de
+// pagamento. Quem quer conhecer antes usa a amostra pública (LiveSample).
+// Espelho de PLANS (backend/src/modules/billing/billing.config.ts). Se os dois
+// divergirem, a landing mente sobre o preço — mantenha-os juntos.
+//
+// O tipo é explícito porque `listPrice`/`offerLabel` (preço riscado de uma
+// promoção) hoje não estão em uso: sem a anotação, o TS os infere como
+// inexistentes e a seção de planos, que sabe exibi-los, para de compilar
+// assim que a última oferta sai do ar.
+export interface PricingPlan {
+  id: string;
+  name: string;
+  price: number;
+  tagline: string;
+  perks: string[];
+  highlight?: boolean;
+  listPrice?: number;
+  offerLabel?: string;
+  annual?: { price: number; credits: string };
+}
+
+export const PRICING: PricingPlan[] = [
   {
-    id: 'free',
-    name: 'Free',
-    price: 0,
-    tagline: 'Para conhecer a plataforma',
-    perks: ['30 créditos de boas-vindas', 'Descoberta completa de produtos, vídeos e criadores', 'Roteiros com gerador local ilimitados'],
+    id: 'essencial',
+    name: 'Essencial',
+    price: 39.9,
+    annual: { price: 399.9, credits: '4.600 créditos no ano' },
+    tagline: 'Para começar a garimpar',
+    perks: ['450 créditos/mês', 'Descoberta completa: produtos, vídeos e criadores', 'Roteiros e análises com IA', 'Transcrição de vídeos', 'Imagens com IA'],
   },
   {
     id: 'pro',
     name: 'Pro',
-    price: 39.9,
-    listPrice: 79.9,
-    offerLabel: 'Oferta de lançamento',
-    annual: { price: 199.9, credits: '2.300 créditos no ano' },
+    price: 89.9,
+    annual: { price: 899.9, credits: '10.400 créditos no ano' },
     tagline: 'Para quem publica toda semana',
     highlight: true,
-    perks: ['450 créditos/mês', 'Roteiros e análises com IA', 'Transcrição de vídeos', 'Imagens e vídeos com IA', 'Multiplicador de conteúdo'],
+    perks: ['1.000 créditos/mês', 'Tudo do Essencial', 'Vídeos com IA', 'Multiplicador de conteúdo'],
   },
   {
     id: 'business',
     name: 'Business',
     price: 249.9,
     tagline: 'Para times e agências',
-    perks: ['2.800 créditos/mês (11% mais barato por crédito)', 'Tudo do Pro', 'Coleta de dados automatizada', 'Onboarding dedicado', 'Suporte prioritário'],
+    perks: ['2.800 créditos/mês', 'Tudo do Pro', 'Coleta de dados automatizada', 'Onboarding dedicado', 'Suporte prioritário'],
   },
 ];
 

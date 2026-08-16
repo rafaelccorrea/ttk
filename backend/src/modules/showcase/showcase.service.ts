@@ -92,12 +92,18 @@ export class ShowcaseService {
   }
 
   /**
-   * Vendas viram faixa pela potência de 10 abaixo do valor ("2.300" → "1.000+").
-   * A ordem de grandeza é o que convence; o número exato é o que se vende.
+   * Vendas viram um piso, não o número exato: "25.317" → "25 mil+".
+   *
+   * A primeira versão arredondava para a potência de 10 abaixo, e o resultado
+   * na tela foi oito cards dizendo "10.000+ vendas" — como a amostra é o topo
+   * do ranking, todo mundo caía no mesmo balde e a seção não provava nada.
+   * Piso no milhar mantém o número exato escondido (que é o que se vende) e
+   * devolve a diferença entre um produto de 25 mil e um de 90 mil, que é
+   * justamente o que faz o visitante querer ver a lista inteira.
    */
   private static toRange(sales: number): string {
-    if (!sales || sales < 10) return '<10';
-    const floor = Math.pow(10, Math.floor(Math.log10(sales)));
-    return `${floor.toLocaleString('pt-BR')}+`;
+    if (!sales || sales < 100) return '<100';
+    if (sales < 1000) return `${Math.floor(sales / 100) * 100}+`;
+    return `${Math.floor(sales / 1000).toLocaleString('pt-BR')} mil+`;
   }
 }

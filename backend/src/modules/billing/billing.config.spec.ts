@@ -33,21 +33,39 @@ describe('billing.config — paywall na entrada', () => {
   });
 
   it('mantém o acesso dos assinantes legados do starter', () => {
-    // Starter saiu do catálogo, mas quem paga não pode perder o que comprou
-    // quando `discovery` subiu para Pro.
+    // Starter saiu do catálogo, mas quem paga não pode perder o que comprou:
+    // ele equivale ao Essencial.
     expect(planAllows('starter', 'discovery')).toBe(true);
     expect(planAllows('starter', 'ai_scripts')).toBe(true);
     // ...sem herdar o que nunca foi dele.
     expect(planAllows('starter', 'ingestion')).toBe(false);
   });
 
-  it('dá ao Pro tudo menos a coleta, e ao Business tudo', () => {
-    expect(planAllows('pro', 'discovery')).toBe(true);
+  it('vende três degraus, e cada um destrava algo novo', () => {
+    // O ponto do meio: se o Pro fosse só "mais créditos", os três planos não
+    // teriam sentido próprio. Cada degrau precisa abrir um recurso.
+    expect(planAllows('essencial', 'discovery')).toBe(true);
+    expect(planAllows('essencial', 'ai_images')).toBe(true);
+    expect(planAllows('essencial', 'ai_videos')).toBe(false);
+    expect(planAllows('essencial', 'multiplier')).toBe(false);
+
     expect(planAllows('pro', 'ai_videos')).toBe(true);
+    expect(planAllows('pro', 'multiplier')).toBe(true);
     expect(planAllows('pro', 'ingestion')).toBe(false);
+
     for (const f of Object.keys(FEATURE_MIN_PLAN) as PlanFeature[]) {
       expect(planAllows('business', f)).toBe(true);
     }
+  });
+
+  it('cobra mais caro por crédito no plano menor (o volume tem desconto)', () => {
+    const porCredito = (id: string) => {
+      const p = PLANS.find((x) => x.id === id)!;
+      return p.priceBrl / p.monthlyCredits;
+    };
+    // Business é o mais barato por crédito; Essencial não pode ser o melhor
+    // negócio, senão ninguém sobe de degrau.
+    expect(porCredito('business')).toBeLessThan(porCredito('pro'));
   });
 
   it('trata plano desconhecido como sem acesso', () => {
