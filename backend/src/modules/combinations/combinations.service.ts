@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { BillingService } from '../billing/billing.service';
 import { VideoAssemblyService } from '../campaigns/video-assembly.service';
 import { MEDIA_ROUTE, MediaMirrorService } from '../media/media-mirror.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
@@ -28,6 +29,29 @@ export interface Combination {
   /** Posição na ordem recomendada de postagem, começando em 1. */
   postOrder: number;
 }
+
+/**
+ * Um produto na galeria, com todos os vídeos que ele já rendeu.
+ *
+ * A galeria era uma lista corrida de até 300 arquivos de todos os produtos
+ * misturados, ordenada por data — com dois ou três produtos em teste ao mesmo
+ * tempo, achar "os criativos da cinta" virava rolar a tela procurando prefixo
+ * de nome de arquivo. Agrupar por plano devolve a unidade com que o vendedor
+ * realmente trabalha.
+ */
+export interface GaleriaGrupo {
+  planId: string;
+  sigla: string;
+  format: string | null;
+  /** `false` quando o plano foi apagado mas os vídeos continuam guardados. */
+  planoExiste: boolean;
+  /** Data do vídeo mais recente do grupo — é por ela que os grupos se ordenam. */
+  atualizadoEm: Date;
+  videos: CombinationVideo[];
+}
+
+/** Teto de vídeos trazidos para a galeria de uma vez. */
+const GALERIA_MAX = 300;
 
 /** Teto por bloco — o mesmo que a tela oferece. */
 const LIMITES: Record<ClipRole, number> = { hook: 10, body: 5, cta: 3 };
@@ -70,6 +94,7 @@ export class CombinationsService {
     private readonly videos: Repository<CombinationVideo>,
     private readonly mirror: MediaMirrorService,
     private readonly assembly: VideoAssemblyService,
+    private readonly billing: BillingService,
   ) {}
 
   // ------------------------------------------------------------- clipes
@@ -344,12 +369,49 @@ export class CombinationsService {
   }
 
   /** Galeria: tudo que o usuário já montou, do mais novo para o mais velho. */
-  listGallery(userId: string): Promise<CombinationVideo[]> {
-    return this.videos.find({
+  async listGallery(userId: string): Promise<GaleriaGrupo[]> {
+    const videos = await this.videos.find({
       where: { userId },
       order: { createdAt: 'DESC' },
-      take: 300,
+      take: GALERIA_MAX,
     });
+    if (!videos.length) return [];
+
+    const planIds = [...new Set(videos.map((v) => v.planId))];
+    const planos = await this.plans.find({
+      where: { id: In(planIds), userId },
+    });
+    const porId = new Map(planos.map((p) => [p.id, p]));
+
+    // A ordem de chegada dos vídeos (mais novo primeiro) define a ordem dos
+    // grupos: o produto em que o vendedor está trabalhando agora fica no topo.
+    const grupos = new Map<string, GaleriaGrupo>();
+    for (const video of videos) {
+      let grupo = grupos.get(video.planId);
+      if (!grupo) {
+        const plano = porId.get(video.planId);
+        grupo = {
+          planId: video.planId,
+          // O plano pode ter sido apagado com os vídeos ainda no bucket; o
+          // nome do arquivo carrega a sigla, então o grupo não fica sem título.
+          sigla: plano?.sigla ?? video.filename.split('_')[0] ?? 'SEM NOME',
+          format: plano?.format ?? null,
+          planoExiste: Boolean(plano),
+          atualizadoEm: video.createdAt,
+          videos: [],
+        };
+        grupos.set(video.planId, grupo);
+      }
+      grupo.videos.push(video);
+    }
+
+    // Dentro do produto vale a ordem de postagem, não a de criação.
+    for (const grupo of grupos.values()) {
+      grupo.videos.sort(
+        (a, b) => a.postOrder - b.postOrder || a.code.localeCompare(b.code),
+      );
+    }
+    return [...grupos.values()];
   }
 
   /**
@@ -382,6 +444,16 @@ export class CombinationsService {
         `São ${combinacoes.length} vídeos, acima do limite de ${MAX_VIDEOS_POR_MONTAGEM} por montagem. Reduza um dos blocos.`,
       );
     }
+
+    /*
+     * Cobra a montagem inteira ANTES de enfileirar.
+     *
+     * Não há IA no caminho, mas há custo: CPU da emenda e um MP4 por
+     * combinação guardado no S3. Cobrar na entrada também é o que impede um
+     * clique distraído em "Montar" numa matriz de 150 sem o vendedor perceber
+     * o tamanho do que pediu — e cada vídeo que falhar volta como estorno.
+     */
+    await this.billing.charge(userId, 'assembly', combinacoes.length);
 
     // Remonta do zero: a matriz pode ter mudado desde a última vez.
     await this.videos.delete({ planId, userId });
@@ -491,6 +563,13 @@ export class CombinationsService {
         linha.status = 'falhou';
         linha.error = (error as Error).message.slice(0, 400);
         this.logger.warn(`Combinação ${linha.code} falhou: ${linha.error}`);
+        // Vídeo que não saiu não se cobra. O estorno é por linha porque a fila
+        // segue: as outras combinações continuam valendo o que foi debitado.
+        await this.billing
+          .refund(plan.userId, 'assembly', `Estorno: ${linha.filename} falhou`)
+          .catch((e) =>
+            this.logger.error(`Falha no estorno de ${linha.code}: ${e}`),
+          );
       }
       await this.videos.save(linha);
     }

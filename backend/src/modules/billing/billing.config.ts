@@ -17,7 +17,8 @@ export type BillableAction =
   | 'analyze' // Análise de vídeo viral com Claude
   | 'transcribe' // Transcrição Whisper (até 25MB ≈ 20 min)
   | 'image' // Higgsfield Soul (texto → imagem)
-  | 'video'; // Higgsfield Soul + DoP (texto → imagem → vídeo)
+  | 'video' // Higgsfield Soul + DoP (texto → imagem → vídeo)
+  | 'assembly'; // Multiplicador: cada vídeo concatenado
 
 export interface ActionPrice {
   credits: number;
@@ -37,6 +38,19 @@ export const ACTION_PRICES: Record<BillableAction, ActionPrice> = {
   image: { credits: 12, worstCaseCostBrl: 0.6, label: 'Imagem com IA' },
   // Soul + DoP: ~US$ 0,60 ≈ R$ 3,60
   video: { credits: 60, worstCaseCostBrl: 3.6, label: 'Vídeo com IA' },
+  /*
+   * Montagem do Multiplicador, por vídeo gerado.
+   *
+   * Não tem IA no caminho, mas tem custo: alguns segundos de CPU para a
+   * emenda, mais o MP4 guardado no S3 por tempo indeterminado. Uma matriz
+   * cheia são 150 arquivos de dezenas de MB cada — deixar isso de graça é
+   * pagar armazenamento por criativo que ninguém baixou.
+   *
+   * 1 crédito (R$ 0,10 de face) contra ~R$ 0,05 de CPU + storage no pior caso.
+   * É barato de propósito: o valor do multiplicador está no volume, e um preço
+   * que faça o vendedor pensar duas vezes antes de montar mata o produto.
+   */
+  assembly: { credits: 1, worstCaseCostBrl: 0.05, label: 'Vídeo montado' },
 };
 
 export type BillingCycle = 'month' | 'year';
@@ -256,6 +270,7 @@ export const ACTION_MIN_PLAN: Record<BillableAction, string> = {
   transcribe: FEATURE_MIN_PLAN.ai_transcribe,
   image: FEATURE_MIN_PLAN.ai_images,
   video: FEATURE_MIN_PLAN.ai_videos,
+  assembly: FEATURE_MIN_PLAN.multiplier,
 };
 
 export function planAllows(userPlan: string, feature: PlanFeature): boolean {

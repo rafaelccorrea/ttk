@@ -97,6 +97,22 @@ export interface CombinationVideo {
   createdAt: string;
 }
 
+/**
+ * Um produto na galeria, com os vídeos que ele já rendeu.
+ *
+ * Os vídeos vêm na ordem de postagem (`postOrder`), não na de criação — é a
+ * ordem em que vale a pena publicar.
+ */
+export interface GaleriaGrupo {
+  planId: string;
+  sigla: string;
+  format: PlanFormat | null;
+  /** `false` quando o plano foi apagado mas os vídeos continuam guardados. */
+  planoExiste: boolean;
+  atualizadoEm: string;
+  videos: CombinationVideo[];
+}
+
 export const combinationsService = {
   async create(input: CreatePlanInput): Promise<CombinationPlanDetail> {
     const { data } = await api.post<CombinationPlanDetail>('/combinations', input);
@@ -154,8 +170,9 @@ export const combinationsService = {
     return data;
   },
 
-  async gallery(): Promise<CombinationVideo[]> {
-    const { data } = await api.get<CombinationVideo[]>('/combinations/gallery');
+  /** Galeria agrupada por produto, do produto mais recente para o mais antigo. */
+  async gallery(): Promise<GaleriaGrupo[]> {
+    const { data } = await api.get<GaleriaGrupo[]>('/combinations/gallery');
     return data;
   },
 

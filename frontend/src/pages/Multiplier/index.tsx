@@ -55,6 +55,7 @@ import {
   CombinationPlanSummary,
   CombinationOriginality,
   CombinationVideo,
+  GaleriaGrupo,
   CombinationVideoStatus,
   ORIGINALITY_HINT,
   ORIGINALITY_LABEL,
@@ -103,6 +104,14 @@ const BLOCOS = [
     ajuda: 'O comando final para tocar no carrinho.',
   },
 ];
+
+/**
+ * Créditos por vídeo montado (`ACTION_PRICES.assembly` no backend).
+ *
+ * A tela mostra a conta ANTES do clique: numa matriz cheia são 150 vídeos, e
+ * descobrir o preço pelo extrato depois de montar é a pior hora de descobrir.
+ */
+const CREDITOS_POR_VIDEO = 1;
 
 /** Teto do backend (`MaxFileSizeValidator`), replicado para recusar antes de subir. */
 const MAX_BYTES = 40 * 1024 * 1024;
@@ -719,18 +728,37 @@ function PreviaDoVideo({ url }: { url: string }) {
 }
 
 function Galeria({
-  videos,
+  grupos,
   onRecarregar,
 }: {
-  videos: CombinationVideo[];
+  grupos: GaleriaGrupo[];
   onRecarregar: () => void;
 }) {
-  const prontos = videos.filter((v) => v.status === 'pronto' && v.url);
   // Ids já removidos da tela mas ainda em voo no servidor: some na hora, sem
   // esperar o round-trip, e volta se a chamada falhar.
   const [descartados, setDescartados] = useState<string[]>([]);
   const [erroDescarte, setErroDescarte] = useState<string | null>(null);
-  const visiveis = prontos.filter((v) => !descartados.includes(v.id));
+  const [busca, setBusca] = useState('');
+
+  const termo = busca.trim().toLowerCase();
+  // A busca casa com a sigla do produto OU com o nome do arquivo: o vendedor
+  // às vezes procura "cinta", às vezes cola o nome do MP4 que já postou.
+  const gruposVisiveis = grupos
+    .map((grupo) => ({
+      ...grupo,
+      videos: grupo.videos.filter(
+        (v) =>
+          v.status === 'pronto' &&
+          v.url &&
+          !descartados.includes(v.id) &&
+          (!termo ||
+            grupo.sigla.toLowerCase().includes(termo) ||
+            v.filename.toLowerCase().includes(termo)),
+      ),
+    }))
+    .filter((grupo) => grupo.videos.length > 0);
+
+  const totalVisivel = gruposVisiveis.reduce((s, g) => s + g.videos.length, 0);
 
   async function handleDescartar(video: CombinationVideo) {
     setErroDescarte(null);
@@ -749,15 +777,27 @@ function Galeria({
   return (
     <Card>
       <CardContent>
-        <Stack direction="row" alignItems="center" sx={{ mb: 2 }}>
-          <Box sx={{ flexGrow: 1 }}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1}
+          sx={{ mb: 2, flexWrap: 'wrap', rowGap: 1 }}
+        >
+          <Box sx={{ flexGrow: 1, minWidth: 220 }}>
             <Typography variant="h6">Meus vídeos</Typography>
             <Typography variant="caption" color="text.secondary">
-              {visiveis.length
-                ? `${visiveis.length} vídeo(s) montados e prontos para postar`
-                : 'Os vídeos que você montar ficam guardados aqui'}
+              {totalVisivel
+                ? `${totalVisivel} vídeo(s) em ${gruposVisiveis.length} produto(s) — na ordem de postagem`
+                : 'Os vídeos que você montar ficam guardados aqui, agrupados por produto'}
             </Typography>
           </Box>
+          <TextField
+            size="small"
+            placeholder="Buscar produto ou arquivo…"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            sx={{ width: 240, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+          />
           <Button size="small" onClick={onRecarregar}>
             Atualizar
           </Button>
@@ -769,14 +809,81 @@ function Galeria({
           </Alert>
         )}
 
-        {visiveis.length === 0 ? (
+        {gruposVisiveis.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
-            Nenhum vídeo montado ainda. Gere uma matriz e clique em “Montar
-            vídeos”.
+            {busca
+              ? `Nenhum produto ou arquivo com “${busca}”.`
+              : 'Nenhum vídeo montado ainda. Gere uma matriz e clique em “Montar vídeos”.'}
           </Typography>
         ) : (
+          <Stack spacing={1.5}>
+            {gruposVisiveis.map((grupo) => (
+              <GrupoDeProduto
+                key={grupo.planId}
+                grupo={grupo}
+                // Um produto só: já abre aberto, porque não há o que escolher.
+                abertoPorPadrao={gruposVisiveis.length === 1}
+                onDescartar={handleDescartar}
+              />
+            ))}
+          </Stack>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Os vídeos de um produto, recolhíveis.
+ *
+ * Nasce fechado quando há vários produtos: abrir todos de uma vez traria
+ * dezenas de `<video>` para a tela e a aba levaria segundos para responder,
+ * mesmo com `preload="metadata"`.
+ */
+function GrupoDeProduto({
+  grupo,
+  abertoPorPadrao,
+  onDescartar,
+}: {
+  grupo: GaleriaGrupo;
+  abertoPorPadrao: boolean;
+  onDescartar: (video: CombinationVideo) => void;
+}) {
+  const [aberto, setAberto] = useState(abertoPorPadrao);
+  const originais = grupo.videos.filter((v) => v.originality === 'original');
+
+  return (
+    <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1}
+        onClick={() => setAberto((v) => !v)}
+        sx={{ p: 1.5, cursor: 'pointer', userSelect: 'none' }}
+      >
+        <Typography sx={{ fontWeight: 700 }}>{grupo.sigla}</Typography>
+        {grupo.format && (
+          <Chip size="small" variant="outlined" label={grupo.format} />
+        )}
+        <Typography variant="caption" color="text.secondary">
+          {grupo.videos.length} vídeo(s)
+          {originais.length ? ` · ${originais.length} com gancho inédito` : ''}
+        </Typography>
+        {!grupo.planoExiste && (
+          <Tooltip title="O plano foi apagado, mas os vídeos continuam guardados. Não dá para remontar sem criar a matriz de novo.">
+            <Chip size="small" variant="outlined" color="warning" label="sem plano" />
+          </Tooltip>
+        )}
+        <Box sx={{ flexGrow: 1 }} />
+        <IconButton size="small">
+          {aberto ? <ExpandLessRoundedIcon /> : <ExpandMoreRoundedIcon />}
+        </IconButton>
+      </Stack>
+
+      {aberto && (
+        <Box sx={{ p: 1.5, pt: 0 }}>
           <Grid container spacing={1.5}>
-            {visiveis.map((v) => (
+            {grupo.videos.map((v) => (
               <Grid item xs={6} sm={4} md={3} key={v.id}>
                 <Box
                   sx={{
@@ -790,24 +897,34 @@ function Galeria({
                   <PreviaDoVideo url={resolveApiUrl(v.url!)} />
                   <Box sx={{ p: 1, bgcolor: 'background.paper' }}>
                     <Stack direction="row" alignItems="center" spacing={0.5} mb={0.5}>
+                      {/* A ordem de postagem é o dado mais útil aqui: diz por
+                          qual desses arquivos começar. */}
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ fontVariantNumeric: 'tabular-nums' }}
+                      >
+                        {v.postOrder ? `#${v.postOrder}` : ''}
+                      </Typography>
                       <CodigoChip code={v.code} />
                       <Box sx={{ flexGrow: 1 }} />
                       <Tooltip title="Descartar — apaga o arquivo. Remontar o plano recria este vídeo.">
                         <IconButton
                           size="small"
-                          onClick={() => handleDescartar(v)}
+                          onClick={() => onDescartar(v)}
                           sx={{ color: 'text.disabled', '&:hover': { color: 'error.main' } }}
                         >
                           <DeleteOutlineRoundedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     </Stack>
+                    <OriginalidadeChip originality={v.originality} />
                     <Tooltip title={v.filename}>
                       <Typography
                         variant="caption"
                         noWrap
                         display="block"
-                        sx={{ fontFamily: 'monospace', fontSize: 10 }}
+                        sx={{ fontFamily: 'monospace', fontSize: 10, mt: 0.5 }}
                       >
                         {v.filename}
                       </Typography>
@@ -830,9 +947,9 @@ function Galeria({
               </Grid>
             ))}
           </Grid>
-        )}
-      </CardContent>
-    </Card>
+        </Box>
+      )}
+    </Box>
   );
 }
 
@@ -850,7 +967,7 @@ export function MultiplierPage() {
   const [usarCta, setUsarCta] = useState(true);
 
   const [videos, setVideos] = useState<CombinationVideo[]>([]);
-  const [galeria, setGaleria] = useState<CombinationVideo[]>([]);
+  const [galeria, setGaleria] = useState<GaleriaGrupo[]>([]);
   const [montando, setMontando] = useState(false);
 
   function recarregarGaleria() {
@@ -1347,7 +1464,7 @@ export function MultiplierPage() {
                         {result.format} ·{' '}
                         {videos.length
                           ? 'montagem em vídeo'
-                          : 'matriz gerada — clique em Montar vídeos'}
+                          : `matriz gerada — montar custa ${result.combinations.length * CREDITOS_POR_VIDEO} créditos`}
                       </Typography>
                     </Box>
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -1417,7 +1534,7 @@ export function MultiplierPage() {
       </form>
 
       <Box sx={{ mt: 3 }}>
-        <Galeria videos={galeria} onRecarregar={recarregarGaleria} />
+        <Galeria grupos={galeria} onRecarregar={recarregarGaleria} />
       </Box>
 
       <Card sx={{ mt: 3 }}>

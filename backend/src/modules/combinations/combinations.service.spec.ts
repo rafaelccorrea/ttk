@@ -12,6 +12,7 @@ function servico(): CombinationsService {
     null as never,
     null as never,
     null as never,
+    null as never,
   );
 }
 

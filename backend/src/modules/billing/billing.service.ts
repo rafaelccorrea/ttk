@@ -122,7 +122,11 @@ export class BillingService implements OnModuleInit {
    * for suficiente, então duas requisições simultâneas nunca deixam o saldo
    * negativo (e nós nunca pagamos IA sem crédito cobrado).
    */
-  async charge(userId: string, action: BillableAction): Promise<void> {
+  async charge(
+    userId: string,
+    action: BillableAction,
+    quantidade = 1,
+  ): Promise<void> {
     await this.ensureSignupBonus(userId);
     // Plano mínimo da ação (ex.: vídeo IA só no Pro+).
     const owner = await this.users.findOneBy({ id: userId });
@@ -134,19 +138,21 @@ export class BillingService implements OnModuleInit {
       );
     }
     const price = ACTION_PRICES[action];
+    // Uma montagem do Multiplicador cobra os N vídeos numa tacada: são até 150
+    // arquivos, e 150 débitos separados encheriam o extrato e dariam 150
+    // chances de o saldo acabar no meio da fila.
+    const itens = Math.max(Math.trunc(quantidade), 1);
+    const total = price.credits * itens;
     const result = await this.users
       .createQueryBuilder()
       .update(AppUser)
-      .set({ credits: () => `credits - ${price.credits}` })
-      .where('id = :userId AND credits >= :cost', {
-        userId,
-        cost: price.credits,
-      })
+      .set({ credits: () => `credits - ${total}` })
+      .where('id = :userId AND credits >= :cost', { userId, cost: total })
       .execute();
 
     if (!result.affected) {
       throw new HttpException(
-        `Créditos insuficientes: "${price.label}" custa ${price.credits} créditos. Compre um pacote ou assine um plano em Planos & Créditos.`,
+        `Créditos insuficientes: "${price.label}"${itens > 1 ? ` × ${itens}` : ''} custa ${total} créditos. Compre um pacote ou assine um plano em Planos & Créditos.`,
         402,
       );
     }
@@ -155,21 +161,27 @@ export class BillingService implements OnModuleInit {
     await this.transactions.save(
       this.transactions.create({
         userId,
-        amount: -price.credits,
+        amount: -total,
         balanceAfter: user?.credits ?? 0,
         kind: 'spend',
         action,
-        description: price.label,
+        description: itens > 1 ? `${price.label} × ${itens}` : price.label,
       }),
     );
   }
 
   /** Estorna uma ação que falhou (a IA não entregou → usuário não paga). */
-  async refund(userId: string, action: BillableAction, reason?: string) {
+  async refund(
+    userId: string,
+    action: BillableAction,
+    reason?: string,
+    quantidade = 1,
+  ) {
     const price = ACTION_PRICES[action];
+    const itens = Math.max(Math.trunc(quantidade), 1);
     await this.addCredits(
       userId,
-      price.credits,
+      price.credits * itens,
       'refund',
       action,
       reason ?? `Estorno: ${price.label} falhou`,
