@@ -4,7 +4,12 @@ import type { CreditTransaction } from './billing.service';
 export interface AdminOverview {
   contas: {
     total: number;
-    assinantes: number;
+    /** Assinaturas vivas no Stripe — dinheiro entrando de fato. */
+    pagantes: number;
+    /** Contas da equipe (COMP_ACCOUNT_EMAILS): fora da conversão. */
+    cortesia: number;
+    /** Plano liberado no banco — inclui cortesia e liberações do suporte. */
+    comPlanoLiberado: number;
     pendentes: number;
     novos30Dias: number;
     conversaoPct: number;
@@ -15,7 +20,12 @@ export interface AdminOverview {
     assinantes: number;
     precoBrl: number;
   }>;
-  receita: { mensalEstimadaBrl: number };
+  receita: {
+    totalBrl: number;
+    ultimos30DiasBrl: number;
+    cobrancas: number;
+    fonte: 'stripe' | 'indisponivel';
+  };
   creditos: {
     emCirculacao: number;
     gastosTotal: number;

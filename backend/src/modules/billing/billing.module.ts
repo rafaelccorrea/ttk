@@ -16,6 +16,8 @@ import { StripeWebhookController } from './stripe-webhook.controller';
   ],
   controllers: [BillingController, StripeWebhookController],
   providers: [BillingService, StripeService, PlanFeatureGuard],
-  exports: [BillingService, PlanFeatureGuard],
+  // StripeService sai daqui porque o painel administrativo apura a receita
+  // direto na fonte (o Stripe), em vez de estimá-la pelos planos do banco.
+  exports: [BillingService, PlanFeatureGuard, StripeService],
 })
 export class BillingModule {}

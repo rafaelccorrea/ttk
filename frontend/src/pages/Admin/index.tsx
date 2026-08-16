@@ -136,8 +136,9 @@ export function AdminPage() {
           <Grid container spacing={2} mb={3}>
             <Metric titulo="Contas" valor={String(overview.contas.total)} />
             <Metric
-              titulo="Assinantes"
-              valor={String(overview.contas.assinantes)}
+              titulo="Pagantes"
+              valor={String(overview.contas.pagantes)}
+              nota="assinatura ativa no Stripe"
               destaque
             />
             <Metric
@@ -147,17 +148,39 @@ export function AdminPage() {
             <Metric
               titulo="Conversão"
               valor={`${overview.contas.conversaoPct}%`}
-              nota="assinantes ÷ contas"
+              nota="pagantes ÷ contas externas"
             />
             <Metric
-              titulo="Receita mensal"
-              valor={brl(overview.receita.mensalEstimadaBrl)}
-              nota="estimada pelos planos"
+              titulo="Receita total"
+              valor={
+                overview.receita.fonte === 'stripe'
+                  ? brl(overview.receita.totalBrl)
+                  : '—'
+              }
+              nota={
+                overview.receita.fonte === 'stripe'
+                  ? `${overview.receita.cobrancas} cobrança(s) no Stripe`
+                  : 'Stripe indisponível'
+              }
               destaque
+            />
+            <Metric
+              titulo="Receita (30d)"
+              valor={
+                overview.receita.fonte === 'stripe'
+                  ? brl(overview.receita.ultimos30DiasBrl)
+                  : '—'
+              }
+              nota="cobrado, menos reembolsos"
             />
             <Metric
               titulo="Novos (30d)"
               valor={String(overview.contas.novos30Dias)}
+            />
+            <Metric
+              titulo="Acesso de cortesia"
+              valor={String(overview.contas.cortesia)}
+              nota="equipe — não conta como venda"
             />
             <Metric
               titulo="Créditos gastos (30d)"
@@ -171,7 +194,17 @@ export function AdminPage() {
             />
           </Grid>
 
-          <Stack direction="row" spacing={1} mb={3} flexWrap="wrap" useFlexGap>
+          <Stack
+            direction="row"
+            spacing={1}
+            mb={3}
+            flexWrap="wrap"
+            useFlexGap
+            alignItems="center"
+          >
+            <Typography fontSize={12.5} color="text.secondary" fontWeight={700}>
+              CONTAS COM PLANO LIBERADO
+            </Typography>
             {overview.porPlano.map((p) => (
               <Chip
                 key={p.id}
@@ -181,6 +214,11 @@ export function AdminPage() {
                 sx={{ fontWeight: 700 }}
               />
             ))}
+            {/* Deixa explícito que este bloco conta permissão, não venda: aqui
+                entram as contas de cortesia e as liberadas pelo suporte. */}
+            <Typography fontSize={11.5} color="text.secondary">
+              inclui cortesia e liberações manuais — venda é "Pagantes"
+            </Typography>
           </Stack>
         </>
       )}

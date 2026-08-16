@@ -7,12 +7,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
+  compAccountEmails,
   CREDIT_VALUE_BRL,
   findPlan,
   PLANS,
-  planPrice,
 } from '../billing/billing.config';
 import { BillingService } from '../billing/billing.service';
+import { StripeService } from '../billing/stripe.service';
 import { CreditTransaction } from '../billing/entities/credit-transaction.entity';
 import { AppUser } from '../users/entities/app-user.entity';
 import { isAdmin } from './admin.access';
@@ -43,15 +44,20 @@ export class AdminService {
     @InjectRepository(CreditTransaction)
     private readonly transactions: Repository<CreditTransaction>,
     private readonly billing: BillingService,
+    private readonly stripe: StripeService,
   ) {}
 
   /**
-   * Painel: o retrato do negócio numa consulta.
+   * Painel — só número real, nada projetado.
    *
-   * A receita é *estimada* a partir do plano atual de cada assinante, não do que
-   * o Stripe efetivamente cobrou — quem paga anual aparece aqui pelo valor
-   * mensal equivalente do plano. Serve para ver ordem de grandeza e tendência;
-   * para fechar caixa, a fonte é o Stripe.
+   * Receita aqui é dinheiro que o Stripe cobrou, líquido de reembolso. A versão
+   * anterior multiplicava "quantas contas estão no plano X" pelo preço do plano,
+   * e isso mentia: as contas da equipe são cortesia, o suporte pode liberar um
+   * acesso à mão, e uma assinatura cancelada segue com o plano até o período
+   * pago acabar. Nenhum desses casos é caixa, mas todos apareciam como receita.
+   *
+   * Pela mesma razão, "pagantes" não é "quem não está no free": é quem tem
+   * cliente no Stripe e assinatura viva lá.
    */
   async overview() {
     const porPlano = await this.users
@@ -62,13 +68,27 @@ export class AdminService {
       .groupBy('u.plan')
       .getRawMany<{ plan: string; total: number; creditos: number }>();
 
-    const assinantes = porPlano
-      .filter((p) => p.plan !== 'free')
-      .reduce((s, p) => s + p.total, 0);
-    const receitaMensal = porPlano.reduce((soma, linha) => {
-      const plano = findPlan(linha.plan);
-      return soma + (plano ? planPrice(plano, 'month') * linha.total : 0);
-    }, 0);
+    // Contas ligadas a um cliente do Stripe: as únicas que podem ter pago.
+    const comStripe = await this.users
+      .createQueryBuilder('u')
+      .select(['u.id', 'u.email', 'u.stripeCustomerId'])
+      .where('u.stripeCustomerId IS NOT NULL')
+      .getMany();
+    const customerIds = comStripe
+      .map((u) => u.stripeCustomerId)
+      .filter((v): v is string => Boolean(v));
+
+    // Contas internas ficam fora da conversão: elas nunca vão pagar, e deixá-las
+    // no denominador esconde a taxa real de quem chegou pela porta da frente.
+    const cortesia = await this.users
+      .createQueryBuilder('u')
+      .select('COUNT(*)::int', 'total')
+      .where('LOWER(u.email) IN (:...emails)', {
+        emails: compAccountEmails().length ? compAccountEmails() : ['-'],
+      })
+      .getRawOne<{ total: number }>();
+
+    const receita = await this.receitaReal(customerIds);
 
     const gasto = await this.transactions
       .createQueryBuilder('t')
@@ -90,16 +110,26 @@ export class AdminService {
       .getRawOne<{ total: number }>();
 
     const totalContas = porPlano.reduce((s, p) => s + p.total, 0);
+    const internas = cortesia?.total ?? 0;
+    // Quem pode converter: tira as contas da própria equipe do denominador.
+    const externas = Math.max(0, totalContas - internas);
 
     return {
       contas: {
         total: totalContas,
-        assinantes,
+        pagantes: receita.assinaturasAtivas,
+        cortesia: internas,
+        // "Com plano no banco" não é o mesmo que "pagando": inclui cortesia e
+        // liberações manuais. Fica separado para o número não ser confundido.
+        comPlanoLiberado: porPlano
+          .filter((p) => p.plan !== 'free')
+          .reduce((s, p) => s + p.total, 0),
         pendentes: porPlano.find((p) => p.plan === 'free')?.total ?? 0,
         novos30Dias: novos30?.total ?? 0,
-        // A régua que importa num paywall: quantos dos que criaram conta pagaram.
         conversaoPct:
-          totalContas > 0 ? Math.round((assinantes / totalContas) * 100) : 0,
+          externas > 0
+            ? Math.round((receita.assinaturasAtivas / externas) * 100)
+            : 0,
       },
       porPlano: PLANS.map((p) => ({
         id: p.id,
@@ -107,7 +137,13 @@ export class AdminService {
         assinantes: porPlano.find((x) => x.plan === p.id)?.total ?? 0,
         precoBrl: p.priceBrl,
       })),
-      receita: { mensalEstimadaBrl: Number(receitaMensal.toFixed(2)) },
+      receita: {
+        totalBrl: receita.totalBrl,
+        ultimos30DiasBrl: receita.ultimos30DiasBrl,
+        cobrancas: receita.cobrancas,
+        /** 'stripe' = número real; 'indisponivel' = não deu para consultar. */
+        fonte: receita.fonte,
+      },
       creditos: {
         emCirculacao: porPlano.reduce((s, p) => s + p.creditos, 0),
         gastosTotal: gasto?.total ?? 0,
@@ -118,6 +154,47 @@ export class AdminService {
         ),
       },
     };
+  }
+
+  /**
+   * Receita apurada no Stripe. Sem cliente lá, o resultado é zero — e zero é a
+   * resposta certa, não um número "estimado" para a tela não parecer vazia.
+   *
+   * Se a consulta ao Stripe falhar (chave ausente, fora do ar), devolve
+   * `fonte: 'indisponivel'` em vez de um valor: o painel deve dizer que não
+   * sabe, nunca chutar dinheiro.
+   */
+  private async receitaReal(customerIds: string[]) {
+    const vazio = {
+      totalBrl: 0,
+      ultimos30DiasBrl: 0,
+      cobrancas: 0,
+      assinaturasAtivas: 0,
+      fonte: 'stripe' as 'stripe' | 'indisponivel',
+    };
+    if (!customerIds.length) return vazio;
+    if (!this.stripe.enabled) return { ...vazio, fonte: 'indisponivel' as const };
+
+    try {
+      const desde30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const [total, ultimos30, ativas] = await Promise.all([
+        this.stripe.receitaPorClientes(customerIds),
+        this.stripe.receitaPorClientes(customerIds, desde30),
+        this.stripe.assinaturasAtivas(customerIds),
+      ]);
+      return {
+        totalBrl: total.totalBrl,
+        ultimos30DiasBrl: ultimos30.totalBrl,
+        cobrancas: total.cobrancas,
+        assinaturasAtivas: ativas,
+        fonte: 'stripe' as const,
+      };
+    } catch (err) {
+      this.logger.error(
+        `Não consegui apurar a receita no Stripe: ${(err as Error).message}`,
+      );
+      return { ...vazio, fonte: 'indisponivel' as const };
+    }
   }
 
   /** Lista de contas, com busca por e-mail/nome e filtro por plano. */

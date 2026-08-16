@@ -333,6 +333,66 @@ export class StripeService implements OnModuleInit {
   }
 
   /**
+   * Receita de verdade: soma o que o Stripe efetivamente cobrou dos clientes
+   * informados, já descontando reembolsos.
+   *
+   * Não se calcula receita a partir do plano gravado no banco — plano é
+   * permissão, não pagamento. Conta de cortesia, ajuste manual de suporte e
+   * assinatura cancelada que ainda não expirou apareceriam como dinheiro que
+   * nunca entrou.
+   *
+   * A busca é por cliente, e não pelas cobranças da conta inteira, porque este
+   * Stripe é compartilhado com outros produtos: somar tudo traria receita
+   * alheia para dentro do painel do PikPok.
+   */
+  async receitaPorClientes(
+    customerIds: string[],
+    desde?: Date,
+  ): Promise<{ totalBrl: number; cobrancas: number }> {
+    const stripe = this.require();
+    let centavos = 0;
+    let cobrancas = 0;
+    for (const customer of customerIds) {
+      let startingAfter: string | undefined;
+      // Pagina até acabar; o teto evita laço infinito se a API se comportar
+      // de forma inesperada.
+      for (let pagina = 0; pagina < 10; pagina++) {
+        const lote = await stripe.charges.list({
+          customer,
+          limit: 100,
+          ...(startingAfter ? { starting_after: startingAfter } : {}),
+          ...(desde
+            ? { created: { gte: Math.floor(desde.getTime() / 1000) } }
+            : {}),
+        });
+        for (const c of lote.data) {
+          if (c.status !== 'succeeded' || !c.paid) continue;
+          centavos += c.amount - (c.amount_refunded ?? 0);
+          cobrancas += 1;
+        }
+        if (!lote.has_more || lote.data.length === 0) break;
+        startingAfter = lote.data[lote.data.length - 1].id;
+      }
+    }
+    return { totalBrl: Number((centavos / 100).toFixed(2)), cobrancas };
+  }
+
+  /** Assinaturas que o Stripe considera vivas agora (cobrando de fato). */
+  async assinaturasAtivas(customerIds: string[]): Promise<number> {
+    const stripe = this.require();
+    let ativas = 0;
+    for (const customer of customerIds) {
+      const subs = await stripe.subscriptions.list({
+        customer,
+        status: 'active',
+        limit: 10,
+      });
+      ativas += subs.data.length;
+    }
+    return ativas;
+  }
+
+  /**
    * Grava o customer do Stripe na conta assim que o primeiro pagamento fecha.
    * É o que liga os dois lados: sem isso não há Billing Portal para o cliente,
    * nem como identificar o dono de um webhook de cancelamento.
