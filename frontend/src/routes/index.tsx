@@ -1,6 +1,7 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PlanGate } from '@/components/ui/PlanGate';
+import { RequireSubscription } from '@/components/ui/RequireSubscription';
 import { AcademyPage } from '@/pages/Academy';
 import { AnalyzePage } from '@/pages/Analyze';
 import { useAuth } from '@/contexts/AuthContext';
@@ -23,6 +24,7 @@ import { ProductDetailPage } from '@/pages/ProductDetail';
 import { ProductsPage } from '@/pages/Products';
 import { PromptsPage } from '@/pages/Prompts';
 import { StudioPage } from '@/pages/Studio';
+import { SubscribePage } from '@/pages/Subscribe';
 import { TrendsPage } from '@/pages/Trends';
 import { VideosPage } from '@/pages/Videos';
 
@@ -42,32 +44,38 @@ export function AppRoutes() {
       <Route path="/esqueci-a-senha" element={<ForgotPasswordPage />} />
       <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
       <Route element={<ProtectedRoutes />}>
+        {/* Fora do AppLayout de propósito: quem não tem assinatura não vê o
+            app por trás, só a tela de pagamento. */}
+        <Route path="/assinatura" element={<SubscribePage />} />
         <Route element={<AppLayout />}>
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/produtos" element={<ProductsPage />} />
-          <Route path="/produtos/:id" element={<ProductDetailPage />} />
-          <Route path="/videos" element={<VideosPage />} />
-          <Route path="/tendencias" element={<TrendsPage />} />
-          <Route path="/criadores" element={<CreatorsPage />} />
-          <Route path="/favoritos" element={<FavoritesPage />} />
-          <Route path="/perfil" element={<ProfilePage />} />
-          <Route path="/estudio" element={<StudioPage />} />
-          <Route path="/campanhas" element={<CampaignsPage />} />
-          <Route path="/multiplicador" element={<MultiplierPage />} />
-          <Route path="/academy" element={<AcademyPage />} />
-          <Route path="/indique" element={<ReferralPage />} />
-          <Route path="/prompts" element={<PromptsPage />} />
-          <Route path="/geracoes" element={<GenerationsPage />} />
-          <Route
-            path="/coleta"
-            element={
-              <PlanGate feature="ingestion">
-                <IngestionPage />
-              </PlanGate>
-            }
-          />
-          <Route path="/analisar" element={<AnalyzePage />} />
-          <Route path="/planos" element={<PlansPage />} />
+          {/* Estar logado não basta: conta sem assinatura vai para /planos. */}
+          <Route element={<RequireSubscription />}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/produtos" element={<ProductsPage />} />
+            <Route path="/produtos/:id" element={<ProductDetailPage />} />
+            <Route path="/videos" element={<VideosPage />} />
+            <Route path="/tendencias" element={<TrendsPage />} />
+            <Route path="/criadores" element={<CreatorsPage />} />
+            <Route path="/favoritos" element={<FavoritesPage />} />
+            <Route path="/perfil" element={<ProfilePage />} />
+            <Route path="/estudio" element={<StudioPage />} />
+            <Route path="/campanhas" element={<CampaignsPage />} />
+            <Route path="/multiplicador" element={<MultiplierPage />} />
+            <Route path="/academy" element={<AcademyPage />} />
+            <Route path="/indique" element={<ReferralPage />} />
+            <Route path="/prompts" element={<PromptsPage />} />
+            <Route path="/geracoes" element={<GenerationsPage />} />
+            <Route
+              path="/coleta"
+              element={
+                <PlanGate feature="ingestion">
+                  <IngestionPage />
+                </PlanGate>
+              }
+            />
+            <Route path="/analisar" element={<AnalyzePage />} />
+            <Route path="/planos" element={<PlansPage />} />
+          </Route>
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -11,12 +11,17 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
+import {
+  PlanFeatureGuard,
+  RequiresPlanFeature,
+} from '../billing/plan-feature.guard';
 import { QueryProductsDto } from './dto/query-products.dto';
 import { ProductsService } from './products.service';
 
 @ApiTags('products')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@RequiresPlanFeature('discovery')
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}

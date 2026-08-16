@@ -60,6 +60,8 @@ export const billingService = {
   // Stripe: cria a sessão e devolve a URL de pagamento.
   checkout: (item: { packId?: string; planId?: string; cycle?: BillingCycle }) =>
     api.post<{ url: string }>('/billing/checkout', item).then((r) => r.data),
+  // Billing Portal do Stripe: cancelar, trocar cartão, baixar faturas.
+  portal: () => api.post<{ url: string }>('/billing/portal').then((r) => r.data),
   confirmCheckout: (sessionId: string) =>
     api.post<Wallet>('/billing/checkout/confirm', { sessionId }).then((r) => r.data),
 };

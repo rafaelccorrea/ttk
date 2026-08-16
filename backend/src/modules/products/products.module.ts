@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BillingModule } from '../billing/billing.module';
 import { UsersModule } from '../users/users.module';
 import { ProductFavorite } from './entities/product-favorite.entity';
 import { ProductMetricDaily } from './entities/product-metric-daily.entity';
@@ -11,6 +12,8 @@ import { ProductsService } from './products.service';
   imports: [
     TypeOrmModule.forFeature([Product, ProductMetricDaily, ProductFavorite]),
     UsersModule,
+    // O PlanFeatureGuard do controller depende do BillingService.
+    BillingModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsService],

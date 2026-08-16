@@ -17,6 +17,7 @@ import {
   BillingCycle,
   CREDIT_PACKS,
   FEATURE_MIN_PLAN,
+  isCompAccount,
   PLAN_RANK,
   planAllows,
   planCredits,
@@ -95,8 +96,13 @@ export class BillingService implements OnModuleInit {
     return CREDIT_PACKS;
   }
 
-  /** Bônus de cadastro — uma vez por usuário. */
+  /**
+   * Bônus de cadastro — uma vez por usuário. Com o paywall na entrada o valor
+   * é 0, e aí a função não faz nada: sem esta guarda, todo `getWallet` de conta
+   * não paga gravaria uma transação de 0 crédito no histórico.
+   */
   private async ensureSignupBonus(userId: string) {
+    if (SIGNUP_BONUS_CREDITS <= 0) return;
     const existing = await this.transactions.findOneBy({
       userId,
       kind: 'signup_bonus',
@@ -218,9 +224,6 @@ export class BillingService implements OnModuleInit {
   async subscribe(userId: string, planId: string, cycle: BillingCycle = 'month') {
     const plan = PLANS.find((p) => p.id === planId);
     if (!plan) throw new NotFoundException(`Plano ${planId} não existe`);
-    if (plan.id === 'free') {
-      throw new BadRequestException('O plano Free é o padrão.');
-    }
     if (cycle === 'year' && !plan.annual) {
       throw new BadRequestException(`O plano ${plan.name} não tem opção anual.`);
     }
@@ -264,6 +267,50 @@ export class BillingService implements OnModuleInit {
 
   async setPlan(userId: string, planId: string) {
     await this.users.update({ id: userId }, { plan: planId });
+  }
+
+  /** Guarda o customer do Stripe no primeiro checkout (idempotente). */
+  async linkStripeCustomer(userId: string, customerId: string) {
+    await this.users.update(
+      { id: userId },
+      { stripeCustomerId: customerId },
+    );
+  }
+
+  async findByStripeCustomer(customerId: string): Promise<AppUser | null> {
+    return this.users.findOneBy({ stripeCustomerId: customerId });
+  }
+
+  findUser(userId: string): Promise<AppUser | null> {
+    return this.users.findOneBy({ id: userId });
+  }
+
+  /**
+   * Fim da assinatura: a conta volta a 'free' (rank 0 = paywall).
+   *
+   * Os créditos que sobraram NÃO são apagados: foram pagos. Eles ficam parados
+   * no saldo e voltam a ser úteis se a pessoa reassinar — mas não dão acesso a
+   * nada sozinhos, porque toda ação cobrada também exige plano mínimo
+   * (ACTION_MIN_PLAN em `charge`). Assim ninguém é punido por cancelar e
+   * ninguém consome IA sem assinatura.
+   *
+   * Contas de cortesia são imunes: o downgrade não pode derrubar a equipe se um
+   * cartão de teste falhar.
+   */
+  async endSubscription(userId: string, reason: string) {
+    const user = await this.users.findOneBy({ id: userId });
+    if (!user) return;
+    if (isCompAccount(user.email)) {
+      this.logger.log(
+        `Downgrade ignorado para conta de cortesia ${user.email} (${reason}).`,
+      );
+      return;
+    }
+    if (user.plan === 'free') return;
+    await this.users.update({ id: userId }, { plan: 'free' });
+    this.logger.log(
+      `Assinatura encerrada: ${user.email} saiu de "${user.plan}" para "free" (${reason}).`,
+    );
   }
 
   private async addCredits(

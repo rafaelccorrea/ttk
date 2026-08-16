@@ -6,6 +6,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthUser } from '../auth/auth-user';
+import {
+  COMP_ACCOUNT_PLAN,
+  isCompAccount,
+} from '../billing/billing.config';
 import { MediaMirrorService } from '../media/media-mirror.service';
 import { AppUser } from './entities/app-user.entity';
 
@@ -29,11 +33,28 @@ export class UsersService {
     const existing = await this.repository.findOne({
       where: [{ id: user.id }, { email: user.email }],
     });
-    if (existing) return;
+    const comp = isCompAccount(user.email);
+    if (existing) {
+      // Conta de cortesia entra aqui a cada request, mas só escreve quando o
+      // plano realmente divergiu — o caminho normal continua sendo só o SELECT
+      // acima. É isto que reergue o acesso da equipe se um webhook de
+      // cancelamento rebaixar a conta por engano.
+      if (comp && existing.plan !== COMP_ACCOUNT_PLAN) {
+        await this.repository.update(
+          { id: existing.id },
+          { plan: COMP_ACCOUNT_PLAN },
+        );
+      }
+      return;
+    }
     await this.repository
       .createQueryBuilder()
       .insert()
-      .values({ id: user.id, email: user.email })
+      .values({
+        id: user.id,
+        email: user.email,
+        ...(comp ? { plan: COMP_ACCOUNT_PLAN } : {}),
+      })
       .orIgnore()
       .execute();
   }

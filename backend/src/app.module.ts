@@ -14,6 +14,7 @@ import { CreatorsModule } from './modules/creators/creators.module';
 import { IngestionModule } from './modules/ingestion/ingestion.module';
 import { MediaModule } from './modules/media/media.module';
 import { ProductsModule } from './modules/products/products.module';
+import { ShowcaseModule } from './modules/showcase/showcase.module';
 import { StudioModule } from './modules/studio/studio.module';
 import { SupportModule } from './modules/support/support.module';
 import { TrendsModule } from './modules/trends/trends.module';
@@ -46,6 +47,7 @@ import { VideogenModule } from './modules/videogen/videogen.module';
     MediaModule,
     UsersModule,
     ProductsModule,
+    ShowcaseModule,
     StudioModule,
     SupportModule,
     AnalyticsModule,

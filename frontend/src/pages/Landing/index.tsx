@@ -2,6 +2,7 @@ import { Box } from '@mui/material';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Hero } from './Hero';
+import { LiveSample } from './LiveSample';
 import { Navbar } from './Navbar';
 import {
   Comparison,
@@ -43,6 +44,8 @@ export function LandingPage() {
       <NichesMarquee />
       <Features />
       <Showcase />
+      {/* Depois do tour em print: dado real, ao vivo, sem exigir cadastro. */}
+      <LiveSample />
       <HowItWorks />
       <Comparison />
       <Testimonials />

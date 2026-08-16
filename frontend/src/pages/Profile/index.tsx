@@ -1,3 +1,4 @@
+import CreditCardIcon from '@mui/icons-material/CreditCard';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PhotoCameraRoundedIcon from '@mui/icons-material/PhotoCameraRounded';
 import {
@@ -15,6 +16,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { billingService } from '@/services/billing.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveApiUrl } from '@/services/api';
 import { usersService, UserProfile } from '@/services/users.service';
@@ -43,10 +45,31 @@ export function ProfilePage() {
   const [displayName, setDisplayName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [feedback, setFeedback] = useState<{
     severity: 'success' | 'error';
     message: string;
   } | null>(null);
+
+  /**
+   * Manda o usuário para o Billing Portal do Stripe (cancelar, trocar cartão,
+   * ver faturas). Conta sem assinatura ainda não tem customer lá, e o backend
+   * responde 400 — daí a mensagem apontar para a página de planos.
+   */
+  const handleBilling = async () => {
+    setIsOpeningPortal(true);
+    try {
+      const { url } = await billingService.portal();
+      window.location.href = url;
+    } catch {
+      setFeedback({
+        severity: 'error',
+        message:
+          'Não foi possível abrir a área de cobrança. Se você ainda não assinou, comece em Planos & Créditos.',
+      });
+      setIsOpeningPortal(false);
+    }
+  };
 
   useEffect(() => {
     usersService
@@ -214,14 +237,24 @@ export function ProfilePage() {
 
             <Divider sx={{ my: 3, borderColor: 'rgba(22,24,35,0.08)' }} />
 
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<LogoutIcon />}
-              onClick={() => void signOut()}
-            >
-              Sair da conta
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+              <Button
+                variant="outlined"
+                startIcon={<CreditCardIcon />}
+                onClick={handleBilling}
+                disabled={isOpeningPortal}
+              >
+                {isOpeningPortal ? 'Abrindo…' : 'Gerenciar assinatura'}
+              </Button>
+              <Button
+                variant="outlined"
+                color="error"
+                startIcon={<LogoutIcon />}
+                onClick={() => void signOut()}
+              >
+                Sair da conta
+              </Button>
+            </Box>
           </CardContent>
         </Card>
       )}

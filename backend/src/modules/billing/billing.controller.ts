@@ -68,6 +68,14 @@ export class BillingController {
     return this.stripeService.confirmSession(user.id, dto.sessionId);
   }
 
+  @Post('portal')
+  @ApiOperation({
+    summary: 'Abre o Billing Portal do Stripe (cancelar, trocar cartão, faturas)',
+  })
+  portal(@CurrentUser() user: AuthUser) {
+    return this.stripeService.createPortalSession(user.id);
+  }
+
   @Get('wallet')
   @ApiOperation({ summary: 'Saldo, preços das ações e extrato do usuário' })
   wallet(@CurrentUser() user: AuthUser) {

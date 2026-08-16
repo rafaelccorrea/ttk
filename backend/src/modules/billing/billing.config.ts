@@ -83,8 +83,11 @@ export function planCredits(plan: Plan, cycle: BillingCycle = 'month'): number {
  * Pior custo/crédito da tabela ≈ R$ 0,06 (vídeo: 3,60/60), ou seja o piso
  * com a margem mínima é R$ 0,084 por crédito.
  *
- * Três degraus, de propósito: Free para provar o valor, Pro para quem produz
- * e Business para quem escala. Preço por crédito:
+ * Dois degraus vendáveis: Pro para quem produz e Business para quem escala.
+ * Não existe plano gratuito — o dado de mercado que o PikPok entrega é comprado
+ * de fornecedor pago (EchoTik), então conta grátis queima custo por visitante.
+ * A prova de valor acontece ANTES do cadastro, na demo pública da landing.
+ * Preço por crédito:
  *   Pro (oferta) R$ 39,90 / 450 cr   = R$ 0,0887/cr → 1,48× o pior custo
  *   Pro anual    R$ 199,90 / 2.300 cr = R$ 0,0869/cr → 1,45× o pior custo
  *   Business     R$ 249,90 / 2.800 cr = R$ 0,0892/cr → 1,49× o pior custo
@@ -92,17 +95,6 @@ export function planCredits(plan: Plan, cycle: BillingCycle = 'month'): number {
  * por isso que a cota de créditos do Pro acompanha o preço promocional.
  */
 export const PLANS: Plan[] = [
-  {
-    id: 'free',
-    name: 'Free',
-    priceBrl: 0,
-    monthlyCredits: 0,
-    perks: [
-      '30 créditos de boas-vindas (uma vez)',
-      'Descoberta completa (produtos, vídeos, criadores)',
-      'Roteiros com gerador local ilimitados',
-    ],
-  },
   {
     id: 'pro',
     name: 'Pro',
@@ -156,19 +148,53 @@ export function findPlan(id: string): Plan | undefined {
   return [...PLANS, ...LEGACY_PLANS].find((p) => p.id === id);
 }
 
-/** Créditos de boas-vindas do cadastro (custo máximo p/ nós: 30 × R$0,06 = R$1,80/usuário). */
-export const SIGNUP_BONUS_CREDITS = 30;
+/**
+ * Créditos de boas-vindas do cadastro. Zerado desde o paywall na entrada: quem
+ * cria a conta ainda não pagou, e crédito de IA é dinheiro nosso saindo. Ficou
+ * como constante (em vez de sumir) porque é a alavanca de uma campanha futura —
+ * basta subir o número para religar o bônus, sem tocar em mais nada.
+ */
+export const SIGNUP_BONUS_CREDITS = 0;
 
 /**
- * Hierarquia dos planos (maior = mais acesso). `starter` continua aqui como
- * degrau legado: quem assinou antes mantém exatamente o acesso que pagou.
+ * Hierarquia dos planos (maior = mais acesso). `free` não é um plano vendável:
+ * é o estado "conta criada, pagamento pendente" — rank 0, nenhum recurso.
+ * `starter` continua aqui como degrau legado: quem assinou antes mantém
+ * exatamente o acesso que pagou.
  */
 export const PLAN_RANK: Record<string, number> = {
   free: 0,
+  // Starter empata com Pro de propósito: era mais caro por crédito (R$ 49,90
+  // por 500 cr) e, quando `discovery` subiu para Pro, deixá-lo num degrau
+  // abaixo teria tirado de assinantes pagantes o acesso que eles compraram.
   starter: 1,
-  pro: 2,
-  business: 3,
+  pro: 1,
+  business: 2,
 };
+
+/**
+ * Contas de cortesia (`COMP_ACCOUNT_EMAILS=a@x.com,b@y.com`): sempre no plano
+ * mais alto, sem passar pelo checkout. É como as contas da própria equipe
+ * sobrevivem ao paywall — sem isso, no dia da virada nós mesmos perdemos o
+ * acesso à plataforma, já que o time entra pelo mesmo login dos clientes.
+ *
+ * Vale só para o PLANO (acesso a recursos), nunca para créditos: quem está aqui
+ * continua gastando crédito de IA normalmente, para que o custo do uso interno
+ * apareça no relatório em vez de virar consumo invisível.
+ */
+export const COMP_ACCOUNT_PLAN = 'business';
+
+export function compAccountEmails(): string[] {
+  return (process.env.COMP_ACCOUNT_EMAILS ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isCompAccount(email: string | undefined | null): boolean {
+  if (!email) return false;
+  return compAccountEmails().includes(email.trim().toLowerCase());
+}
 
 export type PlanFeature =
   | 'discovery' // produtos, vídeos, criadores, tendências, favoritos
@@ -183,19 +209,20 @@ export type PlanFeature =
 
 /**
  * Plano mínimo para cada recurso — a divisão oficial do produto.
- * IAs básicas ficam abertas ao Free para gastar os créditos de boas-vindas
- * (degustação); a continuidade exige assinar, porque pacote avulso é só
- * para assinantes (regra em purchasePack/checkout).
+ * Tudo começa no Pro: `discovery` é o dado de mercado que compramos do EchoTik
+ * (custo por consulta) e as features de IA custam por chamada, então nenhuma
+ * delas pode ficar aberta a quem não pagou. `starter` é legado e fica abaixo do
+ * Pro de propósito — quem assinou antes mantém o que pagou, sem herdar o resto.
  */
 export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
-  discovery: 'free',
-  studio_templates: 'free',
-  ai_scripts: 'free',
-  ai_analyze: 'free',
-  ai_transcribe: 'free',
-  ai_images: 'free',
+  discovery: 'pro',
+  studio_templates: 'pro',
+  ai_scripts: 'pro',
+  ai_analyze: 'pro',
+  ai_transcribe: 'pro',
+  ai_images: 'pro',
   ai_videos: 'pro',
-  multiplier: 'free',
+  multiplier: 'pro',
   ingestion: 'business',
 };
 

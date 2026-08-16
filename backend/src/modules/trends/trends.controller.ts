@@ -9,6 +9,10 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
+import {
+  PlanFeatureGuard,
+  RequiresPlanFeature,
+} from '../billing/plan-feature.guard';
 import { CreateTrendDto } from './dto/create-trend.dto';
 import { TrendsService } from './trends.service';
 
@@ -16,7 +20,8 @@ import { TrendsService } from './trends.service';
 // os GETs entregavam dados do produto sem login.
 @ApiTags('trends')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@RequiresPlanFeature('discovery')
 @Controller('trends')
 export class TrendsController {
   constructor(private readonly trendsService: TrendsService) {}

@@ -151,9 +151,15 @@ export class StripeService implements OnModuleInit {
     const stripe = this.require();
 
     let session: Stripe.Checkout.Session;
+    // Para onde o Stripe devolve o usuário depende de por que ele foi pagar.
+    // Assinatura sai da tela `/assinatura` (fora do app, o paywall) e volta
+    // para lá, que confirma a sessão e então entra no app. Pacote de créditos
+    // é comprado por quem já assina, dentro de `/planos` — mandá-lo para o
+    // paywall seria expulsá-lo do produto que ele paga.
+    const returnPath = item.planId ? '/assinatura' : '/planos';
     const common = {
-      success_url: `${this.appUrl}/planos?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${this.appUrl}/planos?canceled=1`,
+      success_url: `${this.appUrl}${returnPath}?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${this.appUrl}${returnPath}?canceled=1`,
       customer_email: email,
     };
 
@@ -164,6 +170,10 @@ export class StripeService implements OnModuleInit {
       session = await stripe.checkout.sessions.create({
         ...common,
         mode: 'payment',
+        // Pacote é cobrança única, então dá para aceitar PIX — que no Brasil
+        // converte melhor que cartão em compra à vista. Assinatura não entra
+        // aqui: PIX não é recorrente, e o plano precisa renovar sozinho.
+        payment_method_types: ['card', 'pix'],
         metadata: { userId, kind: 'pack', itemId: pack.id },
         line_items: [
           this.packPriceIdFor(pack.id)
@@ -248,6 +258,7 @@ export class StripeService implements OnModuleInit {
     if (session.payment_status !== 'paid') {
       throw new BadRequestException('Pagamento ainda não confirmado.');
     }
+    await this.rememberCustomer(session);
     await this.grantForSession(
       session.metadata.userId,
       session.metadata.kind,
@@ -273,6 +284,7 @@ export class StripeService implements OnModuleInit {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       if (session.payment_status === 'paid' && session.metadata?.userId) {
+        await this.rememberCustomer(session);
         await this.grantForSession(
           session.metadata.userId,
           session.metadata.kind,
@@ -281,6 +293,23 @@ export class StripeService implements OnModuleInit {
           session.metadata.cycle === 'year' ? 'year' : 'month',
         );
       }
+    } else if (event.type === 'customer.subscription.deleted') {
+      // Fim real do acesso: o Stripe só dispara este evento quando o período
+      // pago termina (cancelamento manual, dunning esgotado ou assinatura
+      // encerrada no Dashboard). Sem tratá-lo, quem cancelava continuava no
+      // plano pago para sempre — o vazamento de receita que o paywall criaria.
+      const sub = event.data.object as Stripe.Subscription;
+      await this.downgradeFromSubscription(sub, `subscription.deleted`);
+    } else if (event.type === 'invoice.payment_failed') {
+      // Aqui NÃO rebaixamos: o Stripe ainda vai reter o cartão algumas vezes
+      // (dunning) e, se desistir, manda o `subscription.deleted` tratado acima.
+      // Cortar no primeiro erro derrubaria cliente bom por falha transitória.
+      const invoice = event.data.object as Stripe.Invoice;
+      this.logger.warn(
+        `Pagamento recusado para customer ${String(invoice.customer)} ` +
+          `(fatura ${invoice.id}). Aguardando o dunning do Stripe — o acesso ` +
+          `só cai se a assinatura for cancelada.`,
+      );
     } else if (event.type === 'invoice.paid') {
       // Renovação da assinatura (mensal ou anual) → novo lote de créditos.
       const invoice = event.data.object as Stripe.Invoice;
@@ -300,6 +329,74 @@ export class StripeService implements OnModuleInit {
       }
     }
     return { received: true };
+  }
+
+  /**
+   * Grava o customer do Stripe na conta assim que o primeiro pagamento fecha.
+   * É o que liga os dois lados: sem isso não há Billing Portal para o cliente,
+   * nem como identificar o dono de um webhook de cancelamento.
+   */
+  private async rememberCustomer(
+    session: Stripe.Checkout.Session,
+  ): Promise<void> {
+    const userId = session.metadata?.userId;
+    const customerId =
+      typeof session.customer === 'string'
+        ? session.customer
+        : session.customer?.id;
+    if (!userId || !customerId) return;
+    await this.billing.linkStripeCustomer(userId, customerId);
+  }
+
+  /**
+   * Abre o Billing Portal do Stripe: é lá que o cliente cancela, troca o cartão
+   * e baixa as faturas. Sem isso, todo cancelamento vira ticket de suporte — e
+   * cliente que não consegue cancelar abre chargeback, que custa muito mais.
+   */
+  async createPortalSession(userId: string): Promise<{ url: string }> {
+    const stripe = this.require();
+    const user = await this.billing.findUser(userId);
+    if (!user?.stripeCustomerId) {
+      throw new BadRequestException(
+        'Esta conta ainda não tem assinatura no Stripe.',
+      );
+    }
+    const session = await stripe.billingPortal.sessions.create({
+      customer: user.stripeCustomerId,
+      return_url: `${this.appUrl}/perfil`,
+    });
+    return { url: session.url };
+  }
+
+  /**
+   * Descobre de quem é a assinatura e rebaixa a conta.
+   *
+   * O metadata (gravado em `subscription_data` no checkout) é a via principal;
+   * o `stripeCustomerId` é a rede de segurança para assinaturas criadas fora do
+   * nosso checkout — pelo Dashboard, por exemplo — que não têm metadata algum.
+   */
+  private async downgradeFromSubscription(
+    sub: Stripe.Subscription,
+    reason: string,
+  ): Promise<void> {
+    const userId = sub.metadata?.userId;
+    if (userId) {
+      await this.billing.endSubscription(userId, reason);
+      return;
+    }
+    const customerId =
+      typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
+    const user = customerId
+      ? await this.billing.findByStripeCustomer(customerId)
+      : null;
+    if (!user) {
+      this.logger.error(
+        `Assinatura ${sub.id} encerrada, mas não achei o usuário ` +
+          `(customer ${String(customerId)}). Rebaixe a conta à mão.`,
+      );
+      return;
+    }
+    await this.billing.endSubscription(user.id, reason);
   }
 
   /** Credita o item pago — idempotente pelo reference (session/invoice id). */

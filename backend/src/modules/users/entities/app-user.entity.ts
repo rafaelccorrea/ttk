@@ -26,8 +26,22 @@ export class AppUser {
   @Column({ type: 'text', nullable: true })
   avatarUrl: string | null;
 
+  // 'free' aqui não é um plano vendável: é "conta criada, pagamento pendente".
   @Column({ default: 'free' })
   plan: string;
+
+  // Cliente correspondente no Stripe. Guardado no primeiro checkout para que a
+  // assinatura tenha dono dos dois lados: sem isso não dá para abrir o Billing
+  // Portal (cancelar, trocar cartão) nem para saber de quem é o webhook de
+  // cancelamento, que chega com o customer e não com o nosso userId.
+  //
+  // Quem controla o fim do acesso é o próprio Stripe: cancelar não corta na
+  // hora (o cliente pagou o mês), e o evento `customer.subscription.deleted` só
+  // chega quando o período pago de fato termina. Por isso não guardamos data de
+  // expiração deste lado — seria estado duplicado que ninguém mantém.
+  @Column({ type: 'text', nullable: true })
+  @Index('IDX_app_users_stripeCustomerId')
+  stripeCustomerId: string | null;
 
   // Saldo de créditos de IA. Todo débito/crédito é registrado em credit_transactions.
   @Column('int', { default: 0 })
