@@ -126,6 +126,31 @@ export class VideoAssemblyService {
   }
 
   /**
+   * Duração de um arquivo que ainda está em memória, em segundos.
+   *
+   * O ffmpeg só lê de disco, então o buffer passa por um tmp descartável. É o
+   * que permite cobrar a transcrição pelo tempo real do áudio em vez de chutar
+   * pelo tamanho do arquivo. Devolve `null` quando não há ffmpeg no ambiente ou
+   * quando o arquivo não é mídia legível — quem chama decide o que fazer.
+   */
+  async duracaoDoBuffer(buffer: Buffer, nome = 'entrada.mp4'): Promise<number | null> {
+    if (!ffmpegPath) return null;
+    const pasta = await mkdtemp(join(tmpdir(), 'pikpok-duracao-'));
+    // O nome vem de upload: só a extensão interessa, e o resto viraria caminho.
+    const extensao = /\.([A-Za-z0-9]{1,5})$/.exec(nome)?.[1] ?? 'mp4';
+    const arquivo = join(pasta, `entrada.${extensao.toLowerCase()}`);
+    try {
+      await writeFile(arquivo, buffer);
+      return await this.duracao(arquivo);
+    } catch (error) {
+      this.logger.warn(`Não foi possível ler a duração do arquivo: ${error}`);
+      return null;
+    } finally {
+      await this.limpar(pasta);
+    }
+  }
+
+  /**
    * Recebe os MP4 das cenas na ordem do roteiro e devolve o vídeo final.
    * Trabalha em memória/tmp e limpa tudo ao terminar, inclusive em erro.
    */

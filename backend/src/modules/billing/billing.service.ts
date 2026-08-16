@@ -16,6 +16,7 @@ import {
   BillableAction,
   BillingCycle,
   CREDIT_PACKS,
+  devCheckoutEnabled,
   FEATURE_MIN_PLAN,
   isCompAccount,
   PLAN_RANK,
@@ -196,12 +197,13 @@ export class BillingService implements OnModuleInit {
     userId: string,
     action: BillableAction,
     fn: () => Promise<T>,
+    quantidade = 1,
   ): Promise<T> {
-    await this.charge(userId, action);
+    await this.charge(userId, action, quantidade);
     try {
       return await fn();
     } catch (error) {
-      await this.refund(userId, action).catch((e) =>
+      await this.refund(userId, action, undefined, quantidade).catch((e) =>
         this.logger.error(`Falha no estorno de ${action}: ${e}`),
       );
       throw error;
@@ -217,7 +219,7 @@ export class BillingService implements OnModuleInit {
     const pack = CREDIT_PACKS.find((p) => p.id === packId);
     if (!pack) throw new NotFoundException(`Pacote ${packId} não existe`);
     await this.assertSubscriber(userId);
-    if (process.env.ALLOW_DEV_CHECKOUT !== 'true') {
+    if (!devCheckoutEnabled()) {
       throw new BadRequestException(
         'Pagamentos ainda não estão habilitados. Fale com o suporte.',
       );
@@ -239,7 +241,7 @@ export class BillingService implements OnModuleInit {
     if (cycle === 'year' && !plan.annual) {
       throw new BadRequestException(`O plano ${plan.name} não tem opção anual.`);
     }
-    if (process.env.ALLOW_DEV_CHECKOUT !== 'true') {
+    if (!devCheckoutEnabled()) {
       throw new BadRequestException(
         'Pagamentos ainda não estão habilitados. Fale com o suporte.',
       );

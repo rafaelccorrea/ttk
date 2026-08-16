@@ -167,9 +167,17 @@ export class MediaController {
     res.end(object.body.subarray(inicio, fim + 1));
   }
 
+  /*
+   * O teto de requisições aqui é conta de banda, não de abuso genérico.
+   *
+   * A rota é anônima e cada resposta pode chegar a MAX_BYTES: a 120/min, um
+   * único IP conseguia arrastar 2,4 GB por minuto do nosso egress — tráfego
+   * que nós pagamos, sem nenhum login por trás. 40/min mantém a galeria
+   * carregando (uma tela pede ~20 imagens) e derruba o pior caso para 800MB.
+   */
   @Get('proxy')
   @ApiOperation({ summary: 'Proxy de imagem externa (contorna bloqueio de hotlink)' })
-  @Throttle({ default: { ttl: 60_000, limit: 120 } })
+  @Throttle({ default: { ttl: 60_000, limit: 40 } })
   async proxy(@Query('url') url: string, @Res() res: Response) {
     let parsed = this.parseTarget(url);
     await assertPublicHost(parsed.hostname);

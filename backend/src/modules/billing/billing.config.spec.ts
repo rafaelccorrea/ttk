@@ -1,6 +1,10 @@
 import {
+  ACTION_PRICES,
   assertProfitability,
   compAccountEmails,
+  CREDIT_VALUE_BRL,
+  MIN_MARGIN,
+  transcribeBlocks,
   FEATURE_MIN_PLAN,
   isCompAccount,
   PLAN_RANK,
@@ -76,6 +80,33 @@ describe('billing.config — paywall na entrada', () => {
 
   it('mantém todas as margens acima do mínimo', () => {
     expect(assertProfitability()).toEqual([]);
+  });
+});
+
+/**
+ * A transcrição é a única ação cujo custo real varia com a entrada: o Whisper
+ * cobra por minuto e o upload é limitado por MB. Estes testes fixam a regra que
+ * fechou esse buraco — o preço acompanha a duração, sempre para cima.
+ */
+describe('billing.config — transcrição por bloco', () => {
+  it('cobra pelo menos um bloco, mesmo num áudio de segundos', () => {
+    expect(transcribeBlocks(1)).toBe(1);
+    expect(transcribeBlocks(0)).toBe(1);
+  });
+
+  it('arredonda para cima: bloco começado é bloco cobrado', () => {
+    expect(transcribeBlocks(10 * 60)).toBe(1);
+    expect(transcribeBlocks(10 * 60 + 1)).toBe(2);
+    expect(transcribeBlocks(20 * 60)).toBe(2);
+  });
+
+  it('cobre o caso que dava prejuízo: 52 min de áudio a 64kbps em 25MB', () => {
+    // Com o preço fixo antigo, este arquivo custava R$ 1,88 e rendia R$ 1,20.
+    const blocos = transcribeBlocks(52 * 60);
+    expect(blocos).toBe(6);
+    const cobrado = blocos * ACTION_PRICES.transcribe.credits * CREDIT_VALUE_BRL;
+    const custoReal = (52 / 60) * 0.006 * 60 * 6; // US$0,006/min × 52 × câmbio 6
+    expect(cobrado).toBeGreaterThan(custoReal * MIN_MARGIN);
   });
 });
 

@@ -2,18 +2,16 @@ import { CombinationsService } from './combinations.service';
 import { CombinationPlan } from './entities/combination-plan.entity';
 
 /**
- * `expand` só lê o próprio plano — nenhum repositório é tocado. Instanciar com
- * `null` deixa o teste focado na regra de ordenação, sem subir o módulo.
+ * `expand` só lê o próprio plano — nenhuma dependência injetada é tocada.
+ *
+ * O construtor é ignorado de propósito: listar um `null` por dependência fazia
+ * este teste quebrar toda vez que o serviço passava a injetar mais alguma
+ * coisa, sem que a regra sob teste tivesse mudado.
  */
 function servico(): CombinationsService {
-  return new CombinationsService(
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-  );
+  const SemDependencias =
+    CombinationsService as unknown as new () => CombinationsService;
+  return new SemDependencias();
 }
 
 function plano(partes: Partial<CombinationPlan>): CombinationPlan {
@@ -114,5 +112,99 @@ describe('CombinationsService.expand', () => {
     const segunda = servico().expand(entrada).map((c) => c.code);
 
     expect(segunda).toEqual(primeira);
+  });
+});
+
+/**
+ * O estorno das montagens interrompidas roda no boot, e boot acontece em toda
+ * instância — num deploy rolling, duas ao mesmo tempo. Sem a marcação
+ * condicional as duas devolveriam o crédito da MESMA linha, e numa matriz de
+ * 150 vídeos isso é crédito nascendo do nada.
+ */
+describe('CombinationsService.onApplicationBootstrap', () => {
+  function servicoComPresos(afetadas: number) {
+    const presos = [
+      { id: 'v1', userId: 'u1', code: 'A1', filename: 'a.mp4', status: 'pendente' },
+    ];
+    const videos = {
+      find: jest.fn().mockResolvedValue(presos),
+      update: jest.fn().mockResolvedValue({ affected: afetadas }),
+    };
+    const billing = { refund: jest.fn().mockResolvedValue(undefined) };
+    const s = servico();
+    (s as unknown as Record<string, unknown>).videos = videos;
+    (s as unknown as Record<string, unknown>).billing = billing;
+    return { s, videos, billing };
+  }
+
+  it('estorna a linha que este processo conseguiu marcar como falha', async () => {
+    const { s, videos, billing } = servicoComPresos(1);
+    await s.onApplicationBootstrap();
+    expect(videos.update).toHaveBeenCalledTimes(1);
+    expect(billing.refund).toHaveBeenCalledTimes(1);
+  });
+
+  it('não estorna quando outra instância já marcou a mesma linha', async () => {
+    const { s, billing } = servicoComPresos(0);
+    await s.onApplicationBootstrap();
+    expect(billing.refund).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A atribuição por peça é o que justifica a feature inteira: sem ela, lançar
+ * resultado só devolveria ao vendedor o número que ele mesmo digitou.
+ */
+describe('CombinationsService.insights', () => {
+  function servicoComVideos(videos: Array<Record<string, unknown>>) {
+    const s = servico();
+    (s as unknown as Record<string, unknown>).plans = {
+      findOneBy: jest.fn().mockResolvedValue(
+        plano({ hooks: ['gancho A', 'gancho B'], bodies: ['corpo 1'], ctas: ['cta 1'] }),
+      ),
+    };
+    (s as unknown as Record<string, unknown>).videos = {
+      find: jest.fn().mockResolvedValue(videos),
+      count: jest.fn().mockResolvedValue(videos.length),
+    };
+    return s;
+  }
+
+  it('isola o efeito do gancho pela média dos vídeos que o usam', async () => {
+    const s = servicoComVideos([
+      { code: 'G1C1A1', views: 1000, sales: null },
+      { code: 'G2C1A1', views: 5000, sales: null },
+    ]);
+
+    const r = await s.insights('u1', 'p1');
+    // G2 rendeu 5× mais: é ele que deve encabeçar o ranking, com o rótulo do
+    // plano para o vendedor saber QUAL gancho gravar de novo.
+    expect(r.blocos.hook[0].codigo).toBe('G2');
+    expect(r.blocos.hook[0].rotulo).toBe('gancho B');
+    expect(r.blocos.hook[0].mediaViews).toBe(5000);
+    expect(r.blocos.hook[1].mediaViews).toBe(1000);
+  });
+
+  it('ignora vídeo sem resultado lançado em vez de contá-lo como zero', async () => {
+    const s = servicoComVideos([
+      { code: 'G1C1A1', views: 1000, sales: null },
+      { code: 'G1C1A1', views: null, sales: null },
+    ]);
+
+    const r = await s.insights('u1', 'p1');
+    expect(r.videosLancados).toBe(1);
+    // Média 1000, não 500: o não-lançado não existe para a conta.
+    expect(r.blocos.hook[0].mediaViews).toBe(1000);
+  });
+
+  it('põe a peça sem dado por último, e não como a pior', async () => {
+    const s = servicoComVideos([
+      { code: 'G1C1A1', views: null, sales: 3 },
+      { code: 'G2C1A1', views: 10, sales: null },
+    ]);
+
+    const r = await s.insights('u1', 'p1');
+    expect(r.blocos.hook[0].codigo).toBe('G2');
+    expect(r.blocos.hook[1].mediaViews).toBeNull();
   });
 });

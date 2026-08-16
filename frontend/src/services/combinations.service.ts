@@ -91,6 +91,17 @@ export interface CombinationVideo {
   url: string | null;
   status: CombinationVideoStatus;
   error: string | null;
+  /** Pasta escolhida pelo vendedor, ou `null` para "sem pasta". */
+  folderId: string | null;
+  /**
+   * Desempenho lançado — sempre opcional.
+   *
+   * `null` é "não informado", não "zero": um vídeo sem lançamento não entra
+   * em nenhuma média.
+   */
+  views: number | null;
+  sales: number | null;
+  postUrl: string | null;
   /** Zero nas montagens anteriores à etiqueta — a tela não mostra ordem. */
   postOrder: number;
   originality: CombinationOriginality;
@@ -111,6 +122,38 @@ export interface GaleriaGrupo {
   planoExiste: boolean;
   atualizadoEm: string;
   videos: CombinationVideo[];
+  /** Só na visão por pasta: a cor da etiqueta. */
+  cor?: string;
+}
+
+/** Uma peça (gancho, corpo ou CTA) com o que os vídeos dela renderam. */
+export interface PecaInsight {
+  indice: number;
+  /** `G2`, `C1`, `A3` — o mesmo código do nome do arquivo. */
+  codigo: string;
+  rotulo: string;
+  videos: number;
+  /** `null` quando nenhum vídeo desta peça teve views lançadas. */
+  mediaViews: number | null;
+  totalVendas: number | null;
+}
+
+export interface PlanoInsights {
+  planId: string;
+  sigla: string;
+  videosLancados: number;
+  videosTotais: number;
+  mediaGeralViews: number | null;
+  blocos: Record<'hook' | 'body' | 'cta', PecaInsight[]>;
+}
+
+/** Pasta criada pelo vendedor para guardar vídeos montados. */
+export interface CombinationFolder {
+  id: string;
+  name: string;
+  /** Hex `#rrggbb` — o servidor recusa qualquer outro formato. */
+  color: string;
+  createdAt: string;
 }
 
 export const combinationsService = {
@@ -179,5 +222,58 @@ export const combinationsService = {
   /** Descarta um vídeo montado — o arquivo sai do bucket junto. */
   async deleteVideo(id: string): Promise<void> {
     await api.delete(`/combinations/videos/${id}`);
+  },
+
+  async listFolders(): Promise<CombinationFolder[]> {
+    const { data } = await api.get<CombinationFolder[]>('/combinations/folders');
+    return data;
+  },
+
+  async createFolder(name: string, color?: string): Promise<CombinationFolder> {
+    const { data } = await api.post<CombinationFolder>('/combinations/folders', {
+      name,
+      color,
+    });
+    return data;
+  },
+
+  async updateFolder(
+    id: string,
+    patch: { name?: string; color?: string },
+  ): Promise<CombinationFolder> {
+    const { data } = await api.patch<CombinationFolder>(
+      `/combinations/folders/${id}`,
+      patch,
+    );
+    return data;
+  },
+
+  /** Apaga a pasta — os vídeos voltam para "sem pasta", nenhum arquivo some. */
+  async deleteFolder(id: string): Promise<void> {
+    await api.delete(`/combinations/folders/${id}`);
+  },
+
+  /** `folderId` null tira os vídeos de qualquer pasta. */
+  async moveVideos(videoIds: string[], folderId: string | null): Promise<void> {
+    await api.post('/combinations/videos/move', { videoIds, folderId });
+  },
+
+  /** Lança o desempenho de um vídeo. `null` num campo apaga o valor. */
+  async setResult(
+    id: string,
+    dados: { views?: number | null; sales?: number | null; postUrl?: string | null },
+  ): Promise<CombinationVideo> {
+    const { data } = await api.patch<CombinationVideo>(
+      `/combinations/videos/${id}/result`,
+      dados,
+    );
+    return data;
+  },
+
+  async insights(planId: string): Promise<PlanoInsights> {
+    const { data } = await api.get<PlanoInsights>(
+      `/combinations/${planId}/insights`,
+    );
+    return data;
   },
 };

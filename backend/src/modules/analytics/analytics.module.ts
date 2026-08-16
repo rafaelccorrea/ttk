@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BillingModule } from '../billing/billing.module';
 import { Creator } from '../creators/entities/creator.entity';
 import { ProductMetricDaily } from '../products/entities/product-metric-daily.entity';
 import { Product } from '../products/entities/product.entity';
@@ -16,6 +17,8 @@ import { AnalyticsService } from './analytics.service';
     ProductsModule,
     UsersModule,
     IngestionModule,
+    // O PlanFeatureGuard do controller depende do BillingService.
+    BillingModule,
   ],
   controllers: [AnalyticsController],
   providers: [AnalyticsService],

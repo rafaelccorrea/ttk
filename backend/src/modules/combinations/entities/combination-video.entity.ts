@@ -55,6 +55,16 @@ export class CombinationVideo {
   @Column({ type: 'text', nullable: true })
   error: string | null;
 
+  /**
+   * Pasta escolhida pelo vendedor, ou `null` para "sem pasta".
+   *
+   * Sem FK de propósito: apagar uma pasta não pode apagar vídeo nenhum. O
+   * serviço zera esta coluna e os vídeos voltam para "sem pasta".
+   */
+  @Index('IDX_combination_videos_folder')
+  @Column({ type: 'uuid', nullable: true })
+  folderId: string | null;
+
   /** Etiqueta de originalidade — ver {@link CombinationOriginality}. */
   @Column({ length: 20, default: 'original' })
   originality: CombinationOriginality;
@@ -67,6 +77,29 @@ export class CombinationVideo {
    */
   @Column({ type: 'int', default: 0 })
   postOrder: number;
+
+  /*
+   * Desempenho do post — TUDO opcional.
+   *
+   * O vendedor lança se quiser; nada no Multiplicador depende disso. `null` não
+   * é "zero", é "não informado", e a diferença importa: um vídeo com 0 views
+   * lançado puxa a média do gancho para baixo, um vídeo não lançado não pode
+   * puxar nada. Por isso são anuláveis em vez de `default 0`.
+   *
+   * Vale a pena existir porque o nome do arquivo carrega a composição
+   * (G2C1A3), então resultado por vídeo vira resultado POR PEÇA: como cada
+   * gancho aparece em `corpos × ctas` combinações, o efeito dele já sai
+   * isolado sem o vendedor montar experimento nenhum.
+   */
+  @Column({ type: 'int', nullable: true })
+  views: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  sales: number | null;
+
+  /** Link do post, só para o vendedor reencontrar o vídeo publicado. */
+  @Column({ type: 'text', nullable: true })
+  postUrl: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

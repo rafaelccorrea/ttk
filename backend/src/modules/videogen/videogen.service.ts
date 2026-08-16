@@ -101,14 +101,29 @@ export class VideogenService {
           item.status = 'completed';
           item.outputUrl = status.imageUrl ?? null as unknown as string;
         } else if (item.imageUrl) {
-          // Vídeo: frame pronto → dispara a animação (fase 2).
-          const video = await this.higgsfield.submitVideo(
-            item.imageUrl,
-            item.prompt,
-          );
-          item.phase = 'video';
-          item.requestId = video.requestId;
-          item.status = (video.status as GeneratedMedia['status']) ?? 'queued';
+          /*
+           * Vídeo: frame pronto → dispara a animação (fase 2).
+           *
+           * O try/catch não é zelo: sem ele, uma falha aqui subia antes do
+           * `save` do fim do método, e o item ficava eternamente em
+           * `phase: 'image'` com o request da imagem já `completed`. Cada
+           * refresh seguinte — e o front faz polling — re-submetia um DoP novo,
+           * o item mais caro da tabela, sem cobrar um crédito a mais. Falhar
+           * leva o item para um estado terminal, que estorna logo abaixo e
+           * encerra o ciclo.
+           */
+          try {
+            const video = await this.higgsfield.submitVideo(
+              item.imageUrl,
+              item.prompt,
+            );
+            item.phase = 'video';
+            item.requestId = video.requestId;
+            item.status = (video.status as GeneratedMedia['status']) ?? 'queued';
+          } catch (error) {
+            item.status = 'failed';
+            item.error = `Falha ao animar a imagem: ${(error as Error).message}`;
+          }
         } else {
           item.status = 'failed';
           item.error = 'Imagem base não retornou URL.';
@@ -124,17 +139,32 @@ export class VideogenService {
       item.status = status.status as GeneratedMedia['status'];
     }
 
-    // Falhou depois de cobrado → devolve os créditos (uma única vez).
-    if (
-      ['failed', 'nsfw', 'canceled'].includes(item.status) &&
-      !item.refunded
-    ) {
-      await this.billing.refund(
-        userId,
-        item.kind,
-        `Estorno: geração de ${item.kind === 'video' ? 'vídeo' : 'imagem'} falhou`,
+    /*
+     * Falhou depois de cobrado → devolve os créditos, UMA vez só.
+     *
+     * A marca do estorno é gravada por um UPDATE condicional, não pelo
+     * `item.refunded` em memória: o front faz polling e as campanhas chamam
+     * este mesmo refresh, então dois pedidos simultâneos liam `refunded:
+     * false` os dois e estornavam 60 créditos em dobro. Quem devolve é só
+     * quem conseguiu virar o flag (`affected === 1`) — o outro perde a corrida
+     * no banco e não paga nada.
+     */
+    if (['failed', 'nsfw', 'canceled'].includes(item.status) && !item.refunded) {
+      const marcou = await this.media.update(
+        { id: item.id, refunded: false },
+        { refunded: true },
       );
+      // Em memória o flag sobe nos dois casos: quem perdeu a corrida também
+      // precisa refletir o estorno, senão o `save` do fim do método zeraria a
+      // marca gravada pelo vencedor e um terceiro refresh estornaria de novo.
       item.refunded = true;
+      if (marcou.affected) {
+        await this.billing.refund(
+          userId,
+          item.kind,
+          `Estorno: geração de ${item.kind === 'video' ? 'vídeo' : 'imagem'} falhou`,
+        );
+      }
     }
 
     return this.media.save(item);

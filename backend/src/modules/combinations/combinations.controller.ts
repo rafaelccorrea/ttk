@@ -9,6 +9,7 @@ import {
   Param,
   ParseFilePipe,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UploadedFile,
@@ -27,6 +28,8 @@ import {
 } from '../billing/plan-feature.guard';
 import { CombinationsService } from './combinations.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
+import { FolderDto, MoveVideosDto } from './dto/folder.dto';
+import { VideoResultDto } from './dto/video-result.dto';
 
 /**
  * O multiplicador é recurso de plano pago, e o gate precisa estar AQUI.
@@ -105,6 +108,64 @@ export class CombinationsController {
     return this.combinationsService.deleteVideo(user.id, id);
   }
 
+  // ------------------------------------------------------------- pastas
+  // Todas antes de `:id`: "folders" seria lido como id de plano.
+
+  @Get('folders')
+  @ApiOperation({ summary: 'Pastas do usuário' })
+  listFolders(@CurrentUser() user: AuthUser) {
+    return this.combinationsService.listFolders(user.id);
+  }
+
+  @Post('folders')
+  @ApiOperation({ summary: 'Cria uma pasta' })
+  createFolder(@CurrentUser() user: AuthUser, @Body() dto: FolderDto) {
+    return this.combinationsService.createFolder(user.id, dto.name ?? '', dto.color);
+  }
+
+  @Patch('folders/:id')
+  @ApiOperation({ summary: 'Renomeia ou recolore uma pasta' })
+  renameFolder(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: FolderDto,
+  ) {
+    return this.combinationsService.renameFolder(user.id, id, dto.name, dto.color);
+  }
+
+  @Delete('folders/:id')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Apaga a pasta (os vídeos voltam para "sem pasta")' })
+  deleteFolder(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.combinationsService.deleteFolder(user.id, id);
+  }
+
+  @Post('videos/move')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Move vídeos para uma pasta (folderId null = tirar da pasta)' })
+  moveVideos(@CurrentUser() user: AuthUser, @Body() dto: MoveVideosDto) {
+    return this.combinationsService.moveVideos(
+      user.id,
+      dto.videoIds,
+      dto.folderId ?? null,
+    );
+  }
+
+  @Patch('videos/:id/result')
+  @ApiOperation({
+    summary: 'Lança o desempenho de um vídeo publicado (tudo opcional)',
+  })
+  setResult(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: VideoResultDto,
+  ) {
+    return this.combinationsService.setResult(user.id, id, dto);
+  }
+
   @Get('gallery')
   @ApiOperation({ summary: 'Todos os vídeos já montados pelo usuário' })
   gallery(@CurrentUser() user: AuthUser) {
@@ -133,6 +194,17 @@ export class CombinationsController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.combinationsService.render(user.id, id);
+  }
+
+  @Get(':id/insights')
+  @ApiOperation({
+    summary: 'Ranking das peças do plano pelo desempenho já lançado',
+  })
+  insights(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.combinationsService.insights(user.id, id);
   }
 
   @Get(':id/videos')

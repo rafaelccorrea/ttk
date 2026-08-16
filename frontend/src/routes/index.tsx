@@ -60,8 +60,24 @@ export function AppRoutes() {
             <Route path="/favoritos" element={<FavoritesPage />} />
             <Route path="/perfil" element={<ProfilePage />} />
             <Route path="/estudio" element={<StudioPage />} />
-            <Route path="/campanhas" element={<CampaignsPage />} />
-            <Route path="/multiplicador" element={<MultiplierPage />} />
+            {/* Campanhas e Multiplicador são Pro no backend; sem o gate aqui,
+                quem assina o Essencial abria a tela e só descobria no 403. */}
+            <Route
+              path="/campanhas"
+              element={
+                <PlanGate feature="campaigns">
+                  <CampaignsPage />
+                </PlanGate>
+              }
+            />
+            <Route
+              path="/multiplicador"
+              element={
+                <PlanGate feature="multiplier">
+                  <MultiplierPage />
+                </PlanGate>
+              }
+            />
             <Route path="/academy" element={<AcademyPage />} />
             <Route path="/indique" element={<ReferralPage />} />
             <Route path="/prompts" element={<PromptsPage />} />

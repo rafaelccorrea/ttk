@@ -22,6 +22,10 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { SingleFlightInterceptor } from '../../common/interceptors/single-flight.interceptor';
 import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
+import {
+  PlanFeatureGuard,
+  RequiresPlanFeature,
+} from '../billing/plan-feature.guard';
 import { CampaignsService } from './campaigns.service';
 import {
   CreateCampaignDto,
@@ -30,9 +34,19 @@ import {
   UpdateSceneDto,
 } from './dto/campaigns.dto';
 
+/**
+ * Campanhas é recurso do Pro, e o gate precisa estar aqui.
+ *
+ * As etapas de IA se defendiam sozinhas pelo `ACTION_MIN_PLAN` de dentro do
+ * `charge`, mas todo o resto do módulo — criar campanha, cadastrar produto,
+ * montar persona, editar cena, o polling de status — rodava em conta `free`,
+ * que pelo paywall é conta com pagamento pendente. `campaigns` acompanha
+ * `ai_videos` porque é exatamente esse o custo por trás do produto.
+ */
 @ApiTags('campaigns')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@RequiresPlanFeature('campaigns')
 @Controller('campaigns')
 export class CampaignsController {
   constructor(private readonly campaigns: CampaignsService) {}
@@ -50,20 +64,31 @@ export class CampaignsController {
     return this.campaigns.precos(Number(duration) || 15);
   }
 
-  // ---------------------------------------------------------------- produtos
+  /*
+   * ---------------------------------------------------------------- produtos
+   *
+   * O cadastro de produto do vendedor mora aqui por histórico, mas não é
+   * exclusivo das campanhas: o Estúdio gera roteiro a partir dele
+   * (`dto.userProductId`), e o Estúdio é Essencial. Por isso estas rotas
+   * abaixam o piso da classe de volta para `studio_templates` — sem isso, o
+   * gate de Pro quebraria o roteirizador de quem paga o Essencial.
+   */
   @Post('products')
+  @RequiresPlanFeature('studio_templates')
   @ApiOperation({ summary: 'Cadastra um produto do vendedor' })
   createProduct(@CurrentUser() user: AuthUser, @Body() dto: CreateUserProductDto) {
     return this.campaigns.criarProduto(user.id, dto);
   }
 
   @Get('products')
+  @RequiresPlanFeature('studio_templates')
   @ApiOperation({ summary: 'Produtos do vendedor' })
   listProducts(@CurrentUser() user: AuthUser) {
     return this.campaigns.listarProdutos(user.id);
   }
 
   @Post('products/:id/photos')
+  @RequiresPlanFeature('uploads')
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ summary: 'Anexa uma foto do produto (vira frame das cenas)' })
   addPhoto(
@@ -85,6 +110,7 @@ export class CampaignsController {
   }
 
   @Delete('products/:id/photos')
+  @RequiresPlanFeature('studio_templates')
   @ApiOperation({ summary: 'Remove uma foto do produto' })
   removePhoto(
     @CurrentUser() user: AuthUser,
@@ -96,6 +122,7 @@ export class CampaignsController {
 
   @Delete('products/:id')
   @HttpCode(204)
+  @RequiresPlanFeature('studio_templates')
   @ApiOperation({ summary: 'Remove um produto do vendedor' })
   deleteProduct(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.campaigns.removerProduto(user.id, id);

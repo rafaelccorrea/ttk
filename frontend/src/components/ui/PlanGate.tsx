@@ -8,7 +8,7 @@ import { billingService } from '@/services/billing.service';
 const PLAN_LABEL: Record<string, string> = {
   free: 'Free',
   starter: 'Starter', // legado: fora do catálogo, ainda tem assinante
-
+  essencial: 'Essencial',
   pro: 'Pro',
   business: 'Business',
 };

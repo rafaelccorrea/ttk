@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,6 +10,7 @@ import { AuthUser } from '../auth/auth-user';
 import {
   COMP_ACCOUNT_PLAN,
   isCompAccount,
+  planAllows,
 } from '../billing/billing.config';
 import { MediaMirrorService } from '../media/media-mirror.service';
 import { AppUser } from './entities/app-user.entity';
@@ -80,6 +82,21 @@ export class UsersService {
    * conteúdo, então reenviar a mesma foto não cria objeto novo.
    */
   async updateAvatar(id: string, buffer: Buffer): Promise<AppUser> {
+    /*
+     * Guardar arquivo é custo nosso (storage + egress), então é recurso pago.
+     *
+     * A checagem é aqui, e não com o `PlanFeatureGuard` do controller, porque
+     * o BillingModule já importa o UsersModule — pendurar o guard aqui fecharia
+     * um ciclo de módulos. O dado necessário é só o plano, que este repositório
+     * já tem em mãos.
+     */
+    const dono = await this.repository.findOneBy({ id });
+    if (!planAllows(dono?.plan ?? 'free', 'uploads')) {
+      throw new ForbiddenException(
+        'A foto de perfil está disponível a partir do plano Essencial. Assine em Planos & Créditos.',
+      );
+    }
+
     const url = await this.mirror.putImage(buffer, 'avatars', id, 'cover');
     if (!url) {
       throw new BadRequestException(

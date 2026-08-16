@@ -15,7 +15,7 @@ export const MIN_MARGIN = 1.4;
 export type BillableAction =
   | 'script' // Roteiro com Claude (Estúdio)
   | 'analyze' // Análise de vídeo viral com Claude
-  | 'transcribe' // Transcrição Whisper (até 25MB ≈ 20 min)
+  | 'transcribe' // Transcrição Whisper, por bloco de 10 min começado
   | 'image' // Higgsfield Soul (texto → imagem)
   | 'video' // Higgsfield Soul + DoP (texto → imagem → vídeo)
   | 'assembly'; // Multiplicador: cada vídeo concatenado
@@ -32,8 +32,23 @@ export const ACTION_PRICES: Record<BillableAction, ActionPrice> = {
   script: { credits: 8, worstCaseCostBrl: 0.39, label: 'Roteiro com IA' },
   // Claude Opus (transcrição longa no prompt): ~US$ 0,12 ≈ R$ 0,72
   analyze: { credits: 12, worstCaseCostBrl: 0.72, label: 'Análise de vídeo viral' },
-  // Whisper US$ 0,006/min × 20 min = US$ 0,12 ≈ R$ 0,72
-  transcribe: { credits: 12, worstCaseCostBrl: 0.72, label: 'Transcrição de vídeo' },
+  /*
+   * Transcrição, por BLOCO de 10 minutos começado.
+   *
+   * Era um preço fixo calculado sobre "25MB ≈ 20 min" — e essa premissa é
+   * falsa: o limite do upload é de tamanho, não de duração, e 25MB de áudio
+   * comprimido a 64kbps são ~52 minutos. O Whisper cobra por minuto, então o
+   * arquivo mais barato de enviar era justamente o mais caro de processar
+   * (US$ 0,31 ≈ R$ 1,88 contra R$ 1,20 de face — prejuízo).
+   *
+   * Cobrando por bloco, o preço acompanha o custo em qualquer duração:
+   * US$ 0,006/min × 10 min = US$ 0,06 ≈ R$ 0,36 por bloco.
+   */
+  transcribe: {
+    credits: 6,
+    worstCaseCostBrl: 0.36,
+    label: 'Transcrição de vídeo (10 min)',
+  },
   // Higgsfield Soul: ~US$ 0,10 ≈ R$ 0,60
   image: { credits: 12, worstCaseCostBrl: 0.6, label: 'Imagem com IA' },
   // Soul + DoP: ~US$ 0,60 ≈ R$ 3,60
@@ -52,6 +67,24 @@ export const ACTION_PRICES: Record<BillableAction, ActionPrice> = {
    */
   assembly: { credits: 1, worstCaseCostBrl: 0.05, label: 'Vídeo montado' },
 };
+
+/** Tamanho do bloco de transcrição, em minutos (ver `ACTION_PRICES.transcribe`). */
+export const TRANSCRIBE_BLOCK_MINUTES = 10;
+
+/**
+ * Teto de duração aceito numa transcrição.
+ *
+ * Existe para limitar o pior caso de uma única chamada: com o preço por bloco a
+ * conta fecha em qualquer duração, mas um arquivo de 5 horas ainda seria uma
+ * chamada de vários minutos segurando um worker.
+ */
+export const TRANSCRIBE_MAX_MINUTES = 120;
+
+/** Blocos cobrados para uma duração em segundos (sempre ≥ 1). */
+export function transcribeBlocks(durationSeconds: number): number {
+  const minutos = durationSeconds / 60;
+  return Math.max(Math.ceil(minutos / TRANSCRIBE_BLOCK_MINUTES), 1);
+}
 
 export type BillingCycle = 'month' | 'year';
 
@@ -228,6 +261,22 @@ export function isCompAccount(email: string | undefined | null): boolean {
   return compAccountEmails().includes(email.trim().toLowerCase());
 }
 
+/**
+ * Checkout de mentira, que credita sem cobrar. Existe para o desenvolvimento
+ * não depender do gateway.
+ *
+ * A checagem do NODE_ENV é o cinto de segurança: `ALLOW_DEV_CHECKOUT=true` é
+ * uma linha de `.env` que se copia sem querer para o servidor de produção, e lá
+ * ela seria uma torneira aberta de créditos — qualquer usuário assinando o
+ * plano Business de graça pelo endpoint. Em produção nem a variável liga.
+ */
+export function devCheckoutEnabled(): boolean {
+  return (
+    process.env.ALLOW_DEV_CHECKOUT === 'true' &&
+    process.env.NODE_ENV !== 'production'
+  );
+}
+
 export type PlanFeature =
   | 'discovery' // produtos, vídeos, criadores, tendências, favoritos
   | 'studio_templates' // roteiros com gerador local
@@ -237,6 +286,8 @@ export type PlanFeature =
   | 'ai_images' // imagens Higgsfield
   | 'ai_videos' // vídeos Higgsfield
   | 'multiplier' // multiplicador G×C×A
+  | 'campaigns' // campanhas com personas e cenas em vídeo
+  | 'uploads' // guardar arquivo nosso no bucket (foto de produto, avatar)
   | 'ingestion'; // coleta de dados (admin)
 
 /**
@@ -260,6 +311,17 @@ export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
   ai_images: 'essencial',
   ai_videos: 'pro',
   multiplier: 'pro',
+  // Campanhas é o construtor de anúncio em vídeo: persona + cenas animadas pelo
+  // DoP. Acompanha `ai_videos` porque é o mesmo custo por trás.
+  campaigns: 'pro',
+  /*
+   * Guardar arquivo do usuário no nosso bucket.
+   *
+   * Não passa por IA, mas é dinheiro saindo (storage + egress) e ficava aberto
+   * a conta `free` — ou seja, a quem ainda não pagou. É o piso pago porque o
+   * custo é pequeno, mas nunca zero.
+   */
+  uploads: 'essencial',
   ingestion: 'business',
 };
 

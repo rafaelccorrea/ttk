@@ -7,12 +7,21 @@ import {
   Chip,
   CircularProgress,
   Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControlLabel,
   Grid,
   IconButton,
   LinearProgress,
+  Menu,
+  MenuItem,
   Stack,
+  Step,
+  StepButton,
+  Stepper,
   Switch,
   Table,
   TableBody,
@@ -33,6 +42,7 @@ import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
 import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
+import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import Forward5RoundedIcon from '@mui/icons-material/Forward5Rounded';
 import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
@@ -42,6 +52,7 @@ import {
   DragEvent,
   FormEvent,
   SyntheticEvent,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -51,6 +62,7 @@ import {
   ClipRole,
   Combination,
   CombinationClip,
+  CombinationFolder,
   CombinationPlanDetail,
   CombinationPlanSummary,
   CombinationOriginality,
@@ -60,6 +72,7 @@ import {
   ORIGINALITY_HINT,
   ORIGINALITY_LABEL,
   PlanFormat,
+  PlanoInsights,
   combinationsService,
 } from '@/services/combinations.service';
 
@@ -112,6 +125,22 @@ const BLOCOS = [
  * descobrir o preço pelo extrato depois de montar é a pior hora de descobrir.
  */
 const CREDITOS_POR_VIDEO = 1;
+
+/**
+ * Chave do grupo "Sem pasta" na visão por pasta.
+ *
+ * Não é um id de pasta de verdade — é o balde de quem ainda não foi
+ * organizado, e precisa de uma chave que nenhum uuid possa colidir.
+ */
+const SEM_PASTA = 'sem-pasta';
+
+/** Paleta das pastas — as mesmas cores dos blocos, mais neutros de apoio. */
+const CORES_DE_PASTA = ['#fe2c55', '#25f4ee', '#ffb020', '#7c4dff', '#2ecc71'];
+
+/** Concordância de número — "1 créditos" denuncia texto montado por concatenação. */
+function plural(n: number, singular: string, plural: string): string {
+  return n === 1 ? singular : plural;
+}
 
 /** Teto do backend (`MaxFileSizeValidator`), replicado para recusar antes de subir. */
 const MAX_BYTES = 40 * 1024 * 1024;
@@ -525,6 +554,265 @@ function RenderProgress({ videos }: { videos: CombinationVideo[] }) {
   );
 }
 
+/**
+ * Qual peça está vendendo, segundo os resultados que o vendedor lançou.
+ *
+ * Só aparece com pelo menos DOIS vídeos lançados: com um só, "o gancho 1 é o
+ * melhor" seria verdade trivial e daria ao vendedor uma confiança que o dado
+ * não sustenta. Sem dado nenhum, o componente não desenha nada — quem não usa
+ * o lançamento não vê um painel vazio ocupando a tela.
+ *
+ * Busca por grupo e só quando aberto: a galeria pode ter dezenas de produtos e
+ * carregar o ranking de todos no `mount` seria uma rajada de requisições para
+ * painéis que ninguém pediu.
+ */
+function RankingDePecas({
+  planId,
+  videos,
+}: {
+  planId: string;
+  videos: CombinationVideo[];
+}) {
+  const [dados, setDados] = useState<PlanoInsights | null>(null);
+  const lancados = videos.filter((v) => v.views !== null || v.sales !== null).length;
+
+  useEffect(() => {
+    if (lancados < 2) {
+      setDados(null);
+      return;
+    }
+    let vivo = true;
+    combinationsService
+      .insights(planId)
+      .then((r) => vivo && setDados(r))
+      .catch(console.error);
+    return () => {
+      vivo = false;
+    };
+  }, [planId, lancados]);
+
+  if (!dados || lancados < 2) return null;
+
+  const ganchos = dados.blocos.hook.filter((p) => p.mediaViews !== null);
+  if (ganchos.length < 2) return null;
+
+  const melhor = ganchos[0];
+  const media = dados.mediaGeralViews ?? 0;
+  const vezes = media > 0 && melhor.mediaViews ? melhor.mediaViews / media : null;
+
+  return (
+    <Box sx={{ px: 1.5, pb: 1.5 }}>
+      <Box
+        sx={{
+          p: 1.5,
+          borderRadius: 2,
+          bgcolor: 'action.hover',
+          border: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+          Segundo os {dados.videosLancados} resultados lançados — o gancho é o
+          bloco que decide o scroll, então é por ele que o ranking começa.
+        </Typography>
+        <Stack spacing={0.75}>
+          {ganchos.map((peca) => (
+            <Stack key={peca.codigo} direction="row" alignItems="center" spacing={1}>
+              <Box
+                sx={{
+                  px: 0.6,
+                  py: 0.2,
+                  borderRadius: 0.75,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  color: '#fff',
+                  bgcolor: BLOCOS[0].cor,
+                }}
+              >
+                {peca.codigo}
+              </Box>
+              <Typography variant="body2" noWrap sx={{ flexGrow: 1, minWidth: 0 }}>
+                {peca.rotulo}
+              </Typography>
+              <Typography variant="body2" fontWeight={700}>
+                {compacto(peca.mediaViews ?? 0)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                média · {peca.videos} {plural(peca.videos, 'vídeo', 'vídeos')}
+              </Typography>
+            </Stack>
+          ))}
+        </Stack>
+        {vezes && vezes >= 1.2 && (
+          <Typography variant="caption" color="success.main" display="block" mt={1}>
+            {melhor.codigo} está {vezes.toFixed(1).replace('.', ',')}× acima da
+            média do produto — grave mais variações dele.
+          </Typography>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * Lançamento do desempenho de um vídeo.
+ *
+ * Os campos nascem com o que já foi lançado e aceitam ficar vazios: apagar o
+ * número e salvar manda `null`, que é como o vendedor desfaz um valor digitado
+ * errado. Nenhum campo é obrigatório — dá para lançar só views, só vendas, ou
+ * só o link.
+ */
+function DialogDeResultado({
+  video,
+  onFechar,
+  onSalvo,
+  onErro,
+}: {
+  video: CombinationVideo | null;
+  onFechar: () => void;
+  onSalvo: () => void;
+  onErro: (mensagem: string) => void;
+}) {
+  const [views, setViews] = useState('');
+  const [vendas, setVendas] = useState('');
+  const [link, setLink] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  // Recarrega os campos a cada vídeo aberto — sem isto o diálogo mostraria os
+  // números do vídeo anterior.
+  useEffect(() => {
+    setViews(video?.views !== null && video ? String(video.views) : '');
+    setVendas(video?.sales !== null && video ? String(video.sales) : '');
+    setLink(video?.postUrl ?? '');
+  }, [video]);
+
+  if (!video) return null;
+
+  const numeroOuNulo = (texto: string) =>
+    texto.trim() === '' ? null : Math.max(Math.trunc(Number(texto)), 0);
+
+  async function salvar() {
+    if (!video) return;
+    setSalvando(true);
+    try {
+      await combinationsService.setResult(video.id, {
+        views: numeroOuNulo(views),
+        sales: numeroOuNulo(vendas),
+        postUrl: link.trim() === '' ? null : link.trim(),
+      });
+      onSalvo();
+    } catch (err) {
+      onErro(
+        err instanceof Error ? err.message : 'Não foi possível salvar o resultado.',
+      );
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Dialog open onClose={onFechar} fullWidth maxWidth="xs">
+      <DialogTitle>Resultado do vídeo</DialogTitle>
+      <DialogContent>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          display="block"
+          sx={{ mb: 2, fontFamily: 'monospace' }}
+        >
+          {video.filename}
+        </Typography>
+        <Stack spacing={2}>
+          <TextField
+            autoFocus
+            size="small"
+            type="number"
+            label="Views"
+            placeholder="deixe vazio se não quiser lançar"
+            value={views}
+            inputProps={{ min: 0 }}
+            onChange={(e) => setViews(e.target.value)}
+          />
+          <TextField
+            size="small"
+            type="number"
+            label="Vendas (opcional)"
+            value={vendas}
+            inputProps={{ min: 0 }}
+            onChange={(e) => setVendas(e.target.value)}
+          />
+          <TextField
+            size="small"
+            label="Link do post (opcional)"
+            placeholder="https://www.tiktok.com/@..."
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onFechar}>Cancelar</Button>
+        <Button variant="contained" disabled={salvando} onClick={() => void salvar()}>
+          {salvando ? 'Salvando…' : 'Salvar'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/** 12.400 → "12,4k". Números crus de views ocupam o card inteiro. */
+function compacto(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1).replace('.0', '').replace('.', ',')}k`;
+  return `${(n / 1_000_000).toFixed(1).replace('.0', '').replace('.', ',')}M`;
+}
+
+/**
+ * O desempenho do vídeo, ou o convite para lançá-lo.
+ *
+ * Lançar resultado é OPCIONAL e nada no Multiplicador depende disso, então
+ * quem não usa não pode ser incomodado: sem número, é só um link apagado no
+ * rodapé do card — não um campo vazio pedindo preenchimento, não um aviso.
+ */
+function ResultadoDoVideo({
+  video,
+  onLancar,
+}: {
+  video: CombinationVideo;
+  onLancar: (video: CombinationVideo) => void;
+}) {
+  const temDados = video.views !== null || video.sales !== null;
+  return (
+    <Box
+      component="button"
+      type="button"
+      onClick={() => onLancar(video)}
+      sx={{
+        border: 0,
+        bgcolor: 'transparent',
+        p: 0,
+        mt: 0.5,
+        cursor: 'pointer',
+        font: 'inherit',
+        fontSize: 11,
+        display: 'block',
+        color: temDados ? 'text.primary' : 'text.disabled',
+        '&:hover': { color: 'primary.main' },
+      }}
+    >
+      {temDados
+        ? [
+            video.views !== null ? `${compacto(video.views)} views` : null,
+            video.sales !== null ? `${video.sales} vendas` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')
+        : '+ resultado'}
+    </Box>
+  );
+}
+
 /** Cor da etiqueta: verde no que é inédito, âmbar no meio, cinza no repetido. */
 const COR_ORIGINALIDADE: Record<
   CombinationOriginality,
@@ -739,6 +1027,28 @@ function Galeria({
   const [descartados, setDescartados] = useState<string[]>([]);
   const [erroDescarte, setErroDescarte] = useState<string | null>(null);
   const [busca, setBusca] = useState('');
+  /**
+   * Duas leituras da mesma galeria.
+   *
+   * "Produto" responde de qual matriz o arquivo saiu — um fato do sistema.
+   * "Pasta" responde o que o vendedor decidiu fazer com ele. Nenhuma das duas
+   * substitui a outra, então a tela deixa alternar em vez de escolher por ele.
+   */
+  const [visao, setVisao] = useState<'produto' | 'pasta'>('produto');
+  const [pastas, setPastas] = useState<CombinationFolder[]>([]);
+  const [movendo, setMovendo] = useState<CombinationVideo | null>(null);
+  const [ancoraMenu, setAncoraMenu] = useState<HTMLElement | null>(null);
+  const [criandoPasta, setCriandoPasta] = useState(false);
+  const [nomeDaPasta, setNomeDaPasta] = useState('');
+  const [corDaPasta, setCorDaPasta] = useState(CORES_DE_PASTA[0]);
+  const [pastaParaApagar, setPastaParaApagar] = useState<GaleriaGrupo | null>(null);
+  const [lancando, setLancando] = useState<CombinationVideo | null>(null);
+
+  const recarregarPastas = useCallback(() => {
+    combinationsService.listFolders().then(setPastas).catch(console.error);
+  }, []);
+
+  useEffect(() => recarregarPastas(), [recarregarPastas]);
 
   const termo = busca.trim().toLowerCase();
   // A busca casa com a sigla do produto OU com o nome do arquivo: o vendedor
@@ -759,6 +1069,94 @@ function Galeria({
     .filter((grupo) => grupo.videos.length > 0);
 
   const totalVisivel = gruposVisiveis.reduce((s, g) => s + g.videos.length, 0);
+
+  /**
+   * Os mesmos vídeos, reagrupados por pasta.
+   *
+   * "Sem pasta" vai por último de propósito: é a caixa de entrada, e o que
+   * interessa ver primeiro são as pastas que o vendedor montou.
+   */
+  const gruposPorPasta: GaleriaGrupo[] = (() => {
+    const todos = gruposVisiveis.flatMap((g) => g.videos);
+    const porPasta = new Map<string, CombinationVideo[]>();
+    for (const v of todos) {
+      const chave = v.folderId ?? SEM_PASTA;
+      const lista = porPasta.get(chave) ?? [];
+      lista.push(v);
+      porPasta.set(chave, lista);
+    }
+    const grupos: GaleriaGrupo[] = [];
+    for (const pasta of pastas) {
+      const videos = porPasta.get(pasta.id);
+      // Pasta vazia continua listada: é onde o vendedor vai soltar o próximo
+      // vídeo, e sumir da tela faria parecer que ela foi apagada.
+      grupos.push({
+        planId: pasta.id,
+        sigla: pasta.name,
+        format: null,
+        planoExiste: true,
+        cor: pasta.color,
+        atualizadoEm: pasta.createdAt,
+        videos: videos ?? [],
+      });
+    }
+    const soltos = porPasta.get(SEM_PASTA);
+    if (soltos?.length) {
+      grupos.push({
+        planId: SEM_PASTA,
+        sigla: 'Sem pasta',
+        format: null,
+        planoExiste: true,
+        atualizadoEm: '',
+        videos: soltos,
+      });
+    }
+    return grupos;
+  })();
+
+  const exibidos = visao === 'pasta' ? gruposPorPasta : gruposVisiveis;
+
+  async function handleMover(video: CombinationVideo, folderId: string | null) {
+    setAncoraMenu(null);
+    setMovendo(null);
+    try {
+      await combinationsService.moveVideos([video.id], folderId);
+      onRecarregar();
+    } catch (err) {
+      setErroDescarte(
+        err instanceof Error ? err.message : 'Não foi possível mover o vídeo.',
+      );
+    }
+  }
+
+  async function handleCriarPasta() {
+    const nome = nomeDaPasta.trim();
+    if (!nome) return;
+    try {
+      await combinationsService.createFolder(nome, corDaPasta);
+      setNomeDaPasta('');
+      setCriandoPasta(false);
+      recarregarPastas();
+      setVisao('pasta');
+    } catch (err) {
+      setErroDescarte(
+        err instanceof Error ? err.message : 'Não foi possível criar a pasta.',
+      );
+    }
+  }
+
+  async function handleApagarPasta(grupo: GaleriaGrupo) {
+    try {
+      await combinationsService.deleteFolder(grupo.planId);
+      setPastaParaApagar(null);
+      recarregarPastas();
+      onRecarregar();
+    } catch (err) {
+      setErroDescarte(
+        err instanceof Error ? err.message : 'Não foi possível apagar a pasta.',
+      );
+    }
+  }
 
   async function handleDescartar(video: CombinationVideo) {
     setErroDescarte(null);
@@ -787,16 +1185,29 @@ function Galeria({
             <Typography variant="h6">Meus vídeos</Typography>
             <Typography variant="caption" color="text.secondary">
               {totalVisivel
-                ? `${totalVisivel} vídeo(s) em ${gruposVisiveis.length} produto(s) — na ordem de postagem`
+                ? `${totalVisivel} ${plural(totalVisivel, 'vídeo', 'vídeos')} em ${gruposVisiveis.length} ${plural(gruposVisiveis.length, 'produto', 'produtos')} — na ordem de postagem`
                 : 'Os vídeos que você montar ficam guardados aqui, agrupados por produto'}
             </Typography>
           </Box>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={visao}
+            onChange={(_e, v) => v && setVisao(v)}
+            sx={{ '& .MuiToggleButton-root': { textTransform: 'none', px: 1.5 } }}
+          >
+            <ToggleButton value="produto">Por produto</ToggleButton>
+            <ToggleButton value="pasta">Por pasta</ToggleButton>
+          </ToggleButtonGroup>
+          <Button size="small" onClick={() => setCriandoPasta(true)}>
+            Nova pasta
+          </Button>
           <TextField
             size="small"
             placeholder="Buscar produto ou arquivo…"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            sx={{ width: 240, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+            sx={{ width: 220, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
           />
           <Button size="small" onClick={onRecarregar}>
             Atualizar
@@ -809,7 +1220,7 @@ function Galeria({
           </Alert>
         )}
 
-        {gruposVisiveis.length === 0 ? (
+        {exibidos.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             {busca
               ? `Nenhum produto ou arquivo com “${busca}”.`
@@ -817,17 +1228,149 @@ function Galeria({
           </Typography>
         ) : (
           <Stack spacing={1.5}>
-            {gruposVisiveis.map((grupo) => (
+            {exibidos.map((grupo) => (
               <GrupoDeProduto
                 key={grupo.planId}
                 grupo={grupo}
-                // Um produto só: já abre aberto, porque não há o que escolher.
-                abertoPorPadrao={gruposVisiveis.length === 1}
+                // Um grupo só: já abre aberto, porque não há o que escolher.
+                abertoPorPadrao={exibidos.length === 1}
+                podeApagar={visao === 'pasta' && grupo.planId !== SEM_PASTA}
+                onApagarPasta={() => setPastaParaApagar(grupo)}
                 onDescartar={handleDescartar}
+                onMover={(video, alvo) => {
+                  setMovendo(video);
+                  setAncoraMenu(alvo);
+                }}
+                onLancarResultado={setLancando}
               />
             ))}
           </Stack>
         )}
+
+        <Menu
+          open={Boolean(ancoraMenu && movendo)}
+          anchorEl={ancoraMenu}
+          onClose={() => {
+            setAncoraMenu(null);
+            setMovendo(null);
+          }}
+        >
+          {pastas.map((pasta) => (
+            <MenuItem
+              key={pasta.id}
+              selected={movendo?.folderId === pasta.id}
+              onClick={() => void handleMover(movendo!, pasta.id)}
+            >
+              <Box
+                sx={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  bgcolor: pasta.color,
+                  mr: 1,
+                }}
+              />
+              {pasta.name}
+            </MenuItem>
+          ))}
+          {movendo?.folderId && (
+            <MenuItem onClick={() => void handleMover(movendo, null)}>
+              Tirar da pasta
+            </MenuItem>
+          )}
+          {pastas.length === 0 && (
+            <MenuItem
+              onClick={() => {
+                setAncoraMenu(null);
+                setCriandoPasta(true);
+              }}
+            >
+              Criar a primeira pasta…
+            </MenuItem>
+          )}
+        </Menu>
+
+        <Dialog
+          open={criandoPasta}
+          onClose={() => setCriandoPasta(false)}
+          fullWidth
+          maxWidth="xs"
+        >
+          <DialogTitle>Nova pasta</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              fullWidth
+              margin="dense"
+              label="Nome"
+              placeholder="Ex.: Postar essa semana"
+              value={nomeDaPasta}
+              inputProps={{ maxLength: 60 }}
+              onChange={(e) => setNomeDaPasta(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void handleCriarPasta()}
+            />
+            <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+              {CORES_DE_PASTA.map((cor) => (
+                <Box
+                  key={cor}
+                  component="button"
+                  type="button"
+                  aria-label={`Cor ${cor}`}
+                  onClick={() => setCorDaPasta(cor)}
+                  sx={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: '50%',
+                    bgcolor: cor,
+                    cursor: 'pointer',
+                    border: '2px solid',
+                    borderColor: cor === corDaPasta ? 'text.primary' : 'transparent',
+                  }}
+                />
+              ))}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setCriandoPasta(false)}>Cancelar</Button>
+            <Button
+              variant="contained"
+              disabled={!nomeDaPasta.trim()}
+              onClick={() => void handleCriarPasta()}
+            >
+              Criar
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <DialogDeResultado
+          video={lancando}
+          onFechar={() => setLancando(null)}
+          onSalvo={() => {
+            setLancando(null);
+            onRecarregar();
+          }}
+          onErro={setErroDescarte}
+        />
+
+        <Dialog open={Boolean(pastaParaApagar)} onClose={() => setPastaParaApagar(null)}>
+          <DialogTitle>Apagar “{pastaParaApagar?.sigla}”?</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary">
+              Os {pastaParaApagar?.videos.length ?? 0} vídeo(s) voltam para “Sem
+              pasta”. Nenhum arquivo é removido.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setPastaParaApagar(null)}>Cancelar</Button>
+            <Button
+              color="error"
+              variant="contained"
+              onClick={() => void handleApagarPasta(pastaParaApagar!)}
+            >
+              Apagar pasta
+            </Button>
+          </DialogActions>
+        </Dialog>
       </CardContent>
     </Card>
   );
@@ -843,11 +1386,19 @@ function Galeria({
 function GrupoDeProduto({
   grupo,
   abertoPorPadrao,
+  podeApagar,
+  onApagarPasta,
   onDescartar,
+  onMover,
+  onLancarResultado,
 }: {
   grupo: GaleriaGrupo;
   abertoPorPadrao: boolean;
+  podeApagar: boolean;
+  onApagarPasta: () => void;
   onDescartar: (video: CombinationVideo) => void;
+  onMover: (video: CombinationVideo, alvo: HTMLElement) => void;
+  onLancarResultado: (video: CombinationVideo) => void;
 }) {
   const [aberto, setAberto] = useState(abertoPorPadrao);
   const originais = grupo.videos.filter((v) => v.originality === 'original');
@@ -861,12 +1412,23 @@ function GrupoDeProduto({
         onClick={() => setAberto((v) => !v)}
         sx={{ p: 1.5, cursor: 'pointer', userSelect: 'none' }}
       >
+        {grupo.cor && (
+          <Box
+            sx={{
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              bgcolor: grupo.cor,
+              flexShrink: 0,
+            }}
+          />
+        )}
         <Typography sx={{ fontWeight: 700 }}>{grupo.sigla}</Typography>
         {grupo.format && (
           <Chip size="small" variant="outlined" label={grupo.format} />
         )}
         <Typography variant="caption" color="text.secondary">
-          {grupo.videos.length} vídeo(s)
+          {grupo.videos.length} {plural(grupo.videos.length, 'vídeo', 'vídeos')}
           {originais.length ? ` · ${originais.length} com gancho inédito` : ''}
         </Typography>
         {!grupo.planoExiste && (
@@ -875,12 +1437,35 @@ function GrupoDeProduto({
           </Tooltip>
         )}
         <Box sx={{ flexGrow: 1 }} />
+        {podeApagar && (
+          <Tooltip title="Apagar a pasta — os vídeos voltam para “Sem pasta”">
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApagarPasta();
+              }}
+              sx={{ color: 'text.disabled', '&:hover': { color: 'error.main' } }}
+            >
+              <DeleteOutlineRoundedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
         <IconButton size="small">
           {aberto ? <ExpandLessRoundedIcon /> : <ExpandMoreRoundedIcon />}
         </IconButton>
       </Stack>
 
-      {aberto && (
+      {aberto && <RankingDePecas planId={grupo.planId} videos={grupo.videos} />}
+
+      {aberto && grupo.videos.length === 0 && (
+        <Typography variant="body2" color="text.secondary" sx={{ px: 1.5, pb: 1.5 }}>
+          Pasta vazia — use “Mover para” no canto de um vídeo para trazer algo
+          para cá.
+        </Typography>
+      )}
+
+      {aberto && grupo.videos.length > 0 && (
         <Box sx={{ p: 1.5, pt: 0 }}>
           <Grid container spacing={1.5}>
             {grupo.videos.map((v) => (
@@ -908,6 +1493,17 @@ function GrupoDeProduto({
                       </Typography>
                       <CodigoChip code={v.code} />
                       <Box sx={{ flexGrow: 1 }} />
+                      <Tooltip title="Mover para uma pasta">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => onMover(v, e.currentTarget)}
+                          sx={{
+                            color: v.folderId ? 'primary.main' : 'text.disabled',
+                          }}
+                        >
+                          <FolderOutlinedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Descartar — apaga o arquivo. Remontar o plano recria este vídeo.">
                         <IconButton
                           size="small"
@@ -919,6 +1515,7 @@ function GrupoDeProduto({
                       </Tooltip>
                     </Stack>
                     <OriginalidadeChip originality={v.originality} />
+                    <ResultadoDoVideo video={v} onLancar={onLancarResultado} />
                     <Tooltip title={v.filename}>
                       <Typography
                         variant="caption"
@@ -953,7 +1550,22 @@ function GrupoDeProduto({
   );
 }
 
+/** As quatro etapas do fluxo, na ordem em que acontecem. */
+const ETAPAS = ['Produto', 'Clipes', 'Matriz', 'Vídeos'] as const;
+
+/** A etapa da galeria — sempre alcançável, porque é só leitura. */
+const ETAPA_VIDEOS = 3;
+
+/** O que falta para poder seguir — some do caminho quando a etapa está ok. */
+const DICA_DA_ETAPA = [
+  'Dê uma sigla ao produto para continuar.',
+  'Envie ao menos um gancho.',
+  'Gere a matriz e clique em Montar vídeos.',
+  'Seus vídeos, na ordem de postagem.',
+];
+
 export function MultiplierPage() {
+  const [etapa, setEtapa] = useState(0);
   const [sigla, setSigla] = useState('');
   const [format, setFormat] = useState<PlanFormat>('9:16');
 
@@ -1016,6 +1628,22 @@ export function MultiplierPage() {
   const total =
     counts.hooks * Math.max(counts.bodies, 1) * Math.max(counts.ctas, 1);
   const acimaDoTeto = total > MAX_VIDEOS;
+
+  /**
+   * O requisito de cada etapa para liberar a seguinte.
+   *
+   * É o mesmo critério que o `Passo` já usava para marcar o check — mantê-lo
+   * num lugar só evita a trilha dizer "concluído" enquanto o botão continua
+   * desabilitado.
+   */
+  const custoEmCreditos = (result?.combinations.length ?? 0) * CREDITOS_POR_VIDEO;
+
+  function etapaConcluida(indice: number): boolean {
+    if (indice === 0) return Boolean(sigla.trim());
+    if (indice === 1) return counts.hooks > 0;
+    if (indice === 2) return Boolean(result);
+    return true;
+  }
 
   async function handleUpload(role: ClipRole, files: FileList | null) {
     const lista = Array.from(files ?? []);
@@ -1083,6 +1711,9 @@ export function MultiplierPage() {
       setResult(plan);
       setVideos([]);
       setPlans((prev) => [{ ...plan, total: plan.combinations.length }, ...prev]);
+      // A matriz é o resultado da etapa 3: sem isto o vendedor clicaria em
+      // "Gerar" e continuaria olhando para o formulário que já resolveu.
+      setEtapa(2);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao gerar combinações');
     } finally {
@@ -1101,7 +1732,16 @@ export function MultiplierPage() {
   async function handleRender(planId: string) {
     setError(null);
     setMontando(true);
+    // Montar já leva para a última etapa: é lá que o progresso e a galeria
+    // aparecem, e é o que o vendedor quer ver enquanto a fila roda.
+    setEtapa(3);
     try {
+      // Montar direto de "Planos salvos" não passa pelo formulário, então
+      // `result` estaria vazio e a etapa 4 mostraria o painel de "nenhum vídeo
+      // ainda" enquanto a fila roda. Carrega o plano antes de acompanhar.
+      if (result?.id !== planId) {
+        setResult(await combinationsService.findOne(planId));
+      }
       setVideos(await combinationsService.render(planId));
       if (sondagem.current) clearInterval(sondagem.current);
       sondagem.current = window.setInterval(async () => {
@@ -1260,10 +1900,40 @@ export function MultiplierPage() {
       </Typography>
 
       <form onSubmit={handleSubmit}>
-        {/* Passos 1 e 2 ocupam a largura toda: os três blocos de clipes
-            precisam caber lado a lado, e numa coluna de 5/12 eles ficavam
-            espremidos ou empilhados numa fita vertical interminável. */}
-        <Card sx={{ mb: 2 }}>
+        {/*
+          O fluxo virou etapas porque a tela é uma sequência, não um painel:
+          antes os quatro blocos ficavam empilhados e o vendedor rolava três
+          telas para chegar nos vídeos, passando por seções que já tinha
+          resolvido. Uma etapa por vez cabe numa dobra e a trilha no topo
+          mostra onde ele está sem precisar rolar para descobrir.
+        */}
+        <Stepper
+          // Sem `nonLinear` o MUI desabilita todo passo à frente do atual, e a
+          // trilha vira enfeite: nem voltar para revisar funcionaria.
+          nonLinear
+          activeStep={etapa}
+          alternativeLabel
+          sx={{ mb: 3, '& .MuiStepLabel-label': { fontWeight: 600 } }}
+        >
+          {ETAPAS.map((rotulo, i) => (
+            <Step key={rotulo} completed={i < etapa && etapaConcluida(i)}>
+              {/*
+                Voltar é sempre livre, para revisar o que já foi feito.
+                Avançar exige o requisito da etapa — menos para "Vídeos", que
+                é só a galeria: quem abriu a tela para rever o que já montou
+                não pode ser obrigado a refazer o fluxo inteiro para chegar lá.
+              */}
+              <StepButton
+                disabled={i > etapa && i !== ETAPA_VIDEOS}
+                onClick={() => setEtapa(i)}
+              >
+                {rotulo}
+              </StepButton>
+            </Step>
+          ))}
+        </Stepper>
+
+        <Card sx={{ mb: 2, display: etapa === 0 ? 'block' : 'none' }}>
           <CardContent>
             <Passo
               numero={1}
@@ -1305,7 +1975,7 @@ export function MultiplierPage() {
           </CardContent>
         </Card>
 
-        <Card sx={{ mb: 2 }}>
+        <Card sx={{ mb: 2, display: etapa === 1 ? 'block' : 'none' }}>
           <CardContent>
             <Passo
               numero={2}
@@ -1341,8 +2011,12 @@ export function MultiplierPage() {
           </CardContent>
         </Card>
 
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={5}>
+        <Grid
+          container
+          spacing={3}
+          sx={{ display: etapa >= 2 ? 'flex' : 'none' }}
+        >
+          <Grid item xs={12} md={5} sx={{ display: etapa === 2 ? 'block' : 'none' }}>
             <Card>
               <CardContent>
                 <Passo
@@ -1444,7 +2118,7 @@ export function MultiplierPage() {
             </Card>
           </Grid>
 
-          <Grid item xs={12} md={7}>
+          <Grid item xs={12} md={etapa === 2 ? 7 : 12}>
             <Card sx={{ mb: 3 }}>
             <CardContent>
               {result ? (
@@ -1458,13 +2132,14 @@ export function MultiplierPage() {
                   >
                     <Box>
                       <Typography variant="h6">
-                        {result.sigla} — {result.combinations.length} combinações
+                        {result.sigla} — {result.combinations.length}{' '}
+                        {plural(result.combinations.length, 'combinação', 'combinações')}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         {result.format} ·{' '}
                         {videos.length
                           ? 'montagem em vídeo'
-                          : `matriz gerada — montar custa ${result.combinations.length * CREDITOS_POR_VIDEO} créditos`}
+                          : `matriz gerada — montar custa ${custoEmCreditos} ${plural(custoEmCreditos, 'crédito', 'créditos')}`}
                       </Typography>
                     </Box>
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -1531,9 +2206,37 @@ export function MultiplierPage() {
           </Card>
           </Grid>
         </Grid>
+
+        {/* A navegação fica FORA dos cards de etapa: é a mesma barra o tempo
+            todo, e movê-la junto com o conteúdo faria o botão "Continuar"
+            saltar de posição a cada passo. */}
+        <Stack
+          direction="row"
+          spacing={1}
+          justifyContent="space-between"
+          alignItems="center"
+          sx={{ mt: 1 }}
+        >
+          <Button
+            disabled={etapa === 0}
+            onClick={() => setEtapa((e) => Math.max(e - 1, 0))}
+          >
+            Voltar
+          </Button>
+          <Typography variant="caption" color="text.secondary">
+            {DICA_DA_ETAPA[etapa]}
+          </Typography>
+          <Button
+            variant="contained"
+            disabled={etapa >= ETAPAS.length - 1 || !etapaConcluida(etapa)}
+            onClick={() => setEtapa((e) => Math.min(e + 1, ETAPAS.length - 1))}
+          >
+            Continuar
+          </Button>
+        </Stack>
       </form>
 
-      <Box sx={{ mt: 3 }}>
+      <Box sx={{ mt: 3, display: etapa === 3 ? 'block' : 'none' }}>
         <Galeria grupos={galeria} onRecarregar={recarregarGaleria} />
       </Box>
 

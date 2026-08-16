@@ -7,12 +7,18 @@ import { VideoAssemblyService } from '../campaigns/video-assembly.service';
 import { CombinationsController } from './combinations.controller';
 import { CombinationsService } from './combinations.service';
 import { CombinationClip } from './entities/combination-clip.entity';
+import { CombinationFolder } from './entities/combination-folder.entity';
 import { CombinationPlan } from './entities/combination-plan.entity';
 import { CombinationVideo } from './entities/combination-video.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([CombinationPlan, CombinationClip, CombinationVideo]),
+    TypeOrmModule.forFeature([
+      CombinationPlan,
+      CombinationClip,
+      CombinationVideo,
+      CombinationFolder,
+    ]),
     UsersModule,
     MediaModule,
     // Traz o PlanFeatureGuard: o multiplicador é recurso de plano pago.

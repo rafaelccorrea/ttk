@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnApplicationBootstrap,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -12,6 +13,7 @@ import { VideoAssemblyService } from '../campaigns/video-assembly.service';
 import { MEDIA_ROUTE, MediaMirrorService } from '../media/media-mirror.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { ClipRole, CombinationClip } from './entities/combination-clip.entity';
+import { CombinationFolder } from './entities/combination-folder.entity';
 import { CombinationPlan } from './entities/combination-plan.entity';
 import {
   CombinationOriginality,
@@ -50,8 +52,50 @@ export interface GaleriaGrupo {
   videos: CombinationVideo[];
 }
 
+/** Uma peça (gancho, corpo ou CTA) com o que os vídeos dela renderam. */
+export interface PecaInsight {
+  indice: number;
+  /** `G2`, `C1`, `A3` — o mesmo código que aparece no nome do arquivo. */
+  codigo: string;
+  rotulo: string;
+  /** Quantos vídeos com resultado lançado usam esta peça. */
+  videos: number;
+  /** `null` quando nenhum vídeo desta peça teve views lançadas. */
+  mediaViews: number | null;
+  totalVendas: number | null;
+}
+
+export interface PlanoInsights {
+  planId: string;
+  sigla: string;
+  videosLancados: number;
+  videosTotais: number;
+  mediaGeralViews: number | null;
+  blocos: Record<'hook' | 'body' | 'cta', PecaInsight[]>;
+}
+
+/** Contagem lançada: inteiro não-negativo, ou `null` para "não informado". */
+function normalizarContagem(valor: number | null | undefined): number | null {
+  if (valor === null || valor === undefined) return null;
+  const n = Math.trunc(valor);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 /** Teto de vídeos trazidos para a galeria de uma vez. */
 const GALERIA_MAX = 300;
+
+/** Teto de pastas por usuário — acima disso a barra lateral deixa de ajudar. */
+const MAX_PASTAS = 30;
+
+/**
+ * Só aceita `#rrggbb`.
+ *
+ * A cor vai direto para o `style` de um chip; sem esta checagem qualquer texto
+ * enviado pelo cliente entraria no CSS da página.
+ */
+function normalizarCor(cor: string | undefined): string {
+  return cor && /^#[0-9a-fA-F]{6}$/.test(cor) ? cor.toLowerCase() : '#fe2c55';
+}
 
 /** Teto por bloco — o mesmo que a tela oferece. */
 const LIMITES: Record<ClipRole, number> = { hook: 10, body: 5, cta: 3 };
@@ -79,7 +123,7 @@ const DIMENSOES = {
 } as const;
 
 @Injectable()
-export class CombinationsService {
+export class CombinationsService implements OnApplicationBootstrap {
   private readonly logger = new Logger(CombinationsService.name);
 
   /** Planos já em montagem, para um segundo clique não duplicar o trabalho. */
@@ -92,10 +136,244 @@ export class CombinationsService {
     private readonly clips: Repository<CombinationClip>,
     @InjectRepository(CombinationVideo)
     private readonly videos: Repository<CombinationVideo>,
+    @InjectRepository(CombinationFolder)
+    private readonly folders: Repository<CombinationFolder>,
     private readonly mirror: MediaMirrorService,
     private readonly assembly: VideoAssemblyService,
     private readonly billing: BillingService,
   ) {}
+
+  /**
+   * Devolve o crédito de montagens que o servidor não terminou.
+   *
+   * A cobrança acontece na entrada e a fila roda em segundo plano, então um
+   * deploy (ou qualquer queda) no meio de uma matriz deixa linhas presas em
+   * `pendente`/`montando` com o crédito já debitado e sem ninguém para
+   * estornar — numa matriz de 150 isso é a carteira do cliente evaporando por
+   * causa de um restart nosso.
+   *
+   * Roda no boot porque é exatamente aí que se sabe que ninguém sobreviveu:
+   * `montando` só é escrito por um processo vivo, e este acabou de nascer.
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    const presos = await this.videos.find({
+      where: [{ status: 'pendente' }, { status: 'montando' }],
+    });
+    if (!presos.length) return;
+
+    let estornados = 0;
+    for (const linha of presos) {
+      /*
+       * O UPDATE condicional é o que impede o estorno em dobro num deploy
+       * rolling: duas instâncias subindo juntas leem a mesma lista de presos
+       * antes de qualquer gravação, e sem a condição de status as duas
+       * devolveriam o crédito da mesma linha. Só quem tira a linha de
+       * `pendente`/`montando` é que paga o estorno.
+       */
+      const marcou = await this.videos.update(
+        { id: linha.id, status: In(['pendente', 'montando']) },
+        {
+          status: 'falhou',
+          error:
+            'A montagem foi interrompida (o servidor reiniciou). O crédito foi devolvido — clique em Montar vídeos de novo.',
+        },
+      );
+      if (!marcou.affected) continue;
+      estornados += 1;
+      await this.billing
+        .refund(
+          linha.userId,
+          'assembly',
+          `Estorno: ${linha.filename} não terminou de montar`,
+        )
+        .catch((e) =>
+          this.logger.error(`Falha no estorno de ${linha.code}: ${e}`),
+        );
+    }
+    if (estornados) {
+      this.logger.warn(
+        `${estornados} montagem(ns) interrompida(s) por reinício: estornadas.`,
+      );
+    }
+  }
+
+  // ------------------------------------------------------------- resultados
+
+  /**
+   * Lança (ou apaga) o desempenho de um vídeo publicado.
+   *
+   * Passar `null` num campo limpa o valor — é como o vendedor desfaz um número
+   * digitado errado sem precisar de outra rota.
+   */
+  async setResult(
+    userId: string,
+    id: string,
+    dados: { views?: number | null; sales?: number | null; postUrl?: string | null },
+  ): Promise<CombinationVideo> {
+    const video = await this.videos.findOneBy({ id, userId });
+    if (!video) throw new NotFoundException(`Vídeo ${id} não encontrado`);
+
+    if (dados.views !== undefined) video.views = normalizarContagem(dados.views);
+    if (dados.sales !== undefined) video.sales = normalizarContagem(dados.sales);
+    if (dados.postUrl !== undefined) {
+      const url = dados.postUrl?.trim();
+      video.postUrl = url ? url.slice(0, 500) : null;
+    }
+    return this.videos.save(video);
+  }
+
+  /**
+   * Ranking das peças de um plano pelo desempenho dos vídeos já lançados.
+   *
+   * O truque está na matriz: cada gancho aparece em `corpos × ctas`
+   * combinações, sempre acompanhado de corpos e CTAs diferentes. Então a média
+   * dos vídeos que usam o gancho 2 já isola o efeito dele — o vendedor está
+   * rodando um experimento fatorial sem saber, e aqui a conta é só de média.
+   *
+   * Só entram vídeos COM resultado lançado. Sem isso, tratar não-lançado como
+   * zero faria a peça mais usada parecer a pior.
+   */
+  async insights(userId: string, planId: string): Promise<PlanoInsights> {
+    const plan = await this.plans.findOneBy({ id: planId, userId });
+    if (!plan) throw new NotFoundException(`Plano ${planId} não encontrado`);
+
+    const lancados = (
+      await this.videos.find({ where: { planId, userId } })
+    ).filter((v) => v.views !== null || v.sales !== null);
+
+    const rotulos: Record<'hook' | 'body' | 'cta', string[]> = {
+      hook: plan.hooks,
+      body: plan.bodies,
+      cta: plan.ctas,
+    };
+    const letra = { hook: 'G', body: 'C', cta: 'A' } as const;
+
+    const blocos = {} as PlanoInsights['blocos'];
+    for (const papel of ['hook', 'body', 'cta'] as const) {
+      const porIndice = new Map<number, CombinationVideo[]>();
+      for (const video of lancados) {
+        const [g, c, a] = this.indices(video.code);
+        const indice = papel === 'hook' ? g : papel === 'body' ? c : a;
+        if (indice < 0) continue;
+        porIndice.set(indice, [...(porIndice.get(indice) ?? []), video]);
+      }
+
+      const pecas: PecaInsight[] = [...porIndice.entries()].map(
+        ([indice, videos]) => {
+          const comViews = videos.filter((v) => v.views !== null);
+          const comVendas = videos.filter((v) => v.sales !== null);
+          return {
+            indice,
+            codigo: `${letra[papel]}${indice + 1}`,
+            rotulo: rotulos[papel][indice] ?? `${letra[papel]}${indice + 1}`,
+            videos: videos.length,
+            mediaViews: comViews.length
+              ? Math.round(
+                  comViews.reduce((s, v) => s + (v.views ?? 0), 0) / comViews.length,
+                )
+              : null,
+            totalVendas: comVendas.length
+              ? comVendas.reduce((s, v) => s + (v.sales ?? 0), 0)
+              : null,
+          };
+        },
+      );
+
+      // Sem média de views a peça vai para o fim: ordenar `null` como 0 faria
+      // parecer a pior, quando na verdade ela só não tem dado.
+      pecas.sort((a, b) => (b.mediaViews ?? -1) - (a.mediaViews ?? -1));
+      blocos[papel] = pecas;
+    }
+
+    const todasAsViews = lancados
+      .filter((v) => v.views !== null)
+      .map((v) => v.views as number);
+    return {
+      planId,
+      sigla: plan.sigla,
+      videosLancados: lancados.length,
+      videosTotais: await this.videos.count({ where: { planId, userId } }),
+      mediaGeralViews: todasAsViews.length
+        ? Math.round(todasAsViews.reduce((s, v) => s + v, 0) / todasAsViews.length)
+        : null,
+      blocos,
+    };
+  }
+
+  // ------------------------------------------------------------- pastas
+
+  listFolders(userId: string): Promise<CombinationFolder[]> {
+    return this.folders.find({
+      where: { userId },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  async createFolder(
+    userId: string,
+    name: string,
+    color?: string,
+  ): Promise<CombinationFolder> {
+    const nome = name.trim().slice(0, 60);
+    if (!nome) {
+      throw new BadRequestException('Dê um nome para a pasta.');
+    }
+    const quantas = await this.folders.count({ where: { userId } });
+    if (quantas >= MAX_PASTAS) {
+      throw new ConflictException(
+        `Limite de ${MAX_PASTAS} pastas atingido. Apague uma antes de criar outra.`,
+      );
+    }
+    return this.folders.save(
+      this.folders.create({ userId, name: nome, color: normalizarCor(color) }),
+    );
+  }
+
+  async renameFolder(
+    userId: string,
+    id: string,
+    name?: string,
+    color?: string,
+  ): Promise<CombinationFolder> {
+    const pasta = await this.folders.findOneBy({ id, userId });
+    if (!pasta) throw new NotFoundException(`Pasta ${id} não encontrada`);
+    if (name !== undefined) {
+      const nome = name.trim().slice(0, 60);
+      if (!nome) throw new BadRequestException('Dê um nome para a pasta.');
+      pasta.name = nome;
+    }
+    if (color !== undefined) pasta.color = normalizarCor(color);
+    return this.folders.save(pasta);
+  }
+
+  /**
+   * Apaga a pasta e solta os vídeos — nenhum arquivo é removido.
+   *
+   * Uma pasta é uma etiqueta, não um lugar: quem arrasta um vídeo para dentro
+   * dela não está pedindo para o arquivo sumir junto quando ela for embora.
+   */
+  async deleteFolder(userId: string, id: string): Promise<void> {
+    const pasta = await this.folders.findOneBy({ id, userId });
+    if (!pasta) throw new NotFoundException(`Pasta ${id} não encontrada`);
+    await this.videos.update({ folderId: id, userId }, { folderId: null });
+    await this.folders.delete({ id, userId });
+  }
+
+  /** Move vídeos para uma pasta, ou para fora dela quando `folderId` é null. */
+  async moveVideos(
+    userId: string,
+    videoIds: string[],
+    folderId: string | null,
+  ): Promise<void> {
+    if (!videoIds.length) return;
+    if (folderId) {
+      const pasta = await this.folders.findOneBy({ id: folderId, userId });
+      if (!pasta) throw new NotFoundException(`Pasta ${folderId} não encontrada`);
+    }
+    // O `userId` no critério é o que impede mover o vídeo de outra conta com
+    // um id adivinhado — o update simplesmente não acha a linha.
+    await this.videos.update({ id: In(videoIds), userId }, { folderId });
+  }
 
   // ------------------------------------------------------------- clipes
 
