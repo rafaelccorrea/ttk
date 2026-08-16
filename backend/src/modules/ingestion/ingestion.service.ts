@@ -434,8 +434,41 @@ export class IngestionService implements OnModuleInit {
    * "Produtos em alta" ter Pet Shop e Automotivo, não só Beleza.
    * Roda uma vez por dia para não repetir o custo em toda execução.
    */
+  /**
+   * Descoberta sob demanda, com teto explícito.
+   *
+   * Mesma varredura por categoria da execução agendada, mas sem esperar a hora
+   * marcada e sabendo de antemão quanto vai custar. Devolve quantos produtos
+   * eram NOVOS — que é a pergunta que importa quando se paga por requisição:
+   * varrer e trazer 300 produtos que já estavam no catálogo é cota queimada.
+   */
+  async descobrirNovos(
+    paginasPorCategoria: number,
+    maxRequests: number,
+  ): Promise<{ novos: number; vistos: number; requisicoes: number }> {
+    const antes = await this.products.count();
+    this.externalData.beginRun(maxRequests);
+    const setting = await this.getSetting();
+    const vistos = await this.varrerCategorias({
+      ...setting,
+      discoveryPagesPerCategory: paginasPorCategoria,
+    } as IngestionSetting);
+    const depois = await this.products.count();
+    return {
+      novos: depois - antes,
+      vistos,
+      requisicoes: this.externalData.requestsUsed,
+    };
+  }
+
   private async layerDiscovery(setting: IngestionSetting): Promise<number> {
     if (new Date().getHours() !== setting.discoveryHour) return 0;
+    if (this.externalData.budgetExhausted) return 0;
+    return this.varrerCategorias(setting);
+  }
+
+  /** A varredura em si, sem a trava de horário — reaproveitada pelas duas. */
+  private async varrerCategorias(setting: IngestionSetting): Promise<number> {
     if (this.externalData.budgetExhausted) return 0;
 
     const today = new Date().toISOString().slice(0, 10);
