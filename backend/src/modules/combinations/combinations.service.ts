@@ -411,15 +411,39 @@ export class CombinationsService {
   /** Monta cada combinação em sequência, gravando o resultado linha a linha. */
   private async montarTudo(plan: CombinationPlan): Promise<void> {
     const dim = DIMENSOES[plan.format] ?? DIMENSOES['9:16'];
+
+    /**
+     * Cada clipe é normalizado UMA vez para o plano inteiro.
+     *
+     * Um gancho aparece em `corpos × ctas` combinações — com a matriz cheia,
+     * 15 vezes. Normalizando dentro do laço, o mesmo arquivo era recodificado
+     * 15 vezes para produzir 15 resultados idênticos: numa matriz de 150
+     * vídeos isso é ~450 codificações onde 18 bastam.
+     *
+     * O cache guarda a peça já pronta, então a montagem de cada combinação vira
+     * só a emenda (concat sem recodificar) — que é o que torna viável usar um
+     * preset de compressão mais lento e entregar imagem melhor.
+     */
     const cache = new Map<string, Buffer | null>();
 
     const ler = async (clipId: string | undefined): Promise<Buffer | null> => {
       if (!clipId) return null;
       if (cache.has(clipId)) return cache.get(clipId) ?? null;
+
       const clip = await this.clips.findOneBy({ id: clipId, userId: plan.userId });
-      const buffer = clip ? await this.lerClipe(clip.url) : null;
-      cache.set(clipId, buffer);
-      return buffer;
+      const bruto = clip ? await this.lerClipe(clip.url) : null;
+      let pronto: Buffer | null = null;
+      if (bruto) {
+        try {
+          pronto = await this.assembly.normalizar(bruto, dim);
+        } catch (error) {
+          // Um clipe corrompido derruba só as combinações que dependem dele —
+          // o `null` faz cada linha falhar com motivo, em vez de abortar a fila.
+          this.logger.warn(`Clipe ${clipId} não pôde ser normalizado: ${error}`);
+        }
+      }
+      cache.set(clipId, pronto);
+      return pronto;
     };
 
     // Monta na ordem de postagem: o vendedor pode começar a baixar e postar os
@@ -455,7 +479,8 @@ export class CombinationsService {
           throw new Error('Nenhum clipe pôde ser lido.');
         }
 
-        const final = await this.assembly.juntar(partes, dim);
+        // As partes já saíram normalizadas do cache: aqui é só a emenda.
+        const final = await this.assembly.juntarNormalizadas(partes);
         const url = await this.mirror.putVideo(final, 'combination-videos', linha.id);
         if (!url) throw new Error('O vídeo montado não pôde ser guardado.');
 
