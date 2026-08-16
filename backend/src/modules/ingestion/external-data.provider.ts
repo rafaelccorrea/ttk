@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ApiArchiveService } from './api-archive.service';
 import {
   ApiQuotaService,
   FinalidadeDaChamada,
@@ -146,6 +147,8 @@ const MEDIA_TTL_MS = 90 * 60 * 1000;
 const MEDIA_CACHE_MAX = 2000;
 /** `product_sort_field`: 7 = total_sale_gmv_30d_amt. */
 const PRODUCT_SORT_GMV_30D = 7;
+/** `product_video_sort_field`: 5 = GMV do vídeo. */
+const PRODUCT_VIDEO_SORT_GMV = 5;
 /** Piso de criativos para um produto entrar no catálogo. */
 const MIN_VIDEOS_POR_PRODUTO = 1;
 /** Quanto tempo parar de chamar o fornecedor depois de bater no limite. */
@@ -193,6 +196,7 @@ export class ExternalDataProvider {
   constructor(
     config: ConfigService,
     private readonly quota: ApiQuotaService,
+    private readonly archive: ApiArchiveService,
   ) {
     this.baseUrl = (
       config.get<string>('ECHOTIK_BASE_URL') ?? DEFAULT_BASE_URL
@@ -419,6 +423,13 @@ export class ExternalDataProvider {
         product_id: tiktokProductId,
         page_num: 1,
         page_size: Math.min(limit, MAX_PAGE_SIZE),
+        // SEM ordenação a API devolve ordem arbitrária, e o que chegava eram
+        // vídeos de 400 views com GMV zero — de um produto com 2.872 vídeos e
+        // 54 mil vendas por vídeo. A vitrine mostrava "R$ 0,00" em todos os
+        // criativos de um campeão de vendas. 5 = GMV do vídeo, decrescente:
+        // os que realmente venderam vêm primeiro.
+        product_video_sort_field: PRODUCT_VIDEO_SORT_GMV,
+        sort_type: 1,
       },
     );
     return (rows ?? []).map((row) => this.parseVideo(row));
@@ -627,6 +638,20 @@ export class ExternalDataProvider {
       } catch {
         body = null;
       }
+
+      // O bruto é guardado SEMPRE, inclusive em erro: a requisição já foi
+      // paga, e a resposta é a única prova do que o fornecedor disse. Sem
+      // isso, todo parse errado obrigava a pagar tudo de novo só para ver o
+      // JSON — e número questionado na vitrine não tinha como ser auditado.
+      this.archive.registrar({
+        endpoint: path,
+        params,
+        httpStatus: response.status,
+        code: body?.code ?? -1,
+        message: body?.message ?? null,
+        payload: body,
+        purpose: finalidade,
+      });
 
       if (!body) {
         this.logger.warn(`EchoTik ${path} respondeu HTTP ${response.status}`);

@@ -43,10 +43,42 @@ export const theme = createTheme({
   components: {
     MuiCssBaseline: {
       styleOverrides: {
-        html: { WebkitTextSizeAdjust: '100%' },
+        html: {
+          WebkitTextSizeAdjust: '100%',
+          // Rolagem suave em âncoras/scrollIntoView, respeitando quem pediu
+          // menos movimento no sistema.
+          scrollBehavior: 'smooth',
+          '@media (prefers-reduced-motion: reduce)': { scrollBehavior: 'auto' },
+          // Firefox: barra fina já no padrão moderno.
+          scrollbarWidth: 'thin',
+          // Firefox não aceita gradiente na barra: fica o vermelho da marca.
+          scrollbarColor: '#fe2c55 transparent',
+          scrollbarGutter: 'stable',
+        },
         // Trava o estouro horizontal: no mobile qualquer elemento largo demais
         // rola dentro do próprio container, nunca empurra a página.
-        body: { overflowX: 'hidden' },
+        body: {
+          overflowX: 'hidden',
+          // Impede o "bounce"/pull-to-refresh puxar a página inteira.
+          overscrollBehaviorY: 'none',
+        },
+        // Barra global (WebKit/Blink): fina, sem setas e só perceptível
+        // quando há o que rolar.
+        '*::-webkit-scrollbar': { width: 10, height: 10 },
+        '*::-webkit-scrollbar-track': { background: 'transparent' },
+        // Thumb com o gradiente da marca (vermelho → ciano do TikTok).
+        '*::-webkit-scrollbar-thumb': {
+          background: 'linear-gradient(135deg, #fe2c55 0%, #00c2bb 100%)',
+          borderRadius: 999,
+          border: '3px solid transparent',
+          backgroundClip: 'content-box',
+          opacity: 0.75,
+          transition: 'filter .2s ease',
+        },
+        '*::-webkit-scrollbar-thumb:hover': {
+          filter: 'saturate(1.2) brightness(1.05)',
+        },
+        '*::-webkit-scrollbar-corner': { background: 'transparent' },
         // Evita o zoom automático do iOS ao focar campos (<16px dispara zoom).
         'input, select, textarea': { [SM_DOWN]: { fontSize: '16px' } },
         img: { maxWidth: '100%' },

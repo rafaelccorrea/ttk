@@ -488,6 +488,49 @@ export class IngestionService implements OnModuleInit {
   }
 
   /**
+   * Rebusca os vídeos de produtos que JÁ têm vídeo.
+   *
+   * Existe por causa de um erro nosso: a lista de vídeos por produto era pedida
+   * sem ordenação, e o fornecedor devolvia ordem arbitrária. Num produto com
+   * 2.872 vídeos e 54 mil vendas por vídeo, o que chegava eram seis vídeos de
+   * 400 views e GMV zero — a vitrine mostrava "R$ 0,00" em todos os criativos
+   * de um campeão de vendas. Tudo que foi coletado antes da correção veio
+   * assim.
+   *
+   * Os vídeos antigos não são apagados: a tela ordena por views, então os
+   * bons assumem o topo e os antigos afundam sozinhos.
+   */
+  async reprocessarVideosDaVitrine(
+    maxProdutos: number,
+    maxRequests: number,
+  ): Promise<{ produtos: number; requisicoes: number }> {
+    this.externalData.beginRun(maxRequests);
+
+    const alvos = await this.products
+      .createQueryBuilder('p')
+      .where('p."tiktokProductId" IS NOT NULL')
+      .andWhere('p."isDuplicate" = false')
+      .andWhere('EXISTS (SELECT 1 FROM videos v WHERE v."productId" = p.id)')
+      .orderBy('p."sales30d"', 'DESC')
+      .take(maxProdutos)
+      .getMany();
+
+    const detalhes = await this.externalData.fetchProductDetails(
+      alvos.map((p) => p.tiktokProductId!).filter(Boolean),
+    );
+
+    let refeitos = 0;
+    for (const product of alvos) {
+      if (this.externalData.budgetExhausted) break;
+      const ext = detalhes.get(product.tiktokProductId!);
+      if (!ext) continue;
+      if ((await this.ingestProductVideos(product, ext)) > 0) refeitos += 1;
+    }
+
+    return { produtos: refeitos, requisicoes: this.externalData.requestsUsed };
+  }
+
+  /**
    * Camada 0 — a vitrine não pode ter produto sem vídeo.
    *
    * É a primeira a rodar, antes de descobrir qualquer produto novo. O motivo é

@@ -41,12 +41,48 @@ npm run dev
 - Sem Supabase (dev): "modo demo" — `POST /api/v1/auth/dev-login` emite um JWT local; cada e-mail é um usuário distinto.
 - Todos os dados de usuário (favoritos, roteiros) são escopados pelo `sub` do token — nada é fixo.
 
+## Assinatura (paywall na entrada)
+
+Não existe plano gratuito. O produto entrega dado de mercado comprado de
+fornecedor pago (EchoTik) e IA cobrada por chamada — conta grátis queimava custo
+por visitante e entregava justamente aquilo que se vende. Então:
+
+- `plan = 'free'` **não é um plano**: é o estado "conta criada, pagamento
+  pendente". Rank 0, nenhum recurso liberado (`FEATURE_MIN_PLAN` em
+  `backend/src/modules/billing/billing.config.ts`).
+- Quem está nesse estado — cadastro novo ou assinatura encerrada — cai em
+  `/assinatura`, uma tela **fora** do app logado (`frontend/src/pages/Subscribe`).
+- O bloqueio real é do backend: `PlanFeatureGuard` responde 403 em produtos,
+  vídeos, criadores, tendências, estúdio e coleta. O gate do front é só UX.
+- A prova de valor mora antes do login: `GET /api/v1/showcase` alimenta a
+  amostra pública da landing — 8 produtos, defasados, com vendas em faixa e sem
+  loja, receita ou link do TikTok (`backend/src/modules/showcase/`).
+- **Contas de cortesia**: `COMP_ACCOUNT_EMAILS` (separado por vírgula) mantém as
+  contas da equipe em Business sem passar pelo checkout, e imunes a downgrade.
+  Preencha antes de subir o paywall — senão o time perde o acesso junto.
+- **Ciclo de vida**: `customer.subscription.deleted` devolve a conta para `free`
+  (o Stripe só emite esse evento quando o período pago termina, então cancelar
+  não corta na hora). `invoice.payment_failed` apenas registra — quem decide o
+  corte é o dunning do Stripe. O cliente cancela e troca cartão sozinho pelo
+  Billing Portal, em Perfil → Gerenciar assinatura.
+- Os créditos comprados **não** são apagados no downgrade: ficam no saldo e
+  voltam a valer se a pessoa reassinar.
+
+> Segurança: as tabelas do Supabase estavam "Unrestricted" — com RLS desligado,
+> a `anon key` (pública, vai no bundle) permitia ler e escrever tudo via
+> PostgREST, inclusive `app_users.plan`. A migration `EnableRowLevelSecurity`
+> revoga `anon`/`authenticated` e liga RLS sem policies em todas as tabelas.
+> **Tabela nova nasce desprotegida** — ao criar uma, ligue o RLS na mesma
+> migration.
+
 ## Funcionalidades
 
 - **Descoberta**: ranking de produtos por 7/30/90 dias com crescimento %, filtros por categoria/busca, detalhe com série diária de vendas e favoritos por usuário.
 - **Estúdio IA**: roteiros de live (ciclos Apresentação→Oferta→Garantia→CTA) e de vídeo (Gancho→Corpo→CTA) via API da Anthropic (`ANTHROPIC_API_KEY`; sem a chave, gerador de template local). Roteiros salvos por usuário.
 - **Cofre de Prompts**: prompts de vídeo/imagem IA com campos a preencher e copiar.
 - **Dashboard**: números agregados do catálogo + top produtos da semana.
+
+Tudo acima exige assinatura ativa — ver "Assinatura (paywall na entrada)".
 > **Minha Loja foi descontinuada.** O módulo `stores` (cadastro de loja, importação de
 > planilhas do Seller Center, curva ABC, alertas por e-mail) saiu do produto. As tabelas
 > `stores*` continuam no banco pela migration `1786665600000-AddStores` — se quiser

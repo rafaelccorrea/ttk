@@ -11,12 +11,9 @@ export function ScrollX({ children }: { children: ReactNode }) {
       sx={{
         overflowX: 'auto',
         WebkitOverflowScrolling: 'touch',
-        scrollbarWidth: 'thin',
-        '&::-webkit-scrollbar': { height: 6 },
-        '&::-webkit-scrollbar-thumb': {
-          background: 'rgba(22,24,35,0.18)',
-          borderRadius: 3,
-        },
+        // Não deixa o gesto horizontal virar "voltar página" no trackpad/touch.
+        overscrollBehaviorX: 'contain',
+        // A barra em si vem do estilo global (CssBaseline).
       }}
     >
       {children}

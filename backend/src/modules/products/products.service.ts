@@ -433,11 +433,35 @@ export class ProductsService {
       order: { date: 'ASC' },
     });
     const inPeriod = series.filter((m) => m.date >= since);
-    const salesPeriod = inPeriod.reduce((acc, m) => acc + m.sales, 0);
-    const revenuePeriod = inPeriod.reduce(
-      (acc, m) => acc + Number(m.revenue),
-      0,
-    );
+
+    /**
+     * Vendas e faturamento do período.
+     *
+     * A soma da série diária só existe para produto que já foi visto em várias
+     * execuções — e a ingestão grava um ponto por dia. Produto recém-entrado
+     * tinha série vazia, e a página mostrava "0 vendas · R$ 0,00" bem embaixo
+     * de um card que dizia 51 mil vendas: o número mais desmoralizante da
+     * vitrine, e ele era nosso, não do fornecedor.
+     *
+     * As colunas de período vêm prontas do fornecedor. A série continua sendo
+     * a fonte quando existe (é mais granular e serve ao gráfico); sem ela, o
+     * número do fornecedor assume.
+     */
+    const col = this.colunasDoPeriodo(period);
+    const daColuna = {
+      sales: Number(
+        (product as unknown as Record<string, unknown>)[col.sales] ?? 0,
+      ),
+      revenue: Number(
+        (product as unknown as Record<string, unknown>)[col.revenue] ?? 0,
+      ),
+    };
+    const somaSerie = inPeriod.reduce((acc, m) => acc + m.sales, 0);
+    const salesPeriod = somaSerie > 0 ? somaSerie : daColuna.sales;
+    const revenuePeriod =
+      somaSerie > 0
+        ? inPeriod.reduce((acc, m) => acc + Number(m.revenue), 0)
+        : daColuna.revenue;
     const isFavorite = userId
       ? Boolean(
           await this.favorites.findOneBy({ userId, productId: id }),
