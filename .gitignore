@@ -10,3 +10,6 @@ shop-session.json
 .env.*
 !.env.example
 *.supabase-backup
+
+# Pacote gerado para subir o front a mao (artefato de build, nao versionado).
+frontend/pikpok-front.zip

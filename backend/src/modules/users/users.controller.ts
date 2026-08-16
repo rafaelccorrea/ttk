@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { isAdmin } from '../admin/admin.access';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
@@ -28,8 +29,12 @@ export class UsersController {
 
   @Get('me')
   @ApiOperation({ summary: 'Perfil do usuário autenticado' })
-  me(@CurrentUser() user: AuthUser) {
-    return this.usersService.findById(user.id);
+  async me(@CurrentUser() user: AuthUser) {
+    const perfil = await this.usersService.findById(user.id);
+    // `isAdmin` sai daqui só para a UI decidir se mostra o menu da área
+    // administrativa. Quem realmente barra é o AdminGuard, em cada rota /admin:
+    // adulterar esta resposta no navegador não dá acesso a nada.
+    return { ...perfil, isAdmin: isAdmin(perfil.email) };
   }
 
   @Patch('me')

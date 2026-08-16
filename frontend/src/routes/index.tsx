@@ -3,6 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { PlanGate } from '@/components/ui/PlanGate';
 import { RequireSubscription } from '@/components/ui/RequireSubscription';
 import { AcademyPage } from '@/pages/Academy';
+import { AdminPage } from '@/pages/Admin';
 import { AnalyzePage } from '@/pages/Analyze';
 import { useAuth } from '@/contexts/AuthContext';
 import { CampaignsPage } from '@/pages/Campaigns';
@@ -75,6 +76,9 @@ export function AppRoutes() {
             />
             <Route path="/analisar" element={<AnalyzePage />} />
             <Route path="/planos" element={<PlansPage />} />
+            {/* A rota existe para qualquer logado; quem barra é o AdminGuard
+                do backend, que responde 403 em todas as chamadas /admin. */}
+            <Route path="/admin" element={<AdminPage />} />
           </Route>
         </Route>
       </Route>

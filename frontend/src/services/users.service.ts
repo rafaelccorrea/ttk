@@ -7,6 +7,8 @@ export interface UserProfile {
   avatarUrl: string | null;
   plan: string;
   createdAt: string;
+  /** Só para a UI decidir se mostra a área administrativa — o backend é quem barra. */
+  isAdmin?: boolean;
 }
 
 export const usersService = {

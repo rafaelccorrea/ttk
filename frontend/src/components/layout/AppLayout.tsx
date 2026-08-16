@@ -1,3 +1,4 @@
+import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded';
 import AutoFixHighRoundedIcon from '@mui/icons-material/AutoFixHighRounded';
 import CardGiftcardRoundedIcon from '@mui/icons-material/CardGiftcardRounded';
 import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
@@ -40,6 +41,7 @@ import { SupportFab } from '@/components/ui/SupportFab';
 import { useAuth } from '@/contexts/AuthContext';
 import { api, CREDITS_CHANGED_EVENT } from '@/services/api';
 import { billingService } from '@/services/billing.service';
+import { usersService } from '@/services/users.service';
 
 const DRAWER_WIDTH = 248;
 const DRAWER_WIDTH_COLLAPSED = 76;
@@ -101,7 +103,21 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
-const NAV = NAV_SECTIONS.flatMap((section) => section.items);
+/**
+ * Seção da equipe: só aparece para quem é administrador. Não é segurança — o
+ * backend barra /admin de qualquer jeito — é para o menu do cliente não exibir
+ * uma porta que ele não pode abrir.
+ */
+const ADMIN_SECTION: NavSection = {
+  title: 'Equipe',
+  items: [
+    { to: '/admin', label: 'Administração', icon: <ShieldRoundedIcon /> },
+  ],
+};
+
+const NAV = [...NAV_SECTIONS, ADMIN_SECTION].flatMap(
+  (section) => section.items,
+);
 
 export function AppLayout() {
   const { email, signOut } = useAuth();
@@ -110,6 +126,7 @@ export function AppLayout() {
   const [credits, setCredits] = useState<number | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [plan, setPlan] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [nextUpdate, setNextUpdate] = useState<{
     nextRunAt: string | null;
     isRunning: boolean;
@@ -141,6 +158,14 @@ export function AppLayout() {
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
+
+  // Em erro, segue como não-admin: o menu some, e nada quebra.
+  useEffect(() => {
+    usersService
+      .me()
+      .then((u) => setIsAdmin(Boolean(u.isAdmin)))
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   // Timer da próxima leva de análises (visível a todos os planos).
   useEffect(() => {
@@ -252,7 +277,8 @@ export function AppLayout() {
             '&::-webkit-scrollbar': { display: 'none' },
           }}
         >
-          {NAV_SECTIONS.map((section, sectionIndex) => (
+          {[...NAV_SECTIONS, ...(isAdmin ? [ADMIN_SECTION] : [])].map(
+            (section, sectionIndex) => (
             <List
               key={section.title ?? sectionIndex}
               disablePadding
@@ -349,7 +375,8 @@ export function AppLayout() {
                 );
               })}
             </List>
-          ))}
+            ),
+          )}
         </Box>
 
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
