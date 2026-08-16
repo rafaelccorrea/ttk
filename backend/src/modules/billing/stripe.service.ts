@@ -170,10 +170,11 @@ export class StripeService implements OnModuleInit {
       session = await stripe.checkout.sessions.create({
         ...common,
         mode: 'payment',
-        // Pacote é cobrança única, então dá para aceitar PIX — que no Brasil
-        // converte melhor que cartão em compra à vista. Assinatura não entra
-        // aqui: PIX não é recorrente, e o plano precisa renovar sozinho.
-        payment_method_types: ['card', 'pix'],
+        // Sem `payment_method_types`: o Stripe oferece os métodos que estiverem
+        // habilitados na conta. PIX caberia bem aqui (pacote é cobrança única e
+        // à vista converte melhor no Brasil), mas fixar a lista quebraria o
+        // checkout enquanto o método não estiver ativo no Dashboard — então
+        // deixamos a conta mandar. Para ligar o PIX, basta habilitá-lo lá.
         metadata: { userId, kind: 'pack', itemId: pack.id },
         line_items: [
           this.packPriceIdFor(pack.id)
