@@ -677,7 +677,7 @@ export function FinalCta() {
               </Button>
             </Stack>
             <Typography fontSize={13} color={textFaint} mt={3}>
-              Sem cartão de crédito · sem fidelidade
+              Sem fidelidade · cancele quando quiser
             </Typography>
           </Box>
         </Box>
