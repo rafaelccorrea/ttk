@@ -427,16 +427,24 @@ export function ProductDetailPage() {
                     >
                       {v.caption}
                     </Typography>
-                    <Chip
-                      size="small"
-                      label={formatCurrency(v.revenueEstimate)}
-                      sx={{
-                        mt: 1,
-                        fontWeight: 700,
-                        bgcolor: 'rgba(0,194,187,0.12)',
-                        color: 'secondary.main',
-                      }}
-                    />
+                    {/* Faturamento só aparece quando existe.
+                        "R$ 0,00" não informa nada: o fornecedor atribui receita
+                        a poucos vídeos, e o zero era lido como "não vendeu" —
+                        num produto campeão de vendas, isso desmentia a própria
+                        página. Sem o número, o card mostra o que ele tem de
+                        concreto: quem postou e o que disse. */}
+                    {Number(v.revenueEstimate) > 0 && (
+                      <Chip
+                        size="small"
+                        label={formatCurrency(v.revenueEstimate)}
+                        sx={{
+                          mt: 1,
+                          fontWeight: 700,
+                          bgcolor: 'rgba(0,194,187,0.12)',
+                          color: 'secondary.main',
+                        }}
+                      />
+                    )}
                   </CardContent>
                 </Card>
               </Grid>
