@@ -338,13 +338,41 @@ export const PLANS: Plan[] = [
       'Tudo do Essencial',
       'Vídeos com IA',
       'Multiplicador de conteúdo',
+      /*
+       * O gancho do funil, e é por isso que a redação é específica.
+       *
+       * O Pro ganha o copiloto no modo PAINEL — a resposta pronta na tela, para
+       * copiar ou falar. O que ele não ganha é o envio automático, que fica no
+       * Business por risco (ver FEATURE_MIN_PLAN.live_copilot). Dizer só "Live
+       * Copilot" aqui prometeria o produto inteiro e transformaria o upgrade
+       * numa reclamação; dizer o que ele é de fato faz os dez minutos venderem
+       * o degrau de cima em vez de substituí-lo.
+       */
+      `Live Copilot no painel: ${LIVE_TRIAL_MINUTES} minutos para conhecer`,
     ],
   },
   {
     id: 'business',
     name: 'Business',
-    priceBrl: 249.9,
+    /*
+     * R$ 269,90 e não R$ 249,90 porque o plano passou a INCLUIR 5 horas de
+     * copiloto ao vivo — que avulsas custam R$ 49,90. São +R$ 20 no preço por
+     * R$ 49,90 de valor entregue: o cliente sai ganhando, e a margem volta para
+     * 1,49× (com as horas, o preço antigo caía para 1,38× e o servidor nem
+     * subiria — ver `assertProfitability`).
+     */
+    priceBrl: 269.9,
     monthlyCredits: 2800,
+    /*
+     * As 5 horas que fazem o Business valer o degrau.
+     *
+     * É a diferença de natureza entre os dois planos: o Pro EXPERIMENTA o
+     * copiloto (dez minutos de cortesia, uma vez), o Business OPERA com ele
+     * todo mês. Sem horas inclusas, quem assinasse o topo ainda teria que
+     * comprar add-on antes da primeira live — e um plano que exige uma segunda
+     * compra para funcionar não é um plano, é uma entrada.
+     */
+    monthlyLiveMinutes: 300,
     /*
      * O anual do Business faltava, e a ausência era pior do que parece: é o
      * plano mais caro, e quem chega nele é exatamente quem estaria disposto a
@@ -358,12 +386,12 @@ export const PLANS: Plan[] = [
      * (R$ 0,0865). Mexer nestes números sem refazer essa conta derruba o
      * servidor no boot, em `assertProfitability`.
      */
-    annual: { priceBrl: 2499.9, credits: 28800 },
+    annual: { priceBrl: 2699.9, credits: 28800 },
     perks: [
       '2.800 créditos/mês (ou 28.800 no plano anual)',
       'Tudo do Pro',
-      'Live Copilot: a IA responde o chat durante a sua live (exclusivo)',
-      `${LIVE_TRIAL_MINUTES} minutos de copiloto ao vivo para testar`,
+      '5 horas de Live Copilot por mês (60 horas no plano anual)',
+      'Envio automático: a IA responde no chat da live (exclusivo)',
       'Coleta de dados automatizada',
       'Onboarding dedicado',
       'Suporte prioritário',
@@ -626,17 +654,29 @@ export function assertProfitability(): string[] {
   for (const plan of [...PLANS, ...LEGACY_PLANS]) {
     // Cada ciclo é checado com a cota que ele libera: o anual não é o mensal
     // × 12, então precisa passar pelo mesmo teste com os próprios números.
-    const cycles: Array<[string, number, number]> = [
-      ['mensal', plan.priceBrl, plan.monthlyCredits],
+    const cycles: Array<[BillingCycle, string, number, number]> = [
+      ['month', 'mensal', plan.priceBrl, plan.monthlyCredits],
       ...(plan.annual
-        ? ([['anual', plan.annual.priceBrl, plan.annual.credits]] as Array<
-            [string, number, number]
-          >)
+        ? ([
+            ['year', 'anual', plan.annual.priceBrl, plan.annual.credits],
+          ] as Array<[BillingCycle, string, number, number]>)
         : []),
     ];
-    for (const [cycle, price, credits] of cycles) {
+    for (const [cycleId, cycle, price, credits] of cycles) {
       if (credits === 0) continue;
-      const worstSpend = credits * perCredit;
+      /*
+       * As DUAS moedas entram na conta do plano.
+       *
+       * Enquanto nenhum plano incluía hora de live, olhar só os créditos dava o
+       * número certo. No dia em que o Business passou a incluir 5 horas, esse
+       * custo entrou no plano sem entrar em lugar nenhum da checagem — e o
+       * servidor teria subido tranquilo anunciando uma margem que já não era
+       * verdade. É exatamente o tipo de erosão silenciosa que esta função
+       * existe para impedir, então ela precisa enxergar tudo que o plano promete.
+       */
+      const worstSpend =
+        credits * perCredit +
+        planLiveMinutes(plan, cycleId) * LIVE_COST_PER_MINUTE_BRL;
       if (price < worstSpend * MIN_MARGIN) {
         problems.push(
           `Plano "${plan.id}" (${cycle}): R$ ${price} não cobre pior gasto R$ ${worstSpend.toFixed(2)} × margem ${MIN_MARGIN}`,

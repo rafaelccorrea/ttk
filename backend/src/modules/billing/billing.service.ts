@@ -25,6 +25,7 @@ import {
   PLAN_RANK,
   planAllows,
   planCredits,
+  planLiveMinutes,
   PlanFeature,
   PLANS,
   SIGNUP_BONUS_CREDITS,

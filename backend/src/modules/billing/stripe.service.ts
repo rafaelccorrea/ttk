@@ -18,6 +18,7 @@ import {
   findPlan,
   livePackMinutes,
   planCredits,
+  planLiveMinutes,
   planPrice,
 } from './billing.config';
 import { BillingService } from './billing.service';

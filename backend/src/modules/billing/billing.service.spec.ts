@@ -109,10 +109,24 @@ describe('carteira de minutos — consumo', () => {
     });
   });
 
-  it('recusa quem não é Business, mesmo com saldo', async () => {
-    // O saldo pode existir de uma assinatura anterior; o recurso é do topo.
+  it('deixa o Pro gastar minuto — ele tem o copiloto no painel', async () => {
+    /*
+     * Mudou com a abertura do copiloto para o Pro. O que continua sendo do
+     * Business é o ENVIO automático, e essa trava mora em `trocarModo`, não no
+     * débito: cobrar o minuto do Pro é cobrar pelo painel, que é o que ele
+     * comprou. Recusar aqui deixaria os dez minutos de cortesia sem serventia —
+     * saldo que existe e não pode ser usado.
+     */
     const { servico } = montar({
       usuario: { ...BUSINESS, plan: 'pro', liveMinutes: 500 },
+    });
+    await expect(servico.chargeLiveMinutes('u1', 1)).resolves.toBeDefined();
+  });
+
+  it('recusa abaixo do Pro, mesmo com saldo', async () => {
+    // O saldo pode existir de uma assinatura anterior; o recurso não.
+    const { servico } = montar({
+      usuario: { ...BUSINESS, plan: 'essencial', liveMinutes: 500 },
     });
     await expect(servico.chargeLiveMinutes('u1', 1)).rejects.toMatchObject({
       status: 403,
