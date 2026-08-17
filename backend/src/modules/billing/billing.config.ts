@@ -18,7 +18,10 @@ export type BillableAction =
   | 'transcribe' // Transcrição Whisper, por bloco de 10 min começado
   | 'image' // Higgsfield Soul (texto → imagem)
   | 'video' // Higgsfield Soul + DoP (texto → imagem → vídeo)
-  | 'assembly'; // Multiplicador: cada vídeo concatenado
+  | 'assembly' // Multiplicador: cada vídeo concatenado
+  // O copiloto AO VIVO não entra aqui: ele gasta minutos de live, não crédito
+  // de IA (ver "Horas de live — a segunda moeda", mais abaixo).
+  | 'live_extract'; // Live Copilot: base de conhecimento de uma live gravada
 
 export interface ActionPrice {
   credits: number;
@@ -66,7 +69,119 @@ export const ACTION_PRICES: Record<BillableAction, ActionPrice> = {
    * que faça o vendedor pensar duas vezes antes de montar mata o produto.
    */
   assembly: { credits: 1, worstCaseCostBrl: 0.05, label: 'Vídeo montado' },
+  /*
+   * Extração da base de conhecimento de uma live gravada, cobrada uma vez por
+   * live. O pipeline é map/reduce sobre ~40k tokens de transcrição: o map roda
+   * em claude-sonnet-5 (barato, por fatia) e o reduce em claude-opus-5 (junta
+   * tudo num único passo). Dá ~R$ 1,00 no pior caso.
+   *
+   * Os 17 créditos NÃO são arredondamento — 16 já passariam no teste de margem
+   * da própria ação (1,60 >= 1,00 × 1,4 = 1,40), mas dariam R$ 0,0625 de custo
+   * por crédito, acima do vídeo (3,60/60 = R$ 0,06), que hoje é o pior custo por
+   * crédito da tabela. E `worstCostPerCredit()` alimenta a checagem dos PLANOS:
+   * o piso subiria para R$ 0,0875/cr e derrubaria no boot o Essencial anual
+   * (399,90/4.600 = R$ 0,0869) e o Pro anual (899,90/10.400 = R$ 0,0865).
+   * Com 17 dá R$ 0,0588/cr, o pior custo continua sendo o do vídeo e nenhum
+   * plano é afetado.
+   */
+  live_extract: {
+    credits: 17,
+    worstCaseCostBrl: 1.0,
+    label: 'Base de conhecimento da live',
+  },
 };
+
+/* ------------------------------------------------------------------ *
+ *  Horas de live — a segunda moeda                                    *
+ * ------------------------------------------------------------------ */
+
+/**
+ * O copiloto ao vivo NÃO gasta crédito de IA. Ele gasta minutos de live, que
+ * são comprados à parte e vivem num saldo próprio.
+ *
+ * São duas moedas de propósito, e a razão é o que o cliente compra em cada
+ * caso. Crédito é uma unidade de trabalho da plataforma: um roteiro, uma
+ * imagem, uma transcrição — coisas discretas, que ele pede uma a uma e cujo
+ * preço ele compara. Live não é discreta: ele liga o copiloto no começo da
+ * transmissão e desliga no fim, e o que ele quer saber antes de começar é
+ * "quantas horas eu ainda tenho", não "quantos créditos isso vai queimar por
+ * minuto". Misturar as duas transforma toda live num cálculo mental e faz o
+ * vendedor hesitar em deixar o copiloto ligado — que é exatamente o
+ * comportamento que mata o produto.
+ *
+ * Na prática também protege o resto da plataforma: uma live longa não pode
+ * consumir a cota que o vendedor reservou para produzir criativos no mês.
+ */
+
+/**
+ * Custo real de um minuto de copiloto ao vivo, no pior caso, em BRL.
+ *
+ * Por minuto, com o teto de 4 respostas/min que o motor aplica:
+ *   4 respostas × (1,5k de entrada em cache + 120 de saída, claude-haiku-4-5)
+ *     ≈ 4 × US$ 0,00075 ≈ US$ 0,003 ≈ R$ 0,018
+ *   reprocessamento em claude-opus-5 da faixa cinzenta (~10% das respostas,
+ *     e é onde o custo de verdade mora)                        ≈ R$ 0,024
+ *   fatia da escrita do cache da base (TTL de 1h)              ≈ R$ 0,001
+ *   total ≈ R$ 0,043 por minuto, ou R$ 2,58 por hora cheia.
+ */
+export const LIVE_COST_PER_MINUTE_BRL = 0.043;
+
+/**
+ * Custo real de uma hora de transmissão, no pior caso (BRL).
+ *
+ * Número interno: entra no cinto de segurança das margens e em relatório nosso,
+ * nunca numa resposta de API — é a nossa margem, não tem por que chegar ao
+ * navegador do cliente. Arredondado em centavos porque 0,043 × 60 em ponto
+ * flutuante devolve 2,5799999999999996, e esse lixo já vazaria a intenção.
+ */
+export function liveCostPerHourBrl(): number {
+  return Math.round(LIVE_COST_PER_MINUTE_BRL * 60 * 100) / 100;
+}
+
+/**
+ * Cortesia de estreia: dez minutos de copiloto ao vivo, uma vez por conta.
+ *
+ * Dez minutos é tempo de ver a coisa respondendo o próprio chat de verdade, que
+ * é a única demonstração que convence, e é curto demais para substituir uma
+ * live de trabalho. A concessão é por CONTA e não por base de conhecimento nem
+ * por transmissão: em qualquer outro recorte, bastaria abrir uma base nova (ou
+ * reconectar) a cada dez minutos para nunca pagar.
+ *
+ * Entra no mesmo saldo que as horas compradas, então o consumo não precisa
+ * saber se está gastando cortesia ou hora paga — some sozinha quando acaba.
+ */
+export const LIVE_TRIAL_MINUTES = 10;
+
+export interface LiveHourPack {
+  id: string;
+  name: string;
+  hours: number;
+  priceBrl: number;
+}
+
+/**
+ * Add-ons de hora de live. Exclusivos do Business, como a própria feature.
+ *
+ * O preço por hora cai com o volume, e a margem é bem maior que a dos pacotes
+ * de crédito — não por ganância, mas porque o custo de IA é só uma parte do que
+ * uma hora de copiloto consome: é uma hora em que a nossa infraestrutura está
+ * conectada ao chat de alguém, respondendo em nome dele, com o suporte que isso
+ * implica quando algo dá errado ao vivo.
+ */
+export const LIVE_HOUR_PACKS: LiveHourPack[] = [
+  { id: 'live-5h', name: '5 horas de live', hours: 5, priceBrl: 49.9 },
+  { id: 'live-15h', name: '15 horas de live', hours: 15, priceBrl: 129.9 },
+  { id: 'live-40h', name: '40 horas de live', hours: 40, priceBrl: 299.9 },
+];
+
+export function findLiveHourPack(id: string): LiveHourPack | undefined {
+  return LIVE_HOUR_PACKS.find((p) => p.id === id);
+}
+
+/** Minutos entregues por um pacote. */
+export function livePackMinutes(pack: LiveHourPack): number {
+  return pack.hours * 60;
+}
 
 /** Tamanho do bloco de transcrição, em minutos (ver `ACTION_PRICES.transcribe`). */
 export const TRANSCRIBE_BLOCK_MINUTES = 10;
@@ -74,11 +189,15 @@ export const TRANSCRIBE_BLOCK_MINUTES = 10;
 /**
  * Teto de duração aceito numa transcrição.
  *
- * Existe para limitar o pior caso de uma única chamada: com o preço por bloco a
- * conta fecha em qualquer duração, mas um arquivo de 5 horas ainda seria uma
- * chamada de vários minutos segurando um worker.
+ * O teto era de 120 minutos porque um arquivo longo virava uma única chamada de
+ * vários minutos segurando um worker. O pipeline do Live Copilot desmontou esse
+ * argumento: a live é fatiada e transcrita em background, então a duração deixou
+ * de prender qualquer requisição — e uma live de TikTok passa fácil das 2 horas.
+ *
+ * O teto continua existindo, agora só como limite de sanidade do pior caso: um
+ * arquivo absurdo é erro de upload, não uso legítimo.
  */
-export const TRANSCRIBE_MAX_MINUTES = 120;
+export const TRANSCRIBE_MAX_MINUTES = 300;
 
 /** Blocos cobrados para uma duração em segundos (sempre ≥ 1). */
 export function transcribeBlocks(durationSeconds: number): number {
@@ -186,6 +305,10 @@ export const PLANS: Plan[] = [
     perks: [
       '2.800 créditos/mês',
       'Tudo do Pro',
+      // Só o que já está no ar. O copiloto respondendo o chat ao vivo tem preço
+      // e cortesia definidos (LIVE_HOUR_PACKS, LIVE_TRIAL_MINUTES), mas ainda
+      // não existe para o cliente — e perk é promessa de venda, não de roadmap.
+      'Live Copilot: a base de conhecimento da sua live (exclusivo)',
       'Coleta de dados automatizada',
       'Onboarding dedicado',
       'Suporte prioritário',
@@ -286,6 +409,7 @@ export type PlanFeature =
   | 'ai_images' // imagens Higgsfield
   | 'ai_videos' // vídeos Higgsfield
   | 'multiplier' // multiplicador G×C×A
+  | 'live_copilot' // base de conhecimento a partir de live gravada
   | 'campaigns' // campanhas com personas e cenas em vídeo
   | 'uploads' // guardar arquivo nosso no bucket (foto de produto, avatar)
   | 'ingestion'; // coleta de dados (admin)
@@ -311,6 +435,21 @@ export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
   ai_images: 'essencial',
   ai_videos: 'pro',
   multiplier: 'pro',
+  /*
+   * Live Copilot é exclusivo do Business, e é o único recurso que não segue a
+   * régua de custo dos outros: ele custaria menos que vídeo com IA e ainda
+   * assim fica no degrau mais alto.
+   *
+   * O motivo é de risco, não de preço. É o único lugar do produto onde a gente
+   * escreve, em nome do vendedor, dentro da plataforma dele — com a conta dele
+   * exposta ao que o TikTok pensa de automação. Quem usa isso precisa de
+   * suporte de gente, não de um checkout de autoatendimento, e o Business é o
+   * único degrau que já vem com onboarding dedicado.
+   *
+   * Também é o que dá sentido ao bloco de cortesia: dez minutos grátis só
+   * existem porque quem chega aqui já é assinante do topo, não visitante.
+   */
+  live_copilot: 'business',
   // Campanhas é o construtor de anúncio em vídeo: persona + cenas animadas pelo
   // DoP. Acompanha `ai_videos` porque é o mesmo custo por trás.
   campaigns: 'pro',
@@ -333,11 +472,47 @@ export const ACTION_MIN_PLAN: Record<BillableAction, string> = {
   image: FEATURE_MIN_PLAN.ai_images,
   video: FEATURE_MIN_PLAN.ai_videos,
   assembly: FEATURE_MIN_PLAN.multiplier,
+  live_extract: FEATURE_MIN_PLAN.live_copilot,
 };
 
 export function planAllows(userPlan: string, feature: PlanFeature): boolean {
   const need = PLAN_RANK[FEATURE_MIN_PLAN[feature]] ?? 0;
   return (PLAN_RANK[userPlan] ?? 0) >= need;
+}
+
+/**
+ * Recursos que já existem no código mas ainda NÃO foram lançados.
+ *
+ * O Live Copilot é entregue por fases: a base de conhecimento (fase 0) já roda
+ * em produção, o copiloto ao vivo ainda não. Sem esta trava, o degrau Business
+ * passaria a exibir um "Copiloto de Live" que só faz metade do que o nome
+ * promete — e um recurso pela metade num plano de R$ 249,90 não é preview, é
+ * promessa quebrada.
+ *
+ * A trava é de LANÇAMENTO, não de plano: as duas checagens são independentes
+ * porque respondem perguntas diferentes ("esta conta pagou por isso?" e "isto
+ * já está pronto para alguém depender?"), e confundir as duas é como recursos
+ * incompletos vazam para produção.
+ */
+export const FEATURES_NAO_LANCADAS: PlanFeature[] = ['live_copilot'];
+
+/**
+ * Já pode aparecer para cliente?
+ *
+ * `LAUNCH_LIVE_COPILOT=true` destrava quando as fases fecharem — uma variável
+ * de ambiente, e não um deploy de código, para que o lançamento seja uma
+ * decisão de negócio tomada na hora que se quiser, sem esperar build.
+ *
+ * As contas de cortesia (a equipe) atravessam a trava mesmo desligada: é o que
+ * permite testar o recurso em produção, com dado real, antes de abrir para
+ * quem paga. Ver `isCompAccount`.
+ */
+export function featureLancada(feature: PlanFeature): boolean {
+  if (!FEATURES_NAO_LANCADAS.includes(feature)) return true;
+  if (feature === 'live_copilot') {
+    return process.env.LAUNCH_LIVE_COPILOT === 'true';
+  }
+  return false;
 }
 
 export interface CreditPack {
@@ -402,6 +577,19 @@ export function assertProfitability(): string[] {
     if (pack.priceBrl < worstSpend * MIN_MARGIN) {
       problems.push(
         `Pacote "${pack.id}": R$ ${pack.priceBrl} não cobre pior gasto R$ ${worstSpend.toFixed(2)} × margem ${MIN_MARGIN}`,
+      );
+    }
+  }
+  /*
+   * Os add-ons de hora passam pelo mesmo cinto de segurança, com a moeda deles.
+   * Não há `perCredit` aqui: a hora de live não é conversível em crédito de IA,
+   * e o custo dela é o do motor de resposta, medido por minuto.
+   */
+  for (const pack of LIVE_HOUR_PACKS) {
+    const worstSpend = livePackMinutes(pack) * LIVE_COST_PER_MINUTE_BRL;
+    if (pack.priceBrl < worstSpend * MIN_MARGIN) {
+      problems.push(
+        `Pacote de live "${pack.id}": R$ ${pack.priceBrl} não cobre pior gasto R$ ${worstSpend.toFixed(2)} × margem ${MIN_MARGIN}`,
       );
     }
   }

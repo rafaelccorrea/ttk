@@ -18,7 +18,10 @@ import {
   CREDIT_PACKS,
   devCheckoutEnabled,
   FEATURE_MIN_PLAN,
+  featureLancada,
   isCompAccount,
+  LIVE_HOUR_PACKS,
+  LIVE_TRIAL_MINUTES,
   PLAN_RANK,
   planAllows,
   planCredits,
@@ -27,6 +30,7 @@ import {
   SIGNUP_BONUS_CREDITS,
 } from './billing.config';
 import { CreditTransaction, TransactionKind } from './entities/credit-transaction.entity';
+import { LiveMinuteTransaction } from './entities/live-minute-transaction.entity';
 
 @Injectable()
 export class BillingService implements OnModuleInit {
@@ -37,6 +41,8 @@ export class BillingService implements OnModuleInit {
     private readonly users: Repository<AppUser>,
     @InjectRepository(CreditTransaction)
     private readonly transactions: Repository<CreditTransaction>,
+    @InjectRepository(LiveMinuteTransaction)
+    private readonly liveTransactions: Repository<LiveMinuteTransaction>,
   ) {}
 
   // Servidor não sobe com tabela de preços que dá prejuízo.
@@ -59,11 +65,19 @@ export class BillingService implements OnModuleInit {
       order: { createdAt: 'DESC' },
       take: 30,
     });
-    // Mapa recurso→liberado para o plano do usuário (o front usa para bloquear telas).
+    /*
+     * É este mapa que o front usa para montar o menu e bloquear tela, então a
+     * trava de lançamento precisa entrar AQUI também — não basta o guard negar
+     * a chamada. Sem isso o item continuaria no menu e o cliente clicaria num
+     * recurso que responde 404, que é pior do que não existir.
+     *
+     * O gate do front é só UX: quem manda é o `assertFeature` do backend.
+     */
     const features = Object.fromEntries(
       (Object.keys(FEATURE_MIN_PLAN) as PlanFeature[]).map((f) => [
         f,
-        planAllows(user.plan, f),
+        planAllows(user.plan, f) &&
+          (featureLancada(f) || isCompAccount(user.email)),
       ]),
     );
     return {
@@ -72,6 +86,20 @@ export class BillingService implements OnModuleInit {
       prices: ACTION_PRICES,
       features,
       featureMinPlan: FEATURE_MIN_PLAN,
+      /*
+       * A carteira de live vai junto da de créditos, mas separada dentro dela —
+       * é a mesma tela e são saldos que não se convertem um no outro.
+       * `trialAvailable` responde a pergunta que a interface faz antes de
+       * oferecer o teste: esta conta ainda tem os dez minutos de cortesia?
+       */
+      liveCopilot: {
+        minutes: user.liveMinutes ?? 0,
+        trialMinutes: LIVE_TRIAL_MINUTES,
+        trialAvailable: !user.liveTrialGrantedAt,
+        // Só o catálogo de venda. O custo por hora fica no servidor: é a nossa
+        // margem, e ela não tem por que viajar até o navegador do cliente.
+        packs: LIVE_HOUR_PACKS,
+      },
       history,
     };
   }
@@ -80,6 +108,18 @@ export class BillingService implements OnModuleInit {
   async assertFeature(userId: string, feature: PlanFeature): Promise<void> {
     const user = await this.users.findOneBy({ id: userId });
     const plan = user?.plan ?? 'free';
+    /*
+     * A trava de lançamento vem ANTES da de plano, e a ordem importa: o
+     * contrário mandaria quem paga pouco fazer upgrade para chegar a um recurso
+     * que nem quem paga muito consegue usar ainda. A equipe atravessa, para
+     * poder testar em produção antes de abrir.
+     */
+    if (!featureLancada(feature) && !isCompAccount(user?.email)) {
+      throw new HttpException(
+        'Este recurso ainda está em construção e será liberado em breve.',
+        404,
+      );
+    }
     if (!planAllows(plan, feature)) {
       const min = FEATURE_MIN_PLAN[feature];
       throw new HttpException(
@@ -168,6 +208,153 @@ export class BillingService implements OnModuleInit {
         action,
         description: itens > 1 ? `${price.label} × ${itens}` : price.label,
       }),
+    );
+  }
+
+  /* ---------------------------------------------------------------- *
+   *  Minutos de live — a carteira do copiloto ao vivo                  *
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Concede a cortesia de estreia, se esta conta ainda não recebeu.
+   *
+   * O UPDATE condicional é a trava: dois pedidos simultâneos — o vendedor
+   * abrindo o copiloto em duas abas — leriam os dois `liveTrialGrantedAt` nulo
+   * e creditariam dez minutos cada. Quem afeta a linha é quem concede.
+   *
+   * Chamável à vontade: quem já ganhou não ganha de novo.
+   */
+  async grantLiveTrial(userId: string): Promise<number> {
+    const concedeu = await this.users
+      .createQueryBuilder()
+      .update(AppUser)
+      .set({
+        liveMinutes: () => `"liveMinutes" + ${LIVE_TRIAL_MINUTES}`,
+        liveTrialGrantedAt: () => 'now()',
+      })
+      .where('id = :userId AND "liveTrialGrantedAt" IS NULL', { userId })
+      .execute();
+
+    if (!concedeu.affected) return 0;
+
+    const dono = await this.users.findOneBy({ id: userId });
+    await this.liveTransactions.save(
+      this.liveTransactions.create({
+        userId,
+        minutes: LIVE_TRIAL_MINUTES,
+        balanceAfter: dono?.liveMinutes ?? LIVE_TRIAL_MINUTES,
+        kind: 'trial',
+        reference: `trial:${userId}`,
+        description: `${LIVE_TRIAL_MINUTES} minutos de cortesia para conhecer o copiloto`,
+      }),
+    );
+    this.logger.log(`Live Copilot: cortesia concedida para ${userId}.`);
+    return LIVE_TRIAL_MINUTES;
+  }
+
+  /**
+   * Consome minutos de transmissão do saldo.
+   *
+   * Mesmo UPDATE condicional do débito de créditos, e pelo mesmo motivo: o
+   * copiloto debita enquanto a live corre, e sem a condição de saldo duas
+   * cobranças concorrentes deixariam o cliente devendo tempo que não comprou.
+   *
+   * Lança 402 quando não há saldo — quem chama transforma isso no evento que
+   * desliga o envio e mostra o CTA de compra, em vez de seguir gastando IA de
+   * graça.
+   */
+  async chargeLiveMinutes(userId: string, minutos = 1): Promise<number> {
+    const total = Math.max(Math.trunc(minutos), 1);
+    const owner = await this.users.findOneBy({ id: userId });
+    const minPlan = FEATURE_MIN_PLAN.live_copilot;
+    if ((PLAN_RANK[owner?.plan ?? 'free'] ?? 0) < (PLAN_RANK[minPlan] ?? 0)) {
+      throw new HttpException(
+        `O Live Copilot é exclusivo do plano ${minPlan.charAt(0).toUpperCase() + minPlan.slice(1)}. Faça upgrade em Planos & Créditos.`,
+        403,
+      );
+    }
+
+    const result = await this.users
+      .createQueryBuilder()
+      .update(AppUser)
+      .set({ liveMinutes: () => `"liveMinutes" - ${total}` })
+      .where('id = :userId AND "liveMinutes" >= :custo', {
+        userId,
+        custo: total,
+      })
+      .execute();
+
+    if (!result.affected) {
+      throw new HttpException(
+        `Suas horas de live acabaram. Compre um pacote de horas para o copiloto continuar respondendo.`,
+        402,
+      );
+    }
+
+    const user = await this.users.findOneBy({ id: userId });
+    const saldo = user?.liveMinutes ?? 0;
+    await this.liveTransactions.save(
+      this.liveTransactions.create({
+        userId,
+        minutes: -total,
+        balanceAfter: saldo,
+        kind: 'spend',
+        description: `Copiloto ao vivo — ${total} ${total === 1 ? 'minuto' : 'minutos'}`,
+      }),
+    );
+    return saldo;
+  }
+
+  /** Devolve minutos de uma transmissão que o copiloto não chegou a atender. */
+  async refundLiveMinutes(
+    userId: string,
+    minutos: number,
+    motivo?: string,
+  ): Promise<void> {
+    const total = Math.max(Math.trunc(minutos), 1);
+    await this.users.increment({ id: userId }, 'liveMinutes', total);
+    const user = await this.users.findOneBy({ id: userId });
+    await this.liveTransactions.save(
+      this.liveTransactions.create({
+        userId,
+        minutes: total,
+        balanceAfter: user?.liveMinutes ?? total,
+        kind: 'refund',
+        description: motivo ?? 'Estorno de minutos de live',
+      }),
+    );
+  }
+
+  /**
+   * Credita as horas de um add-on pago.
+   *
+   * A `reference` do Stripe é a chave de idempotência: o webhook reenvia, e sem
+   * isso o mesmo pagamento entregaria horas duas vezes. A checagem aqui é a
+   * primeira barreira; o índice único na coluna é a que vale sob concorrência.
+   */
+  async grantLiveMinutes(
+    userId: string,
+    minutos: number,
+    reference: string,
+    description: string,
+  ): Promise<void> {
+    const already = await this.liveTransactions.findOneBy({ reference });
+    if (already) return;
+
+    await this.users.increment({ id: userId }, 'liveMinutes', minutos);
+    const user = await this.users.findOneBy({ id: userId });
+    await this.liveTransactions.save(
+      this.liveTransactions.create({
+        userId,
+        minutes: minutos,
+        balanceAfter: user?.liveMinutes ?? minutos,
+        kind: 'purchase',
+        reference,
+        description,
+      }),
+    );
+    this.logger.log(
+      `Live Copilot: ${minutos} minutos creditados para ${userId} (${reference}).`,
     );
   }
 

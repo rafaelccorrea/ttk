@@ -14,7 +14,9 @@ import {
   BillingCycle,
   CREDIT_PACKS,
   PLANS,
+  findLiveHourPack,
   findPlan,
+  livePackMinutes,
   planCredits,
   planPrice,
 } from './billing.config';
@@ -146,7 +148,12 @@ export class StripeService implements OnModuleInit {
   async createCheckout(
     userId: string,
     email: string | undefined,
-    item: { packId?: string; planId?: string; cycle?: BillingCycle },
+    item: {
+      packId?: string;
+      planId?: string;
+      livePackId?: string;
+      cycle?: BillingCycle;
+    },
   ): Promise<{ url: string }> {
     const stripe = this.require();
 
@@ -187,6 +194,40 @@ export class StripeService implements OnModuleInit {
                   product_data: {
                     name: `PikPok — ${pack.name}`,
                     description: `${pack.credits} créditos de IA`,
+                  },
+                },
+              },
+        ],
+      });
+    } else if (item.livePackId) {
+      /*
+       * Add-on de horas de live. Cobrança única, como o pacote de créditos, mas
+       * entrega outra moeda — e é exclusivo do Business, então a checagem aqui
+       * é de PLANO, não só de assinatura ativa: sem ela, um Essencial compraria
+       * horas de um recurso que a conta dele não abre, e a devolução desse
+       * dinheiro é trabalho manual nosso.
+       */
+      const pack = findLiveHourPack(item.livePackId);
+      if (!pack) {
+        throw new NotFoundException(`Pacote ${item.livePackId} não existe`);
+      }
+      await this.billing.assertFeature(userId, 'live_copilot');
+      const minutos = livePackMinutes(pack);
+      session = await stripe.checkout.sessions.create({
+        ...common,
+        mode: 'payment',
+        metadata: { userId, kind: 'live_pack', itemId: pack.id },
+        line_items: [
+          this.envPrice(pack.id)
+            ? { price: this.envPrice(pack.id), quantity: 1 }
+            : {
+                quantity: 1,
+                price_data: {
+                  currency: 'brl',
+                  unit_amount: Math.round(pack.priceBrl * 100),
+                  product_data: {
+                    name: `PikPok — ${pack.name}`,
+                    description: `${minutos} minutos de copiloto respondendo o chat da sua live`,
                   },
                 },
               },
@@ -237,7 +278,7 @@ export class StripeService implements OnModuleInit {
         ],
       });
     } else {
-      throw new BadRequestException('Informe packId ou planId.');
+      throw new BadRequestException('Informe packId, livePackId ou planId.');
     }
 
     if (!session.url) {
@@ -468,11 +509,16 @@ export class StripeService implements OnModuleInit {
     stripeRef: string,
     cycle: BillingCycle = 'month',
   ) {
-    const already = await this.transactions.findOneBy({
-      userId,
-      reference: stripeRef,
-    });
-    if (already) return;
+    // Add-on de horas não grava em `credit_transactions`, então esta barreira
+    // não o alcança — a idempotência dele mora no extrato de minutos, que tem
+    // a mesma referência sob índice único (ver `grantLiveMinutes`).
+    if (kind !== 'live_pack') {
+      const already = await this.transactions.findOneBy({
+        userId,
+        reference: stripeRef,
+      });
+      if (already) return;
+    }
 
     if (kind === 'pack') {
       const pack = CREDIT_PACKS.find((p) => p.id === itemId);
@@ -485,6 +531,21 @@ export class StripeService implements OnModuleInit {
         `${pack.name} — pago via Stripe`,
       );
       this.logger.log(`Pack ${itemId} creditado para ${userId} (${stripeRef})`);
+    } else if (kind === 'live_pack') {
+      const pack = itemId ? findLiveHourPack(itemId) : undefined;
+      if (!pack) return;
+      // Horas vão para a carteira de live, não para os créditos de IA — e a
+      // idempotência é a do próprio extrato de minutos, que tem a referência
+      // do Stripe com índice único.
+      await this.billing.grantLiveMinutes(
+        userId,
+        livePackMinutes(pack),
+        stripeRef,
+        `${pack.name} — pago via Stripe`,
+      );
+      this.logger.log(
+        `Pacote de live ${itemId} creditado para ${userId} (${stripeRef})`,
+      );
     } else if (kind === 'plan') {
       // `findPlan` (e não `PLANS`) porque a renovação mensal também chega para
       // quem assinou um plano que já saiu do catálogo.

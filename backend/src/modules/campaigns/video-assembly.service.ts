@@ -1,12 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { Injectable } from '@nestjs/common';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
-import ffmpegPath from 'ffmpeg-static';
-
-const execFileAsync = promisify(execFile);
+import { FfmpegRunner } from '../../common/media/ffmpeg-runner';
 
 /** Formato final: 9:16 em 1080p, que é o que o TikTok entrega sem recomprimir. */
 const LARGURA = 1080;
@@ -53,10 +48,10 @@ const RAMPA_SEGUNDOS = 0.03;
  */
 @Injectable()
 export class VideoAssemblyService {
-  private readonly logger = new Logger(VideoAssemblyService.name);
+  constructor(private readonly ffmpeg: FfmpegRunner) {}
 
   get enabled(): boolean {
-    return Boolean(ffmpegPath);
+    return this.ffmpeg.enabled;
   }
 
   /**
@@ -111,43 +106,13 @@ export class VideoAssemblyService {
   }
 
   /**
-   * Duração do arquivo, em segundos.
-   *
-   * Lê do stderr do próprio ffmpeg pelo mesmo motivo que `temAudio`: o pacote
-   * `ffmpeg-static` não traz o ffprobe. Devolve `null` quando não achar, e quem
-   * chama decide o que fazer sem a informação.
-   */
-  private async duracao(arquivo: string): Promise<number | null> {
-    const saida = await this.inspecionar(arquivo);
-    const m = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(saida);
-    if (!m) return null;
-    const total = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
-    return Number.isFinite(total) && total > 0 ? total : null;
-  }
-
-  /**
    * Duração de um arquivo que ainda está em memória, em segundos.
    *
-   * O ffmpeg só lê de disco, então o buffer passa por um tmp descartável. É o
-   * que permite cobrar a transcrição pelo tempo real do áudio em vez de chutar
-   * pelo tamanho do arquivo. Devolve `null` quando não há ffmpeg no ambiente ou
-   * quando o arquivo não é mídia legível — quem chama decide o que fazer.
+   * Continua exposto aqui porque o Studio pede a duração do upload antes de
+   * saber se vai montar alguma coisa — quem chama já tem este serviço em mãos.
    */
   async duracaoDoBuffer(buffer: Buffer, nome = 'entrada.mp4'): Promise<number | null> {
-    if (!ffmpegPath) return null;
-    const pasta = await mkdtemp(join(tmpdir(), 'pikpok-duracao-'));
-    // O nome vem de upload: só a extensão interessa, e o resto viraria caminho.
-    const extensao = /\.([A-Za-z0-9]{1,5})$/.exec(nome)?.[1] ?? 'mp4';
-    const arquivo = join(pasta, `entrada.${extensao.toLowerCase()}`);
-    try {
-      await writeFile(arquivo, buffer);
-      return await this.duracao(arquivo);
-    } catch (error) {
-      this.logger.warn(`Não foi possível ler a duração do arquivo: ${error}`);
-      return null;
-    } finally {
-      await this.limpar(pasta);
-    }
+    return this.ffmpeg.duracaoDoBuffer(buffer, nome);
   }
 
   /**
@@ -161,8 +126,7 @@ export class VideoAssemblyService {
       altura: ALTURA,
     },
   ): Promise<Buffer> {
-    const { largura, altura } = dimensoes;
-    if (!ffmpegPath) {
+    if (!this.ffmpeg.enabled) {
       throw new Error('ffmpeg não está disponível neste ambiente.');
     }
     if (!cenas.length) {
@@ -197,12 +161,11 @@ export class VideoAssemblyService {
       altura: ALTURA,
     },
   ): Promise<Buffer> {
-    if (!ffmpegPath) {
+    if (!this.ffmpeg.enabled) {
       throw new Error('ffmpeg não está disponível neste ambiente.');
     }
     const { largura, altura } = dimensoes;
-    const pasta = await mkdtemp(join(tmpdir(), 'pikpok-norm-'));
-    try {
+    return this.ffmpeg.comTmp('pikpok-norm-', async (pasta) => {
       const entrada = join(pasta, 'entrada.mp4');
       const saida = join(pasta, 'saida.mp4');
       await writeFile(entrada, cena);
@@ -216,41 +179,42 @@ export class VideoAssemblyService {
        * está pagando para gerar.
        */
       const mudo = !(await this.temAudio(entrada));
-      const duracao = mudo ? null : await this.duracao(entrada);
+      const duracao = mudo ? null : await this.ffmpeg.duracao(entrada);
 
-      await this.rodar([
-        '-y',
-        // Os dois `-i` vêm primeiro: opção de saída entre entradas é
-        // atribuída ao arquivo errado e o ffmpeg recusa.
-        '-i', entrada,
-        ...(mudo
-          ? ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100']
-          : []),
-        '-filter_complex', this.filtroDeVideo(largura, altura),
-        ...(mudo ? [] : ['-af', this.filtroDeAudio(duracao)]),
-        '-c:v', 'libx264',
-        // `medium` em vez de `veryfast`: com a normalização acontecendo uma vez
-        // por clipe, o orçamento de CPU que sobrou vira qualidade de imagem. No
-        // mesmo CRF, um preset mais lento gasta menos bits pelo mesmo detalhe.
-        '-preset', 'medium',
-        '-crf', '20',
-        '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-ar', '44100',
-        '-ac', '2',
-        '-map', '[v]',
-        '-map', mudo ? '1:a:0' : '0:a:0',
-        // Corta pelo vídeo: sem isso a trilha infinita de silêncio nunca
-        // termina e o ffmpeg fica gerando para sempre.
-        ...(mudo ? ['-shortest'] : []),
-        saida,
-      ]);
+      await this.ffmpeg.rodar(
+        [
+          '-y',
+          // Os dois `-i` vêm primeiro: opção de saída entre entradas é
+          // atribuída ao arquivo errado e o ffmpeg recusa.
+          '-i', entrada,
+          ...(mudo
+            ? ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100']
+            : []),
+          '-filter_complex', this.filtroDeVideo(largura, altura),
+          ...(mudo ? [] : ['-af', this.filtroDeAudio(duracao)]),
+          '-c:v', 'libx264',
+          // `medium` em vez de `veryfast`: com a normalização acontecendo uma vez
+          // por clipe, o orçamento de CPU que sobrou vira qualidade de imagem. No
+          // mesmo CRF, um preset mais lento gasta menos bits pelo mesmo detalhe.
+          '-preset', 'medium',
+          '-crf', '20',
+          '-pix_fmt', 'yuv420p',
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-ar', '44100',
+          '-ac', '2',
+          '-map', '[v]',
+          '-map', mudo ? '1:a:0' : '0:a:0',
+          // Corta pelo vídeo: sem isso a trilha infinita de silêncio nunca
+          // termina e o ffmpeg fica gerando para sempre.
+          ...(mudo ? ['-shortest'] : []),
+          saida,
+        ],
+        TIMEOUT_MS,
+      );
 
       return await readFile(saida);
-    } finally {
-      await this.limpar(pasta);
-    }
+    });
   }
 
   /**
@@ -262,15 +226,14 @@ export class VideoAssemblyService {
    * geração de compressão.
    */
   async juntarNormalizadas(partes: Buffer[]): Promise<Buffer> {
-    if (!ffmpegPath) {
+    if (!this.ffmpeg.enabled) {
       throw new Error('ffmpeg não está disponível neste ambiente.');
     }
     if (!partes.length) {
       throw new Error('Nenhuma cena pronta para montar.');
     }
 
-    const pasta = await mkdtemp(join(tmpdir(), 'pikpok-montagem-'));
-    try {
+    return this.ffmpeg.comTmp('pikpok-montagem-', async (pasta) => {
       const caminhos: string[] = [];
       for (const [i, parte] of partes.entries()) {
         const arquivo = join(pasta, `parte-${i}.mp4`);
@@ -284,28 +247,23 @@ export class VideoAssemblyService {
         caminhos.map((p) => `file '${p.replace(/\\/g, '/')}'`).join('\n'),
       );
       const final = join(pasta, 'final.mp4');
-      await this.rodar([
-        '-y',
-        '-f', 'concat',
-        '-safe', '0',
-        '-i', lista,
-        '-c', 'copy',
-        // `+faststart` põe o índice no começo: o vídeo começa a tocar antes de
-        // baixar inteiro, que é como o navegador espera.
-        '-movflags', '+faststart',
-        final,
-      ]);
+      await this.ffmpeg.rodar(
+        [
+          '-y',
+          '-f', 'concat',
+          '-safe', '0',
+          '-i', lista,
+          '-c', 'copy',
+          // `+faststart` põe o índice no começo: o vídeo começa a tocar antes de
+          // baixar inteiro, que é como o navegador espera.
+          '-movflags', '+faststart',
+          final,
+        ],
+        TIMEOUT_MS,
+      );
 
       return await readFile(final);
-    } finally {
-      await this.limpar(pasta);
-    }
-  }
-
-  private async limpar(pasta: string): Promise<void> {
-    await rm(pasta, { recursive: true, force: true }).catch((error) =>
-      this.logger.warn(`Não foi possível limpar ${pasta}: ${error}`),
-    );
+    });
   }
 
   /**
@@ -313,41 +271,8 @@ export class VideoAssemblyService {
    *
    * O `ffmpeg -i` sem saída sempre termina em erro — é o modo dele de só
    * descrever o arquivo. O que interessa é o texto, não o código de saída.
-   * (O pacote não traz o ffprobe, então a leitura é daqui mesmo.)
    */
   private async temAudio(arquivo: string): Promise<boolean> {
-    return /Stream #\d+:\d+.*: Audio:/.test(await this.inspecionar(arquivo));
-  }
-
-  /**
-   * O relatório que o `ffmpeg -i` escreve no stderr sobre o arquivo.
-   *
-   * Sem arquivo de saída o comando sempre termina em erro — é o modo dele de
-   * só descrever a entrada — então o `catch` é o caminho normal, não a exceção.
-   */
-  private async inspecionar(arquivo: string): Promise<string> {
-    try {
-      const { stderr } = await execFileAsync(ffmpegPath as string, [
-        '-i', arquivo, '-hide_banner',
-      ]);
-      return stderr ?? '';
-    } catch (error) {
-      return (error as { stderr?: string }).stderr ?? '';
-    }
-  }
-
-  private async rodar(args: string[]): Promise<void> {
-    try {
-      await execFileAsync(ffmpegPath as string, args, {
-        timeout: TIMEOUT_MS,
-        maxBuffer: 32 * 1024 * 1024,
-      });
-    } catch (error) {
-      // O ffmpeg escreve o motivo real no stderr; sem isso o erro vira só
-      // "Command failed" e não dá para saber qual cena quebrou.
-      const stderr = (error as { stderr?: string }).stderr ?? '';
-      const ultima = stderr.trim().split('\n').slice(-3).join(' ');
-      throw new Error(`ffmpeg falhou: ${ultima || (error as Error).message}`);
-    }
+    return /Stream #\d+:\d+.*: Audio:/.test(await this.ffmpeg.inspecionar(arquivo));
   }
 }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SingleFlightInterceptor } from '../../common/interceptors/single-flight.interceptor';
+import { FfmpegRunner } from '../../common/media/ffmpeg-runner';
 import { BillingModule } from '../billing/billing.module';
 import { MediaModule } from '../media/media.module';
 import { Product } from '../products/entities/product.entity';
@@ -35,6 +36,6 @@ import { VideoAssemblyService } from './video-assembly.service';
     VideogenModule,
   ],
   controllers: [CampaignsController],
-  providers: [SingleFlightInterceptor, CampaignsService, VideoAssemblyService],
+  providers: [SingleFlightInterceptor, CampaignsService, VideoAssemblyService, FfmpegRunner],
 })
 export class CampaignsModule {}

@@ -49,6 +49,35 @@ export class AuthService {
     });
   }
 
+  /**
+   * Token para o app desktop, emitido no fim do device code flow.
+   *
+   * É de propósito o MESMO mecanismo do login por senha — mesmo segredo, mesmo
+   * `issuer`/`audience` — porque o guard já aceita esse formato no caminho 3.
+   * Um token com outra assinatura exigiria mexer no guard, e mexer no guard
+   * significa criar um segundo jeito de entrar na API.
+   *
+   * Muda só o que precisa mudar: a claim `device` marca a origem (útil para
+   * auditoria e para uma revogação futura saber o que revogar) e o prazo é
+   * longo, porque ninguém abre o app de live para refazer login toda semana —
+   * o contrapeso é a autorização ser de uso único e revogável no banco.
+   */
+  issueDeviceToken(
+    user: Pick<AppUser, 'id' | 'email'>,
+    expiresInSeconds: number,
+  ): string {
+    return sign(
+      { sub: user.id, email: user.email, device: true },
+      this.jwtSecret,
+      {
+        expiresIn: expiresInSeconds,
+        algorithm: 'HS256',
+        issuer: 'pikpok-api',
+        audience: 'pikpok-app',
+      },
+    );
+  }
+
   private confirmationLink(token: string): string {
     const appUrl = this.config
       .get('APP_URL', 'http://localhost:5173')

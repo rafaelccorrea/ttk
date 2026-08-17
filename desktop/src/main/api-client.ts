@@ -1,0 +1,568 @@
+import { hostname } from 'node:os';
+import { safeStorage, shell } from 'electron';
+import Store from 'electron-store';
+import type {
+  BaseDeConhecimento,
+  CarteiraLive,
+  EstadoAtivacao,
+  SessaoDesktop,
+} from '../shared/desktop-api';
+import type { ChatMessagePayload, LiveEvent } from '../shared/live-events';
+
+/**
+ * O cliente do backend do PikPok, do lado do desktop.
+ *
+ * Concentra as quatro coisas que o app faz contra a API: parear o dispositivo
+ * (device flow), abrir/encerrar a run, mandar os lotes do chat e bater o
+ * heartbeat — mais o consumo do SSE por onde as respostas voltam. Nada disso
+ * fica no `index.ts`, porque tudo aqui precisa do token e o token só pode ser
+ * lido num lugar.
+ */
+
+const API_BASE_PADRAO = 'https://api.pikpok.com.br';
+const INTERVALO_POLL_DEVICE_MS = 3_000;
+const INTERVALO_HEARTBEAT_MS = 60_000;
+
+/** Backoff da reconexão do SSE, no mesmo formato do chat: 1s a 30s. */
+const SSE_BACKOFF_INICIAL_MS = 1_000;
+const SSE_BACKOFF_MAXIMO_MS = 30_000;
+
+interface DeviceStartResposta {
+  deviceCode: string;
+  userCode: string;
+  verificationUrl: string;
+  expiresIn: number;
+}
+
+interface DeviceTokenResposta {
+  status: 'pendente' | 'aprovado';
+  accessToken?: string;
+  expiresIn?: number;
+  user?: { id: string; email: string };
+}
+
+/** O recorte de `GET /billing/wallet` que o desktop usa. */
+interface CarteiraResposta {
+  plan: string;
+  liveCopilot?: {
+    minutes: number;
+    trialMinutes: number;
+    trialAvailable: boolean;
+  };
+}
+
+/** Uma linha de `GET /live/sessions` (a entidade crua). */
+interface LiveSessionResposta {
+  id: string;
+  title: string;
+  status: string;
+  updatedAt: string | null;
+}
+
+/** `GET /live/sessions/:id`, que é onde os produtos e o FAQ vêm juntos. */
+interface LiveSessionDetalhe extends LiveSessionResposta {
+  produtos: unknown[];
+  faq: unknown[];
+}
+
+export interface LiveRunResumo {
+  id: string;
+  status: string;
+  messagesSeen: number;
+  repliesGenerated: number;
+  escalations: number;
+  minutesCharged: number;
+}
+
+/**
+ * O disco do app. Guarda SÓ o token cifrado, o e-mail da conta e a URL da API —
+ * nada de dado de live, que é do backend.
+ */
+interface EsquemaDoDisco {
+  tokenCifrado?: string;
+  email?: string;
+  apiBaseUrl?: string;
+}
+
+export class ApiClient {
+  private readonly disco = new Store<EsquemaDoDisco>({ name: 'pikpok' });
+
+  private token: string | null = null;
+  private runId: string | null = null;
+
+  private heartbeat: NodeJS.Timeout | null = null;
+  private sseAtivo = false;
+  private sseAbort: AbortController | null = null;
+
+  constructor() {
+    this.token = this.lerToken();
+  }
+
+  get autenticado(): boolean {
+    return this.token !== null;
+  }
+
+  get runAtual(): string | null {
+    return this.runId;
+  }
+
+  private get baseUrl(): string {
+    return (
+      process.env['PIKPOK_API_URL'] ??
+      this.disco.get('apiBaseUrl') ??
+      API_BASE_PADRAO
+    );
+  }
+
+  // ------------------------------------------------------------ device flow
+  /**
+   * Pareia o dispositivo: inicia o fluxo, abre o navegador padrão na página de
+   * aprovação e fica consultando o token até a pessoa decidir.
+   *
+   * O navegador do SISTEMA, e não uma janela do Electron: é lá que o vendedor
+   * já está logado no PikPok, com o gerenciador de senha dele e o 2FA que ele
+   * conhece. Uma tela de login DENTRO do app desktop também treinaria o
+   * usuário a digitar a senha do PikPok em qualquer janela que se pareça com a
+   * nossa — que é o padrão exato que o device flow existe para eliminar.
+   *
+   * A chamada RETORNA assim que o código existe, e o polling segue em segundo
+   * plano avisando pelo `aoMudar`. Devolver só no fim prenderia a tela por até
+   * dez minutos numa promessa — e um `invoke` de IPC pendurado esse tempo todo
+   * é indistinguível, do lado do painel, de um app travado.
+   *
+   * @param aoMudar Recebe cada transição do fluxo (aprovada, expirada, erro).
+   */
+  async iniciarAtivacao(
+    aoMudar: (estado: EstadoAtivacao) => void,
+  ): Promise<EstadoAtivacao> {
+    const inicio = await this.requisitar<DeviceStartResposta>(
+      'POST',
+      '/auth/device/start',
+      { deviceName: `PikPok Copiloto — ${hostname()}` },
+      { autenticado: false },
+    );
+
+    const pendente: EstadoAtivacao = {
+      status: 'pendente',
+      userCode: inicio.userCode,
+      verificationUrl: inicio.verificationUrl,
+      expiresIn: inicio.expiresIn,
+      erro: null,
+    };
+
+    // O navegador é aberto sem `await` porque o retorno dele depende do sistema
+    // (no Windows ele só resolve quando o shell responde) e a tela não precisa
+    // esperar: o código já está visível no painel de qualquer forma.
+    void shell.openExternal(inicio.verificationUrl);
+    void this.aguardarAprovacao(inicio, pendente, aoMudar);
+
+    return pendente;
+  }
+
+  private async aguardarAprovacao(
+    inicio: DeviceStartResposta,
+    pendente: EstadoAtivacao,
+    aoMudar: (estado: EstadoAtivacao) => void,
+  ): Promise<void> {
+    const limite = Date.now() + inicio.expiresIn * 1_000;
+
+    while (Date.now() < limite) {
+      await this.esperar(INTERVALO_POLL_DEVICE_MS);
+
+      try {
+        const resposta = await this.requisitar<DeviceTokenResposta>(
+          'POST',
+          '/auth/device/token',
+          { deviceCode: inicio.deviceCode },
+          { autenticado: false },
+        );
+
+        if (resposta.status === 'aprovado' && resposta.accessToken) {
+          this.guardarToken(resposta.accessToken, resposta.user?.email ?? null);
+          aoMudar({ ...pendente, status: 'aprovada' });
+          return;
+        }
+      } catch (erro) {
+        // O backend responde 400 com texto próprio quando o vendedor RECUSOU no
+        // navegador — e recusa é desfecho, não falha de rede: insistir no
+        // polling deixaria a tela girando depois de a pessoa já ter decidido.
+        const mensagem = this.comoErro(erro).message;
+        aoMudar({
+          ...pendente,
+          status: /recus|neg/i.test(mensagem) ? 'negada' : 'erro',
+          erro: mensagem,
+        });
+        return;
+      }
+    }
+
+    aoMudar({ ...pendente, status: 'expirada' });
+  }
+
+  /** A conta ativada, ou `null` se o app nunca foi pareado. */
+  async obterSessao(): Promise<SessaoDesktop | null> {
+    if (!this.token) return null;
+    // O plano vem da carteira, e não de um campo guardado no disco: ele muda na
+    // web (assinatura, downgrade, cancelamento) sem o desktop saber, e um plano
+    // velho em cache mostraria o cockpit para quem já não tem direito a ele.
+    const carteira = await this.requisitar<CarteiraResposta>(
+      'GET',
+      '/billing/wallet',
+    );
+    return {
+      email: this.disco.get('email') ?? '',
+      plano: carteira.plan,
+    };
+  }
+
+  async obterCarteiraLive(): Promise<CarteiraLive> {
+    const carteira = await this.requisitar<CarteiraResposta>(
+      'GET',
+      '/billing/wallet',
+    );
+    return {
+      minutos: carteira.liveCopilot?.minutes ?? 0,
+      trialMinutos: carteira.liveCopilot?.trialMinutes ?? 0,
+      trialDisponivel: carteira.liveCopilot?.trialAvailable ?? false,
+    };
+  }
+
+  /**
+   * As bases que dá para colocar no ar.
+   *
+   * Só as `pronta` sobem para a tela: uma base ainda em transcrição responderia
+   * a live com metade do catálogo, e responder errado ao vivo é pior do que não
+   * responder. A contagem de produtos e de FAQ obriga a buscar o detalhe de
+   * cada uma — a listagem não traz —, o que é aceitável porque isso roda uma vez
+   * na tela de conexão, sobre a casa de dezenas de itens, e nunca durante a
+   * transmissão.
+   */
+  async listarBases(): Promise<BaseDeConhecimento[]> {
+    const sessoes = await this.requisitar<LiveSessionResposta[]>(
+      'GET',
+      '/live/sessions',
+    );
+    const prontas = sessoes.filter((s) => s.status === 'pronta');
+
+    const detalhes = await Promise.all(
+      prontas.map((s) =>
+        this.requisitar<LiveSessionDetalhe>('GET', `/live/sessions/${s.id}`),
+      ),
+    );
+
+    return detalhes.map((d) => ({
+      id: d.id,
+      title: d.title,
+      produtos: d.produtos?.length ?? 0,
+      faqs: d.faq?.length ?? 0,
+      atualizadaEm: d.updatedAt,
+    }));
+  }
+
+  /**
+   * Grava o token cifrado pelo `safeStorage`.
+   *
+   * O `safeStorage` do Electron entrega a cifra ao SISTEMA OPERACIONAL — DPAPI
+   * no Windows, Keychain no macOS, o keyring da sessão no Linux — e a chave
+   * fica amarrada ao usuário logado. Isso importa porque este token é um JWT de
+   * 30 dias da conta inteira do vendedor, não um cookie de sessão: em texto
+   * puro dentro de um JSON no `%APPDATA%`, qualquer infostealer que passe por
+   * ali (e eles varrem exatamente as pastas de app Electron) sai com acesso à
+   * conta, aos dados de venda e ao saldo de créditos. Cifrado pelo SO, o
+   * arquivo copiado para outra máquina não abre.
+   *
+   * Não é criptografia perfeita — código rodando COMO o próprio usuário
+   * consegue decifrar, é a natureza do DPAPI. O que ela elimina é o caso comum
+   * e barato: leitura de arquivo, backup na nuvem, sincronização de pasta,
+   * perfil copiado.
+   */
+  private guardarToken(token: string, email: string | null): void {
+    this.token = token;
+    // O e-mail é do PRÓPRIO vendedor, e serve só para o painel dizer em qual
+    // conta ele está; vai em texto puro porque não é credencial de nada.
+    if (email) this.disco.set('email', email);
+
+    if (!safeStorage.isEncryptionAvailable()) {
+      // Linux sem keyring é o caso real disso. Preferimos exigir novo
+      // pareamento a cada abertura a gravar o JWT em texto puro — o atrito é do
+      // vendedor, o vazamento seria da conta dele.
+      return;
+    }
+    this.disco.set(
+      'tokenCifrado',
+      safeStorage.encryptString(token).toString('base64'),
+    );
+  }
+
+  private lerToken(): string | null {
+    const cifrado = this.disco.get('tokenCifrado');
+    if (!cifrado || !safeStorage.isEncryptionAvailable()) return null;
+
+    try {
+      return safeStorage.decryptString(Buffer.from(cifrado, 'base64'));
+    } catch {
+      // Cifra de outro usuário ou de outra máquina: o certo é esquecer e
+      // parear de novo, nunca insistir com um valor que não abre.
+      this.disco.delete('tokenCifrado');
+      return null;
+    }
+  }
+
+  desconectar(): void {
+    this.token = null;
+    this.disco.delete('tokenCifrado');
+    this.disco.delete('email');
+  }
+
+  // -------------------------------------------------------------------- run
+  async abrirRun(entrada: {
+    knowledgeSessionId: string;
+    tiktokUsername?: string;
+    tiktokRoomId?: string;
+  }): Promise<LiveRunResumo> {
+    const run = await this.requisitar<LiveRunResumo>(
+      'POST',
+      '/live/runs',
+      entrada,
+    );
+    this.runId = run.id;
+    return run;
+  }
+
+  /** Um lote do chat. O backend responde 202 e devolve as respostas pelo SSE. */
+  async enviarLote(mensagens: ChatMessagePayload[]): Promise<void> {
+    if (!this.runId || mensagens.length === 0) return;
+    await this.requisitar('POST', `/live/runs/${this.runId}/messages`, {
+      messages: mensagens,
+    });
+  }
+
+  /**
+   * O batimento de um minuto — que é TAMBÉM a cobrança do minuto de live (ver o
+   * comentário longo em `live-run.controller.ts`). Por isso ele começa junto
+   * com a run e para junto: um timer que sobrevive ao fim da transmissão cobra
+   * minuto de live que não existe mais.
+   */
+  iniciarHeartbeat(aoFalhar: (e: Error) => void): void {
+    this.pararHeartbeat();
+    this.heartbeat = setInterval(() => {
+      const id = this.runId;
+      if (!id) return;
+      this.requisitar('POST', `/live/runs/${id}/heartbeat`, {}).catch(
+        (erro: unknown) => aoFalhar(this.comoErro(erro)),
+      );
+    }, INTERVALO_HEARTBEAT_MS);
+  }
+
+  pararHeartbeat(): void {
+    if (this.heartbeat) {
+      clearInterval(this.heartbeat);
+      this.heartbeat = null;
+    }
+  }
+
+  async encerrarRun(motivo?: string): Promise<void> {
+    const id = this.runId;
+    this.pararHeartbeat();
+    this.pararStream();
+    this.runId = null;
+    if (!id) return;
+
+    await this.requisitar('POST', `/live/runs/${id}/end`, { motivo });
+  }
+
+  /** O carimbo de "o vendedor usou esta resposta" — a métrica da fase. */
+  async marcarCopiada(replyId: string): Promise<void> {
+    await this.requisitar('POST', `/live/replies/${replyId}/copied`, {});
+  }
+
+  // -------------------------------------------------------------------- SSE
+  /**
+   * Consome `GET /live/runs/:id/stream`.
+   *
+   * Com `fetch` e não com `EventSource`: o `EventSource` não manda header
+   * `Authorization`, e a rota é autenticada como todas as outras. A alternativa
+   * seria token na query string — que vaza em log de proxy e em histórico —, e
+   * por isso o backend já assume que quem consome este fluxo é um cliente de
+   * verdade (ver o comentário "AUTENTICAÇÃO DO SSE" no controller).
+   *
+   * A reconexão é obrigatória e não um refinamento: o fluxo cai por qualquer
+   * motivo banal (proxy que corta conexão ociosa, wi-fi oscilando) e o sintoma,
+   * do lado do vendedor, é o painel simplesmente parar de responder no meio da
+   * live, sem erro nenhum na tela.
+   */
+  iniciarStream(
+    aoEvento: (evento: LiveEvent) => void,
+    aoErro: (e: Error) => void,
+  ): void {
+    this.sseAtivo = true;
+    void this.lacoDoStream(aoEvento, aoErro);
+  }
+
+  pararStream(): void {
+    this.sseAtivo = false;
+    this.sseAbort?.abort();
+    this.sseAbort = null;
+  }
+
+  private async lacoDoStream(
+    aoEvento: (evento: LiveEvent) => void,
+    aoErro: (e: Error) => void,
+  ): Promise<void> {
+    let backoff = SSE_BACKOFF_INICIAL_MS;
+
+    while (this.sseAtivo && this.runId) {
+      const id = this.runId;
+      try {
+        const encerrou = await this.lerStream(id, aoEvento);
+        // Reconectar depois de um `ended` seria reabrir um fluxo que o backend
+        // já completou — o canal daquela run não existe mais.
+        if (encerrou) return;
+        backoff = SSE_BACKOFF_INICIAL_MS;
+      } catch (erro) {
+        if (!this.sseAtivo) return;
+        aoErro(this.comoErro(erro));
+      }
+
+      if (!this.sseAtivo) return;
+      await this.esperar(backoff);
+      backoff = Math.min(backoff * 2, SSE_BACKOFF_MAXIMO_MS);
+    }
+  }
+
+  /** @returns `true` se o fluxo terminou com `ended` (fim normal da run). */
+  private async lerStream(
+    runId: string,
+    aoEvento: (evento: LiveEvent) => void,
+  ): Promise<boolean> {
+    const abort = new AbortController();
+    this.sseAbort = abort;
+
+    const resposta = await fetch(`${this.baseUrl}/live/runs/${runId}/stream`, {
+      method: 'GET',
+      headers: {
+        Accept: 'text/event-stream',
+        Authorization: `Bearer ${this.token ?? ''}`,
+      },
+      signal: abort.signal,
+    });
+
+    if (!resposta.ok || !resposta.body) {
+      throw new Error(`Fluxo da transmissão recusado (HTTP ${resposta.status}).`);
+    }
+
+    const leitor = resposta.body.getReader();
+    const decodificador = new TextDecoder();
+    // O buffer atravessa as leituras porque um bloco do SSE quase nunca chega
+    // alinhado com o chunk do TCP: cortar no que veio partiria o JSON no meio.
+    let buffer = '';
+
+    for (;;) {
+      const { done, value } = await leitor.read();
+      if (done) return false;
+
+      buffer += decodificador.decode(value, { stream: true });
+
+      let corte = buffer.indexOf('\n\n');
+      while (corte !== -1) {
+        const bloco = buffer.slice(0, corte);
+        buffer = buffer.slice(corte + 2);
+
+        const evento = this.interpretarBloco(bloco);
+        if (evento) {
+          aoEvento(evento);
+          if (evento.type === 'ended') return true;
+        }
+        corte = buffer.indexOf('\n\n');
+      }
+    }
+  }
+
+  /**
+   * Traduz um bloco do SSE em evento.
+   *
+   * O Nest manda o tipo em `event:` e o payload em `data:`; o comentário de
+   * keep-alive (linha começando com `:`) e qualquer campo desconhecido são
+   * ignorados de propósito — o cliente tem que sobreviver a um campo novo que o
+   * backend passe a mandar.
+   */
+  private interpretarBloco(bloco: string): LiveEvent | null {
+    let tipo = '';
+    let dados = '';
+
+    for (const linha of bloco.split('\n')) {
+      if (linha.startsWith('event:')) tipo = linha.slice(6).trim();
+      else if (linha.startsWith('data:')) dados += linha.slice(5).trim();
+    }
+    if (!tipo || !dados) return null;
+
+    try {
+      return { type: tipo, data: JSON.parse(dados) } as LiveEvent;
+    } catch {
+      return null;
+    }
+  }
+
+  // ------------------------------------------------------------------ apoio
+  private async requisitar<T>(
+    metodo: 'GET' | 'POST',
+    caminho: string,
+    corpo?: unknown,
+    opcoes: { autenticado?: boolean } = {},
+  ): Promise<T> {
+    const autenticado = opcoes.autenticado !== false;
+    if (autenticado && !this.token) {
+      throw new Error('Dispositivo não pareado.');
+    }
+
+    const resposta = await fetch(`${this.baseUrl}${caminho}`, {
+      method: metodo,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(autenticado ? { Authorization: `Bearer ${this.token}` } : {}),
+      },
+      body: corpo === undefined ? undefined : JSON.stringify(corpo),
+    });
+
+    if (resposta.status === 401 && autenticado) {
+      // O token de 30 dias venceu ou foi revogado na web. Esquecer aqui é o que
+      // faz o painel cair na tela de pareamento em vez de repetir 401 calado.
+      this.desconectar();
+      throw new Error('Sessão expirada. Pareie o dispositivo de novo.');
+    }
+
+    if (!resposta.ok) {
+      throw new Error(await this.mensagemDeErro(resposta));
+    }
+
+    // 202 e 204 podem vir sem corpo; `json()` nesse caso estoura.
+    const texto = await resposta.text();
+    return (texto ? JSON.parse(texto) : {}) as T;
+  }
+
+  /**
+   * O backend responde erro em português e já pensado para o usuário final
+   * ("Você não tem minutos de live suficientes"), então a mensagem dele vale
+   * mais que qualquer texto genérico que fosse escrito aqui.
+   */
+  private async mensagemDeErro(resposta: Response): Promise<string> {
+    try {
+      const corpo = (await resposta.json()) as { message?: string | string[] };
+      const mensagem = Array.isArray(corpo.message)
+        ? corpo.message.join('; ')
+        : corpo.message;
+      if (mensagem) return mensagem;
+    } catch {
+      // Corpo vazio ou não-JSON: cai no genérico abaixo.
+    }
+    return `Falha na chamada ao PikPok (HTTP ${resposta.status}).`;
+  }
+
+  private esperar(ms: number): Promise<void> {
+    return new Promise((resolver) => setTimeout(resolver, ms));
+  }
+
+  private comoErro(erro: unknown): Error {
+    return erro instanceof Error ? erro : new Error(String(erro));
+  }
+}

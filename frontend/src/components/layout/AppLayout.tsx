@@ -5,6 +5,7 @@ import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
 import SchoolRoundedIcon from '@mui/icons-material/SchoolRounded';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
+import HeadsetMicRoundedIcon from '@mui/icons-material/HeadsetMicRounded';
 import LocalFireDepartmentRoundedIcon from '@mui/icons-material/LocalFireDepartmentRounded';
 import OndemandVideoRoundedIcon from '@mui/icons-material/OndemandVideoRounded';
 import LockRoundedIcon from '@mui/icons-material/LockRounded';
@@ -86,6 +87,12 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/estudio', label: 'Roteirizar com IA', icon: <AutoFixHighRoundedIcon /> },
       { to: '/analisar', label: 'Analisar Vídeo', icon: <TroubleshootRoundedIcon /> },
       { to: '/multiplicador', label: 'Multiplicador', icon: <DynamicFeedRoundedIcon /> },
+      {
+        to: '/copiloto',
+        label: 'Copiloto de Live',
+        icon: <HeadsetMicRoundedIcon />,
+        feature: 'live_copilot',
+      },
       { to: '/prompts', label: 'Cofre de Prompts', icon: <StyleRoundedIcon /> },
       { to: '/geracoes', label: 'Minhas Gerações', icon: <MovieFilterRoundedIcon /> },
     ],

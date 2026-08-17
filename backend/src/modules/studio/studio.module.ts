@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { FfmpegRunner } from '../../common/media/ffmpeg-runner';
 import { BillingModule } from '../billing/billing.module';
 import { Product } from '../products/entities/product.entity';
 import { UserProduct } from '../campaigns/entities/user-product.entity';
@@ -30,10 +31,12 @@ import { SingleFlightInterceptor } from '../../common/interceptors/single-flight
     AiService,
     TranscriptionService,
     PromptRefreshService,
-    // Não tem estado nem dependência: é um invólucro do ffmpeg, e o controller
-    // usa só a leitura de duração para precificar a transcrição. Provider local
-    // (como no Multiplicador) evita importar o módulo de campanhas inteiro.
+    // Não tem estado: é um invólucro do ffmpeg, e o controller usa só a leitura
+    // de duração para precificar a transcrição. Provider local (como no
+    // Multiplicador) evita importar o módulo de campanhas inteiro — junto com o
+    // FfmpegRunner, que é a única dependência dele.
     VideoAssemblyService,
+    FfmpegRunner,
   ],
   // As campanhas reaproveitam o mesmo gerador — não existe um segundo caminho
   // até o Claude, com outro prompt e outras regras.

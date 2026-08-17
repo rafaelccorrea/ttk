@@ -6,7 +6,12 @@ import {
   MIN_MARGIN,
   transcribeBlocks,
   FEATURE_MIN_PLAN,
+  featureLancada,
   isCompAccount,
+  LIVE_COST_PER_MINUTE_BRL,
+  LIVE_HOUR_PACKS,
+  livePackMinutes,
+  LIVE_TRIAL_MINUTES,
   PLAN_RANK,
   PLANS,
   planAllows,
@@ -148,5 +153,80 @@ describe('billing.config — hierarquia de planos', () => {
   it('deixa o free abaixo do degrau que libera pacote avulso', () => {
     // assertSubscriber compara contra PLAN_RANK.starter.
     expect(PLAN_RANK.free).toBeLessThan(PLAN_RANK.starter);
+  });
+});
+
+/**
+ * A carteira de live é uma moeda separada, e a separação só vale enquanto
+ * ninguém a converte de volta em crédito por engano. Estes testes travam as
+ * três coisas que fariam a conta furar: o copiloto voltar a custar crédito, o
+ * add-on ser vendido abaixo do custo, e a cortesia crescer sem querer.
+ */
+describe('billing.config — horas de live', () => {
+  it('não cobra o copiloto ao vivo em créditos de IA', () => {
+    // Se alguém recriar uma ação de live na tabela de créditos, as duas moedas
+    // viram uma só e o saldo de horas deixa de significar o que promete.
+    const acoesDeLiveAoVivo = Object.keys(ACTION_PRICES).filter(
+      (a) => a.startsWith('live_') && a !== 'live_extract',
+    );
+    expect(acoesDeLiveAoVivo).toEqual([]);
+  });
+
+  it('vende toda hora de live acima do custo, com a margem mínima', () => {
+    for (const pack of LIVE_HOUR_PACKS) {
+      const custo = livePackMinutes(pack) * LIVE_COST_PER_MINUTE_BRL;
+      expect(pack.priceBrl).toBeGreaterThanOrEqual(custo * MIN_MARGIN);
+    }
+  });
+
+  it('dá desconto por volume sem inverter a escada de preço', () => {
+    const porHora = [...LIVE_HOUR_PACKS]
+      .sort((a, b) => a.hours - b.hours)
+      .map((p) => p.priceBrl / p.hours);
+    // Pacote maior nunca pode sair mais caro por hora que um menor.
+    expect([...porHora].sort((a, b) => b - a)).toEqual(porHora);
+  });
+
+  it('mantém a cortesia em dez minutos e uma vez por conta', () => {
+    expect(LIVE_TRIAL_MINUTES).toBe(10);
+    // Barato o bastante para não doer: menos de um real de custo por conta.
+    expect(LIVE_TRIAL_MINUTES * LIVE_COST_PER_MINUTE_BRL).toBeLessThan(1);
+  });
+
+  it('reprova pacote de live vendido abaixo do custo', () => {
+    const original = LIVE_HOUR_PACKS[0].priceBrl;
+    LIVE_HOUR_PACKS[0].priceBrl = 0.5;
+    try {
+      expect(assertProfitability().join(' ')).toContain(LIVE_HOUR_PACKS[0].id);
+    } finally {
+      LIVE_HOUR_PACKS[0].priceBrl = original;
+    }
+  });
+
+  it('não expõe o Live Copilot enquanto as fases não fecharem', () => {
+    // A entrega é por fases: a base de conhecimento já roda, o copiloto ao vivo
+    // não. Um recurso pela metade num plano de R$ 249,90 não é preview.
+    const anterior = process.env.LAUNCH_LIVE_COPILOT;
+    try {
+      delete process.env.LAUNCH_LIVE_COPILOT;
+      expect(featureLancada('live_copilot')).toBe(false);
+      // O resto do produto não pode ser afetado pela trava.
+      expect(featureLancada('discovery')).toBe(true);
+      expect(featureLancada('multiplier')).toBe(true);
+
+      process.env.LAUNCH_LIVE_COPILOT = 'true';
+      expect(featureLancada('live_copilot')).toBe(true);
+    } finally {
+      if (anterior === undefined) delete process.env.LAUNCH_LIVE_COPILOT;
+      else process.env.LAUNCH_LIVE_COPILOT = anterior;
+    }
+  });
+
+  it('não deixa o Live Copilot fora do topo', () => {
+    // Não é preço: é o único lugar onde escrevemos em nome do vendedor dentro
+    // da plataforma dele, e isso pede o degrau com suporte de gente.
+    expect(FEATURE_MIN_PLAN.live_copilot).toBe('business');
+    expect(planAllows('pro', 'live_copilot')).toBe(false);
+    expect(planAllows('business', 'live_copilot')).toBe(true);
   });
 });

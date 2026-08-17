@@ -87,6 +87,33 @@ export class AppUser {
   @Column({ type: 'timestamptz', nullable: true })
   waitlistReleasedAt: Date;
 
+  /*
+   * Saldo de minutos de copiloto AO VIVO — a segunda moeda da conta.
+   *
+   * Separado de `credits` de propósito: crédito é unidade de trabalho da
+   * plataforma (um roteiro, uma imagem), comprada e comparada item a item;
+   * hora de live é tempo de transmissão, e o vendedor precisa saber quanto
+   * ainda tem antes de ligar o copiloto, não quanto vai queimar por minuto.
+   * Também protege a cota do mês: uma live longa não pode comer os créditos
+   * reservados para produzir criativos.
+   *
+   * Guardado em minutos, e não em horas, porque é a menor unidade que a gente
+   * cobra — e inteiro evita saldo fracionado que nunca fecha na conta do
+   * cliente. A venda continua sendo por hora (ver `LIVE_HOUR_PACKS`).
+   */
+  @Column('int', { default: 0 })
+  liveMinutes: number;
+
+  /*
+   * Quando a cortesia de estreia do Live Copilot foi concedida.
+   *
+   * É a trava de "uma vez por conta": os dez minutos entram no `liveMinutes`
+   * como qualquer hora comprada, então esta data é a única coisa que distingue
+   * quem ainda não ganhou de quem já ganhou e gastou.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  liveTrialGrantedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
