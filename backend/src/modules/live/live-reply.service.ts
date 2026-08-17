@@ -248,6 +248,14 @@ interface BaseEmMemoria {
   precos: Map<string, string | null>;
   /** Ids válidos: um id fora daqui numa resposta é alucinação. */
   produtos: Set<string>;
+  /**
+   * Os valores em dinheiro que a base autoriza a resposta a repetir.
+   *
+   * Guardado junto da base, e montado uma vez por run, porque é consultado a
+   * cada resposta: refazer isso por mensagem seria varrer o catálogo inteiro
+   * dentro do caminho quente do motor.
+   */
+  valoresPermitidos: Set<string>;
   /** Quantas chamadas já foram feitas nesta run (o alerta de cache olha as primeiras). */
   chamadas: number;
   /** Último uso, em ms — é o que a varredura de ociosas olha para expulsar. */
@@ -410,20 +418,79 @@ export function aplicarPrecos(
 }
 
 /**
- * A resposta escreveu um preço em número, por conta própria?
+ * Todo número com cara de dinheiro que aparece num texto.
  *
- * A regra dura do produto é "o modelo NUNCA escreve preço" — ele escreve o
- * marcador e o banco preenche. Até aqui essa regra só existia como instrução no
- * prompt, e instrução de prompt não é garantia: basta o Haiku responder "sai por
- * R$ 39,90 hoje!" com um productId válido e confiança 0.9 para o painel entregar
- * um preço alucinado como se tivesse vindo da coluna `priceBrl`, sem marcador
- * sobrando, sem log e sem escalação.
- *
- * Roda sobre o texto CRU do modelo, antes da substituição: depois dela o "R$"
- * legítimo que o banco escreveu estaria lá e o teste acusaria todo mundo.
+ * Pega "R$ 1.499,90", "49,90", "99 reais" e "50 conto" — a forma como o chat de
+ * uma live brasileira escreve valor.
  */
-export function contemPrecoLiteral(texto: string): boolean {
-  return /(r\$|\breais\b|\bconto\b)|\d+[.,]\d{2}(?!\d)/i.test(texto ?? '');
+const VALORES_NO_TEXTO =
+  /r\$\s*\d[\d.,]*|\d[\d.]*,\d{2}|\b\d+\s*(?:reais|conto|pila)\b/gi;
+
+/** Reduz um valor escrito à sua forma comparável: só os dígitos. */
+function digitosDe(valor: string): string {
+  return valor.replace(/\D/g, '').replace(/^0+/, '');
+}
+
+/**
+ * A resposta escreveu um preço que NÃO está na base, por conta própria?
+ *
+ * A regra dura do produto é "o modelo nunca inventa valor" — para preço de
+ * produto ele escreve o marcador e o banco preenche. Instrução de prompt não é
+ * garantia disso: basta o Haiku responder "sai por R$ 39,90 hoje!" com um
+ * productId válido e confiança 0.9 para o painel entregar um preço alucinado com
+ * a mesma cara de um que veio da coluna `priceBrl`.
+ *
+ * MAS a versão anterior barrava QUALQUER número com cara de dinheiro, e isso
+ * inutilizava o modo automático: "frete grátis acima de R$ 99" é informação que
+ * o próprio vendedor cadastrou em `shippingInfo`, e ela ia para o painel como se
+ * fosse alucinação. Numa base que fala de frete — quase todas —, praticamente
+ * nenhuma resposta chegava ao chat.
+ *
+ * A distinção que importa não é "tem número?", é "esse número é NOSSO?".
+ * Reproduzir um valor que consta literalmente na base é reproduzir o que o
+ * vendedor escreveu; inventar um valor que não está em lugar nenhum é o risco.
+ * Por isso a comparação é por dígitos: "R$ 99", "99 reais" e "99,00" são o mesmo
+ * valor escrito de três jeitos, e o modelo escolhe o jeito dele.
+ *
+ * Roda sobre o texto CRU do modelo, antes da substituição: depois dela o preço
+ * legítimo que o banco escreveu estaria lá e a checagem acusaria todo mundo.
+ */
+export function contemPrecoLiteral(
+  texto: string,
+  valoresDaBase: Set<string> = new Set(),
+): boolean {
+  const achados = (texto ?? '').match(VALORES_NO_TEXTO) ?? [];
+  return achados.some((achado) => {
+    const digitos = digitosDe(achado);
+    // Número sem dígito significativo não é valor ("R$" sozinho já é pego pelo
+    // marcador não resolvido).
+    if (!digitos) return false;
+    return !valoresDaBase.has(digitos);
+  });
+}
+
+/**
+ * Os valores que a base autoriza a resposta a repetir.
+ *
+ * Sai do que o VENDEDOR cadastrou — preço, frete, promoção — e das respostas de
+ * FAQ que ele mesmo escreveu. É a lista do que não é invenção do modelo.
+ */
+export function valoresPermitidos(fontes: {
+  precos: Iterable<string>;
+  textos: Iterable<string>;
+}): Set<string> {
+  const permitidos = new Set<string>();
+  for (const preco of fontes.precos) {
+    const digitos = digitosDe(formatarPreco(preco));
+    if (digitos) permitidos.add(digitos);
+  }
+  for (const texto of fontes.textos) {
+    for (const achado of (texto ?? '').match(VALORES_NO_TEXTO) ?? []) {
+      const digitos = digitosDe(achado);
+      if (digitos) permitidos.add(digitos);
+    }
+  }
+  return permitidos;
 }
 
 /** Link ou @menção numa resposta de live é vetor de golpe — não sai daqui. */
@@ -531,14 +598,19 @@ export function expirouNaFila(criadaEm: Date, agora: Date = new Date()): boolean
  */
 const TAMANHO_DA_FILA = 5;
 
-/** Corta na palavra, para a resposta não terminar no meio de uma. */
-export function truncar(texto: string, max = MAX_CARACTERES): string {
-  const limpo = (texto ?? '').replace(/\s+/g, ' ').trim();
-  if (limpo.length <= max) return limpo;
-  const cortado = limpo.slice(0, max);
-  const espaco = cortado.lastIndexOf(' ');
-  return (espaco > max * 0.6 ? cortado.slice(0, espaco) : cortado).trim();
-}
+/*
+ * NÃO EXISTE MAIS um `truncar` simples aqui, e a ausência é deliberada.
+ *
+ * Havia um: cortava no limite respeitando a palavra, sem saber nada de preço.
+ * Ninguém em produção o chamava — só ele mesmo e os testes —, mas um helper
+ * chamado "truncar", exportado e aparentemente inofensivo, é um convite para o
+ * próximo desenvolvedor cortar uma resposta com ele e reintroduzir a publicação
+ * de "R$ 1.4" no chat de alguém.
+ *
+ * Todo corte de texto que vai ao ar passa por `truncarSeguro`, que devolve
+ * também `precoPerdido`. Quem não precisa dessa informação não deveria estar
+ * cortando uma resposta.
+ */
 
 /**
  * Um preço JÁ ESCRITO pela substituição: "R$ 49,90", "R$ 1.299,00", "R$ 1299,00".
@@ -1224,10 +1296,10 @@ export class LiveReplyService {
      * ao painel com a mesma cara de um preço vindo do banco. O log é parte da
      * correção: é o sinal de que o prompt (ou o modelo) regrediu.
      */
-    if (contemPrecoLiteral(bruta.text ?? '')) {
+    if (contemPrecoLiteral(bruta.text ?? '', base.valoresPermitidos)) {
       decisao = 'escalar';
       this.logger.warn(
-        `Run ${run.id}: o modelo escreveu preço direto no texto em vez de usar {{PRECO:id}} — resposta escalada. Conferir a instrução do prompt.`,
+        `Run ${run.id}: o modelo escreveu um valor que NÃO está na base em vez de usar {{PRECO:id}} — resposta escalada. Conferir a instrução do prompt.`,
       );
     }
     /*
@@ -1510,6 +1582,21 @@ export class LiveReplyService {
       serializada,
       precos: new Map(produtos.map((p) => [p.id, p.priceBrl])),
       produtos: new Set(produtos.map((p) => p.id)),
+      /*
+       * O que a resposta pode repetir sem ser acusada de inventar valor: os
+       * preços dos produtos e QUALQUER número em dinheiro que o vendedor já
+       * escreveu no frete, na promoção ou numa resposta de FAQ. É o que separa
+       * "reproduziu o que está cadastrado" de "tirou um número do nada".
+       */
+      valoresPermitidos: valoresPermitidos({
+        precos: produtos
+          .map((p) => p.priceBrl)
+          .filter((p): p is string => Boolean(p)),
+        textos: [
+          ...produtos.flatMap((p) => [p.shippingInfo ?? '', p.promo ?? '']),
+          ...faq.map((f) => f.answer ?? ''),
+        ],
+      }),
       chamadas: 0,
       usadaEm: Date.now(),
     };

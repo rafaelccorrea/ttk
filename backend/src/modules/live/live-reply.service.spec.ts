@@ -14,8 +14,8 @@ import {
   ehListaNegra,
   ehPergunta,
   normalizarTexto,
-  truncar,
   truncarSeguro,
+  valoresPermitidos,
 } from './live-reply.service';
 import { sanitizarHtml } from './live-config.service';
 
@@ -234,6 +234,58 @@ describe('contemPrecoLiteral', () => {
     expect(contemPrecoLiteral('Temos em azul, P ao GG')).toBe(false);
     expect(contemPrecoLiteral('chega em 5 dias')).toBe(false);
   });
+
+  /*
+   * A correção que salvou o modo automático de ser inútil.
+   *
+   * A versão anterior barrava QUALQUER número com cara de dinheiro — e "frete
+   * grátis acima de R$ 99" é informação que o próprio vendedor cadastrou em
+   * `shippingInfo`. Numa base que fala de frete (quase todas), praticamente
+   * nenhuma resposta chegava ao chat: tudo virava escalação.
+   *
+   * A pergunta certa não é "tem número?", é "esse número é NOSSO?".
+   */
+  describe('com os valores que a base autoriza', () => {
+    // Como a base montaria: 1499.90 de preço e um frete escrito à mão.
+    const base = valoresPermitidos({
+      precos: ['1499.90'],
+      textos: ['Frete grátis acima de R$ 99', 'Parcelamos em até 12x'],
+    });
+
+    it('deixa a resposta repetir o frete que o vendedor cadastrou', () => {
+      expect(
+        contemPrecoLiteral('Sai com frete grátis acima de R$ 99!', base),
+      ).toBe(false);
+    });
+
+    it('aceita o mesmo valor escrito de outro jeito', () => {
+      // O vendedor escreveu "R$ 99"; o modelo pode dizer "99 reais". É o mesmo
+      // valor, e a comparação é por dígito justamente por isso.
+      expect(contemPrecoLiteral('o frete sai de graça acima de 99 reais', base)).toBe(
+        false,
+      );
+      expect(contemPrecoLiteral('são 99 conto pra frete grátis', base)).toBe(false);
+    });
+
+    it('continua barrando o valor que a base não tem', () => {
+      // 89,90 não está em lugar nenhum da base: é invenção, e invenção sobre
+      // dinheiro é exatamente o que não pode ir ao chat.
+      expect(contemPrecoLiteral('Hoje sai por R$ 89,90!', base)).toBe(true);
+      expect(contemPrecoLiteral('faço por 200 reais', base)).toBe(true);
+    });
+
+    it('barra tudo quando a base não tem valor nenhum', () => {
+      // Base sem preço cadastrado não autoriza número nenhum — o padrão é
+      // fechado, não aberto.
+      expect(contemPrecoLiteral('Sai por R$ 99', new Set())).toBe(true);
+    });
+
+    it('não confunde tamanho, prazo e quantidade com dinheiro', () => {
+      expect(contemPrecoLiteral('chega em 5 dias', base)).toBe(false);
+      expect(contemPrecoLiteral('temos do 34 ao 42', base)).toBe(false);
+      expect(contemPrecoLiteral('vem 3 unidades no kit', base)).toBe(false);
+    });
+  });
 });
 
 describe('higiene da resposta', () => {
@@ -244,15 +296,18 @@ describe('higiene da resposta', () => {
     expect(contemLinkOuMencao('Temos em azul, R$ 49,90')).toBe(false);
   });
 
-  it('trunca em 140 caracteres sem cortar palavra ao meio', () => {
+  // O corte por si só é testado em 'truncarSeguro': não existe mais um
+  // `truncar` simples no serviço, porque um helper de corte que não sabe de
+  // preço é o caminho para republicar "R$ 1.4" no chat de alguém.
+  it('trunca sem cortar palavra ao meio', () => {
     const longo = 'palavra '.repeat(40).trim();
-    const cortado = truncar(longo);
+    const { texto: cortado } = truncarSeguro(longo);
     expect(cortado.length).toBeLessThanOrEqual(140);
     expect(cortado.endsWith('palavra')).toBe(true);
   });
 
   it('deixa passar intacta a resposta que já cabe', () => {
-    expect(truncar('Temos sim, R$ 49,90')).toBe('Temos sim, R$ 49,90');
+    expect(truncarSeguro('Temos sim, R$ 49,90').texto).toBe('Temos sim, R$ 49,90');
   });
 });
 
