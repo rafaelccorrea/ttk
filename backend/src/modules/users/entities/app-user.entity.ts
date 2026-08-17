@@ -114,6 +114,31 @@ export class AppUser {
   @Column({ type: 'timestamptz', nullable: true })
   liveTrialGrantedAt: Date | null;
 
+  /*
+   * Quando o vendedor aceitou o termo de risco do envio automático no chat da
+   * live.
+   *
+   * Não é formalidade de jurídico: automatizar comentário viola os Termos do
+   * TikTok, e o que está em jogo é a conta de onde ele vende — não a nossa. O
+   * modo automático é recusado enquanto esta data for nula, e a data fica
+   * guardada porque "ele foi avisado" precisa ter hora, não ser uma lembrança
+   * de suporte. Nula significa que a conta só pode operar em modo painel.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  liveAutoAcceptedAt: Date | null;
+
+  /*
+   * A VERSÃO do termo que ele leu quando aceitou.
+   *
+   * A data sozinha diria que alguém clicou em algum aviso, algum dia. Quando o
+   * texto mudar — porque o risco mudou, ou porque o TikTok mudou de postura —,
+   * quem aceitou a redação anterior consentiu com outra coisa, e é esta coluna
+   * que impede o aceite antigo de autorizar em silêncio a prática nova. O modo
+   * automático só é liberado para quem aceitou a versão VIGENTE.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  liveAutoAcceptedVersion: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

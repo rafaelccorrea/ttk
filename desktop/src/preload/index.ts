@@ -5,6 +5,8 @@ import type {
   ConfiguracoesCopiloto,
   EstadoAtivacao,
   EstadoConexao,
+  EstadoEnvio,
+  TermoDeEnvio,
   BaseDeConhecimento,
   PikPokDesktopApi,
   SessaoDesktop,
@@ -90,6 +92,18 @@ const api: PikPokDesktopApi = {
   obterConexao: () =>
     ipcRenderer.invoke('live:conexao') as Promise<EstadoConexao>,
   aoMudarConexao: (ouvinte) => assinar<EstadoConexao>('live:conexao', ouvinte),
+
+  obterEstadoEnvio: () =>
+    ipcRenderer.invoke('envio:estado') as Promise<EstadoEnvio>,
+  aoMudarEnvio: (ouvinte) => assinar<EstadoEnvio>('envio:estado', ouvinte),
+  obterTermoDeEnvio: () =>
+    ipcRenderer.invoke('envio:termo') as Promise<TermoDeEnvio>,
+  aceitarTermoDeEnvio: (versao) =>
+    ipcRenderer.invoke('envio:aceitar', versao) as Promise<EstadoEnvio>,
+  definirModoDeEnvio: (modo) =>
+    ipcRenderer.invoke('envio:modo', modo) as Promise<EstadoEnvio>,
+  pausarEnvio: (pausado) =>
+    ipcRenderer.invoke('envio:pausar', pausado) as Promise<EstadoEnvio>,
 
   aoReceberEvento: (ouvinte) => assinar<LiveEvent>('live:evento', ouvinte),
 

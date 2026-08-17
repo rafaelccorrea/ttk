@@ -25,6 +25,30 @@ import { LiveRun } from './live-run.entity';
  */
 export type LiveReplyDecision = 'enviar' | 'escalar' | 'silenciar';
 
+/**
+ * O que aconteceu com a resposta DEPOIS de o copiloto decidir por ela:
+ *
+ *  - `nao_aplica`: não havia envio a fazer — run em modo painel, ou decisão que
+ *    não é `enviar`;
+ *  - `pendente`: está na fila esperando o app digitar no chat da live;
+ *  - `enviada`: o app confirmou que o comentário saiu;
+ *  - `falhou`: o app tentou e não conseguiu (campo bloqueado, sessão caída,
+ *    verificação na tela) — `failureReason` diz o quê;
+ *  - `cancelada`: ficou velha demais na fila e foi descartada antes de sair.
+ *
+ * `nao_aplica` é o default, e a escolha é sobre MÉTRICA, não sobre semântica.
+ * Quase toda resposta do produto nasce em modo painel, onde nada é enviado; se
+ * ela nascesse `pendente` ficaria pendente para sempre, e a taxa de entrega — a
+ * única forma de saber se o modo automático está funcionando na casa do
+ * vendedor — leria como um sistema permanentemente atolado.
+ */
+export type LiveReplyDeliveryStatus =
+  | 'nao_aplica'
+  | 'pendente'
+  | 'enviada'
+  | 'falhou'
+  | 'cancelada';
+
 /** Uma resposta gerada pelo copiloto para uma mensagem do chat. */
 @Entity('live_replies')
 export class LiveReply {
@@ -112,6 +136,36 @@ export class LiveReply {
    */
   @Column({ type: 'timestamptz', nullable: true })
   copiedAt: Date | null;
+
+  /**
+   * O ciclo de vida da entrega. Ver `LiveReplyDeliveryStatus` para o porquê de
+   * o default ser `nao_aplica`.
+   */
+  @Index('IDX_live_replies_deliveryStatus')
+  @Column({ default: 'nao_aplica' })
+  deliveryStatus: LiveReplyDeliveryStatus;
+
+  /**
+   * Quando o app confirmou que o comentário saiu. Separado de `createdAt` de
+   * propósito: a distância entre os dois é o tempo de fila, e é ele que diz se
+   * o envio automático está chegando enquanto o assunto ainda está no ar ou
+   * respondendo o chat de dois minutos atrás.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  sentAt: Date | null;
+
+  /** Por que não saiu. Vale para `falhou` e para `cancelada`. */
+  @Column({ type: 'text', nullable: true })
+  failureReason: string | null;
+
+  /**
+   * Quantas vezes se tentou entregar esta resposta. Uma falha isolada é ruído
+   * de UI do TikTok; várias na mesma live são sinal de que a automação foi
+   * barrada, e é isso que decide voltar a run para o modo painel em vez de
+   * seguir insistindo — insistir é justamente o que chama atenção para a conta.
+   */
+  @Column({ type: 'int', default: 0 })
+  deliveryAttempts: number;
 
   @CreateDateColumn()
   createdAt: Date;

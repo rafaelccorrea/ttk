@@ -74,7 +74,43 @@ export interface CombinationClip {
   label: string;
   url: string;
   sizeBytes: number;
+  /** Duração medida no upload. `0` é "não medido" — nunca "vazio". */
+  durationMs: number;
   createdAt: string;
+}
+
+/**
+ * A fórmula 3s / 10s / 5s, replicada de `clip-timing.ts` no backend.
+ *
+ * `ideal` é o alvo e só gera aviso; passar de `limite` faz o servidor recusar
+ * a montagem — a tela avisa antes para o vendedor não descobrir no clique.
+ */
+export const FAIXAS_DE_DURACAO: Record<
+  ClipRole,
+  { alvo: number; ideal: { min: number; max: number }; limite: number }
+> = {
+  hook: { alvo: 3, ideal: { min: 1.5, max: 5 }, limite: 8 },
+  body: { alvo: 10, ideal: { min: 5, max: 15 }, limite: 25 },
+  cta: { alvo: 5, ideal: { min: 2, max: 8 }, limite: 12 },
+};
+
+export type SituacaoDeDuracao =
+  | 'ideal'
+  | 'fora-da-faixa'
+  | 'acima-do-limite'
+  | 'desconhecida';
+
+/** Onde a duração deste clipe cai na faixa do bloco dele. */
+export function situacaoDaDuracao(
+  role: ClipRole,
+  durationMs: number,
+): SituacaoDeDuracao {
+  if (!durationMs) return 'desconhecida';
+  const s = durationMs / 1000;
+  const faixa = FAIXAS_DE_DURACAO[role];
+  if (s > faixa.limite) return 'acima-do-limite';
+  if (s < faixa.ideal.min || s > faixa.ideal.max) return 'fora-da-faixa';
+  return 'ideal';
 }
 
 export type CombinationVideoStatus =
@@ -136,6 +172,8 @@ export interface PecaInsight {
   /** `null` quando nenhum vídeo desta peça teve views lançadas. */
   mediaViews: number | null;
   totalVendas: number | null;
+  /** `true` quando a média vem de poucos vídeos para virar decisão. */
+  dadoFraco: boolean;
 }
 
 export interface PlanoInsights {
@@ -144,7 +182,17 @@ export interface PlanoInsights {
   videosLancados: number;
   videosTotais: number;
   mediaGeralViews: number | null;
+  /** Vídeos que uma peça precisa para sair de `dadoFraco`. */
+  minimoConfiavel: number;
   blocos: Record<'hook' | 'body' | 'cta', PecaInsight[]>;
+}
+
+/** Uma linha do lançamento em massa. Campos ausentes ficam como estão. */
+export interface VideoResultInput {
+  id: string;
+  views?: number | null;
+  sales?: number | null;
+  postUrl?: string | null;
 }
 
 /** Pasta criada pelo vendedor para guardar vídeos montados. */
@@ -266,6 +314,23 @@ export const combinationsService = {
     const { data } = await api.patch<CombinationVideo>(
       `/combinations/videos/${id}/result`,
       dados,
+    );
+    return data;
+  },
+
+  /** Lança vários vídeos de uma vez — a tela de planilha manda tudo junto. */
+  async setResults(itens: VideoResultInput[]): Promise<CombinationVideo[]> {
+    const { data } = await api.patch<CombinationVideo[]>(
+      '/combinations/videos/results',
+      { itens },
+    );
+    return data;
+  },
+
+  /** Cria um plano novo contendo só as peças vencedoras deste. */
+  async derive(planId: string): Promise<CombinationPlanDetail> {
+    const { data } = await api.post<CombinationPlanDetail>(
+      `/combinations/${planId}/derive`,
     );
     return data;
   },

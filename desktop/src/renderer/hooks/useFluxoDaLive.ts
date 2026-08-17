@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  LiveDeliveryEvent,
   LiveEscalationEvent,
   LiveReplyEvent,
   LiveStatsEvent,
@@ -29,6 +30,20 @@ export interface FluxoDaLive {
   /** O que o modelo não sustentou, ordenado por repetições × recência. */
   escalacoes: Escalacao[];
   stats: LiveStatsEvent | null;
+  /**
+   * O desfecho da entrega de cada resposta, por `replyId`.
+   *
+   * Separado das respostas em vez de embutido nelas porque as duas informações
+   * chegam em MOMENTOS diferentes — a resposta nasce ao ser gerada, o desfecho
+   * volta segundos depois, quando o app terminou de digitar. Costurar as duas
+   * num objeto só obrigaria a reescrever a lista inteira a cada confirmação.
+   */
+  entregas: Record<string, LiveDeliveryEvent>;
+  /**
+   * O texto da pergunta que originou cada resposta, por `chatMessageId`, quando
+   * ele é conhecido — hoje só as escalações trazem o texto original no fluxo.
+   */
+  perguntas: Record<string, string>;
   /** Preenchido quando chega `credits_exhausted`. */
   semSaldo: string | null;
   /** Preenchido quando chega `ended`. */
@@ -50,6 +65,8 @@ export function useFluxoDaLive(): FluxoDaLive {
   const [respostas, setRespostas] = useState<LiveReplyEvent[]>([]);
   const [escalacoes, setEscalacoes] = useState<LiveEscalationEvent[]>([]);
   const [stats, setStats] = useState<LiveStatsEvent | null>(null);
+  const [entregas, setEntregas] = useState<Record<string, LiveDeliveryEvent>>({});
+  const [perguntas, setPerguntas] = useState<Record<string, string>>({});
   const [semSaldo, setSemSaldo] = useState<string | null>(null);
   const [encerrada, setEncerrada] = useState<string | null>(null);
   /** Carimbos das respostas recentes, só para o "por minuto" do rodapé. */
@@ -76,7 +93,15 @@ export function useFluxoDaLive(): FluxoDaLive {
           setRespostas((atual) => [evento.data, ...atual].slice(0, TETO_RESPOSTAS));
           break;
         }
+        case 'delivery': {
+          setEntregas((atual) => ({ ...atual, [evento.data.replyId]: evento.data }));
+          break;
+        }
         case 'escalation': {
+          setPerguntas((atual) => ({
+            ...atual,
+            [evento.data.chatMessageId]: evento.data.text,
+          }));
           setEscalacoes((atual) => {
             // O backend reenvia a MESMA pergunta com `repeatCount` maior quando
             // o chat repete. Substituir em vez de empilhar é o que faz o card
@@ -119,6 +144,8 @@ export function useFluxoDaLive(): FluxoDaLive {
     respostas,
     escalacoes: ordenadas,
     stats,
+    entregas,
+    perguntas,
     semSaldo,
     encerrada,
     respostasPorMinuto,

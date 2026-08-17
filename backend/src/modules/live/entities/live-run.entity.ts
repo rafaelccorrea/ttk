@@ -21,16 +21,20 @@ import { LiveSession } from './live-session.entity';
 export type LiveRunStatus = 'conectando' | 'ativa' | 'encerrada' | 'erro';
 
 /**
- * Como a resposta chega ao chat. Nesta fase só existe `painel`: a resposta
- * aparece na tela do vendedor para ele copiar ou ler em voz alta, e nada é
- * postado no TikTok. `auto` — envio direto — é a fase 2.
+ * Como a resposta chega ao chat.
  *
- * A coluna já nasce aqui, com um único valor possível, de propósito: a fase 2
- * só acrescenta o segundo valor, enquanto criá-la depois seria um ALTER numa
- * tabela já cheia de transmissões, com backfill e uma janela em que run antiga
- * e run nova não têm o mesmo formato.
+ *  - `painel`: aparece na tela do vendedor para ele copiar ou ler em voz alta,
+ *    e nada é postado no TikTok;
+ *  - `auto`: o app desktop digita e envia a resposta no chat da live.
+ *
+ * A coluna nasceu na fase anterior com um valor só justamente para que esta
+ * fase fosse acrescentar um literal, e não um ALTER numa tabela já cheia de
+ * transmissões. Toda run começa em `painel`: ligar o automático é um ato
+ * explícito, feito com o termo de risco aceito (ver `liveAutoAcceptedAt`), e
+ * qualquer caminho de degradação — falha de entrega, saldo, queda — volta para
+ * cá, porque painel é o modo que não pode dar errado.
  */
-export type LiveRunMode = 'painel';
+export type LiveRunMode = 'painel' | 'auto';
 
 /**
  * Uma transmissão ao vivo acompanhada pelo copiloto.
@@ -104,6 +108,21 @@ export class LiveRun {
 
   @Column({ type: 'int', default: 0 })
   escalations: number;
+
+  /**
+   * O funil do modo automático, e a razão de ele existir separado de
+   * `repliesGenerated`: gerar resposta e conseguir postá-la no chat do TikTok
+   * são dois problemas distintos, e só o segundo depende de uma interface que
+   * não é nossa. Um par saudável (muitas enviadas, poucas falhas) e um par
+   * doente (falhas subindo) levam a decisões opostas — insistir ou cair para o
+   * painel — e sem os dois contadores na própria run o painel não teria como
+   * mostrar isso ao vendedor enquanto a live corre.
+   */
+  @Column({ type: 'int', default: 0 })
+  repliesSent: number;
+
+  @Column({ type: 'int', default: 0 })
+  deliveryFailures: number;
 
   /**
    * O relógio da cobrança. O copiloto queima minutos da carteira enquanto está

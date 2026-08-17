@@ -115,6 +115,53 @@ export interface ConfiguracoesCopiloto {
   tamanhoDoLote: number;
 }
 
+/**
+ * O termo de risco do envio automático — `GET /live/termo-envio-automatico`.
+ *
+ * O texto vem do servidor e não fica escrito na tela por um motivo prático: o
+ * aceite é gravado COM A VERSÃO do que a pessoa leu, e um texto compilado dentro
+ * do app significaria que a versão registrada é a do release instalado, não a do
+ * aviso vigente. Quando a redação mudar, quem já aceitou precisa ler de novo — e
+ * é o backend que decide isso.
+ */
+export interface TermoDeEnvio {
+  versao: string;
+  texto: string;
+  aceito: boolean;
+}
+
+/**
+ * O estado do envio automático, do ponto de vista da tela.
+ *
+ * É separado do `EstadoConexao` porque responde a outra pergunta. A conexão diz
+ * se o copiloto está LENDO o chat; isto diz se ele está ESCREVENDO nele — e a
+ * segunda é a que pode custar a conta do vendedor. Misturar as duas numa
+ * estrutura só produziria, mais cedo ou mais tarde, uma tela verde de "tudo
+ * certo" enquanto o envio já tinha caído.
+ */
+export interface EstadoEnvio {
+  /** `live_runs.mode`. `painel` é o padrão e o lugar seguro. */
+  modo: import('./live-events').LiveRunMode;
+  /** O termo já foi aceito por esta conta? Sem isso o backend recusa `auto`. */
+  aceito: boolean;
+  /** A pausa global (botão e Ctrl+Shift+P). Vale só para o ENVIO. */
+  pausado: boolean;
+  /** Intervalo mínimo entre duas mensagens, para a linha de "o que vai acontecer". */
+  cadenciaSegundos: number;
+  /** Teto de mensagens por minuto, da mesma linha. */
+  maxPorMinuto: number;
+  /**
+   * Por que o app caiu sozinho para somente-painel (seletor quebrado, kill
+   * switch), em português e pronto para a faixa de aviso. `null` quando não
+   * houve queda.
+   *
+   * É o campo mais importante desta estrutura: o pior estado possível deste
+   * produto é o vendedor achar que o copiloto está respondendo o chat enquanto
+   * ele parou — e este texto é o que impede isso.
+   */
+  degradacao: string | null;
+}
+
 /** Limites que a tela de configurações mostra e o preload não deixa passar. */
 export const LOTE_MINIMO = 1;
 export const LOTE_MAXIMO = 40;
@@ -154,6 +201,23 @@ export interface PikPokDesktopApi {
   readonly aoMudarConexao: (
     ouvinte: (estado: EstadoConexao) => void,
   ) => () => void;
+
+  // ------------------------------------------------------- envio automático
+  readonly obterEstadoEnvio: () => Promise<EstadoEnvio>;
+  readonly aoMudarEnvio: (ouvinte: (estado: EstadoEnvio) => void) => () => void;
+  /** Texto e versão do aviso de risco, mais o que esta conta já aceitou. */
+  readonly obterTermoDeEnvio: () => Promise<TermoDeEnvio>;
+  /** Registra o aceite. A versão volta do termo exibido, nunca é inventada aqui. */
+  readonly aceitarTermoDeEnvio: (versao: string) => Promise<EstadoEnvio>;
+  /** Troca o modo da run em curso. Rejeita se o backend recusar (sem aceite, kill switch). */
+  readonly definirModoDeEnvio: (
+    modo: import('./live-events').LiveRunMode,
+  ) => Promise<EstadoEnvio>;
+  /**
+   * A pausa global do ENVIO — o botão vermelho e o Ctrl+Shift+P. Não encerra a
+   * run nem para a leitura do chat: o painel continua inteiro.
+   */
+  readonly pausarEnvio: (pausado: boolean) => Promise<EstadoEnvio>;
 
   // --------------------------------------------------------------- eventos
   /**

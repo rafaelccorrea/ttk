@@ -427,6 +427,7 @@ export function LivePage() {
                       <span>
                         <IconButton
                           size="small"
+                          aria-label={`Apagar ${sessao.title}`}
                           onClick={() => void apagar(sessao)}
                           disabled={estaProcessando(sessao.status)}
                         >

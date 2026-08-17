@@ -26,8 +26,21 @@ export type LiveEventType =
   | 'reply'
   | 'escalation'
   | 'stats'
+  | 'delivery'
+  | 'mode'
   | 'credits_exhausted'
   | 'ended';
+
+/** `live_runs.mode` — ver `entities/live-run.entity.ts`. */
+export type LiveRunMode = 'painel' | 'auto';
+
+/** `live_replies.deliveryStatus`. */
+export type LiveDeliveryStatus =
+  | 'nao_aplica'
+  | 'pendente'
+  | 'enviada'
+  | 'falhou'
+  | 'cancelada';
 
 /** Resposta pronta para o vendedor copiar ou ler em voz alta. */
 export interface LiveReplyEvent {
@@ -62,6 +75,33 @@ export interface LiveStatsEvent {
   repliesGenerated: number;
   escalations: number;
   minutesCharged: number;
+  mode: LiveRunMode;
+  repliesSent: number;
+  deliveryFailures: number;
+}
+
+/**
+ * O desfecho do envio de UMA resposta no chat — `POST replies/:id/delivery`
+ * republicado no fluxo.
+ *
+ * Vem do servidor, e não do processo principal, porque o vendedor pode ter a
+ * live aberta no app e a conta aberta na web: quem confirmou a entrega foi o
+ * app, mas quem sabe o estado final da resposta é o banco. O painel desenha o
+ * que o backend confirmou, nunca o que ele mesmo torceu para ter acontecido.
+ */
+export interface LiveDeliveryEvent {
+  replyId: string;
+  deliveryStatus: LiveDeliveryStatus;
+  /** ISO na travessia do SSE; nulo enquanto não saiu. */
+  sentAt: string | null;
+  /** Em português e pronto para a tela quando `deliveryStatus === 'falhou'`. */
+  failureReason: string | null;
+}
+
+/** A run trocou de modo — inclusive quando quem trocou foi a outra janela. */
+export interface LiveModeEvent {
+  runId: string;
+  mode: LiveRunMode;
 }
 
 /** Acabaram os minutos de live: a transmissão parou por saldo. */
@@ -85,6 +125,8 @@ export type LiveEvent =
   | { type: 'reply'; data: LiveReplyEvent }
   | { type: 'escalation'; data: LiveEscalationEvent }
   | { type: 'stats'; data: LiveStatsEvent }
+  | { type: 'delivery'; data: LiveDeliveryEvent }
+  | { type: 'mode'; data: LiveModeEvent }
   | { type: 'credits_exhausted'; data: LiveCreditsExhaustedEvent }
   | { type: 'ended'; data: LiveEndedEvent };
 

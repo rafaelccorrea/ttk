@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   Logger,
   MessageEvent,
@@ -21,22 +22,30 @@ import {
 } from '../billing/plan-feature.guard';
 import {
   AbrirLiveRunDto,
+  ConfirmarEntregaDto,
   EncerrarLiveRunDto,
   LoteDeChatDto,
+  TrocarModoDaRunDto,
 } from './dto/live.dto';
 import { LiveRun } from './entities/live-run.entity';
 import { LiveEventsService } from './live-events.service';
 import { LiveReplyService } from './live-reply.service';
 
 /**
- * A transmissão ao vivo, em MODO SOMENTE-PAINEL.
+ * A transmissão ao vivo.
  *
  * O app desktop lê o chat, manda em lotes de ~800ms, e as respostas voltam por
- * SSE para a tela do vendedor. NADA é postado no TikTok nesta fase: quem decide
- * o que vai para o chat é o humano, copiando do painel ou falando em voz alta.
- * O envio automático é a fase 2, e a separação é deliberada — dá para validar
- * chat, dedup, base, modelo, latência e confiança sem tocar no DOM do TikTok
- * nem assumir risco de ToS.
+ * SSE para a tela do vendedor. Em modo `painel` a história acaba aí: quem
+ * decide o que vai para o chat é o humano, copiando ou falando em voz alta.
+ *
+ * Em modo `auto` o app também POSTA a resposta no chat da live — e isso
+ * contraria os Termos do TikTok, com risco real para a conta do vendedor. Todo
+ * o desenho deste arquivo existe para manter essa superfície mínima: o modo é
+ * por transmissão e não por conta, exige aceite de termo com versão, só a
+ * decisão `enviar` entra na fila, a fila é pequena e puxada pelo app no ritmo
+ * dele, e o que envelhece nela é descartado em vez de postado atrasado. O modo
+ * `painel` continua sendo o estado de repouso: qualquer degradação volta para
+ * lá, porque é o modo que não pode dar errado.
  *
  * ESCOPO DO SSE — LIMITAÇÃO CONHECIDA
  * -----------------------------------
@@ -206,6 +215,96 @@ export class LiveRunController {
     return this.replies.marcarCopiada(user.id, id);
   }
 
+  // ----------------------------------------------------- modo automático
+  /**
+   * Liga ou desliga o envio automático desta transmissão.
+   *
+   * O aceite do termo NÃO é feito aqui: ele vive em `LiveConfigController`,
+   * junto do texto que o vendedor precisa ler. Aceitar é uma decisão sobre a
+   * conta, tomada com calma e fora do ar; ligar o automático é uma operação no
+   * meio de uma live. Se o aceite viesse no corpo desta rota, o vendedor estaria
+   * "aceitando" um termo que nunca viu, num clique dado às pressas com o chat
+   * rolando.
+   *
+   * A recusa por falta de aceite volta como 412 com texto legível: quem lê é o
+   * app desktop, que mostra a mensagem tal e qual e leva o vendedor ao termo.
+   */
+  @Post('runs/:id/mode')
+  @ApiOperation({ summary: 'Troca o modo da transmissão entre painel e auto' })
+  async trocarModo(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TrocarModoDaRunDto,
+  ) {
+    const run = await this.replies.trocarModo(user.id, id, dto.mode);
+    // O painel do vendedor e o app são clientes diferentes da mesma run: sem o
+    // evento, uma janela seguiria mostrando "painel" enquanto a outra já está
+    // postando no chat — e o vendedor não saberia qual das duas acreditar.
+    this.eventos.publicar(id, 'mode', { runId: id, mode: run.mode });
+    return run;
+  }
+
+  /**
+   * A fila do app: o que já foi aprovado e ainda não foi postado.
+   *
+   * É POLL, e não um evento do SSE, porque a fila é uma unidade de TRABALHO e
+   * não um aviso. O app pede o próximo bloco quando terminou de digitar o
+   * anterior; empurrar por evento entregaria respostas mais rápido do que ele
+   * consegue postá-las e a fila acabaria envelhecendo dentro do cliente, onde o
+   * descarte por idade não alcança.
+   */
+  @Get('runs/:id/queue')
+  @ApiOperation({ summary: 'Fila de respostas aprovadas esperando envio' })
+  async fila(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const fila = await this.replies.filaDeEnvio(user.id, id);
+    return fila.map((resposta) => ({
+      id: resposta.id,
+      chatMessageId: resposta.chatMessageId,
+      // O hash do autor, nunca o @: é o que o app usa para não responder duas
+      // vezes à mesma pessoa em rajada (ver `INTERVALO_MESMO_AUTOR_MS`).
+      authorHash: resposta.chatMessage?.authorHash ?? '',
+      text: resposta.text,
+      createdAt: resposta.createdAt,
+    }));
+  }
+
+  /**
+   * O app relata o que aconteceu com uma resposta da fila.
+   *
+   * Idempotente no serviço: a repetição de uma confirmação (rede caiu antes do
+   * ACK) não conta uma segunda entrega. Por isso responde 200 com o estado
+   * atual em vez de um erro — o cliente se reconcilia lendo o que voltou.
+   */
+  @Post('replies/:id/delivery')
+  @ApiOperation({ summary: 'Confirma o resultado do envio de uma resposta' })
+  async confirmarEntrega(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfirmarEntregaDto,
+  ) {
+    const resposta = await this.replies.confirmarEntrega(
+      user.id,
+      id,
+      dto.status,
+      dto.failureReason ?? null,
+    );
+    this.eventos.publicar(resposta.liveRunId, 'delivery', {
+      replyId: resposta.id,
+      deliveryStatus: resposta.deliveryStatus,
+      sentAt: resposta.sentAt,
+      failureReason: resposta.failureReason,
+    });
+    return {
+      id: resposta.id,
+      deliveryStatus: resposta.deliveryStatus,
+      sentAt: resposta.sentAt,
+      deliveryAttempts: resposta.deliveryAttempts,
+    };
+  }
+
   // ------------------------------------------------------------------ apoio
   /**
    * Processa o lote fora da request e emite o resultado no fluxo da run.
@@ -274,6 +373,9 @@ export class LiveRunController {
       repliesGenerated: run.repliesGenerated,
       escalations: run.escalations,
       minutesCharged: run.minutesCharged,
+      mode: run.mode,
+      repliesSent: run.repliesSent,
+      deliveryFailures: run.deliveryFailures,
     };
   }
 

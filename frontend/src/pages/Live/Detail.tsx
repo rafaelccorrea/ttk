@@ -578,8 +578,11 @@ export function LiveDetailPage() {
                         </Tooltip>
                       </TableCell>
                       <TableCell align="right">
+                        {/* O rótulo carrega o nome do produto: numa tabela de 30
+                            linhas, "editar" sozinho não diz editar o quê. */}
                         <IconButton
                           size="small"
+                          aria-label={`Corrigir ${produto.name}`}
                           onClick={() => {
                             setProdutoEditando(produto);
                             setProdutoDialogo(true);
@@ -587,7 +590,11 @@ export function LiveDetailPage() {
                         >
                           <EditRoundedIcon fontSize="small" />
                         </IconButton>
-                        <IconButton size="small" onClick={() => void apagarProduto(produto)}>
+                        <IconButton
+                          size="small"
+                          aria-label={`Tirar ${produto.name} da base`}
+                          onClick={() => void apagarProduto(produto)}
+                        >
                           <DeleteOutlineRoundedIcon fontSize="small" />
                         </IconButton>
                       </TableCell>
@@ -669,6 +676,7 @@ export function LiveDetailPage() {
                       <Box whiteSpace="nowrap">
                         <IconButton
                           size="small"
+                          aria-label={`Corrigir resposta: ${item.question}`}
                           onClick={() => {
                             setFaqEditando(item);
                             setFaqDialogo(true);
@@ -676,7 +684,11 @@ export function LiveDetailPage() {
                         >
                           <EditRoundedIcon fontSize="small" />
                         </IconButton>
-                        <IconButton size="small" onClick={() => void apagarFaq(item)}>
+                        <IconButton
+                          size="small"
+                          aria-label={`Tirar resposta: ${item.question}`}
+                          onClick={() => void apagarFaq(item)}
+                        >
                           <DeleteOutlineRoundedIcon fontSize="small" />
                         </IconButton>
                       </Box>

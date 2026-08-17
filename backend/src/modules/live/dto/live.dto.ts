@@ -222,3 +222,39 @@ export class CriarFaqDto extends AtualizarFaqDto {
   @MaxLength(2000)
   answer: string;
 }
+
+/**
+ * A troca do modo de resposta de uma transmissão em andamento.
+ *
+ * O modo é um literal fechado e não um booleano `automatico` porque a fase 3
+ * já tem um terceiro modo em vista (sugestão com confirmação de um clique), e
+ * um booleano teria que virar enum com o app antigo já instalado na máquina do
+ * vendedor.
+ */
+export class TrocarModoDaRunDto {
+  @ApiProperty({ enum: ['painel', 'auto'], example: 'auto' })
+  @IsIn(['painel', 'auto'])
+  mode: 'painel' | 'auto';
+}
+
+/**
+ * O que o app relata depois de tentar postar a resposta no chat.
+ *
+ * `pendente`, `nao_aplica` e `cancelada` NÃO entram aqui: o primeiro é o estado
+ * de onde se sai, o segundo é ausência de envio e o terceiro é decisão do
+ * servidor (o descarte por idade). O cliente só relata o que ele mesmo
+ * observou — saiu ou não saiu.
+ */
+export class ConfirmarEntregaDto {
+  @ApiProperty({ enum: ['enviada', 'falhou'], example: 'enviada' })
+  @IsIn(['enviada', 'falhou'])
+  status: 'enviada' | 'falhou';
+
+  @ApiPropertyOptional({
+    example: 'Campo de comentário indisponível: a live pediu verificação.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  failureReason?: string;
+}

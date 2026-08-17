@@ -1,6 +1,7 @@
-import { BrowserWindow, clipboard } from 'electron';
+import { BrowserWindow, clipboard, type WebContents } from 'electron';
 import Store from 'electron-store';
 import { ApiClient } from './api-client';
+import { EnviadorDeComentarios } from './comment-sender';
 import { AcumuladorDeLote, JANELA_LOTE_MS } from './rate-limiter';
 import {
   AnonimizadorDeAutor,
@@ -16,9 +17,11 @@ import {
   type ConfiguracoesCopiloto,
   type EstadoAtivacao,
   type EstadoConexao,
+  type EstadoEnvio,
   type SessaoDesktop,
+  type TermoDeEnvio,
 } from '../shared/desktop-api';
-import type { LiveEvent } from '../shared/live-events';
+import type { LiveEvent, LiveRunMode } from '../shared/live-events';
 
 /**
  * O maestro do copiloto no processo principal.
@@ -51,6 +54,31 @@ interface EsquemaDeConfig {
   configuracoes?: ConfiguracoesCopiloto;
 }
 
+/**
+ * O envio começa DESLIGADO em toda abertura de app, e isso não é esquecimento
+ * de persistência: "o app lembrou que estava no automático" é o caminho para o
+ * copiloto começar a postar sozinho numa live que o vendedor abriu só para
+ * testar. Ligar o automático é um gesto consciente por transmissão.
+ */
+const ENVIO_INICIAL: EstadoEnvio = {
+  modo: 'painel',
+  aceito: false,
+  pausado: false,
+  cadenciaSegundos: 8,
+  maxPorMinuto: 6,
+  degradacao: null,
+};
+
+/**
+ * De quanto em quanto tempo a fila do backend é consultada.
+ *
+ * É POLL, e não evento: a fila é unidade de trabalho, e o gargalo é o app
+ * digitando letra por letra. Três segundos ficam abaixo do menor cooldown de
+ * envio (oito segundos), então nenhuma resposta espera por causa do intervalo —
+ * e não são chamadas demais para uma live de uma hora.
+ */
+const INTERVALO_FILA_MS = 3_000;
+
 const CONEXAO_INICIAL: EstadoConexao = {
   status: 'desconectado',
   runId: null,
@@ -75,8 +103,40 @@ export class Copiloto {
    * seria a pior mentira possível, já que só aparece na fatura.
    */
   private pausado = false;
+  private envio: EstadoEnvio = { ...ENVIO_INICIAL };
 
-  constructor(private readonly janela: () => BrowserWindow | null) {}
+  /**
+   * Quem digita no chat do TikTok. Existe sempre, e age só em modo `auto`.
+   *
+   * Os freios (cooldown, teto por minuto, deduplicação, conferência de entrega,
+   * kill switch) vivem todos dentro dele; daqui sai apenas o pedido, e o laço
+   * abaixo respeita o `bloqueada` que ele devolve em vez de insistir.
+   */
+  private readonly enviador: EnviadorDeComentarios;
+
+  private timerFila: NodeJS.Timeout | null = null;
+  /** Um ciclo de fila por vez: dois em paralelo furariam o cooldown. */
+  private rodandoFila = false;
+
+  constructor(
+    private readonly janela: () => BrowserWindow | null,
+    /**
+     * O `webContents` da BrowserView do TikTok. É FUNÇÃO porque a view morre e
+     * renasce com a janela — uma referência guardada viraria objeto destruído no
+     * meio da live.
+     */
+    private readonly viewDoTikTok: () => WebContents | null = () => null,
+  ) {
+    this.enviador = new EnviadorDeComentarios({
+      webContents: () => this.viewDoTikTok(),
+      buscarConfig: () => this.api.obterConfigDeEnvio(),
+      confirmarEntrega: (replyId, status, motivo) =>
+        this.api.confirmarEntrega(replyId, status, motivo),
+      reportarFalhaDeSeletor: (html, versao) =>
+        this.api.reportarFalhaDeSeletor(html, versao),
+      aoCairParaPainel: (motivo) => this.degradarParaPainel(motivo),
+    });
+  }
 
   // -------------------------------------------------------------- ativação
   iniciarAtivacao(): Promise<EstadoAtivacao> {
@@ -178,10 +238,41 @@ export class Copiloto {
     return this.conexao;
   }
 
+  /**
+   * A mensagem foi escrita pela conta que estamos operando?
+   *
+   * Comparação tolerante de propósito: o alvo pode vir como `@loja`, `loja` ou
+   * com a caixa trocada, e o webcast devolve o `uniqueId` cru. Exigir igualdade
+   * literal faria o eco nunca casar e toda entrega legítima seria reportada como
+   * falha — o erro oposto, e igualmente ruim.
+   */
+  private mesmoAutor(autor: string, alvo: string): boolean {
+    const limpar = (v: string) =>
+      (v ?? '').trim().toLowerCase().replace(/^@/, '');
+    const a = limpar(autor);
+    return a.length > 0 && a === limpar(alvo);
+  }
+
   private async conectarChat(alvo: string): Promise<void> {
     const chat = new WebcastChatSource();
 
     chat.on('message', (mensagem) => {
+      /*
+       * O eco é espelhado ANTES de qualquer filtro, e mesmo com o copiloto
+       * pausado: a única prova de que o comentário do app saiu é ele reaparecer
+       * no mesmo fluxo que todo mundo vê, e uma mensagem descartada pela lista
+       * negra ainda serve como essa prova.
+       *
+       * Só o TEXTO atravessa — nada de autor. A comparação de quem escreveu
+       * acontece AQUI, onde o @ do vendedor já é conhecido, e desce como
+       * booleano: sem ela, um espectador repetindo a nossa frase (e o público
+       * repete preço no chat toda hora) confirmaria uma entrega que não houve.
+       */
+      this.enviador.observarMensagem(
+        mensagem.text,
+        this.mesmoAutor(mensagem.username, alvo),
+      );
+
       if (this.pausado || !this.anonimizador || !this.acumulador) return;
       if (this.filtrada(mensagem.text)) return;
       // A anonimização acontece AQUI, antes do acumulador: assim nenhuma
@@ -246,14 +337,180 @@ export class Copiloto {
   }
 
   private async limpar(): Promise<void> {
+    // O envio para PRIMEIRO: a run está acabando, e postar um comentário depois
+    // do fim da transmissão é o pior desfecho possível desta fase.
+    this.pararFila();
     this.chat?.disconnect();
     this.chat = null;
     this.acumulador?.parar();
     this.acumulador = null;
     this.anonimizador = null;
     this.pausado = false;
+    // A run acabou: o automático não atravessa para a próxima. A `degradacao`
+    // fica de pé até o vendedor ligar o modo de novo, porque ela é o registro
+    // do que deu errado nesta live e ele ainda precisa lê-lo.
+    this.atualizarEnvio({ modo: 'painel', pausado: false });
     this.api.pararHeartbeat();
     this.api.pararStream();
+  }
+
+  // ------------------------------------------------------- envio automático
+  obterEstadoEnvio(): EstadoEnvio {
+    return this.envio;
+  }
+
+  async obterTermoDeEnvio(): Promise<TermoDeEnvio> {
+    const termo = await this.api.obterTermoDeEnvio();
+    // O aceite do servidor manda: se a pessoa aceitou pela web, ou se a versão
+    // do termo mudou e o aceite antigo deixou de valer, quem sabe é ele.
+    this.atualizarEnvio({ aceito: termo.aceito });
+    return termo;
+  }
+
+  async aceitarTermoDeEnvio(versao: string): Promise<EstadoEnvio> {
+    await this.api.aceitarEnvioAutomatico(versao);
+    this.atualizarEnvio({ aceito: true });
+    return this.envio;
+  }
+
+  /**
+   * Liga ou desliga o automático.
+   *
+   * Quem decide é o backend: ele confere aceite, plano e kill switch, e a
+   * recusa dele sobe como rejeição até a tela. O estado local só muda DEPOIS do
+   * 200 — otimizar isso deixaria a chave em "automático" enquanto o servidor
+   * segue com a run em `painel`, que é exatamente a mentira que esta fase não
+   * pode contar.
+   */
+  async definirModoDeEnvio(modo: LiveRunMode): Promise<EstadoEnvio> {
+    const resposta = await this.api.trocarModo(modo);
+
+    if (modo === 'auto') {
+      // Os limites vão para a tela junto com a troca porque é neste instante
+      // que o vendedor precisa ler quanto o copiloto vai falar. Falhar aqui não
+      // impede o modo: os valores padrão do enviador continuam valendo.
+      const limites = await this.api
+        .obterConfigDeEnvio()
+        .catch(() => null);
+      this.atualizarEnvio({
+        modo: resposta.mode,
+        degradacao: null,
+        ...(limites
+          ? {
+              cadenciaSegundos: Math.round(limites.limites.cooldownMs / 1000),
+              maxPorMinuto: limites.limites.maxPorMinuto,
+            }
+          : {}),
+      });
+    } else {
+      this.atualizarEnvio({ modo: resposta.mode });
+    }
+
+    // O laço da fila é o que faz o modo automático existir de fato: sem ele a
+    // run fica 'auto' no servidor, a fila acumula 'pendente' e nada é postado.
+    if (resposta.mode === 'auto') this.iniciarFila();
+    else this.pararFila();
+
+    return this.envio;
+  }
+
+  /* ------------------------------------------------------------ a fila */
+
+  private iniciarFila(): void {
+    this.pararFila();
+    // A política (cooldown, teto, seletores, kill switch) passa a ser rebuscada
+    // de minuto em minuto — é o que faz o kill switch da frota valer em 60s.
+    this.enviador.iniciar();
+    this.timerFila = setInterval(() => {
+      void this.rodarFila();
+    }, INTERVALO_FILA_MS);
+  }
+
+  private pararFila(): void {
+    if (this.timerFila) {
+      clearInterval(this.timerFila);
+      this.timerFila = null;
+    }
+    this.enviador.parar();
+  }
+
+  /**
+   * Um ciclo: pega a fila e tenta postar, uma resposta por vez.
+   *
+   * TODA condição de parada é reconferida ANTES de cada envio, e não só no
+   * começo do ciclo: o vendedor pode apertar a parada de emergência no meio de
+   * uma digitação de 140 caracteres, e o que ele espera é que a próxima não
+   * saia. Um `bloqueada` (cooldown, teto, mesma pessoa) encerra o ciclo em vez
+   * de tentar a seguinte — insistir na sequência é exatamente a rajada que os
+   * limites existem para evitar.
+   */
+  private async rodarFila(): Promise<void> {
+    if (this.rodandoFila || !this.podeEnviar()) return;
+    this.rodandoFila = true;
+    try {
+      const fila = await this.api.filaDeEnvio();
+      for (const item of fila) {
+        if (!this.podeEnviar()) break;
+        const resultado = await this.enviador.enviar({
+          replyId: item.id,
+          texto: item.text,
+          authorHash: item.authorHash,
+        });
+        if (resultado.status !== 'enviada') break;
+      }
+    } catch {
+      // Rede ruim no meio da live é o normal, não a exceção: o próximo ciclo
+      // tenta de novo, e a fila do servidor expira sozinha por idade.
+    } finally {
+      this.rodandoFila = false;
+    }
+  }
+
+  /** As travas locais, todas juntas: run de pé, modo automático, sem pausa. */
+  private podeEnviar(): boolean {
+    return (
+      this.conexao.status === 'ativa' &&
+      this.envio.modo === 'auto' &&
+      !this.envio.pausado &&
+      this.enviador.ativo
+    );
+  }
+
+  /**
+   * A PARADA DE EMERGÊNCIA.
+   *
+   * Para só o envio, e de propósito: o vendedor aperta isto quando o copiloto
+   * escreveu algo estranho no chat, e nesse momento ele não quer perder a
+   * transcrição, a fila de escalação nem a run — quer que o app pare de
+   * escrever. Encerrar junto obrigaria a reconectar a live para voltar.
+   */
+  pausarEnvio(pausado: boolean): EstadoEnvio {
+    this.atualizarEnvio({ pausado });
+    /*
+     * O laço para de verdade, e não só na tela. O `podeEnviar` já barraria o
+     * próximo envio, mas derrubar o timer é o que garante que nem a consulta da
+     * fila continua acontecendo depois do freio de mão.
+     */
+    if (pausado) this.pararFila();
+    else if (this.envio.modo === 'auto' && this.conexao.status === 'ativa') {
+      this.iniciarFila();
+    }
+    return this.envio;
+  }
+
+  /**
+   * O app caiu sozinho para somente-painel.
+   *
+   * É a porta por onde o `EnviadorDeComentarios` avisa (seletor quebrado, kill
+   * switch da frota). O modo volta para `painel` LOCALMENTE mesmo que a run
+   * siga marcada como `auto` no servidor — a verdade que importa para a tela é
+   * a do app que digita, e ele parou de digitar.
+   */
+  degradarParaPainel(motivo: string): void {
+    this.atualizarEnvio({ modo: 'painel', degradacao: motivo });
+    // Degradar sem derrubar o laço deixaria o app consultando (e tentando) uma
+    // fila que ele acabou de declarar que não consegue entregar.
+    this.pararFila();
   }
 
   // --------------------------------------------------------------- eventos
@@ -272,7 +529,25 @@ export class Copiloto {
       if (evento.data.confidence < limiarDescarte) return;
     }
 
+    if (evento.type === 'mode') {
+      // A troca pode ter partido de outra janela da mesma conta; acompanhar o
+      // servidor evita duas telas discordando sobre quem está postando no chat.
+      this.atualizarEnvio({ modo: evento.data.mode });
+      // A troca veio de fora, mas o laço é local: sem isto, uma janela que
+      // desligasse o automático deixaria ESTE app postando no chat.
+      if (
+        evento.data.mode === 'auto' &&
+        !this.envio.pausado &&
+        this.conexao.status === 'ativa'
+      ) {
+        this.iniciarFila();
+      }
+      else this.pararFila();
+    }
+
     if (evento.type === 'credits_exhausted') {
+      // Sem saldo a run está encerrada do lado do servidor: nada mais sai.
+      this.pararFila();
       this.atualizarConexao({
         ...this.conexao,
         status: 'sem_saldo',
@@ -360,6 +635,11 @@ export class Copiloto {
   }
 
   // ----------------------------------------------------------------- apoio
+  private atualizarEnvio(mudanca: Partial<EstadoEnvio>): void {
+    this.envio = { ...this.envio, ...mudanca };
+    this.publicar('envio:estado', this.envio);
+  }
+
   private atualizarConexao(estado: EstadoConexao): void {
     this.conexao = estado;
     this.publicar('live:conexao', estado);

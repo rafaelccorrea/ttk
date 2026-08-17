@@ -7,7 +7,12 @@ import type {
   EstadoAtivacao,
   SessaoDesktop,
 } from '../shared/desktop-api';
-import type { ChatMessagePayload, LiveEvent } from '../shared/live-events';
+import type {
+  ChatMessagePayload,
+  LiveEvent,
+  LiveRunMode,
+} from '../shared/live-events';
+import type { ConfigDeEnvio } from './comment-sender';
 
 /**
  * O cliente do backend do PikPok, do lado do desktop.
@@ -63,6 +68,23 @@ interface LiveSessionResposta {
 interface LiveSessionDetalhe extends LiveSessionResposta {
   produtos: unknown[];
   faq: unknown[];
+}
+
+/** `GET /live/termo-envio-automatico`. */
+interface TermoDeEnvioResposta {
+  versao: string;
+  texto: string;
+  aceito: boolean;
+}
+
+/** Uma linha de `GET /live/runs/:id/queue`. */
+export interface RespostaNaFila {
+  id: string;
+  chatMessageId: string;
+  /** O hash do autor da pergunta — nunca o @ dele. */
+  authorHash: string;
+  text: string;
+  createdAt: string;
 }
 
 export interface LiveRunResumo {
@@ -369,6 +391,98 @@ export class ApiClient {
     if (!id) return;
 
     await this.requisitar('POST', `/live/runs/${id}/end`, { motivo });
+  }
+
+  // ------------------------------------------------------- envio automático
+  /** `GET /live/termo-envio-automatico`: o texto do aviso e o aceite da conta. */
+  async obterTermoDeEnvio(): Promise<TermoDeEnvioResposta> {
+    return this.requisitar<TermoDeEnvioResposta>(
+      'GET',
+      '/live/termo-envio-automatico',
+    );
+  }
+
+  /**
+   * `POST /live/aceitar-envio-automatico`.
+   *
+   * A versão viaja de volta exatamente como veio do termo exibido: o backend
+   * recusa qualquer outra, e é essa recusa que garante que o aceite gravado se
+   * refere ao texto que o vendedor teve na frente.
+   */
+  async aceitarEnvioAutomatico(versao: string): Promise<void> {
+    await this.requisitar('POST', '/live/aceitar-envio-automatico', { versao });
+  }
+
+  /**
+   * `GET /live/config/envio` — seletores, limites e kill switch.
+   *
+   * É a MESMA resposta que o `EnviadorDeComentarios` consome: a tela usa os
+   * limites para dizer o que vai acontecer, o enviador usa tudo. Duas chamadas
+   * com recortes diferentes deixariam a tela mostrando um cooldown e o envio
+   * obedecendo a outro.
+   */
+  async obterConfigDeEnvio(): Promise<ConfigDeEnvio> {
+    return this.requisitar<ConfigDeEnvio>('GET', '/live/config/envio');
+  }
+
+  /** `GET /live/runs/:id/queue` — o que já foi aprovado e ainda não saiu. */
+  async filaDeEnvio(): Promise<RespostaNaFila[]> {
+    const id = this.runId;
+    if (!id) return [];
+    return this.requisitar<RespostaNaFila[]>(
+      'GET',
+      `/live/runs/${id}/queue`,
+    );
+  }
+
+  /**
+   * `POST /live/replies/:id/delivery` — o desfecho de uma tentativa de envio.
+   *
+   * Idempotente no servidor, e é isso que permite repetir sem medo quando o ACK
+   * não chega: `enviada` é estado final e a segunda confirmação não encontra
+   * transição.
+   */
+  async confirmarEntrega(
+    replyId: string,
+    status: 'enviada' | 'falhou',
+    failureReason?: string,
+  ): Promise<void> {
+    await this.requisitar('POST', `/live/replies/${replyId}/delivery`, {
+      status,
+      failureReason,
+    });
+  }
+
+  /**
+   * `POST /live/telemetry/selector-failure`.
+   *
+   * O HTML sobe já como esqueleto (ver `scriptDeEsqueleto`) e é saneado de novo
+   * no servidor. O `runId` vai junto para dar de onde vem cada relato — é o que
+   * permite ver se a mudança do TikTok pegou a frota ou uma conta só.
+   */
+  async reportarFalhaDeSeletor(html: string, version: number): Promise<void> {
+    await this.requisitar('POST', '/live/telemetry/selector-failure', {
+      runId: this.runId ?? undefined,
+      version,
+      html,
+    });
+  }
+
+  /**
+   * `POST /live/runs/:id/mode`.
+   *
+   * Não há caminho local para ligar o automático: a trava do aceite e o kill
+   * switch moram no servidor, e é ele quem responde 403 quando o app pede um
+   * modo que não pode ter. O erro sobe até a tela com o texto do backend.
+   */
+  async trocarModo(mode: LiveRunMode): Promise<{ mode: LiveRunMode }> {
+    const id = this.runId;
+    if (!id) throw new Error('Nenhuma transmissão em andamento.');
+    return this.requisitar<{ mode: LiveRunMode }>(
+      'POST',
+      `/live/runs/${id}/mode`,
+      { mode },
+    );
   }
 
   /** O carimbo de "o vendedor usou esta resposta" — a métrica da fase. */

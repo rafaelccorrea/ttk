@@ -1,7 +1,9 @@
 import PauseCircleIcon from '@mui/icons-material/PauseCircleOutline';
 import PlayCircleIcon from '@mui/icons-material/PlayCircleOutline';
-import { Box, Button, Stack, Typography } from '@mui/material';
-import type { EstadoConexao } from '@shared/desktop-api';
+import SendIcon from '@mui/icons-material/Send';
+import StopCircleIcon from '@mui/icons-material/StopCircle';
+import { Box, Button, Chip, Stack, Switch, Typography } from '@mui/material';
+import type { EstadoConexao, EstadoEnvio } from '@shared/desktop-api';
 
 /**
  * O rodapé que nunca sai da tela.
@@ -17,31 +19,92 @@ import type { EstadoConexao } from '@shared/desktop-api';
  */
 export function BarraDeStatus({
   conexao,
+  envio,
   minutosRestantes,
   respostasPorMinuto,
   pausado,
   aoAlternarPausa,
+  aoAlternarModo,
+  aoAlternarPausaDoEnvio,
   aoEncerrar,
 }: {
   readonly conexao: EstadoConexao;
+  readonly envio: EstadoEnvio;
   readonly minutosRestantes: number | null;
   readonly respostasPorMinuto: number;
   readonly pausado: boolean;
   readonly aoAlternarPausa: () => void;
+  readonly aoAlternarModo: () => void;
+  readonly aoAlternarPausaDoEnvio: () => void;
   readonly aoEncerrar: () => void;
 }): JSX.Element {
   const ativo = conexao.status === 'ativa' && !pausado;
+  const automatico = envio.modo === 'auto';
+  const enviando = automatico && !envio.pausado;
 
   return (
     <Box
       sx={{
         borderTop: '1px solid',
         borderColor: 'divider',
-        bgcolor: 'background.paper',
+        // A barra inteira muda de cor quando o app está escrevendo no chat. É o
+        // sinal periférico que o vendedor capta sem ler nada — e é a diferença
+        // entre "o copiloto está me ajudando" e "o copiloto está falando com os
+        // meus clientes agora".
+        bgcolor: enviando ? 'rgba(22,163,74,0.06)' : 'background.paper',
         px: 2,
         py: 1.25,
       }}
     >
+      {/* --------------------------------------------- a chave do modo, no topo */}
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.75 }}>
+        <Switch
+          size="small"
+          checked={automatico}
+          onChange={aoAlternarModo}
+          inputProps={{ 'aria-label': 'Enviar respostas automaticamente no chat' }}
+        />
+        <Stack sx={{ minWidth: 0 }}>
+          <Stack direction="row" alignItems="center" spacing={0.75}>
+            <Typography variant="caption" fontWeight={800} noWrap>
+              {automatico ? 'ENVIANDO NO CHAT' : 'SÓ NO PAINEL'}
+            </Typography>
+            {automatico && envio.pausado ? (
+              <Chip size="small" color="warning" label="pausado" sx={{ height: 18 }} />
+            ) : null}
+          </Stack>
+          {/*
+            Uma linha, e só quando o automático está ligado: é a promessa
+            concreta do que vai acontecer no chat de quem está assistindo.
+          */}
+          <Typography variant="caption" color="text.secondary" noWrap>
+            {automatico
+              ? `1 resposta a cada ${envio.cadenciaSegundos}s, no máximo ${envio.maxPorMinuto} por minuto.`
+              : 'As respostas ficam aqui para você copiar. Nada vai ao chat.'}
+          </Typography>
+        </Stack>
+
+        <Box sx={{ flex: 1 }} />
+
+        {/*
+          O botão de parar o envio fica SEMPRE na tela quando o automático está
+          ligado — inclusive já pausado, para o vendedor ver que existe caminho
+          de volta. O atalho vem escrito junto porque ele é o que serve com o
+          foco no TikTok, que é onde o foco vai estar.
+        */}
+        {automatico ? (
+          <Button
+            size="small"
+            variant={envio.pausado ? 'outlined' : 'contained'}
+            color={envio.pausado ? 'success' : 'error'}
+            startIcon={envio.pausado ? <SendIcon /> : <StopCircleIcon />}
+            onClick={aoAlternarPausaDoEnvio}
+          >
+            {envio.pausado ? 'Voltar a enviar' : 'Parar envio (Ctrl+Shift+P)'}
+          </Button>
+        ) : null}
+      </Stack>
+
       <Stack direction="row" alignItems="center" spacing={2}>
         <Stack direction="row" alignItems="center" spacing={0.75} sx={{ minWidth: 0 }}>
           <Box

@@ -5,12 +5,18 @@ import { createHash } from 'node:crypto';
 import { Repository } from 'typeorm';
 import { BillingService } from '../billing/billing.service';
 import { AiCostService } from '../telemetry/ai-cost.service';
+import { killSwitchLigado } from './live-config.service';
 import { AiService, RespostaAoVivo } from '../studio/ai.service';
 import { LiveChatMessage } from './entities/live-chat-message.entity';
 import { LiveFaq } from './entities/live-faq.entity';
 import { LiveProduct } from './entities/live-product.entity';
-import { LiveReply, LiveReplyDecision } from './entities/live-reply.entity';
-import { LiveRun } from './entities/live-run.entity';
+import { AppUser } from '../users/entities/app-user.entity';
+import {
+  LiveReply,
+  LiveReplyDecision,
+  LiveReplyDeliveryStatus,
+} from './entities/live-reply.entity';
+import { LiveRun, LiveRunMode } from './entities/live-run.entity';
 import { LiveSession } from './entities/live-session.entity';
 
 /**
@@ -338,11 +344,22 @@ export function decidirResposta(entrada: {
   return 'escalar';
 }
 
-/** Reais como o chat lê: "49,90". */
+/**
+ * Reais como o chat lê: "49,90", "1.499,90".
+ *
+ * O separador de milhar não é preciosismo tipográfico: sem ele o produto de
+ * quatro dígitos saía "1499,90", que é como ninguém escreve preço em português
+ * — e, pior, era um formato que o detector de preço (`PRECO_ESCRITO`) não
+ * reconhecia, deixando a proteção contra corte inerte justamente nos itens mais
+ * caros do catálogo. O formato aqui e o detector lá têm de falar a mesma língua.
+ */
 function formatarPreco(valor: string): string {
   const numero = Number(valor);
   if (!Number.isFinite(numero)) return valor;
-  return numero.toFixed(2).replace('.', ',');
+  return numero.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 /**
@@ -416,6 +433,104 @@ export function contemLinkOuMencao(texto: string): boolean {
   );
 }
 
+/* ------------------------- modo automático (fase 2) ----------------------- */
+
+/**
+ * A versão vigente do termo de risco do envio automático.
+ *
+ * Muda junto com o TEXTO do termo, e é a mudança dela que revoga os aceites
+ * anteriores: quem clicou na redação de antes consentiu com o risco de antes, e
+ * tratar isso como consentimento para a prática nova é o tipo de atalho que
+ * transforma "ele aceitou" em nada. Ao subir aqui, todo mundo volta ao modo
+ * painel até ler e aceitar de novo — que é o comportamento certo, ainda que
+ * incômodo.
+ */
+export const VERSAO_DO_TERMO_AUTO = '2026-08-17';
+
+/** O aceite guardado autoriza o envio automático HOJE? */
+export function aceiteEstaVigente(aceite: {
+  liveAutoAcceptedAt: Date | null;
+  liveAutoAcceptedVersion: string | null;
+}): boolean {
+  return (
+    !!aceite.liveAutoAcceptedAt &&
+    aceite.liveAutoAcceptedVersion === VERSAO_DO_TERMO_AUTO
+  );
+}
+
+/**
+ * O status de entrega com que uma resposta nasce.
+ *
+ * Só a combinação "run em `auto`" + "decisão `enviar`" produz fila. Todo o
+ * resto é `nao_aplica`, inclusive a resposta escalada de uma run automática:
+ * escalar quer dizer exatamente "isto não sai sem um humano olhar", e deixá-la
+ * `pendente` faria a fila do app conter o que a decisão acabou de barrar.
+ */
+export function statusInicialDeEntrega(
+  modo: LiveRunMode,
+  decisao: LiveReplyDecision,
+): LiveReplyDeliveryStatus {
+  return modo === 'auto' && decisao === 'enviar' ? 'pendente' : 'nao_aplica';
+}
+
+/**
+ * Para onde cada status de entrega pode ir.
+ *
+ * `pendente` é o ÚNICO estado de saída, e os três destinos são finais. Isso é o
+ * que faz a confirmação ser idempotente sem nenhum controle extra: o app manda
+ * "enviada" duas vezes porque a rede engasgou entre a resposta e o ACK, e a
+ * segunda simplesmente não encontra transição válida — não há caminho de volta
+ * a `pendente` por onde um segundo `repliesSent` pudesse ser contado.
+ *
+ * `nao_aplica` não vai a lugar nenhum de propósito: uma resposta de modo painel
+ * recebendo confirmação de entrega é bug do cliente, e aceitar isso poluiria a
+ * métrica com envios que ninguém pediu.
+ */
+const TRANSICOES_DE_ENTREGA: Record<
+  LiveReplyDeliveryStatus,
+  LiveReplyDeliveryStatus[]
+> = {
+  nao_aplica: [],
+  pendente: ['enviada', 'falhou', 'cancelada'],
+  enviada: [],
+  falhou: [],
+  cancelada: [],
+};
+
+export function podeTransicionarEntrega(
+  atual: LiveReplyDeliveryStatus,
+  alvo: LiveReplyDeliveryStatus,
+): boolean {
+  return TRANSICOES_DE_ENTREGA[atual]?.includes(alvo) ?? false;
+}
+
+/**
+ * Quanto tempo uma resposta aguenta na fila antes de ser descartada.
+ *
+ * Chat de live rola rápido. Responder uma pergunta de dois minutos atrás é pior
+ * que não responder: o contexto já passou, o vendedor já falou outra coisa, e a
+ * resposta chega com cara de robô fora de hora — que é exatamente o que faz a
+ * audiência (e a moderação do TikTok) perceber a automação. Noventa segundos é
+ * a mesma janela que o motor já usa para considerar um cluster "recém
+ * respondido": passou disso, o assunto é outro.
+ */
+export const IDADE_MAXIMA_NA_FILA_MS = 90_000;
+
+/** A resposta ficou na fila além do que o chat aguenta? */
+export function expirouNaFila(criadaEm: Date, agora: Date = new Date()): boolean {
+  return agora.getTime() - new Date(criadaEm).getTime() > IDADE_MAXIMA_NA_FILA_MS;
+}
+
+/**
+ * Quantas respostas, no máximo, o app leva por consulta à fila.
+ *
+ * Digitar comentário é serial e lento — o app não consegue postar dez respostas
+ * em três segundos, e se conseguisse não deveria. Devolver mais do que ele
+ * consegue entregar só faria a fila expirar dentro do próprio cliente, longe do
+ * descarte do servidor.
+ */
+const TAMANHO_DA_FILA = 5;
+
 /** Corta na palavra, para a resposta não terminar no meio de uma. */
 export function truncar(texto: string, max = MAX_CARACTERES): string {
   const limpo = (texto ?? '').replace(/\s+/g, ' ').trim();
@@ -423,6 +538,63 @@ export function truncar(texto: string, max = MAX_CARACTERES): string {
   const cortado = limpo.slice(0, max);
   const espaco = cortado.lastIndexOf(' ');
   return (espaco > max * 0.6 ? cortado.slice(0, espaco) : cortado).trim();
+}
+
+/**
+ * Um preço JÁ ESCRITO pela substituição: "R$ 49,90", "R$ 1.299,00", "R$ 1299,00".
+ *
+ * O separador de milhar é OPCIONAL de propósito, e essa frouxidão é a correção
+ * de um bug que já esteve em produção: o padrão antigo exigia o ponto
+ * (`\d{1,3}(?:\.\d{3})*`) enquanto `formatarPreco` escrevia "1499,90" sem ponto
+ * nenhum. Resultado: para qualquer produto de quatro dígitos o detector não via
+ * preço algum, o corte passava por dentro do valor e o chat da live recebia
+ * "…sai por apenas R$" — sem escalar, sem log, marcado como entregue.
+ *
+ * Casar os dois formatos custa nada e cobre também o que vier de fora do nosso
+ * formatador: preço digitado à mão na base pelo vendedor, ou escrito pelo
+ * próprio modelo. Um detector de preço que só reconhece o preço que nós mesmos
+ * emitimos protege exatamente o caso que nunca falha.
+ */
+const PRECO_ESCRITO = /R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}|R\$\s*\d+,\d{2}/g;
+
+/**
+ * O corte que não pode inventar preço.
+ *
+ * `truncar` corta por caractere, e depois de `aplicarPrecos` o texto contém o
+ * valor real do banco: um corte no meio de "R$ 1.299,00" publica "R$ 1.29" — um
+ * preço que a loja não pratica, sem marcador sobrando para escalar e sem
+ * `contemPrecoLiteral` para acusar (ele roda sobre o texto CRU do modelo, antes
+ * da substituição). Aqui o corte recua para o começo do preço que ele partiria,
+ * e o chamador ainda é avisado por `precoPerdido` quando o truncamento tirou um
+ * preço que existia — a frase pode continuar prometendo um valor que já não
+ * está escrito, e isso vai ao humano.
+ */
+export function truncarSeguro(
+  texto: string,
+  max = MAX_CARACTERES,
+): { texto: string; precoPerdido: boolean } {
+  const limpo = (texto ?? '').replace(/\s+/g, ' ').trim();
+  const precos = limpo.match(PRECO_ESCRITO)?.length ?? 0;
+  if (limpo.length <= max) return { texto: limpo, precoPerdido: false };
+
+  let corte = max;
+  for (const achado of limpo.matchAll(PRECO_ESCRITO)) {
+    const inicio = achado.index ?? 0;
+    const fim = inicio + achado[0].length;
+    if (inicio < corte && fim > corte) {
+      corte = inicio;
+      break;
+    }
+  }
+
+  const cortado = limpo.slice(0, corte);
+  const espaco = cortado.lastIndexOf(' ');
+  const final = (espaco > corte * 0.6 ? cortado.slice(0, espaco) : cortado)
+    .replace(/[\s,;:-]+$/, '')
+    .trim();
+
+  const restantes = final.match(PRECO_ESCRITO)?.length ?? 0;
+  return { texto: final, precoPerdido: restantes < precos };
 }
 
 /* -------------------------------------------------------------------------- *
@@ -462,6 +634,8 @@ export class LiveReplyService {
     private readonly faq: Repository<LiveFaq>,
     @InjectRepository(LiveSession)
     private readonly sessoes: Repository<LiveSession>,
+    @InjectRepository(AppUser)
+    private readonly usuarios: Repository<AppUser>,
     private readonly ai: AiService,
     private readonly billing: BillingService,
     private readonly custos: AiCostService,
@@ -535,6 +709,8 @@ export class LiveReplyService {
     run.endedAt = new Date();
     if (motivo) run.errorMessage = motivo.slice(0, 500);
     this.bases.delete(run.id);
+    // A live acabou: o que estava na fila não tem mais chat onde ser postado.
+    await this.cancelarPendentes(run.id, 'A transmissão foi encerrada.');
     return this.runs.save(run);
   }
 
@@ -557,6 +733,232 @@ export class LiveReplyService {
     if (resposta.copiedAt) return resposta;
     resposta.copiedAt = new Date();
     return this.respostas.save(resposta);
+  }
+
+  // -------------------------------------------------- modo automático (f. 2)
+  /**
+   * Liga ou desliga o envio automático de uma transmissão em andamento.
+   *
+   * O aceite do termo é conferido A CADA vez que se pede `auto`, e não uma vez
+   * na conta: o que autoriza a automação é uma decisão informada do dono da
+   * conta que vai levar o ban, e ela precisa estar registrada ANTES do primeiro
+   * comentário postado. Um cliente adulterado mandando `mode: auto` direto na
+   * rota é o caminho óbvio, e é ele que esta checagem fecha.
+   *
+   * Voltar para `painel` não pede nada e nunca falha — degradar tem que ser a
+   * operação barata. O que já está na fila é CANCELADO junto: são respostas
+   * escritas para um chat que o vendedor acabou de decidir não automatizar, e
+   * deixá-las pendentes faria o app postá-las depois de o modo ter mudado.
+   */
+  async trocarModo(
+    userId: string,
+    runId: string,
+    modo: LiveRunMode,
+  ): Promise<LiveRun> {
+    const run = await this.acharRun(userId, runId);
+    if (run.status === 'encerrada' || run.status === 'erro') {
+      throw new HttpException('Esta transmissão já foi encerrada.', 409);
+    }
+    if (run.mode === modo) return run;
+
+    if (modo === 'auto') {
+      /*
+       * O kill switch da frota barra AQUI também, e não só na configuração que
+       * o app baixa. O que ele desliga é o envio de todo mundo em sessenta
+       * segundos, sem release — e isso não pode depender de o app obedecer ao
+       * `killSwitch` que recebeu: um app velho, ou adulterado, chamaria esta
+       * rota do mesmo jeito. A leitura é direta do ambiente, e não pelo
+       * `LiveConfigService`, para não criar dependência circular entre o motor
+       * e a configuração que fala sobre ele; a definição canônica vive em
+       * `live-config.service.ts` (`killSwitchLigado`).
+       */
+      if (process.env.LIVE_ENVIO_KILL_SWITCH === 'true') {
+        throw new HttpException(
+          'O envio automático está pausado pelo PikPok no momento. As respostas continuam aparecendo no painel para você copiar.',
+          423,
+        );
+      }
+      const dono = await this.usuarios.findOneBy({ id: userId });
+      if (!dono || !aceiteEstaVigente(dono)) {
+        throw new HttpException(
+          'Para o copiloto responder sozinho no chat você precisa aceitar o termo de risco: enviar comentários automaticamente contraria os Termos de Uso do TikTok e pode levar à suspensão da sua conta. Aceite o termo nas configurações e tente de novo.',
+          412,
+        );
+      }
+    }
+
+    run.mode = modo;
+    const salva = await this.runs.save(run);
+
+    /*
+     * O cancelamento vem DEPOIS de o modo ficar gravado, e a ordem é a trava da
+     * corrida: `processarLote` leva segundos no modelo e materializa a resposta
+     * com o modo que releu do banco. Cancelando antes, uma resposta em voo
+     * nasceria `pendente` depois da limpeza e ficaria órfã na fila de uma run
+     * que já voltou ao painel. Com o modo gravado primeiro, ou a materialização
+     * enxerga `painel` e nem cria a pendência, ou ela criou antes e o
+     * cancelamento abaixo a alcança.
+     */
+    if (modo !== 'auto') {
+      await this.cancelarPendentes(
+        run.id,
+        'A transmissão voltou para o modo painel.',
+      );
+    }
+    this.logger.log(`Run ${run.id}: modo de resposta alterado para '${modo}'.`);
+    return salva;
+  }
+
+  /**
+   * A fila de respostas aprovadas esperando o app digitar no chat.
+   *
+   * Ordenada da mais antiga para a mais nova porque a live é uma conversa: a
+   * pergunta que chegou primeiro é a que ainda tem contexto na tela. O teto é
+   * pequeno de propósito (ver `TAMANHO_DA_FILA`) — o gargalo é o app digitando,
+   * não a consulta.
+   *
+   * O descarte por idade não é feito aqui, e sim no @Cron: se a fila só
+   * limpasse quando alguém consultasse, um app que travou deixaria respostas
+   * `pendente` para sempre e a taxa de entrega da live nunca fecharia.
+   */
+  async filaDeEnvio(userId: string, runId: string): Promise<LiveReply[]> {
+    const run = await this.acharRun(userId, runId);
+    /*
+     * A fila só existe enquanto a run está em `auto` e de pé. Sem este corte,
+     * uma transmissão encerrada por saldo — ou que voltou ao painel numa corrida
+     * — continuaria servindo `pendente` para o app postar no chat. É a última
+     * barreira, e ela olha o estado ATUAL da run, não o de quando a resposta
+     * nasceu.
+     */
+    if (
+      run.mode !== 'auto' ||
+      run.status === 'encerrada' ||
+      run.status === 'erro'
+    ) {
+      return [];
+    }
+
+    /*
+     * O kill switch também vale AQUI, e não só na configuração que o app baixa.
+     *
+     * Confiar apenas no cliente para respeitar o desligamento é confiar num
+     * binário que roda na máquina de outra pessoa: uma versão antiga que ainda
+     * não releu a config, um app que perdeu a rede depois de encher a fila, ou
+     * alguém que simplesmente edite o código continuariam puxando respostas e
+     * postando no chat depois de nós termos desligado a frota. O kill switch
+     * existe para o dia em que o TikTok apertar a detecção — nesse dia ele
+     * precisa ser uma barreira do servidor, não um pedido educado.
+     *
+     * Os pendentes não são cancelados: se o switch voltar dentro da janela de
+     * validade, a fila segue de onde parou; o que passou da idade morre no cron.
+     */
+    if (killSwitchLigado()) {
+      this.logger.warn(
+        `Run ${runId}: fila de envio negada — kill switch ligado.`,
+      );
+      return [];
+    }
+
+    return this.respostas.find({
+      relations: { chatMessage: true },
+      where: {
+        liveRunId: runId,
+        decision: 'enviar',
+        deliveryStatus: 'pendente',
+      },
+      order: { createdAt: 'ASC' },
+      take: TAMANHO_DA_FILA,
+    });
+  }
+
+  /**
+   * O app conta o que aconteceu com a resposta que tirou da fila.
+   *
+   * IDEMPOTENTE POR CONSTRUÇÃO, e o custo de não ser é concreto: o app confirma
+   * uma entrega, a conexão cai antes do ACK e ele repete a confirmação — se a
+   * segunda passasse, `repliesSent` contaria dois envios que foram um só, e a
+   * métrica que decide se o modo automático fica de pé viraria ficção. Quem
+   * garante isso é a tabela de transições: `enviada` é final, então a repetição
+   * não encontra caminho e vira no-op silencioso.
+   *
+   * O contador da run é incrementado no MESMO passo em que a transição é aceita
+   * — nunca antes, nunca "por via das dúvidas".
+   */
+  async confirmarEntrega(
+    userId: string,
+    replyId: string,
+    status: LiveReplyDeliveryStatus,
+    failureReason?: string | null,
+  ): Promise<LiveReply> {
+    const resposta = await this.respostas.findOneBy({ id: replyId, userId });
+    if (!resposta) throw new NotFoundException('Resposta não encontrada.');
+
+    if (!podeTransicionarEntrega(resposta.deliveryStatus, status)) {
+      /*
+       * Não é erro: é a repetição chegando, ou o app confirmando algo que o
+       * descarte por idade já cancelou enquanto ele digitava. Devolver o estado
+       * atual deixa o cliente se reconciliar sem tratar exceção — e um 409 aqui
+       * só o faria tentar de novo, que é o oposto do que se quer.
+       */
+      this.logger.debug(
+        `Resposta ${replyId}: confirmação '${status}' ignorada — já estava em '${resposta.deliveryStatus}'.`,
+      );
+      return resposta;
+    }
+
+    /*
+     * A transição é um UPDATE CONDICIONAL, e não uma leitura seguida de
+     * escrita, pelo mesmo motivo da reserva do minuto em `cobrarMinuto`: duas
+     * confirmações simultâneas — o app repetindo porque o ACK não chegou —
+     * leriam as duas o mesmo `pendente` e ambas concluiriam que podem contar.
+     * Com a condição dentro do próprio UPDATE, o Postgres decide, e exatamente
+     * uma volta com `affected = 1`. Só ela mexe no contador da run.
+     */
+    const transicao = await this.respostas
+      .createQueryBuilder()
+      .update(LiveReply)
+      .set({
+        deliveryStatus: status,
+        deliveryAttempts: () => '"deliveryAttempts" + 1',
+        sentAt: status === 'enviada' ? new Date() : resposta.sentAt,
+        failureReason: failureReason
+          ? failureReason.slice(0, 500)
+          : resposta.failureReason,
+      })
+      .where('id = :id', { id: replyId })
+      .andWhere('"deliveryStatus" = :atual', { atual: resposta.deliveryStatus })
+      .execute();
+
+    if (!transicao.affected) {
+      // Alguém confirmou entre a leitura e o UPDATE. Quem chegou primeiro vale.
+      return (await this.respostas.findOneBy({ id: replyId })) ?? resposta;
+    }
+
+    if (status === 'enviada') {
+      await this.runs.increment({ id: resposta.liveRunId }, 'repliesSent', 1);
+    } else if (status === 'falhou') {
+      await this.runs.increment(
+        { id: resposta.liveRunId },
+        'deliveryFailures',
+        1,
+      );
+    }
+    return (await this.respostas.findOneBy({ id: replyId })) ?? resposta;
+  }
+
+  /** Cancela em bloco o que ainda não saiu de uma run. */
+  private async cancelarPendentes(
+    runId: string,
+    motivo: string,
+  ): Promise<number> {
+    const resultado = await this.respostas
+      .createQueryBuilder()
+      .update(LiveReply)
+      .set({ deliveryStatus: 'cancelada', failureReason: motivo })
+      .where('"liveRunId" = :runId', { runId })
+      .andWhere(`"deliveryStatus" = 'pendente'`)
+      .execute();
+    return resultado.affected ?? 0;
   }
 
   // ------------------------------------------------------------------ lote
@@ -798,7 +1200,8 @@ export class LiveReplyService {
       base.produtos.has(id),
     );
     const preco = aplicarPrecos(bruta.text ?? '', base.precos);
-    const texto = truncar(preco.texto);
+    const corte = truncarSeguro(preco.texto);
+    const texto = corte.texto;
 
     let confianca = Number(bruta.confidence);
     if (!Number.isFinite(confianca)) confianca = 0;
@@ -827,6 +1230,17 @@ export class LiveReplyService {
         `Run ${run.id}: o modelo escreveu preço direto no texto em vez de usar {{PRECO:id}} — resposta escalada. Conferir a instrução do prompt.`,
       );
     }
+    /*
+     * O truncamento comeu um preço que a substituição tinha escrito. O texto
+     * que sobrou pode seguir prometendo um valor que já não está lá ("sai por
+     * apenas") — e publicar isso no chat é o mesmo estrago do preço alucinado.
+     */
+    if (corte.precoPerdido) {
+      decisao = 'escalar';
+      this.logger.warn(
+        `Run ${run.id}: a resposta passou de ${MAX_CARACTERES} caracteres e o corte atingiu um preço — resposta escalada.`,
+      );
+    }
     // Link ou @menção: nunca vai pronto ao painel, mesmo confiante.
     if (contemLinkOuMencao(texto)) decisao = 'escalar';
     if (!texto) decisao = 'silenciar';
@@ -835,8 +1249,24 @@ export class LiveReplyService {
     if (decisao === 'silenciar') mensagem.status = 'ignorada';
     await this.mensagens.save(mensagem);
 
+    /*
+     * O modo é RELIDO do banco, e não aproveitado do `run` que o lote carregou:
+     * entre o início do processamento e este ponto passaram os segundos da
+     * chamada ao modelo, e é justamente aí que o vendedor aperta "voltar para o
+     * painel". Nascer `pendente` com o modo velho colocaria na fila uma resposta
+     * que o cancelamento já não alcança.
+     */
+    const atual = await this.runs.findOne({
+      where: { id: run.id },
+      select: { id: true, mode: true, status: true },
+    });
+    const modoAgora = atual?.mode ?? run.mode;
+    const runViva = atual
+      ? atual.status !== 'encerrada' && atual.status !== 'erro'
+      : true;
+
     try {
-      return await this.respostas.save(
+      const salva = await this.respostas.save(
         this.respostas.create({
           liveRunId: run.id,
           chatMessageId: mensagem.id,
@@ -847,8 +1277,43 @@ export class LiveReplyService {
           decision: decisao,
           sourceProductIds: fontes,
           latencyMs: Date.now() - comecou,
+          // A fila do modo automático nasce aqui, e só aqui: quem entra é o que
+          // a decisão já aprovou, com o modo lido da run e não de um parâmetro
+          // do cliente.
+          deliveryStatus: runViva
+            ? statusInicialDeEntrega(modoAgora, decisao)
+            : 'nao_aplica',
         }),
       );
+
+      /*
+       * A segunda metade da trava: a troca para `painel` (ou o encerramento)
+       * pode ter acontecido entre a leitura acima e este INSERT. Como o modo é
+       * gravado ANTES do cancelamento em massa, uma releitura aqui fecha a
+       * janela — o que nasceu pendente para uma run que já não está em `auto`
+       * morre imediatamente, em vez de esperar o app tirá-lo da fila.
+       */
+      if (salva.deliveryStatus === 'pendente') {
+        const conferida = await this.runs.findOne({
+          where: { id: run.id },
+          select: { id: true, mode: true, status: true },
+        });
+        const aindaAutomatica =
+          conferida?.mode === 'auto' &&
+          conferida.status !== 'encerrada' &&
+          conferida.status !== 'erro';
+        if (!aindaAutomatica) {
+          await this.respostas.update(
+            { id: salva.id, deliveryStatus: 'pendente' },
+            {
+              deliveryStatus: 'cancelada',
+              failureReason: 'A transmissão saiu do modo automático.',
+            },
+          );
+          salva.deliveryStatus = 'cancelada';
+        }
+      }
+      return salva;
     } catch (error) {
       /*
        * Uma mensagem, uma resposta — garantido pelo banco.
@@ -970,6 +1435,15 @@ export class LiveReplyService {
           ? String(error.getResponse()).slice(0, 500)
           : 'Saldo de minutos esgotado.';
       this.bases.delete(run.id);
+      /*
+       * Encerrar por saldo tem que limpar a fila como qualquer outro
+       * encerramento: o que ficou `pendente` foi escrito para uma live que já
+       * acabou, e deixá-lo lá é deixar o app postá-lo no chat depois do fim.
+       */
+      await this.cancelarPendentes(
+        run.id,
+        'A transmissão foi encerrada por falta de minutos.',
+      );
       this.logger.warn(`Run ${run.id} encerrada por saldo: ${run.errorMessage}`);
       return this.runs.save(run);
     }
@@ -1190,6 +1664,49 @@ export class LiveReplyService {
       );
     }
     return removidas;
+  }
+
+  /**
+   * Descarta o que envelheceu na fila do modo automático.
+   *
+   * Uma resposta certa postada tarde demais é PIOR que nenhuma resposta. O chat
+   * já rolou, o vendedor já falou de outro produto, e o comentário chega
+   * respondendo uma pergunta que ninguém lembra de ter feito — que é como
+   * automação se denuncia, tanto para a audiência quanto para quem modera. Por
+   * isso o descarte é ativo e não depende do app: se ele travou, congelou ou
+   * ficou preso num captcha, a fila continua envelhecendo do lado de cá e
+   * precisa morrer sozinha.
+   *
+   * A cada trinta segundos para um limite de noventa: uma resposta é descartada
+   * no máximo meio minuto depois de vencer, e a varredura é um UPDATE com
+   * filtro indexado sobre uma fatia minúscula da tabela.
+   *
+   * `cancelada` e não `falhou`: nada foi tentado, nada quebrou. Contar isso como
+   * falha de entrega faria uma live com app lento parecer uma live com a
+   * automação bloqueada, e as duas pedem reações opostas.
+   */
+  @Cron('*/30 * * * * *')
+  async descartarFilaVelha(): Promise<number> {
+    const limite = new Date(Date.now() - IDADE_MAXIMA_NA_FILA_MS);
+    const resultado = await this.respostas
+      .createQueryBuilder()
+      .update(LiveReply)
+      .set({
+        deliveryStatus: 'cancelada',
+        failureReason:
+          'Descartada: o chat da live já tinha passado do assunto quando a resposta ficou pronta para envio.',
+      })
+      .where(`"deliveryStatus" = 'pendente'`)
+      .andWhere('"createdAt" < :limite', { limite })
+      .execute();
+
+    const descartadas = resultado.affected ?? 0;
+    if (descartadas) {
+      this.logger.log(
+        `Fila do modo automático: ${descartadas} resposta(s) descartada(s) por passar de ${IDADE_MAXIMA_NA_FILA_MS / 1000}s sem sair.`,
+      );
+    }
+    return descartadas;
   }
 
   /**

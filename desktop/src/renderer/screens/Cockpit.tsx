@@ -1,11 +1,13 @@
 import SettingsIcon from '@mui/icons-material/SettingsOutlined';
 import { Box, Divider, IconButton, Stack, Typography } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { EstadoConexao } from '@shared/desktop-api';
+import type { EstadoConexao, EstadoEnvio } from '@shared/desktop-api';
 import type { LiveReplyEvent } from '@shared/live-events';
 import { BarraDeStatus } from '../components/BarraDeStatus';
 import { CardEscalacao } from '../components/CardEscalacao';
 import { CardResposta } from '../components/CardResposta';
+import { DialogoTermoDeEnvio } from '../components/DialogoTermoDeEnvio';
+import { FeedDeEnvios, type ItemDeEnvio } from '../components/FeedDeEnvios';
 import { Aviso } from '../components/Estados';
 import { useFluxoDaLive } from '../hooks/useFluxoDaLive';
 import { SEM_PONTE, obterPonte } from '../ponte';
@@ -24,6 +26,22 @@ import { SEM_PONTE, obterPonte } from '../ponte';
  * descido para ler uma resposta — exatamente no momento em que ele mais precisa
  * vê-la.
  */
+/**
+ * O que a barra mostra antes de o processo principal responder.
+ *
+ * `painel` como chute inicial, sempre: se a leitura falhar ou demorar, a tela
+ * erra dizendo que NÃO está enviando. O erro na direção contrária faria o
+ * vendedor acreditar, por um instante, que o app está postando por ele.
+ */
+const ENVIO_DESCONHECIDO: EstadoEnvio = {
+  modo: 'painel',
+  aceito: false,
+  pausado: false,
+  cadenciaSegundos: 8,
+  maxPorMinuto: 6,
+  degradacao: null,
+};
+
 export function Cockpit({
   aoAbrirConfiguracoes,
   aoEncerrar,
@@ -43,6 +61,11 @@ export function Cockpit({
    */
   const [saldoInicial, setSaldoInicial] = useState<number | null>(null);
 
+  const [envio, setEnvio] = useState<EstadoEnvio>(ENVIO_DESCONHECIDO);
+  const [termoAberto, setTermoAberto] = useState(false);
+  /** Por que a última tentativa de ligar o automático não pegou. */
+  const [erroDoModo, setErroDoModo] = useState<string | null>(null);
+
   useEffect(() => {
     if (!ponte) return undefined;
     void ponte.obterConexao().then(setConexao).catch(() => undefined);
@@ -52,6 +75,56 @@ export function Cockpit({
       .catch(() => undefined);
     return ponte.aoMudarConexao(setConexao);
   }, [ponte]);
+
+  useEffect(() => {
+    if (!ponte) return undefined;
+    void ponte.obterEstadoEnvio().then(setEnvio).catch(() => undefined);
+    // A assinatura é o que faz o Ctrl+Shift+P aparecer na tela: a pausa é
+    // decidida no processo principal, com a janela do TikTok na frente, e a
+    // barra só descobre por aqui.
+    return ponte.aoMudarEnvio(setEnvio);
+  }, [ponte]);
+
+  /**
+   * Liga o automático de verdade — depois do aceite, e só se o backend deixar.
+   *
+   * A recusa do servidor (sem aceite, kill switch, plano) vira texto na tela em
+   * vez de um switch que volta sozinho sem explicação.
+   */
+  const ligarAutomatico = useCallback(async (): Promise<void> => {
+    if (!ponte) return;
+    setErroDoModo(null);
+    try {
+      setEnvio(await ponte.definirModoDeEnvio('auto'));
+    } catch (e) {
+      setErroDoModo((e as Error).message);
+    }
+  }, [ponte]);
+
+  const alternarModo = useCallback(async (): Promise<void> => {
+    if (!ponte) return;
+    if (envio.modo === 'auto') {
+      setErroDoModo(null);
+      try {
+        setEnvio(await ponte.definirModoDeEnvio('painel'));
+      } catch (e) {
+        setErroDoModo((e as Error).message);
+      }
+      return;
+    }
+    // Sem aceite registrado, o caminho passa PELO AVISO — e não por um switch
+    // que liga e depois falha com o 403 do servidor.
+    if (!envio.aceito) {
+      setTermoAberto(true);
+      return;
+    }
+    await ligarAutomatico();
+  }, [ponte, envio.modo, envio.aceito, ligarAutomatico]);
+
+  const alternarPausaDoEnvio = useCallback((): void => {
+    if (!ponte) return;
+    void ponte.pausarEnvio(!envio.pausado).then(setEnvio).catch(() => undefined);
+  }, [ponte, envio.pausado]);
 
   const alternarPausa = useCallback(async (): Promise<void> => {
     if (!ponte) return;
@@ -85,6 +158,28 @@ export function Cockpit({
   const prontas = useMemo(
     () => fluxo.respostas.filter((r) => r.decision === 'enviar'),
     [fluxo.respostas],
+  );
+
+  /**
+   * O feed do automático: as mesmas respostas aprovadas, vistas pelo lado da
+   * ENTREGA. Sem confirmação do backend a resposta conta como pendente — o
+   * inverso (assumir entregue até provar o contrário) é a mentira que faria o
+   * vendedor achar que uma pergunta foi respondida quando não foi.
+   */
+  const envios = useMemo<ItemDeEnvio[]>(
+    () =>
+      prontas.map((r) => {
+        const entrega = fluxo.entregas[r.id];
+        return {
+          replyId: r.id,
+          texto: r.text,
+          pergunta: fluxo.perguntas[r.chatMessageId] ?? null,
+          confianca: r.confidence,
+          status: entrega?.deliveryStatus ?? 'pendente',
+          motivo: entrega?.failureReason ?? null,
+        };
+      }),
+    [prontas, fluxo.entregas, fluxo.perguntas],
   );
 
   if (!ponte) {
@@ -149,6 +244,35 @@ export function Cockpit({
         </Box>
       ) : null}
 
+      {/*
+        A DEGRADAÇÃO VEM ANTES DE TUDO.
+
+        Quando o app cai sozinho para somente-painel, o vendedor precisa
+        descobrir na mesma olhada em que descobriria qualquer outra coisa — e
+        precisa saber o que fazer agora, que é copiar na mão. O pior estado
+        possível deste produto é ele seguir vendendo achando que o copiloto está
+        respondendo o chat sozinho enquanto o chat está mudo.
+      */}
+      {envio.degradacao ? (
+        <Box sx={{ px: 2, pb: 1 }}>
+          <Aviso
+            tom="erro"
+            titulo="O envio automático parou"
+            descricao={`${envio.degradacao} As respostas continuam aparecendo aqui: toque em Copiar e cole no chat da sua live.`}
+          />
+        </Box>
+      ) : null}
+
+      {erroDoModo ? (
+        <Box sx={{ px: 2, pb: 1 }}>
+          <Aviso
+            tom="erro"
+            titulo="Não deu para ligar o envio automático"
+            descricao={erroDoModo}
+          />
+        </Box>
+      ) : null}
+
       {fluxo.encerrada && !fluxo.semSaldo ? (
         <Box sx={{ px: 2, pb: 1 }}>
           <Aviso
@@ -202,9 +326,17 @@ export function Cockpit({
       {/* ------------------------------------------------- respostas prontas */}
       <Box sx={{ px: 2, py: 1, flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
         <Typography variant="overline" color="text.secondary">
-          prontas para copiar
+          {envio.modo === 'auto' ? 'enviadas no chat' : 'prontas para copiar'}
         </Typography>
-        {prontas.length === 0 ? (
+        {/*
+          No automático a mesma lista troca de eixo: deixa de ser "o que você
+          pode copiar" e passa a ser "o que saiu em seu nome". Duas listas
+          paralelas com o mesmo conteúdo obrigariam o vendedor a cruzar as duas
+          para saber se uma resposta foi ou não ao chat.
+        */}
+        {envio.modo === 'auto' ? (
+          <FeedDeEnvios itens={envios} />
+        ) : prontas.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
             {estadoBarra.status === 'ativa'
               ? 'Estou lendo o chat. A primeira pergunta sobre preço, tamanho ou frete já vira resposta aqui.'
@@ -225,14 +357,27 @@ export function Cockpit({
 
       <BarraDeStatus
         conexao={fluxo.semSaldo ? { ...estadoBarra, status: 'sem_saldo' } : estadoBarra}
+        envio={envio}
         minutosRestantes={minutosRestantes}
         respostasPorMinuto={fluxo.respostasPorMinuto}
         pausado={pausado}
         aoAlternarPausa={() => void alternarPausa()}
+        aoAlternarModo={() => void alternarModo()}
+        aoAlternarPausaDoEnvio={alternarPausaDoEnvio}
         aoEncerrar={() => {
           void ponte.encerrar('Encerrado pelo vendedor no painel.');
           aoEncerrar();
         }}
+      />
+
+      <DialogoTermoDeEnvio
+        aberto={termoAberto}
+        aoAceitar={() => {
+          setTermoAberto(false);
+          void ligarAutomatico();
+        }}
+        // Recusar fecha e não muda mais nada: o app segue inteiro no painel.
+        aoRecusar={() => setTermoAberto(false)}
       />
     </Stack>
   );

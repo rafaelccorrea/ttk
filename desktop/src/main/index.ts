@@ -1,6 +1,14 @@
 import { join } from 'node:path';
-import { BrowserView, BrowserWindow, app, ipcMain, shell } from 'electron';
+import {
+  BrowserView,
+  BrowserWindow,
+  app,
+  globalShortcut,
+  ipcMain,
+  shell,
+} from 'electron';
 import type { ConfiguracoesCopiloto } from '../shared/desktop-api';
+import type { LiveRunMode } from '../shared/live-events';
 import { Copiloto } from './copiloto';
 
 /**
@@ -98,6 +106,16 @@ function criarJanela(): BrowserWindow {
  *  - a comunicação entre os dois mundos passa pelo processo principal, que é
  *    onde dá para conferir origem e formato do que trafega.
  */
+/**
+ * A view viva do TikTok.
+ *
+ * É uma variável de módulo (lida por FUNÇÃO, nunca guardada como referência lá
+ * embaixo) porque a janela morre e renasce: quem precisa do `webContents` para
+ * digitar no chat tem que enxergar a view ATUAL, e não a que existia quando o
+ * copiloto foi construído.
+ */
+let viewTikTok: BrowserView | null = null;
+
 function anexarTikTok(janela: BrowserWindow): void {
   const view = new BrowserView({
     webPreferences: {
@@ -109,6 +127,7 @@ function anexarTikTok(janela: BrowserWindow): void {
     },
   });
 
+  viewTikTok = view;
   janela.setBrowserView(view);
   void view.webContents.loadURL(URL_TIKTOK_LIVE);
 
@@ -138,7 +157,14 @@ function anexarTikTok(janela: BrowserWindow): void {
  */
 let janelaPrincipal: BrowserWindow | null = null;
 
-const copiloto = new Copiloto(() => janelaPrincipal);
+const copiloto = new Copiloto(
+  () => janelaPrincipal,
+  () => {
+    const view = viewTikTok;
+    if (!view || view.webContents.isDestroyed()) return null;
+    return view.webContents;
+  },
+);
 
 /**
  * Registra os handlers do IPC.
@@ -194,14 +220,58 @@ function registrarIpc(): void {
     ) => copiloto.resolverEscalacao(dados.chatMessageId, dados.desfecho),
   );
 
+  ipcMain.handle('envio:estado', () => copiloto.obterEstadoEnvio());
+  ipcMain.handle('envio:termo', () => copiloto.obterTermoDeEnvio());
+  ipcMain.handle('envio:aceitar', (_evento, versao: string) =>
+    copiloto.aceitarTermoDeEnvio(versao),
+  );
+  ipcMain.handle('envio:modo', (_evento, modo: LiveRunMode) =>
+    // O renderer é conteúdo: um valor fora dos dois modos vira `painel`, que é o
+    // lado seguro do erro.
+    copiloto.definirModoDeEnvio(modo === 'auto' ? 'auto' : 'painel'),
+  );
+  ipcMain.handle('envio:pausar', (_evento, pausado: boolean) =>
+    copiloto.pausarEnvio(Boolean(pausado)),
+  );
+
   ipcMain.handle('config:ler', () => copiloto.lerConfiguracoes());
   ipcMain.handle('config:salvar', (_evento, valores: ConfiguracoesCopiloto) =>
     copiloto.salvarConfiguracoes(valores),
   );
 }
 
+/**
+ * O freio de mão do envio automático.
+ *
+ * GLOBAL, e não um atalho da janela: quem está vendendo ao vivo está com o foco
+ * no TikTok — apresentando o produto, lendo o chat, mexendo na câmera — e não no
+ * nosso painel. Um atalho que só funciona com a nossa janela em primeiro plano
+ * exigiria achar e clicar na janela antes de parar o app de escrever, o que é
+ * pedir dois gestos justamente no segundo em que o vendedor viu uma bobagem
+ * saindo em nome dele. O botão da barra continua existindo para quem já está
+ * olhando para cá; este atalho é para quem não está.
+ */
+const ATALHO_PAUSA = 'CommandOrControl+Shift+P';
+
+function registrarAtalhoDePausa(): void {
+  const registrou = globalShortcut.register(ATALHO_PAUSA, () => {
+    const estado = copiloto.obterEstadoEnvio();
+    copiloto.pausarEnvio(!estado.pausado);
+  });
+
+  if (!registrou) {
+    // Outro app já tomou a combinação. Não há o que fazer no sistema, e não é
+    // fatal — mas a tela precisa saber para não prometer um atalho que não
+    // existe, então o painel confere isto ao montar a barra.
+    console.warn(
+      `Não foi possível registrar ${ATALHO_PAUSA}: outro programa já usa esse atalho.`,
+    );
+  }
+}
+
 void app.whenReady().then(() => {
   registrarIpc();
+  registrarAtalhoDePausa();
 
   janelaPrincipal = criarJanela();
 
@@ -227,4 +297,9 @@ app.on('window-all-closed', () => {
  */
 app.on('before-quit', () => {
   void copiloto.encerrar('O aplicativo foi fechado.');
+});
+
+// Atalho global que sobrevive ao app seria uma tecla sequestrada do sistema.
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });

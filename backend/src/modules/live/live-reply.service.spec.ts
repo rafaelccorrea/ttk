@@ -1,6 +1,12 @@
 import {
+  aceiteEstaVigente,
   aplicarPrecos,
   clusterKeyDe,
+  expirouNaFila,
+  IDADE_MAXIMA_NA_FILA_MS,
+  podeTransicionarEntrega,
+  statusInicialDeEntrega,
+  VERSAO_DO_TERMO_AUTO,
   contemLinkOuMencao,
   contemPrecoLiteral,
   decidirResposta,
@@ -9,7 +15,9 @@ import {
   ehPergunta,
   normalizarTexto,
   truncar,
+  truncarSeguro,
 } from './live-reply.service';
+import { sanitizarHtml } from './live-config.service';
 
 /*
  * O que é testado aqui é a lógica que roda ANTES e DEPOIS do modelo — a parte
@@ -245,5 +253,186 @@ describe('higiene da resposta', () => {
 
   it('deixa passar intacta a resposta que já cabe', () => {
     expect(truncar('Temos sim, R$ 49,90')).toBe('Temos sim, R$ 49,90');
+  });
+});
+
+/*
+ * O corte que não pode publicar preço errado. Um "R$ 1.299,00" partido no meio
+ * vira "R$ 1.29" — um valor que a loja não pratica, sem marcador sobrando para
+ * escalar e sem `contemPrecoLiteral` para acusar (ele roda antes da
+ * substituição).
+ */
+describe('truncarSeguro', () => {
+  it('nunca corta um preço ao meio, e avisa quando o preço ficou de fora', () => {
+    const texto = `${'palavra '.repeat(20)}sai por R$ 1.299,00 hoje`;
+    const { texto: cortado, precoPerdido } = truncarSeguro(texto);
+    expect(cortado.length).toBeLessThanOrEqual(140);
+    expect(cortado).not.toMatch(/R\$\s*1\.29(?!9)/);
+    expect(cortado).not.toContain('R$');
+    expect(precoPerdido).toBe(true);
+  });
+
+  it('não mexe no que já cabe, preço incluído', () => {
+    const ok = truncarSeguro('Sai por R$ 1.299,00 com frete grátis');
+    expect(ok.texto).toBe('Sai por R$ 1.299,00 com frete grátis');
+    expect(ok.precoPerdido).toBe(false);
+  });
+
+  /*
+   * Este teste nasce de um bug que passou pela revisão inteira, e a lição é
+   * sobre FIXTURE, não sobre lógica: os casos acima usam "R$ 1.299,00", escrito
+   * à mão. Só que o detector antigo exigia o ponto de milhar e o
+   * `aplicarPrecos` produzia "1499,90" — então a suíte testava um formato que o
+   * código nunca emitia, e a proteção estava inerte para TODO produto de quatro
+   * dígitos. O chat recebia "…sai por apenas R$", marcado como entregue.
+   *
+   * Daí a regra aqui: o preço dos testes vem de `aplicarPrecos`, nunca digitado.
+   */
+  it('protege o preço no formato que a substituição realmente escreve', () => {
+    const precos = new Map([['p1', '1499.90']]);
+    const { texto: comPreco } = aplicarPrecos(
+      `${'palavra '.repeat(20)}sai por apenas {{PRECO:p1}} no pix`,
+      precos,
+    );
+
+    const { texto: cortado, precoPerdido } = truncarSeguro(comPreco);
+    expect(cortado.length).toBeLessThanOrEqual(140);
+    // Nem valor partido, nem "R$" órfão prometendo um número que não está lá.
+    expect(cortado).not.toMatch(/R\$\s*1\.?4\d?9?(?!9,90)/);
+    expect(cortado).not.toMatch(/R\$\s*$/);
+    expect(precoPerdido).toBe(true);
+  });
+
+  it('reconhece preço de quatro dígitos com e sem separador de milhar', () => {
+    // Com separador é o que `formatarPreco` emite hoje; sem separador é o que
+    // ele emitia antes, e pode estar numa resposta parada na fila.
+    for (const escrito of ['R$ 1.499,90', 'R$ 1499,90']) {
+      const texto = `${'palavra '.repeat(20)}sai por ${escrito} hoje`;
+      const { texto: cortado, precoPerdido } = truncarSeguro(texto);
+      expect(precoPerdido).toBe(true);
+      expect(cortado).not.toMatch(/R\$\s*1\.?4/);
+    }
+  });
+});
+
+/*
+ * O HTML de diagnóstico. A regra é dura: nenhum caractere digitado por um
+ * espectador — nem o perfil ou o avatar dele — pode chegar à tabela.
+ */
+describe('sanitizarHtml', () => {
+  it('tira texto, href, src e trunca rótulo em aspas simples', () => {
+    const bruto =
+      `<div class="chat"><a href="/@espectadora_maria">` +
+      `<img src="https://p16.tiktok.com/avatar-1234.jpg" alt="Maria"></a>` +
+      `<span aria-label='meu cpf e 123.456.789-00 me chama la'>Maria: meu cpf e 123</span></div>`;
+    const limpo = sanitizarHtml(bruto);
+
+    expect(limpo).not.toContain('espectadora_maria');
+    expect(limpo).not.toContain('avatar-1234');
+    expect(limpo).not.toContain('Maria');
+    expect(limpo).not.toContain('123.456.789-00');
+    // A estrutura, que é o que serve para escrever um seletor novo, fica.
+    expect(limpo).toContain('class="chat"');
+  });
+});
+
+/*
+ * Modo automático (fase 2). O que é testado aqui é a máquina de estados da
+ * ENTREGA — a parte que decide se um comentário sai, se é descartado, e se uma
+ * confirmação repetida conta duas vezes. Nada disso depende do banco nem do
+ * modelo, e é justamente a parte cujo erro aparece como "o vendedor postou a
+ * mesma coisa duas vezes na live" ou "a métrica de entrega mente".
+ */
+describe('statusInicialDeEntrega', () => {
+  it('só põe na fila o que a run automática aprovou para envio', () => {
+    expect(statusInicialDeEntrega('auto', 'enviar')).toBe('pendente');
+  });
+
+  it('não põe na fila o que a decisão barrou, mesmo em modo automático', () => {
+    // Escalar quer dizer "isto não sai sem um humano olhar". Deixar pendente
+    // faria o app postar exatamente o que o motor acabou de segurar.
+    expect(statusInicialDeEntrega('auto', 'escalar')).toBe('nao_aplica');
+    expect(statusInicialDeEntrega('auto', 'silenciar')).toBe('nao_aplica');
+  });
+
+  it('nunca põe na fila em modo painel', () => {
+    expect(statusInicialDeEntrega('painel', 'enviar')).toBe('nao_aplica');
+    expect(statusInicialDeEntrega('painel', 'escalar')).toBe('nao_aplica');
+  });
+});
+
+describe('transição do status de entrega', () => {
+  it('deixa a fila sair para qualquer um dos três desfechos', () => {
+    expect(podeTransicionarEntrega('pendente', 'enviada')).toBe(true);
+    expect(podeTransicionarEntrega('pendente', 'falhou')).toBe(true);
+    expect(podeTransicionarEntrega('pendente', 'cancelada')).toBe(true);
+  });
+
+  it('trava a confirmação repetida — é o que impede contar duas entregas', () => {
+    expect(podeTransicionarEntrega('enviada', 'enviada')).toBe(false);
+    expect(podeTransicionarEntrega('falhou', 'falhou')).toBe(false);
+    expect(podeTransicionarEntrega('cancelada', 'cancelada')).toBe(false);
+  });
+
+  it('não deixa um desfecho virar outro depois de fechado', () => {
+    expect(podeTransicionarEntrega('enviada', 'falhou')).toBe(false);
+    expect(podeTransicionarEntrega('cancelada', 'enviada')).toBe(false);
+    expect(podeTransicionarEntrega('falhou', 'enviada')).toBe(false);
+  });
+
+  it('ignora confirmação sobre resposta que nunca teve envio', () => {
+    expect(podeTransicionarEntrega('nao_aplica', 'enviada')).toBe(false);
+    expect(podeTransicionarEntrega('nao_aplica', 'pendente')).toBe(false);
+  });
+});
+
+describe('descarte da fila por idade', () => {
+  const nascimento = new Date('2026-08-17T20:00:00.000Z');
+  const em = (ms: number) => new Date(nascimento.getTime() + ms);
+
+  it('segura o que ainda está dentro da janela', () => {
+    expect(expirouNaFila(nascimento, em(0))).toBe(false);
+    expect(expirouNaFila(nascimento, em(IDADE_MAXIMA_NA_FILA_MS))).toBe(false);
+  });
+
+  it('descarta o que passou — responder tarde é pior que não responder', () => {
+    expect(expirouNaFila(nascimento, em(IDADE_MAXIMA_NA_FILA_MS + 1))).toBe(
+      true,
+    );
+    expect(expirouNaFila(nascimento, em(5 * 60_000))).toBe(true);
+  });
+});
+
+describe('aceite do termo de risco', () => {
+  const em = new Date('2026-08-17T12:00:00.000Z');
+
+  it('autoriza só quem aceitou a versão vigente', () => {
+    expect(
+      aceiteEstaVigente({
+        liveAutoAcceptedAt: em,
+        liveAutoAcceptedVersion: VERSAO_DO_TERMO_AUTO,
+      }),
+    ).toBe(true);
+  });
+
+  it('recusa quem nunca aceitou', () => {
+    expect(
+      aceiteEstaVigente({
+        liveAutoAcceptedAt: null,
+        liveAutoAcceptedVersion: null,
+      }),
+    ).toBe(false);
+  });
+
+  it('recusa o aceite de uma redação anterior', () => {
+    // Quem clicou no termo antigo consentiu com o risco antigo: o texto mudou
+    // porque o risco mudou, e reaproveitar aquele clique é consentimento que
+    // ninguém deu.
+    expect(
+      aceiteEstaVigente({
+        liveAutoAcceptedAt: em,
+        liveAutoAcceptedVersion: '2020-01-01',
+      }),
+    ).toBe(false);
   });
 });

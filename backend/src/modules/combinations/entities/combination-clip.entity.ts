@@ -42,6 +42,16 @@ export class CombinationClip {
   @Column({ type: 'int', default: 0 })
   sizeBytes: number;
 
+  /**
+   * Duração medida no upload, em milissegundos.
+   *
+   * `0` é "não medido", não "vazio": clipes enviados antes desta coluna
+   * existirem, e ambientes sem ffmpeg, caem aqui. Quem lê precisa tratar o
+   * zero como ausência de informação — ver `situacao()` em `clip-timing.ts`.
+   */
+  @Column({ type: 'int', default: 0 })
+  durationMs: number;
+
   @CreateDateColumn()
   createdAt: Date;
 }

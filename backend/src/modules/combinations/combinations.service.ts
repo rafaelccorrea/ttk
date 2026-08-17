@@ -11,6 +11,7 @@ import { In, Repository } from 'typeorm';
 import { BillingService } from '../billing/billing.service';
 import { VideoAssemblyService } from '../campaigns/video-assembly.service';
 import { MEDIA_ROUTE, MediaMirrorService } from '../media/media-mirror.service';
+import { FAIXAS, situacao } from './clip-timing';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { ClipRole, CombinationClip } from './entities/combination-clip.entity';
 import { CombinationFolder } from './entities/combination-folder.entity';
@@ -63,6 +64,15 @@ export interface PecaInsight {
   /** `null` quando nenhum vídeo desta peça teve views lançadas. */
   mediaViews: number | null;
   totalVendas: number | null;
+  /**
+   * `true` quando a média vem de poucos vídeos para ser levada a sério.
+   *
+   * Uma peça com 1 vídeo de sorte encabeça o ranking com a mesma cara de quem
+   * ganhou 15 vezes seguidas — e é justamente sobre o topo do ranking que o
+   * vendedor decide o que gravar de novo. A peça continua ordenada pela média
+   * (esconder seria pior), mas a tela precisa poder dizer "ainda é palpite".
+   */
+  dadoFraco: boolean;
 }
 
 export interface PlanoInsights {
@@ -71,6 +81,8 @@ export interface PlanoInsights {
   videosLancados: number;
   videosTotais: number;
   mediaGeralViews: number | null;
+  /** Quantos vídeos uma peça precisa ter para sair de `dadoFraco`. */
+  minimoConfiavel: number;
   blocos: Record<'hook' | 'body' | 'cta', PecaInsight[]>;
 }
 
@@ -80,6 +92,16 @@ function normalizarContagem(valor: number | null | undefined): number | null {
   const n = Math.trunc(valor);
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
+
+/**
+ * Vídeos lançados que uma peça precisa para a média valer como sinal.
+ *
+ * Três é baixo de propósito: com a matriz cheia cada gancho aparece em 15
+ * combinações, mas o vendedor lança resultado aos poucos, e exigir dez seria
+ * manter o ranking em "aguardando dados" justamente quando ele decide o que
+ * gravar. Três já separa "aconteceu duas vezes" de "aconteceu uma vez".
+ */
+const MIN_VIDEOS_CONFIAVEL = 3;
 
 /** Teto de vídeos trazidos para a galeria de uma vez. */
 const GALERIA_MAX = 300;
@@ -99,6 +121,9 @@ function normalizarCor(cor: string | undefined): string {
 
 /** Teto por bloco — o mesmo que a tela oferece. */
 const LIMITES: Record<ClipRole, number> = { hook: 10, body: 5, cta: 3 };
+
+/** A letra que cada bloco recebe no código do arquivo (`G2C1A3`). */
+const LETRA: Record<ClipRole, string> = { hook: 'G', body: 'C', cta: 'A' };
 
 /**
  * Quantos vídeos uma montagem produz de uma vez.
@@ -223,6 +248,55 @@ export class CombinationsService implements OnApplicationBootstrap {
   }
 
   /**
+   * Lança o desempenho de vários vídeos numa tacada.
+   *
+   * O `setResult` de um vídeo por vez é o que mantinha o `insights` vazio na
+   * prática: ninguém abre 150 diálogos para digitar 150 números, então o dado
+   * que faz a análise funcionar nunca chegava. Aqui a tela manda a planilha
+   * inteira de uma vez e o vendedor digita numa sentada só.
+   *
+   * Cada item é opcional em cada campo, igual ao lançamento individual —
+   * mandar `views` sem `sales` não apaga as vendas já lançadas.
+   */
+  async setResultsBulk(
+    userId: string,
+    itens: Array<{
+      id: string;
+      views?: number | null;
+      sales?: number | null;
+      postUrl?: string | null;
+    }>,
+  ): Promise<CombinationVideo[]> {
+    if (!itens.length) return [];
+
+    /*
+     * Uma busca só, filtrada por dono.
+     *
+     * Buscar dentro do laço seria uma consulta por linha — com a matriz cheia,
+     * 150 idas ao banco para uma tela de lançamento. E o `userId` no `where` é
+     * o que garante que um id de outra conta simplesmente não apareça no mapa.
+     */
+    const encontrados = await this.videos.find({
+      where: { id: In(itens.map((i) => i.id)), userId },
+    });
+    const porId = new Map(encontrados.map((v) => [v.id, v]));
+
+    const paraSalvar: CombinationVideo[] = [];
+    for (const item of itens) {
+      const video = porId.get(item.id);
+      if (!video) continue;
+      if (item.views !== undefined) video.views = normalizarContagem(item.views);
+      if (item.sales !== undefined) video.sales = normalizarContagem(item.sales);
+      if (item.postUrl !== undefined) {
+        const url = item.postUrl?.trim();
+        video.postUrl = url ? url.slice(0, 500) : null;
+      }
+      paraSalvar.push(video);
+    }
+    return this.videos.save(paraSalvar);
+  }
+
+  /**
    * Ranking das peças de um plano pelo desempenho dos vídeos já lançados.
    *
    * O truque está na matriz: cada gancho aparece em `corpos × ctas`
@@ -246,8 +320,6 @@ export class CombinationsService implements OnApplicationBootstrap {
       body: plan.bodies,
       cta: plan.ctas,
     };
-    const letra = { hook: 'G', body: 'C', cta: 'A' } as const;
-
     const blocos = {} as PlanoInsights['blocos'];
     for (const papel of ['hook', 'body', 'cta'] as const) {
       const porIndice = new Map<number, CombinationVideo[]>();
@@ -264,8 +336,8 @@ export class CombinationsService implements OnApplicationBootstrap {
           const comVendas = videos.filter((v) => v.sales !== null);
           return {
             indice,
-            codigo: `${letra[papel]}${indice + 1}`,
-            rotulo: rotulos[papel][indice] ?? `${letra[papel]}${indice + 1}`,
+            codigo: `${LETRA[papel]}${indice + 1}`,
+            rotulo: rotulos[papel][indice] ?? `${LETRA[papel]}${indice + 1}`,
             videos: videos.length,
             mediaViews: comViews.length
               ? Math.round(
@@ -275,6 +347,7 @@ export class CombinationsService implements OnApplicationBootstrap {
             totalVendas: comVendas.length
               ? comVendas.reduce((s, v) => s + (v.sales ?? 0), 0)
               : null,
+            dadoFraco: videos.length < MIN_VIDEOS_CONFIAVEL,
           };
         },
       );
@@ -293,11 +366,117 @@ export class CombinationsService implements OnApplicationBootstrap {
       sigla: plan.sigla,
       videosLancados: lancados.length,
       videosTotais: await this.videos.count({ where: { planId, userId } }),
+      minimoConfiavel: MIN_VIDEOS_CONFIAVEL,
       mediaGeralViews: todasAsViews.length
         ? Math.round(todasAsViews.reduce((s, v) => s + v, 0) / todasAsViews.length)
         : null,
       blocos,
     };
+  }
+
+  /**
+   * Cria um plano novo contendo só as peças que venceram no plano atual.
+   *
+   * É o que fecha o ciclo do Multiplicador. Sem isto o `insights` termina num
+   * ranking bonito e num beco: o vendedor lê "G2 rende 3× a média" e a única
+   * saída é remontar tudo à mão, escolhendo clipe por clipe de memória. Aqui a
+   * própria descoberta vira a próxima matriz — as peças fracas saem, as fortes
+   * se recombinam entre si, e o segundo round já nasce mais enxuto e mais caro
+   * por vídeo em atenção, não em crédito.
+   *
+   * Peça sem dado NÃO é peça ruim: quem não tem média fica de fora da poda em
+   * vez de ser eliminada por silêncio — se o bloco inteiro está sem dado, ele
+   * passa inteiro para o plano novo.
+   */
+  async derive(userId: string, planId: string) {
+    const plan = await this.plans.findOneBy({ id: planId, userId });
+    if (!plan) throw new NotFoundException(`Plano ${planId} não encontrado`);
+
+    const dados = await this.insights(userId, planId);
+
+    const rotulos: Record<ClipRole, string[]> = {
+      hook: plan.hooks,
+      body: plan.bodies,
+      cta: plan.ctas,
+    };
+    const clipes: Record<ClipRole, string[]> = {
+      hook: plan.hookClipIds,
+      body: plan.bodyClipIds,
+      cta: plan.ctaClipIds,
+    };
+
+    const escolhidos = {} as Record<ClipRole, number[]>;
+    for (const papel of ['hook', 'body', 'cta'] as const) {
+      const total = rotulos[papel].length;
+      if (!total) {
+        escolhidos[papel] = [];
+        continue;
+      }
+
+      /*
+       * Só peças com média E com dado suficiente disputam a poda. `dadoFraco`
+       * fora daqui seria o pior dos mundos: a tela avisa que a média de 1 vídeo
+       * é palpite, e o botão em seguida trataria esse palpite como veredito.
+       */
+      const ranqueadas = dados.blocos[papel].filter(
+        (p) => p.mediaViews !== null && !p.dadoFraco,
+      );
+
+      // Menos de duas peças com dado não é ranking, é lista: não há o que podar
+      // sem inventar critério.
+      if (ranqueadas.length < 2) {
+        escolhidos[papel] = rotulos[papel].map((_, i) => i);
+        continue;
+      }
+
+      // Metade para cima, nunca menos de duas: cortar para uma peça mataria a
+      // combinação — um plano com um gancho só não é uma matriz.
+      const quantas = Math.max(2, Math.ceil(ranqueadas.length / 2));
+      const vencedoras = ranqueadas.slice(0, quantas).map((p) => p.indice);
+      // Ordena pelo índice original para o plano novo manter a ordem em que o
+      // vendedor gravou — G1, G2, G3 na tela, não a ordem do ranking.
+      escolhidos[papel] = vencedoras.sort((a, b) => a - b);
+    }
+
+    if (!escolhidos.hook.length) {
+      throw new ConflictException(
+        'Este plano não tem ganchos para levar adiante.',
+      );
+    }
+
+    const pegar = (papel: ClipRole, de: string[]) =>
+      escolhidos[papel].map((i) => de[i]).filter((v) => v !== undefined);
+
+    const novo = await this.plans.save(
+      this.plans.create({
+        userId,
+        sigla: this.siglaDerivada(plan.sigla),
+        format: plan.format,
+        hooks: pegar('hook', rotulos.hook),
+        bodies: pegar('body', rotulos.body),
+        ctas: pegar('cta', rotulos.cta),
+        hookClipIds: pegar('hook', clipes.hook),
+        bodyClipIds: pegar('body', clipes.body),
+        ctaClipIds: pegar('cta', clipes.cta),
+      }),
+    );
+
+    return { ...novo, combinations: this.expand(novo) };
+  }
+
+  /**
+   * `ASP` → `ASP2`, `ASP2` → `ASP3`.
+   *
+   * A sigla entra no nome de cada arquivo, então a do plano derivado precisa
+   * distinguir os vídeos do segundo round dos do primeiro na galeria — e
+   * continuar cabendo nos 10 caracteres da coluna.
+   */
+  private siglaDerivada(sigla: string): string {
+    const m = /^(.*?)(\d+)$/.exec(sigla);
+    const base = m ? m[1] : sigla;
+    const proximo = m ? Number(m[2]) + 1 : 2;
+    const sufixo = String(proximo);
+    return `${base.slice(0, 10 - sufixo.length)}${sufixo}`;
   }
 
   // ------------------------------------------------------------- pastas
@@ -398,6 +577,19 @@ export class CombinationsService implements OnApplicationBootstrap {
       );
     }
 
+    /*
+     * Mede aqui, uma vez, e não na montagem.
+     *
+     * É o único momento em que o vendedor ainda pode trocar o arquivo sem
+     * custo — descobrir na hora de montar que o gancho tem 12s é descobrir
+     * tarde, com a matriz já planejada em cima dele. A medição não pode
+     * derrubar o upload: ffprobe indisponível vira 0 ("não medido"), e o
+     * clipe entra igual.
+     */
+    const segundos = await this.assembly
+      .duracaoDoBuffer(buffer, label)
+      .catch(() => null);
+
     return this.clips.save(
       this.clips.create({
         userId,
@@ -405,6 +597,7 @@ export class CombinationsService implements OnApplicationBootstrap {
         label: label.slice(0, 120) || 'clipe.mp4',
         url,
         sizeBytes: buffer.byteLength,
+        durationMs: segundos ? Math.round(segundos * 1000) : 0,
       }),
     );
   }
@@ -716,6 +909,8 @@ export class CombinationsService implements OnApplicationBootstrap {
       return this.listVideos(userId, planId);
     }
 
+    await this.conferirDuracoes(plan);
+
     const combinacoes = this.expand(plan);
     if (combinacoes.length > MAX_VIDEOS_POR_MONTAGEM) {
       throw new ConflictException(
@@ -756,6 +951,55 @@ export class CombinationsService implements OnApplicationBootstrap {
       .finally(() => this.montando.delete(planId));
 
     return pendentes;
+  }
+
+  /**
+   * Recusa a montagem quando algum clipe estoura o teto de duração do bloco.
+   *
+   * Roda ANTES da cobrança porque é aqui que o erro é barato: um clipe acima
+   * do limite quase sempre é o vídeo inteiro subido no lugar do gancho, e cada
+   * peça do Multiplicador se repete em dezenas de combinações — deixar passar
+   * é debitar 150 créditos para produzir 150 vídeos que o vendedor vai jogar
+   * fora.
+   *
+   * Só o teto duro (`limite`) bloqueia. Estar fora da faixa ideal vira aviso na
+   * tela e nada mais: 4,2s de gancho pode ser exatamente o que o criativo pede.
+   */
+  private async conferirDuracoes(plan: CombinationPlan): Promise<void> {
+    const porBloco: [ClipRole, string[]][] = [
+      ['hook', plan.hookClipIds],
+      ['body', plan.bodyClipIds],
+      ['cta', plan.ctaClipIds],
+    ];
+    const ids = porBloco.flatMap(([, lista]) => lista);
+    if (!ids.length) return;
+
+    const clipes = await this.clips.find({
+      where: { id: In(ids), userId: plan.userId },
+    });
+    const porId = new Map(clipes.map((c) => [c.id, c]));
+
+    const problemas: string[] = [];
+    for (const [role, lista] of porBloco) {
+      lista.forEach((id, i) => {
+        const clip = porId.get(id);
+        if (!clip) return;
+        if (situacao(role, clip.durationMs) !== 'acima-do-limite') return;
+        problemas.push(
+          `${LETRA[role]}${i + 1} (${clip.label}) tem ${(clip.durationMs / 1000).toFixed(
+            1,
+          )}s — o limite do bloco é ${FAIXAS[role].limite}s`,
+        );
+      });
+    }
+
+    if (problemas.length) {
+      throw new ConflictException(
+        `Estes clipes são longos demais para o bloco em que estão: ${problemas.join(
+          '; ',
+        )}. Corte-os (o alvo é ${FAIXAS.hook.alvo}s de gancho, ${FAIXAS.body.alvo}s de corpo e ${FAIXAS.cta.alvo}s de CTA) e envie de novo.`,
+      );
+    }
   }
 
   /** Monta cada combinação em sequência, gravando o resultado linha a linha. */
