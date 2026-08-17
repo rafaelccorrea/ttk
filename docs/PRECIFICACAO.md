@@ -171,6 +171,7 @@ Piso com a margem mínima: R$ 0,084 por crédito.
 | Pro | mensal | 89,90 | 1.000 | 0,0899 | 1,50× |
 | Pro | anual | 899,90 | 10.400 | 0,0865 | **1,44×** |
 | Business | mensal | 249,90 | 2.800 | 0,0893 | 1,49× |
+| Business | anual | 2.499,90 | 28.800 | 0,0868 | 1,45× |
 | Starter (legado) | mensal | 49,90 | 500 | 0,0998 | 1,66× |
 
 O Pro anual é o item de menor folga da tabela inteira. Trate-o como o canário: qualquer mudança
@@ -204,6 +205,7 @@ Custo de referência: `LIVE_COST_PER_MINUTE_BRL = 0,043` → `liveCostPerHourBrl
 
 | Pacote | Horas | Minutos | Preço (R$) | R$/hora | Custo pior caso (R$) | Margem |
 |---|---:|---:|---:|---:|---:|---:|
+| `live-1h` | 1 | 60 | 11,90 | 11,90 | 2,58 | 4,61× |
 | `live-5h` | 5 | 300 | 49,90 | 9,98 | 12,90 | 3,87× |
 | `live-15h` | 15 | 900 | 129,90 | 8,66 | 38,70 | 3,36× |
 | `live-40h` | 40 | 2.400 | 299,90 | 7,50 | 103,20 | 2,91× |
@@ -214,6 +216,13 @@ alguém, gerando resposta em nome dele, com o suporte que isso implica quando al
 
 Dois testes travam a escada: nenhum pacote pode ser vendido abaixo de custo × 1,4, e
 **pacote maior nunca pode sair mais caro por hora** que um menor.
+
+**A avulsa de 1h é a mais cara por hora, e tem de ser.** Ela existe para um momento específico: o
+saldo acabou com a live no ar e o vendedor precisa de mais uma hora *agora*, não de um pacote de
+quarenta. Sem ela, a única saída no meio da transmissão é gastar R$ 49,90 de uma vez — e quem não
+quer isso simplesmente desliga o copiloto no meio da venda. Se ela saísse abaixo de R$ 9,98,
+cinco avulsas custariam menos que o pacote de 5h e o desconto de volume viraria pegadinha ao
+contrário; é exatamente isso que o teste da escada impede.
 
 ---
 

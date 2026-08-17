@@ -169,6 +169,20 @@ export interface LiveHourPack {
  * implica quando algo dá errado ao vivo.
  */
 export const LIVE_HOUR_PACKS: LiveHourPack[] = [
+  /*
+   * A hora avulsa é a mais CARA por hora, e tem de ser.
+   *
+   * Ela existe para um momento específico: o saldo acabou com a live no ar, e o
+   * vendedor precisa de mais uma hora agora — não de um pacote de quarenta. Sem
+   * ela, a única saída no meio da transmissão é comprar R$ 49,90 de uma vez, e
+   * quem não quer gastar isso simplesmente desliga o copiloto no meio da venda.
+   *
+   * O preço acima do pacote de 5h é o que mantém a escada de pé: se a avulsa
+   * saísse a R$ 9,00, cinco delas custariam menos que o pacote de 5h e o
+   * desconto de volume viraria pegadinha ao contrário. `assertProfitability` e o
+   * teste da escada derrubam qualquer valor que inverta isso.
+   */
+  { id: 'live-1h', name: '1 hora de live', hours: 1, priceBrl: 11.9 },
   { id: 'live-5h', name: '5 horas de live', hours: 5, priceBrl: 49.9 },
   { id: 'live-15h', name: '15 horas de live', hours: 15, priceBrl: 129.9 },
   { id: 'live-40h', name: '40 horas de live', hours: 40, priceBrl: 299.9 },
