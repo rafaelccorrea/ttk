@@ -241,6 +241,13 @@ export interface Plan {
   name: string;
   priceBrl: number; // mensal
   monthlyCredits: number;
+  /**
+   * Minutos de Live Copilot inclusos por mês. Ausente = nenhum.
+   *
+   * Separado de `monthlyCredits` porque são moedas que não se convertem: hora
+   * de live não vira crédito de IA nem o contrário. Ver `planLiveMinutes`.
+   */
+  monthlyLiveMinutes?: number;
   highlight?: boolean;
   perks: string[];
   offer?: PlanOffer;
@@ -255,6 +262,27 @@ export function planPrice(plan: Plan, cycle: BillingCycle = 'month'): number {
 /** Créditos liberados a cada cobrança do ciclo escolhido. */
 export function planCredits(plan: Plan, cycle: BillingCycle = 'month'): number {
   return cycle === 'year' ? (plan.annual?.credits ?? 0) : plan.monthlyCredits;
+}
+
+/**
+ * Minutos de live que o plano entrega a cada cobrança.
+ *
+ * Moeda separada da de créditos, então grandeza separada aqui — somar as duas
+ * num número só é justamente o erro que a arquitetura de duas carteiras existe
+ * para evitar.
+ *
+ * No anual entrega o ANO inteiro de uma vez (12 × o mensal), igual aos
+ * créditos. Minuto de live não expira, então adiantar não cria pressão de uso;
+ * e entregar mês a mês exigiria um cron de renovação que hoje não existe — o
+ * que na prática significaria um assinante anual sem hora nenhuma depois do
+ * primeiro mês.
+ */
+export function planLiveMinutes(
+  plan: Plan,
+  cycle: BillingCycle = 'month',
+): number {
+  const porMes = plan.monthlyLiveMinutes ?? 0;
+  return cycle === 'year' ? porMes * 12 : porMes;
 }
 
 /**
@@ -474,20 +502,26 @@ export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
   ai_videos: 'pro',
   multiplier: 'pro',
   /*
-   * Live Copilot é exclusivo do Business, e é o único recurso que não segue a
-   * régua de custo dos outros: ele custaria menos que vídeo com IA e ainda
-   * assim fica no degrau mais alto.
+   * O Live Copilot abre no PRO — mas só o modo painel.
    *
-   * O motivo é de risco, não de preço. É o único lugar do produto onde a gente
-   * escreve, em nome do vendedor, dentro da plataforma dele — com a conta dele
-   * exposta ao que o TikTok pensa de automação. Quem usa isso precisa de
-   * suporte de gente, não de um checkout de autoatendimento, e o Business é o
-   * único degrau que já vem com onboarding dedicado.
+   * A trava anterior era o Business inteiro, por RISCO e não por preço: o modo
+   * automático é o único lugar do produto em que escrevemos dentro da
+   * plataforma do vendedor, em nome dele, contra os Termos do TikTok. Quem leva
+   * o ban é ele, e isso pede o degrau que vem com suporte de gente.
    *
-   * Também é o que dá sentido ao bloco de cortesia: dez minutos grátis só
-   * existem porque quem chega aqui já é assinante do topo, não visitante.
+   * Esse argumento vale para o ENVIO, não para a leitura. O modo painel entrega
+   * o valor central — a resposta certa, na hora certa, com o preço certo — sem
+   * tocar no chat e sem risco nenhum de ToS. Prender o painel junto do envio era
+   * cobrar o degrau mais caro pela metade que não tem risco.
+   *
+   * Então a trava mudou de lugar, não desapareceu: aqui abre o painel para o
+   * Pro, e `trocarModo` (live-reply.service.ts) exige Business para o `auto`.
+   * Os dez minutos de cortesia passam a ser a PROVA do Pro — ele conhece o
+   * produto respondendo pelo painel e sobe para o Business quando quiser que o
+   * copiloto escreva sozinho. Um recurso que ninguém experimenta não vende o
+   * degrau de cima.
    */
-  live_copilot: 'business',
+  live_copilot: 'pro',
   // Campanhas é o construtor de anúncio em vídeo: persona + cenas animadas pelo
   // DoP. Acompanha `ai_videos` porque é o mesmo custo por trás.
   campaigns: 'pro',

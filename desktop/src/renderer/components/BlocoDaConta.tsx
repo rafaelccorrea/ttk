@@ -46,13 +46,29 @@ export function BlocoDaConta({
   const [sessao, setSessao] = useState<SessaoDesktop | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [saindo, setSaindo] = useState(false);
+  /**
+   * Se há uma transmissão no ar agora.
+   *
+   * Só existe para o aviso de que sair encerra a live. Avisar sempre seria
+   * gastar o alarme à toa: fora do ar, sair não custa nada, e um aviso que
+   * aparece quando não há risco é o que ensina o vendedor a ignorar o aviso que
+   * aparece quando há.
+   */
+  const [emLive, setEmLive] = useState(false);
 
   useEffect(() => {
     // A sessão é só para MOSTRAR de quem é a conta antes de sair dela. Se a
     // leitura falhar, o bloco ainda aparece com o botão: não saber o e-mail não
     // pode impedir alguém de deslogar.
-    if (!ponte) return;
+    if (!ponte) return undefined;
     void ponte.obterSessao().then(setSessao).catch(() => undefined);
+    void ponte
+      .obterConexao()
+      .then((c) => setEmLive(c.status === 'ativa' || c.status === 'pausada'))
+      .catch(() => undefined);
+    return ponte.aoMudarConexao((c) =>
+      setEmLive(c.status === 'ativa' || c.status === 'pausada'),
+    );
   }, [ponte]);
 
   if (!ponte) return null;
@@ -72,11 +88,23 @@ export function BlocoDaConta({
 
   const confirmacao = (
     <Stack spacing={1.25} sx={{ mt: 1.25 }}>
+      {/*
+        O texto precisa dizer as DUAS coisas que este botão faz, porque só uma
+        delas está no rótulo. Sair devolve o app à tela de ativação, que já
+        nasce pedindo um código novo — ou seja, este É o caminho de trocar de
+        conta, e quem procurava por isso não tinha como adivinhar que estava
+        atrás de um botão escrito "sair".
+      */}
       <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>
-        Sair encerra a live que estiver no ar e este computador precisará de um
-        código novo para entrar de novo. Seus minutos e suas bases não são
-        afetados.
+        Este computador se desconecta da conta e volta para a tela de ativação.
+        Para <strong>entrar com outra conta</strong>, é só aprovar o código novo
+        com ela. Seus minutos e suas bases não são afetados.
       </Typography>
+      {emLive ? (
+        <Typography variant="body2" sx={{ lineHeight: 1.55, color: cores.erro }}>
+          A live que está no ar vai ser encerrada.
+        </Typography>
+      ) : null}
       <Stack direction="row" spacing={1}>
         <Button
           size="small"
@@ -86,7 +114,7 @@ export function BlocoDaConta({
           disabled={saindo}
           startIcon={saindo ? <CircularProgress size={14} color="inherit" /> : null}
         >
-          {saindo ? 'Saindo…' : 'Sim, sair da conta'}
+          {saindo ? 'Saindo…' : 'Sair e trocar de conta'}
         </Button>
         <Button
           size="small"
@@ -166,15 +194,25 @@ export function BlocoDaConta({
       {confirmando ? (
         confirmacao
       ) : (
-        <Button
-          size="small"
-          variant="outlined"
-          color="inherit"
-          startIcon={<LogoutIcon sx={{ fontSize: 16 }} />}
-          onClick={() => setConfirmando(true)}
-        >
-          Sair da conta
-        </Button>
+        <Stack spacing={1} alignItems="flex-start">
+          <Button
+            size="small"
+            variant="outlined"
+            color="inherit"
+            startIcon={<LogoutIcon sx={{ fontSize: 16 }} />}
+            onClick={() => setConfirmando(true)}
+          >
+            Sair da conta
+          </Button>
+          {/*
+            Esta linha existe porque "trocar de conta" não é um botão separado —
+            é a consequência deste. Sem dizê-lo aqui, quem quer usar o app com
+            outra conta procura um item que não existe e conclui que não dá.
+          */}
+          <Typography variant="caption" color="text.secondary">
+            É por aqui que você troca de conta neste computador.
+          </Typography>
+        </Stack>
       )}
     </Box>
   );

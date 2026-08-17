@@ -559,6 +559,24 @@ export class StripeService implements OnModuleInit {
         stripeRef,
         `Plano ${plan.name} ${cycle === 'year' ? 'anual' : 'mensal'} — pago via Stripe`,
       );
+
+      /*
+       * As horas de live inclusas no plano, na carteira que é delas.
+       *
+       * Mesma `stripeRef` dos créditos, e isso é de propósito: a idempotência
+       * de cada moeda mora no extrato dela, com índice único sobre a
+       * referência (ver `grantLiveMinutes`). Um webhook reentregue pelo Stripe
+       * — que acontece — credita zero vezes a mais nos dois lados.
+       */
+      const minutos = planLiveMinutes(plan, cycle);
+      if (minutos > 0) {
+        await this.billing.grantLiveMinutes(
+          userId,
+          minutos,
+          stripeRef,
+          `Horas de live do plano ${plan.name} ${cycle === 'year' ? 'anual' : 'mensal'}`,
+        );
+      }
       this.logger.log(`Plano ${itemId} ativado para ${userId} (${stripeRef})`);
     }
   }

@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'node:crypto';
 import { Repository } from 'typeorm';
+import { PLAN_RANK } from '../billing/billing.config';
 import { BillingService } from '../billing/billing.service';
 import { AiCostService } from '../telemetry/ai-cost.service';
 import { killSwitchLigado } from './live-config.service';
@@ -1096,6 +1097,29 @@ export class LiveReplyService {
         );
       }
       const dono = await this.usuarios.findOneBy({ id: userId });
+
+      /*
+       * O envio automático continua exclusivo do Business, mesmo agora que o
+       * Pro alcança o copiloto.
+       *
+       * A razão nunca foi preço, foi risco: o modo automático é o único lugar
+       * do produto em que escrevemos DENTRO da plataforma do vendedor, em nome
+       * dele, contrariando os Termos do TikTok — e quem leva o ban é ele. Esse
+       * degrau é o que vem com suporte de gente do outro lado quando algo dá
+       * errado ao vivo.
+       *
+       * O Pro fica com o modo painel, que entrega o valor central (a resposta
+       * certa, na hora certa, com o preço certo) sem tocar no chat. É por isso
+       * que dar o copiloto ao Pro não afrouxa nada: o que ele ganha é a metade
+       * sem risco.
+       */
+      if ((PLAN_RANK[dono?.plan ?? 'free'] ?? 0) < PLAN_RANK.business) {
+        throw new HttpException(
+          'O envio automático no chat é exclusivo do plano Business. No seu plano o copiloto responde no painel, para você copiar ou falar em voz alta.',
+          403,
+        );
+      }
+
       if (!dono || !aceiteEstaVigente(dono)) {
         throw new HttpException(
           'Para o copiloto responder sozinho no chat você precisa aceitar o termo de risco: enviar comentários automaticamente contraria os Termos de Uso do TikTok e pode levar à suspensão da sua conta. Aceite o termo nas configurações e tente de novo.',

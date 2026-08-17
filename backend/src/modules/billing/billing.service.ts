@@ -570,6 +570,20 @@ export class BillingService implements OnModuleInit {
       plan.id,
       `Créditos ${cycle === 'year' ? 'anuais' : 'mensais'} do plano ${plan.name}`,
     );
+
+    // As horas de live que o plano inclui. Referência com timestamp porque no
+    // checkout de desenvolvimento a mesma pessoa assina o mesmo plano várias
+    // vezes seguidas, e a dedup por referência fixa entregaria minutos só na
+    // primeira — dando a impressão de que a concessão quebrou.
+    const minutos = planLiveMinutes(plan, cycle);
+    if (minutos > 0) {
+      await this.grantLiveMinutes(
+        userId,
+        minutos,
+        `dev:${plan.id}:${cycle}:${userId}:${Date.now()}`,
+        `Horas de live do plano ${plan.name} (checkout dev)`,
+      );
+    }
     return this.getWallet(userId);
   }
 
