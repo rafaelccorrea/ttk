@@ -53,24 +53,69 @@ export function CardDoApp({ paraQuem }: { paraQuem: 'lista' | 'detalhe' }) {
   const naoAssinado = info.disponivel && !info.assinado;
 
   return (
-    <Card sx={{ p: { xs: 2, md: 2.5 }, mb: 3 }}>
+    <Card
+      sx={{
+        position: 'relative',
+        overflow: 'hidden',
+        p: { xs: 2, md: 2.5 },
+        mb: 3,
+        // Uma faixa da marca na lateral: este card não é mais um item da lista,
+        // é a metade que falta do produto. Sem algum peso visual ele lê como
+        // banner e o olho pula direto para as bases.
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 3,
+          background: 'linear-gradient(180deg, #fe2c55 0%, #00c2bb 100%)',
+        },
+      }}
+    >
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         spacing={2}
         alignItems={{ md: 'center' }}
       >
-        <Box
-          sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            display: 'grid',
-            placeItems: 'center',
-            bgcolor: 'rgba(254,44,85,0.1)',
-            flexShrink: 0,
-          }}
-        >
-          <DesktopWindowsRoundedIcon sx={{ color: '#fe2c55' }} />
+        {/*
+          O LOGO, e não um ícone genérico de monitor.
+          Este card entrega um instalador: o que a pessoa vê aqui é o que ela
+          vai procurar na barra de tarefas depois, e um desenho de computador
+          não ajuda a reconhecer nada. O ícone do app é a própria arte abaixo.
+        */}
+        <Box sx={{ position: 'relative', flexShrink: 0, width: 48, height: 48 }}>
+          <Box
+            component="img"
+            src="/icon-192.png"
+            alt=""
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: 2.5,
+              display: 'block',
+              boxShadow: '0 6px 20px rgba(254,44,85,0.20)',
+            }}
+          />
+          {/* O selo de "isto é um programa de computador" fica como emblema no
+              canto: informa a plataforma sem tomar o lugar da marca. */}
+          <Box
+            sx={{
+              position: 'absolute',
+              right: -5,
+              bottom: -5,
+              width: 22,
+              height: 22,
+              borderRadius: '50%',
+              display: 'grid',
+              placeItems: 'center',
+              bgcolor: 'background.paper',
+              border: '1px solid',
+              borderColor: 'divider',
+            }}
+          >
+            <DesktopWindowsRoundedIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+          </Box>
         </Box>
 
         <Box sx={{ flex: 1, minWidth: 0 }}>

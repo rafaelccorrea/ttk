@@ -265,6 +265,7 @@ export function planCredits(plan: Plan, cycle: BillingCycle = 'month'): number {
  *   Pro             R$ 89,90 / 1.000 cr  = R$ 0,0899/cr → 1,50× o pior custo
  *   Pro anual       R$ 899,90 / 10.400 cr= R$ 0,0865/cr → 1,44× o pior custo
  *   Business        R$ 249,90 / 2.800 cr = R$ 0,0892/cr → 1,49× o pior custo
+ *   Business anual  R$ 2.499,90 / 28.800 cr = R$ 0,0868/cr → 1,45× o pior custo
  * O desconto de volume (e o anual) sai da margem, nunca do custo — é por isso
  * que a cota de créditos acompanha o preço, e não o contrário.
  */
@@ -302,13 +303,25 @@ export const PLANS: Plan[] = [
     name: 'Business',
     priceBrl: 249.9,
     monthlyCredits: 2800,
+    /*
+     * O anual do Business faltava, e a ausência era pior do que parece: é o
+     * plano mais caro, e quem chega nele é exatamente quem estaria disposto a
+     * pagar um ano adiantado. Oferecer desconto anual nos dois planos baratos e
+     * não no caro inverte a lógica da escada — e some com a única compra do
+     * catálogo que traz doze meses de caixa de uma vez.
+     *
+     * Mesma régua dos outros: dez mensalidades pelo ano, e a cota anual em
+     * ~0,86 da mensal × 12 (o desconto sai da margem, não do custo). Dá R$
+     * 0,0868 por crédito — acima do piso de R$ 0,084 e alinhado ao Pro anual
+     * (R$ 0,0865). Mexer nestes números sem refazer essa conta derruba o
+     * servidor no boot, em `assertProfitability`.
+     */
+    annual: { priceBrl: 2499.9, credits: 28800 },
     perks: [
-      '2.800 créditos/mês',
+      '2.800 créditos/mês (ou 28.800 no plano anual)',
       'Tudo do Pro',
-      // Só o que já está no ar. O copiloto respondendo o chat ao vivo tem preço
-      // e cortesia definidos (LIVE_HOUR_PACKS, LIVE_TRIAL_MINUTES), mas ainda
-      // não existe para o cliente — e perk é promessa de venda, não de roadmap.
-      'Live Copilot: a base de conhecimento da sua live (exclusivo)',
+      'Live Copilot: a IA responde o chat durante a sua live (exclusivo)',
+      `${LIVE_TRIAL_MINUTES} minutos de copiloto ao vivo para testar`,
       'Coleta de dados automatizada',
       'Onboarding dedicado',
       'Suporte prioritário',

@@ -230,3 +230,35 @@ describe('billing.config — horas de live', () => {
     expect(planAllows('business', 'live_copilot')).toBe(true);
   });
 });
+
+describe('catálogo de planos', () => {
+  it('oferece anual em TODOS os planos do catálogo', () => {
+    /*
+     * O Business ficou sem anual por esquecimento, e a falta era pior do que
+     * parece: é o plano mais caro, e quem chega nele é justamente quem pagaria
+     * um ano adiantado. Dar desconto anual nos dois baratos e não no caro
+     * inverte a escada — e some com a única compra do catálogo que traz doze
+     * meses de caixa de uma vez.
+     */
+    const semAnual = PLANS.filter((p) => !p.annual).map((p) => p.id);
+    expect(semAnual).toEqual([]);
+  });
+
+  it('mantém o anual mais barato por crédito que o mensal', () => {
+    // Se o anual sair mais caro por crédito, ele deixa de ser desconto e vira
+    // pegadinha — e o cliente que paga adiantado é o que menos merece isso.
+    for (const plano of PLANS) {
+      if (!plano.annual) continue;
+      const mensal = plano.priceBrl / plano.monthlyCredits;
+      const anual = plano.annual.priceBrl / plano.annual.credits;
+      expect(anual).toBeLessThan(mensal);
+    }
+  });
+
+  it('anuncia o Live Copilot só no Business', () => {
+    const comCopiloto = PLANS.filter((p) =>
+      p.perks.some((perk) => /copilot/i.test(perk)),
+    ).map((p) => p.id);
+    expect(comCopiloto).toEqual(['business']);
+  });
+});

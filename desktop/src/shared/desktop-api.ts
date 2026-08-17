@@ -44,6 +44,21 @@ export interface EstadoAtivacao {
   erro: string | null;
 }
 
+/**
+ * Onde está a atualização automática do app.
+ *
+ * `baixando` e `pronta` são estados de FUNDO: nada na tela bloqueia por causa
+ * deles, porque a instalação acontece quando o vendedor fechar o app. `falhou`
+ * existe para o rodapé e para o suporte, não para alarmar — ver
+ * `src/main/atualizador.ts`.
+ */
+export interface EstadoAtualizacao {
+  situacao: 'ociosa' | 'baixando' | 'pronta' | 'falhou';
+  /** A versão que está vindo, quando já se sabe qual é. */
+  versao: string | null;
+  erro: string | null;
+}
+
 /** Quem está logado, para o painel dizer em qual conta ele está. */
 export interface SessaoDesktop {
   email: string;
@@ -186,6 +201,14 @@ export interface PikPokDesktopApi {
   readonly sair: () => Promise<void>;
   /** Abre a URL no navegador do sistema (nunca numa janela do app). */
   readonly abrirNoNavegador: (url: string) => Promise<void>;
+
+  // ---------------------------------------------------------- atualização
+  readonly obterEstadoAtualizacao: () => Promise<EstadoAtualizacao>;
+  readonly aoMudarAtualizacao: (
+    ouvinte: (estado: EstadoAtualizacao) => void,
+  ) => () => void;
+  /** Fecha o app, aplica o pacote já baixado e reabre. Pedido pelo vendedor. */
+  readonly instalarAtualizacao: () => Promise<void>;
 
   // -------------------------------------------------------------- conexão
   readonly listarBases: () => Promise<BaseDeConhecimento[]>;

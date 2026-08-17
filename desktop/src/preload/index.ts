@@ -4,6 +4,7 @@ import type {
   CarteiraLive,
   ConfiguracoesCopiloto,
   EstadoAtivacao,
+  EstadoAtualizacao,
   EstadoConexao,
   EstadoEnvio,
   TermoDeEnvio,
@@ -78,6 +79,13 @@ const api: PikPokDesktopApi = {
   sair: () => ipcRenderer.invoke('sessao:sair') as Promise<void>,
   abrirNoNavegador: (url) =>
     ipcRenderer.invoke('app:abrirNoNavegador', url) as Promise<void>,
+
+  obterEstadoAtualizacao: () =>
+    ipcRenderer.invoke('atualizacao:obter') as Promise<EstadoAtualizacao>,
+  aoMudarAtualizacao: (ouvinte) =>
+    assinar<EstadoAtualizacao>('atualizacao:mudou', ouvinte),
+  instalarAtualizacao: () =>
+    ipcRenderer.invoke('atualizacao:instalar') as Promise<void>,
 
   listarBases: () =>
     ipcRenderer.invoke('live:bases') as Promise<BaseDeConhecimento[]>,

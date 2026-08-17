@@ -306,6 +306,30 @@ Ao abrir, o app pede o pareamento: mostra um código e abre o navegador em
 `APP_URL/ativar` (`APP_URL` mora no `.env` do backend). Aprove ali com uma conta
 de plano Business e o token volta para o app.
 
+### Publicar uma versão do desktop
+
+```bash
+cd desktop
+# a versão do package.json É o que o updater compara; suba-a antes de empacotar
+npm version patch
+GH_TOKEN=<token com acesso ao repo> npm run dist -- --publish always
+```
+
+O `publish` do `package.json` aponta para o repositório do GitHub, e é de lá que
+os apps instalados leem o `latest.yml`. **Sem `--publish`, o instalador sai mas
+o `latest.yml` não sobe — e quem já tem o app nunca fica sabendo que existe
+versão nova.**
+
+**A atualização nunca reinicia o app sozinha.** Ela baixa em segundo plano e é
+aplicada quando o vendedor FECHA o app; o painel só mostra uma linha no rodapé
+com um "reiniciar agora" opcional. A regra é a mesma de todo o resto aqui: este
+app fica aberto durante uma transmissão ao vivo, e um reinício automático no
+meio dela derruba a run e custa venda. Ver `src/main/atualizador.ts`.
+
+O instalador continua **sem assinatura de código** (§8): o Windows mostra o
+aviso do SmartScreen na primeira execução, e isso vale tanto para a instalação
+quanto para cada atualização entregue por aqui.
+
 A simulação é o que pega o que teste unitário não vê — ela já encontrou
 fragmentação do dedup em rajada, migration não aplicada e violação de FK na
 limpeza. Rode depois de mexer no motor.

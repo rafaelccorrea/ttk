@@ -383,26 +383,66 @@ export function LivePage() {
 
   return (
     <>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        alignItems={{ sm: 'center' }}
-        justifyContent="space-between"
-        spacing={1.5}
-        mb={0.5}
+      {/*
+       * O cabeçalho carrega o logo e o gradiente da marca porque esta é a porta
+       * de um produto que continua FORA do navegador: daqui a pessoa vai baixar
+       * um aplicativo e abri-lo no meio de uma transmissão. Quando ela vir a
+       * janela do app, tem que reconhecer que é a mesma coisa que viu aqui.
+       */}
+      <Box
+        sx={{
+          position: 'relative',
+          overflow: 'hidden',
+          borderRadius: 4,
+          p: { xs: 2.5, md: 3 },
+          mb: 3,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
+          backgroundImage:
+            'radial-gradient(70% 130% at 100% 0%, rgba(254,44,85,0.10) 0%, transparent 60%),' +
+            'radial-gradient(50% 100% at 0% 100%, rgba(0,194,187,0.07) 0%, transparent 60%)',
+        }}
       >
-        <Typography variant="h5">Copiloto de Live</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddRoundedIcon />}
-          onClick={() => setDialogo(true)}
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          alignItems={{ sm: 'center' }}
+          justifyContent="space-between"
+          spacing={2}
         >
-          Nova base
-        </Button>
-      </Stack>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Suba uma live que você já fez e transforme o que você falou ao vivo numa
-        base de conhecimento organizada dos seus produtos.
-      </Typography>
+          <Stack direction="row" spacing={1.75} alignItems="center" sx={{ minWidth: 0 }}>
+            <Box
+              component="img"
+              src="/icon-192.png"
+              alt=""
+              sx={{
+                width: 48,
+                height: 48,
+                borderRadius: 2.5,
+                flexShrink: 0,
+                boxShadow: '0 6px 22px rgba(254,44,85,0.22)',
+              }}
+            />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="h5" sx={{ lineHeight: 1.2 }}>
+                Copiloto de Live
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Suba uma live que você já fez e transforme o que você falou ao
+                vivo numa base de conhecimento dos seus produtos.
+              </Typography>
+            </Box>
+          </Stack>
+          <Button
+            variant="contained"
+            startIcon={<AddRoundedIcon />}
+            onClick={() => setDialogo(true)}
+            sx={{ flexShrink: 0, alignSelf: { xs: 'flex-start', sm: 'center' } }}
+          >
+            Nova base
+          </Button>
+        </Stack>
+      </Box>
 
       {erro && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -426,8 +466,32 @@ export function LivePage() {
       <HistoricoDeLives />
 
       {sessoes.length === 0 ? (
-        <Card sx={{ textAlign: 'center', py: { xs: 5, md: 8 }, px: 3 }}>
-          <HeadsetMicRoundedIcon sx={{ fontSize: 48, color: '#fe2c55', mb: 1.5 }} />
+        <Card
+          sx={{
+            textAlign: 'center',
+            py: { xs: 5, md: 8 },
+            px: 3,
+            borderStyle: 'dashed',
+            // Vazio não é erro: a moldura tracejada diz "aqui vai entrar
+            // alguma coisa" em vez de parecer um card que falhou ao carregar.
+            bgcolor: 'transparent',
+            '&:hover': { bgcolor: 'transparent' },
+          }}
+        >
+          <Box
+            sx={{
+              width: 72,
+              height: 72,
+              mx: 'auto',
+              mb: 2,
+              borderRadius: '50%',
+              display: 'grid',
+              placeItems: 'center',
+              bgcolor: 'rgba(254,44,85,0.08)',
+            }}
+          >
+            <HeadsetMicRoundedIcon sx={{ fontSize: 34, color: '#fe2c55' }} />
+          </Box>
           <Typography variant="h6" fontWeight={800} mb={1}>
             Sua live sabe tudo sobre seus produtos. Falta só anotar.
           </Typography>
@@ -453,8 +517,35 @@ export function LivePage() {
             const ui = STATUS_UI[sessao.status];
             return (
               <Grid item xs={12} md={6} key={sessao.id}>
-                <Card sx={{ height: '100%' }}>
-                  <CardActionArea onClick={() => navigate(`/copiloto/${sessao.id}`)}>
+                <Card
+                  sx={{
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    // Uma base pronta é a que o vendedor veio buscar — ela se
+                    // distingue por um fio verde na borda de cima, legível de
+                    // relance numa grade de oito cards. As em processamento
+                    // ficam neutras: não há nada a fazer com elas ainda.
+                    '&::before':
+                      sessao.status === 'pronta'
+                        ? {
+                            content: '""',
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: 2,
+                            bgcolor: 'success.main',
+                          }
+                        : undefined,
+                  }}
+                >
+                  <CardActionArea
+                    onClick={() => navigate(`/copiloto/${sessao.id}`)}
+                    sx={{ flex: 1, alignItems: 'flex-start' }}
+                  >
                     <CardContent>
                       <Stack
                         direction="row"
@@ -462,13 +553,18 @@ export function LivePage() {
                         justifyContent="space-between"
                         spacing={1}
                       >
-                        <Typography fontWeight={800} sx={{ flexGrow: 1 }}>
+                        <Typography fontWeight={800} sx={{ flexGrow: 1, lineHeight: 1.35 }}>
                           {sessao.title}
                         </Typography>
                         <StatusChip status={sessao.status} />
                       </Stack>
 
-                      <Typography variant="body2" color="text.secondary" mt={1}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        mt={1}
+                        sx={{ lineHeight: 1.55 }}
+                      >
                         {sessao.status === 'erro'
                           ? (sessao.errorMessage ?? ui.dica)
                           : ui.dica}

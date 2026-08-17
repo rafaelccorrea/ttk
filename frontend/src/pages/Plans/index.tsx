@@ -88,10 +88,11 @@ export function PlansPage() {
 
   async function goToCheckout(item: {
     packId?: string;
+    livePackId?: string;
     planId?: string;
     cycle?: BillingCycle;
   }) {
-    const id = item.packId ?? item.planId!;
+    const id = item.packId ?? item.livePackId ?? item.planId!;
     setBusy(id);
     setError(null);
     try {

@@ -11,6 +11,7 @@ import {
 import type { ConfiguracoesCopiloto } from '../shared/desktop-api';
 import type { LiveRunMode } from '../shared/live-events';
 import { Copiloto } from './copiloto';
+import { estadoDaAtualizacao, iniciarAtualizador, instalarAgora } from './atualizador';
 
 /**
  * Processo principal do copiloto ao vivo, em MODO SOMENTE-PAINEL.
@@ -201,19 +202,21 @@ function anexarTikTok(janela: BrowserWindow): void {
   // exatos em qualquer tamanho.
   janela.on('resize', posicionar);
   /*
-   * E DE NOVO NA HORA DE APARECER.
+   * E uma vez mais quando a janela vai à tela.
    *
-   * A janela é pedida com 1440x900, mas o Windows a encolhe para caber na tela
-   * (monitor menor, escala em 125%, barra de tarefas). Esse ajuste acontece
-   * depois do `posicionar()` de cima e nem sempre emite `resize`: a view fica
-   * com a largura do tamanho PEDIDO enquanto o painel se posiciona pelos 60% do
-   * tamanho REAL, e a diferença aparece como o TikTok invadindo a faixa do
-   * painel. Medir mais uma vez quando a janela vai à tela custa um cálculo e
-   * fecha o caso das telas pequenas, que são justamente as dos notebooks.
+   * A janela é PEDIDA com 1440x900, mas o Windows a entrega menor quando não
+   * cabe (monitor menor, escala em 125%, barra de tarefas) — aqui, 1426x779.
+   * Esse ajuste acontece depois do `posicionar()` de cima, e se ele não
+   * emitisse `resize` a view ficaria com a largura do tamanho pedido enquanto o
+   * painel se posiciona pelos 60% do tamanho real, com o TikTok invadindo a
+   * faixa do painel.
+   *
+   * Medido nesta máquina, o `resize` FOI emitido e os dois valores batem — ou
+   * seja, isto não corrige um defeito observado. Fica como uma linha de seguro
+   * barata contra a ordem inversa, que depende do gerenciador de janelas e não
+   * de nós; se algum dia sobrar, é uma chamada idempotente a mais.
    */
   janela.once('ready-to-show', posicionar);
-  janela.on('maximize', posicionar);
-  janela.on('unmaximize', posicionar);
 }
 
 /**
@@ -256,6 +259,9 @@ function registrarIpc(): void {
   ipcMain.handle('ativacao:iniciar', () => copiloto.iniciarAtivacao());
   ipcMain.handle('sessao:obter', () => copiloto.obterSessao());
   ipcMain.handle('sessao:sair', () => copiloto.sair());
+
+  ipcMain.handle('atualizacao:obter', () => estadoDaAtualizacao());
+  ipcMain.handle('atualizacao:instalar', () => instalarAgora());
 
   ipcMain.handle('live:bases', () => copiloto.listarBases());
   ipcMain.handle('live:carteira', () => copiloto.obterCarteiraLive());
@@ -342,11 +348,55 @@ function registrarAtalhoDePausa(): void {
   }
 }
 
+/**
+ * UMA JANELA POR MÁQUINA, E ISSO NÃO É PREFERÊNCIA DE INTERFACE.
+ *
+ * Duas instâncias deste app não são duas telas do mesmo programa — são dois
+ * copilotos completos, e cada um deles:
+ *
+ *  · abre a própria run e manda o próprio heartbeat, e o heartbeat é o que
+ *    DEBITA MINUTO da carteira. Duas instâncias esquecidas abertas consomem o
+ *    saldo em dobro, e o vendedor descobre pelo saldo zerado no meio da live;
+ *  · lê o mesmo chat e responde as mesmas perguntas — no modo automático, isso
+ *    é a mesma resposta postada duas vezes no chat de quem está assistindo,
+ *    que é exatamente o padrão que faz o TikTok tratar a conta como robô;
+ *  · escreve no mesmo `pikpok.json`. A última escrita ganha, e sair numa das
+ *    janelas apaga o token da outra.
+ *
+ * `requestSingleInstanceLock` devolve `false` para a SEGUNDA instância, que
+ * encerra na hora — antes do `whenReady`, portanto antes de existir janela,
+ * updater ou qualquer chamada ao backend. A primeira recebe `second-instance` e
+ * traz para a frente a janela que já existe, que é o que a pessoa queria ao
+ * clicar no ícone de novo.
+ */
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+}
+
+app.on('second-instance', () => {
+  const janela = janelaPrincipal;
+  if (!janela || janela.isDestroyed()) return;
+  // Minimizada, restaura; atrás de outra janela, sobe. Sem o `restore` o
+  // `focus` numa janela minimizada não faz nada visível no Windows, e o clique
+  // no ícone pareceria ter sido ignorado.
+  if (janela.isMinimized()) janela.restore();
+  janela.show();
+  janela.focus();
+});
+
 void app.whenReady().then(() => {
+  // A segunda instância já chamou `app.quit()` acima, mas o `whenReady` dela
+  // ainda resolveria e criaria a janela antes de o encerramento concluir.
+  if (!app.hasSingleInstanceLock()) return;
+
   registrarIpc();
   registrarAtalhoDePausa();
 
   janelaPrincipal = criarJanela();
+
+  // A janela vai por função: o `activate` do macOS abaixo pode recriá-la, e uma
+  // referência fixa deixaria o updater avisando uma janela já destruída.
+  iniciarAtualizador(() => janelaPrincipal);
 
   // No macOS o app segue vivo sem janela; clicar no dock reabre.
   app.on('activate', () => {

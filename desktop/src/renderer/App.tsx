@@ -2,6 +2,7 @@ import { Box, Stack, Tooltip, Typography, alpha } from '@mui/material';
 import { useCallback, useEffect, useState } from 'react';
 import type { EstadoConexao } from '@shared/desktop-api';
 import { Carregando } from './components/Estados';
+import { FaixaDeAtualizacao } from './components/FaixaDeAtualizacao';
 import { Logo } from './components/Logo';
 import { cores } from './theme/theme';
 import { obterPonte } from './ponte';
@@ -203,6 +204,8 @@ export function App(): JSX.Element {
           />
         )}
       </Box>
+
+      <FaixaDeAtualizacao />
 
       <Typography
         variant="caption"

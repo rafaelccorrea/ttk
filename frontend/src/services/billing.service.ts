@@ -80,7 +80,13 @@ export const billingService = {
   subscribe: (planId: string, cycle: BillingCycle = 'month') =>
     api.post<Wallet>('/billing/subscribe', { planId, cycle }).then((r) => r.data),
   // Stripe: cria a sessão e devolve a URL de pagamento.
-  checkout: (item: { packId?: string; planId?: string; cycle?: BillingCycle }) =>
+  checkout: (item: {
+    packId?: string;
+    /** Pacote de HORAS de live. Moeda separada — nunca vira crédito de IA. */
+    livePackId?: string;
+    planId?: string;
+    cycle?: BillingCycle;
+  }) =>
     api.post<{ url: string }>('/billing/checkout', item).then((r) => r.data),
   // Billing Portal do Stripe: cancelar, trocar cartão, baixar faturas.
   portal: () => api.post<{ url: string }>('/billing/portal').then((r) => r.data),
