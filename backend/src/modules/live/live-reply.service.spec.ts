@@ -16,6 +16,7 @@ import {
   normalizarTexto,
   truncarSeguro,
   valoresPermitidos,
+  sanitizarPerguntaDaBase,
   LiveReplyService,
 } from './live-reply.service';
 import { sanitizarHtml } from './live-config.service';
@@ -633,5 +634,60 @@ describe('realimentação da base', () => {
   it('recusa quando a pergunta já saiu pela retenção de 30 dias', async () => {
     const { servico } = servicoParaPromocao({ mensagem: null });
     await expect(servico.promoverParaBase('u1', 'r1')).rejects.toThrow();
+  });
+});
+
+describe('sanitização da pergunta que vira base', () => {
+  /*
+   * O chat some em 30 dias; a base não. Promover a pergunta de um espectador
+   * tira o dado dele do regime de retenção, torna-o permanente e ainda o manda
+   * à Anthropic no `system` de toda live seguinte. O que é identificável por
+   * FORMA precisa sair antes de atravessar essa porta.
+   */
+  it('remove e-mail, telefone, CPF, CEP, @ e link', () => {
+    expect(sanitizarPerguntaDaBase('manda pro maria@gmail.com')).toBe(
+      'manda pro [removido]',
+    );
+    expect(sanitizarPerguntaDaBase('meu zap (11) 98765-4321')).toBe(
+      'meu zap [removido]',
+    );
+    expect(sanitizarPerguntaDaBase('cpf 123.456.789-00 ok?')).toBe(
+      'cpf [removido] ok?',
+    );
+    expect(sanitizarPerguntaDaBase('meu cep 01310-100, chega?')).toBe(
+      'meu cep [removido], chega?',
+    );
+    expect(sanitizarPerguntaDaBase('fala com @lojadaana')).toBe(
+      'fala com [removido]',
+    );
+    expect(sanitizarPerguntaDaBase('vi em https://x.com/abc')).toBe(
+      'vi em [removido]',
+    );
+  });
+
+  it('NÃO apaga número solto — é o que a base existe para responder', () => {
+    /*
+     * O erro oposto é tão ruim quanto: varrer dígitos por precaução destruiria
+     * "tem o de 1299?" e "quanto custa o kit de 3", que são exatamente as
+     * perguntas que a base precisa casar nas próximas lives.
+     */
+    expect(sanitizarPerguntaDaBase('tem o de 1299?')).toBe('tem o de 1299?');
+    expect(sanitizarPerguntaDaBase('quanto custa o kit de 3')).toBe(
+      'quanto custa o kit de 3',
+    );
+    expect(sanitizarPerguntaDaBase('sai por 89,90 mesmo?')).toBe(
+      'sai por 89,90 mesmo?',
+    );
+  });
+
+  it('mantém a pergunta legível para o trigrama continuar casando', () => {
+    // A entrada da base ainda precisa casar com a mesma dúvida na live que vem.
+    expect(sanitizarPerguntaDaBase('  chega   quando  em   SP? ')).toBe(
+      'chega quando em SP?',
+    );
+  });
+
+  it('aguenta texto vazio sem explodir', () => {
+    expect(sanitizarPerguntaDaBase('')).toBe('');
   });
 });

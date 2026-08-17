@@ -42,6 +42,42 @@ const LIMIAR_SIMILARIDADE = 0.65;
 const LIMIAR_FAQ_PARECIDA = 0.8;
 
 /**
+ * Limpa a pergunta antes de ela virar linha PERMANENTE da base.
+ *
+ * O chat tem retenção de 30 dias (`expurgarChatAntigo` apaga o texto). A base de
+ * conhecimento não tem — ela é do vendedor e vive enquanto ele quiser. Promover
+ * a pergunta de um espectador para dentro dela é tirar um dado de terceiro do
+ * regime de retenção e torná-lo permanente, e ainda mandá-lo à Anthropic no
+ * `system` de TODA live seguinte, para sempre. É pouco provável e é caro: basta
+ * um "meu CEP é 01310-100, chega?" ou "sou a Maria do pedido 4432" para um dado
+ * pessoal entrar na base e não sair mais.
+ *
+ * O que sai é só o que é identificável por FORMA — e-mail, telefone, CPF, CEP,
+ * @ e URL. Números soltos ficam: "tem o de 1299?" é uma pergunta sobre preço, e
+ * apagar dígitos por precaução destruiria justamente as perguntas que a base
+ * existe para responder.
+ *
+ * A pergunta continua legível porque ela ainda precisa casar por trigrama com as
+ * perguntas das próximas lives — trocar por `[removido]` mantém o texto útil e
+ * deixa a remoção visível para quem revisar a base.
+ */
+export function sanitizarPerguntaDaBase(texto: string): string {
+  return (texto ?? '')
+    // E-mail antes do @ solto: o @ do e-mail não é menção a perfil.
+    .replace(/\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, '[removido]')
+    .replace(/https?:\/\/\S+|\bwww\.\S+/gi, '[removido]')
+    // CPF com ou sem pontuação.
+    .replace(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g, '[removido]')
+    // CEP: exige o hífen ou os 8 dígitos seguidos, para não pegar preço.
+    .replace(/\b\d{5}-\d{3}\b/g, '[removido]')
+    // Telefone brasileiro, com DDD entre parênteses ou não.
+    .replace(/(?:\(\d{2}\)\s?|\b\d{2}\s)?\d{4,5}-?\d{4}\b/g, '[removido]')
+    .replace(/@[A-Za-z0-9._]{2,}/g, '[removido]')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/**
  * Quantas irmãs, no máximo, voltam da consulta de cluster.
  *
  * É teto de resultado, não janela: quem delimita o que é "recente" é
@@ -956,7 +992,7 @@ export class LiveReplyService {
       );
     }
 
-    const pergunta = mensagem.text.trim();
+    const pergunta = sanitizarPerguntaDaBase(mensagem.text);
     const texto = (textoEditado ?? resposta.text).trim();
     if (!texto) {
       throw new HttpException('A resposta não pode ficar vazia.', 400);

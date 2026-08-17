@@ -132,6 +132,21 @@ porque `R$ 99`, `99 reais` e `99,00` são o mesmo valor.
 ### Nada de link ou menção
 Gatilho clássico de anti-spam, e quase sempre sinal de conteúdo copiado do chat.
 
+### O que entra na base é limpo antes
+`sanitizarPerguntaDaBase` — `live-reply.service.ts`
+
+O chat tem retenção de 30 dias; a base de conhecimento **não tem**. Promover a
+pergunta de um espectador para dentro dela tira aquele dado do regime de
+retenção, torna-o permanente e ainda o manda no `system` de toda live seguinte.
+Basta um "meu CEP é 01310-100, chega?" para um dado pessoal entrar na base e não
+sair mais.
+
+Sai o que é identificável por **forma** — e-mail, telefone, CPF, CEP, @ e URL.
+Número solto FICA: "tem o de 1299?" é pergunta de preço, e varrer dígitos por
+precaução destruiria justamente as perguntas que a base existe para responder. O
+texto continua legível porque ainda precisa casar por trigrama com a mesma
+dúvida nas próximas lives.
+
 ### Nenhum dado de espectador sai da máquina
 O `@` vira `sha256(username + runId + salt)`, com salt por execução — sha256 de um
 `@` sozinho é quebrável, o espaço de nomes do TikTok é público e finito. O texto
@@ -182,9 +197,12 @@ Mesma trava no Multiplicador: o clipe é de graça, a montagem é que custa — 
 subir dezenas de vídeos com a carteira zerada termina em 402 com a curadoria
 toda já feita.
 
-Exclusivo do plano **Business** — e a razão não é preço, é risco: é o único lugar
+O **Pro** alcança o copiloto no modo painel, com os 10 minutos de cortesia — é a
+prova que vende o degrau de cima. O **Business** inclui 5 horas por mês e é o
+único com **envio automático**, e a razão não é preço, é risco: é o único lugar
 do produto onde escrevemos em nome do vendedor, dentro da plataforma dele. Isso
-pede o degrau que já vem com suporte de gente.
+pede o degrau que já vem com suporte de gente. A trava do envio vive em
+`trocarModo`, não no gate de feature.
 
 ---
 

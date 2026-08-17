@@ -170,9 +170,23 @@ Piso com a margem mínima: R$ 0,084 por crédito.
 | Essencial | anual | 399,90 | 4.600 | 0,0869 | 1,45× |
 | Pro | mensal | 89,90 | 1.000 | 0,0899 | 1,50× |
 | Pro | anual | 899,90 | 10.400 | 0,0865 | **1,44×** |
-| Business | mensal | 249,90 | 2.800 | 0,0893 | 1,49× |
-| Business | anual | 2.499,90 | 28.800 | 0,0868 | 1,45× |
+| Business | mensal | 269,90 | 2.800 + 5h de live | 0,0786¹ | 1,49× |
+| Business | anual | 2.699,90 | 28.800 + 60h de live | 0,0781¹ | 1,43× |
 | Starter (legado) | mensal | 49,90 | 500 | 0,0998 | 1,66× |
+
+¹ **O Business vende duas moedas, então o R$/crédito dele é líquido.** Desde que o plano passou a
+incluir 5 horas de live, dividir o preço cheio pelos créditos dá um número sem sentido — pelo
+bruto o Business sai a R$ 0,0964/crédito, *mais caro* que o Pro, como se o degrau de cima fosse o
+pior negócio. A conta certa desconta o que as horas valem sozinhas (o pacote de 5h, R$ 49,90) e
+olha o que sobra: R$ 0,0786, que é o desconto de volume de sempre. O teste
+`cobra mais caro por crédito no plano menor` faz exatamente essa conta.
+
+As horas inclusas também entram em `assertProfitability()` — o custo delas
+(`minutos × LIVE_COST_PER_MINUTE_BRL`) soma ao dos créditos na checagem do plano. Sem isso, o dia
+em que o Business ganhou 5 horas teria passado batido: o servidor subiria anunciando 1,49× de
+margem quando a real já era 1,38×. Foi essa conta que obrigou o preço a ir de R$ 249,90 para
+R$ 269,90 — e a alternativa (manter o preço e cortar 200 créditos) seria um downgrade silencioso
+em quem já assinava.
 
 O Pro anual é o item de menor folga da tabela inteira. Trate-o como o canário: qualquer mudança
 de custo que ameace 1,4 aparece nele primeiro.
