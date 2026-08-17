@@ -43,6 +43,15 @@ const KIND_LABEL: Record<string, string> = {
   refund: 'Estorno',
 };
 
+/** "2h30" ou "45 min" — hora cheia só quando é hora cheia. */
+function formatarSaldoDeLive(minutos: number): string {
+  if (minutos <= 0) return 'nenhuma hora';
+  if (minutos < 60) return `${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  const resto = minutos % 60;
+  return resto === 0 ? `${horas}h` : `${horas}h${String(resto).padStart(2, '0')}`;
+}
+
 export function PlansPage() {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -105,6 +114,7 @@ export function PlansPage() {
   }
 
   const buyPack = (packId: string) => goToCheckout({ packId });
+  const buyLivePack = (livePackId: string) => goToCheckout({ livePackId });
   const subscribe = (planId: string) => goToCheckout({ planId, cycle });
 
   if (!wallet && !error) return <BrandLoader label="Carregando sua carteira..." />;
@@ -281,8 +291,70 @@ export function PlansPage() {
         })}
       </Grid>
 
+      {/*
+       * As HORAS DE LIVE, que são a segunda moeda do produto.
+       *
+       * Ficam num bloco próprio, e não junto dos pacotes de crédito, porque as
+       * duas moedas NÃO se convertem: crédito paga o que se pede item a item
+       * (roteiro, imagem, a base da live), hora paga o tempo com o copiloto
+       * ligado no ar. Listadas lado a lado, a leitura natural seria que uma vira
+       * a outra — e o vendedor compraria crédito achando que está comprando
+       * tempo de live, descobrindo o contrário no meio da transmissão.
+       *
+       * O bloco só aparece para quem tem o recurso: oferecer hora de copiloto a
+       * quem não pode usá-lo é vender o que não funciona.
+       */}
+      {wallet?.features?.live_copilot && wallet.liveCopilot && (
+        <>
+          <Typography variant="h6" mb={0.5}>
+            Horas de Live Copilot
+          </Typography>
+          <Typography variant="body2" color="text.secondary" mb={1.5}>
+            O tempo com o copiloto ligado respondendo o chat da sua transmissão.
+            É uma moeda separada — <strong>não sai dos seus créditos de IA</strong>{' '}
+            e não expira.
+            {wallet.liveCopilot.trialAvailable
+              ? ` Você ainda tem ${wallet.liveCopilot.trialMinutes} minutos de cortesia para testar antes de comprar.`
+              : ` Saldo atual: ${formatarSaldoDeLive(wallet.liveCopilot.minutes)}.`}
+          </Typography>
+          <Grid container spacing={2} mb={4}>
+            {wallet.liveCopilot.packs.map((pack) => {
+              // O preço por hora é o que torna os pacotes comparáveis. Sem ele,
+              // "40 horas por R$ 299,90" é um número grande sem referência, e o
+              // desconto de volume que existe de verdade não aparece.
+              const porHora = pack.priceBrl / pack.hours;
+              return (
+                <Grid item xs={12} sm={4} key={pack.id}>
+                  <Card sx={{ height: '100%' }}>
+                    <CardContent>
+                      <Typography fontWeight={800} variant="h6">
+                        {pack.hours}h
+                      </Typography>
+                      <Typography fontWeight={700} color="text.primary">
+                        R$ {pack.priceBrl.toFixed(2).replace('.', ',')}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" mb={1.5}>
+                        R$ {porHora.toFixed(2).replace('.', ',')} por hora
+                      </Typography>
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        disabled={busy === pack.id}
+                        onClick={() => buyLivePack(pack.id)}
+                      >
+                        {busy === pack.id ? 'Comprando...' : 'Comprar horas'}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+        </>
+      )}
+
       <Typography variant="h6" mb={1.5}>
-        Pacotes avulsos
+        Pacotes avulsos de créditos
       </Typography>
       <Grid container spacing={2} mb={4}>
         {packs.map((pack) => (
