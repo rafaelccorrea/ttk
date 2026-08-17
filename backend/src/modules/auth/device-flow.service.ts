@@ -62,6 +62,24 @@ export class DeviceFlowService {
     const appUrl = this.config
       .get('APP_URL', 'http://localhost:5173')
       .replace(/\/$/, '');
+    /*
+     * O padrão de `localhost` é conveniência de quem desenvolve, e em produção
+     * ele é uma armadilha silenciosa: o app instalado abriria o navegador do
+     * cliente em `http://localhost:5173/ativar`, que na máquina dele não existe.
+     * O pareamento morre ali, sem erro em lugar nenhum — o backend respondeu
+     * 200, o app fez o que mandaram, e a página simplesmente não carrega.
+     *
+     * Então em produção a ausência de APP_URL é falha de configuração, e falha
+     * de configuração se anuncia na primeira chamada, não no primeiro cliente.
+     */
+    if (
+      process.env.NODE_ENV === 'production' &&
+      /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(appUrl)
+    ) {
+      throw new Error(
+        'APP_URL não está configurada: o app desktop receberia um endereço de pareamento que só existe na máquina do servidor.',
+      );
+    }
     return `${appUrl}/ativar`;
   }
 

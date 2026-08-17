@@ -29,6 +29,33 @@ import { Copiloto } from './copiloto';
 /** Fatia da largura da janela que fica com o TikTok. */
 const FRACAO_TIKTOK = 0.6;
 
+/**
+ * O ícone do app — a mesma arte que o site usa como favicon.
+ *
+ * Ele resolve DOIS lugares que não são a janela: a barra de tarefas do Windows
+ * e o Alt+Tab. Sem isto o Electron mostra o seu próprio átomo cinza, e um app
+ * que o vendedor deixa aberto a live inteira aparece na barra dele como se
+ * fosse outro programa qualquer.
+ *
+ * Empacotado o arquivo vai para `resources/`; em desenvolvimento ele é lido do
+ * repositório. `app.isPackaged` separa os dois — `__dirname` aponta para
+ * `out/main` nos dois casos e sozinho não distingue nada.
+ */
+const CAMINHO_ICONE = app.isPackaged
+  ? join(process.resourcesPath, 'icon.png')
+  : join(__dirname, '../../resources/icon.png');
+
+/**
+ * Identidade do app para o Windows.
+ *
+ * Sem um AppUserModelID próprio, o Windows agrupa a janela sob o ID genérico
+ * do Electron: o ícone da barra de tarefas volta a ser o átomo, fixar o app na
+ * barra fixa o Electron em vez do PikPok, e notificações saem sem remetente.
+ * Precisa ser o mesmo `appId` do electron-builder, senão a versão instalada e
+ * a janela em execução viram duas entradas separadas na barra.
+ */
+if (process.platform === 'win32') app.setAppUserModelId('com.pikpok.desktop');
+
 const LARGURA_INICIAL = 1440;
 const ALTURA_INICIAL = 900;
 
@@ -53,10 +80,14 @@ function criarJanela(): BrowserWindow {
     minWidth: 1100,
     minHeight: 700,
     title: 'PikPok Copiloto',
+    icon: CAMINHO_ICONE,
     // Só aparece quando o conteúdo já pintou: abrir a janela em branco e
     // preenchê-la depois lê como travamento.
     show: false,
-    backgroundColor: '#fafafa',
+    // O mesmo preto do fundo do painel: é ele que fica no lugar do conteúdo
+    // enquanto a janela pinta e enquanto o usuário redimensiona. Um flash
+    // branco antes de um app escuro é o detalhe que denuncia o Electron.
+    backgroundColor: '#0b0c10',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       // NÃO NEGOCIÁVEL — ver o comentário longo em src/preload/index.ts.
@@ -211,6 +242,11 @@ function registrarIpc(): void {
   );
   ipcMain.handle('live:copiarTexto', (_evento, texto: string) =>
     copiloto.copiarTexto(texto),
+  );
+  ipcMain.handle(
+    'live:salvarNaBase',
+    (_evento, dados: { replyId: string; texto?: string }) =>
+      copiloto.salvarNaBase(dados.replyId, dados.texto),
   );
   ipcMain.handle(
     'live:resolverEscalacao',

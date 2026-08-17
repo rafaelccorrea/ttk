@@ -18,6 +18,7 @@ import { BillingService } from '../billing/billing.service';
 import { AiService, ProdutoExtraido } from '../studio/ai.service';
 import { TranscriptionService } from '../studio/transcription.service';
 import { AudioChunkerService, FatiaDeAudio } from './audio-chunker.service';
+import { lerCatalogo } from './csv';
 import {
   AtualizarFaqDto,
   AtualizarProdutoDto,
@@ -69,6 +70,27 @@ const MAX_CHARS_POR_BLOCO = 60_000;
  * tentar de novo em vez de degradar a instância para todo mundo.
  */
 const MAX_PIPELINES_SIMULTANEOS = 2;
+
+/**
+ * Teto de produtos por importação.
+ *
+ * A base inteira vai no `system` do prompt a cada lote do chat — é isso que
+ * torna o cache viável e a latência baixa (ver `LIVE-COPILOT.md` §4). Uma
+ * planilha de cinco mil SKUs não é um catálogo grande, é um prompt que não cabe:
+ * ela encareceria toda resposta da live e derrubaria o cache. Quinhentos cobre
+ * com folga o que um vendedor mostra numa transmissão.
+ */
+const MAX_PRODUTOS_POR_IMPORTACAO = 500;
+
+/** Chave de comparação de nome: sem acento, sem caixa, sem espaço dobrado. */
+function chaveDeNome(nome: string): string {
+  return nome
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 /**
  * De quanto em quanto tempo o pipeline vivo assina presença no banco.
@@ -236,6 +258,28 @@ export class LiveService {
         );
       }
 
+      /*
+       * O saldo é conferido AQUI, e o débito continua lá dentro.
+       *
+       * A duração — que é o que define o preço — só existe depois do ffmpeg, e
+       * é por isso que a cobrança real mora no pipeline. Mas quem tem zero
+       * crédito não precisa de duração nenhuma para saber a resposta: sem esta
+       * conferida, o vendedor sobe a gravação inteira, espera a extração do
+       * áudio e recebe o "créditos insuficientes" só no fim, com a sessão
+       * marcada como 'erro' — e a leitura natural disso é que a gravação dele
+       * tinha defeito, não que faltava saldo.
+       *
+       * O piso é o menor envio possível: um bloco de transcrição mais a
+       * extração. Ele não promete que o arquivo cabe no saldo (uma live de 4h
+       * custa muito mais), só recusa quem não passaria nem no mínimo. O teto
+       * verdadeiro segue sendo o `charge` do pipeline, que é atômico e conhece
+       * a duração — e cujo estorno já está coberto por `estornarPendentes`.
+       */
+      await this.billing.assertSaldo(userId, [
+        { action: 'transcribe', quantidade: 1 },
+        { action: 'live_extract', quantidade: 1 },
+      ]);
+
       sessao.status = 'transcrevendo';
       sessao.processingStartedAt = new Date();
       sessao.errorMessage = null;
@@ -305,11 +349,23 @@ export class LiveService {
            * Com o débito anotado em `pendingTranscribeBlocks`, o estorno passa
            * a ser possível tanto no `catch` daqui quanto no cron.
            */
-          await this.billing.charge(userId, 'transcribe', blocosCobrados);
-          await this.sessoes.update(
-            { id: sessionId, userId },
-            { pendingTranscribeBlocks: blocosCobrados },
-          );
+          /*
+           * Débito e marcador na MESMA transação.
+           *
+           * Separados, existia uma janela em que o processo podia morrer com o
+           * crédito debitado e nenhum marcador escrito — e o estorno, tanto o
+           * do `catch` aqui quanto o do cron, procura exatamente pelo marcador.
+           * Sem ele o crédito sumia sem rastro, e quem pagava por um restart
+           * nosso era o cliente. Agora as duas escritas entram e saem juntas.
+           */
+          await this.sessoes.manager.transaction(async (m) => {
+            await this.billing.charge(userId, 'transcribe', blocosCobrados, m);
+            await m.update(
+              LiveSession,
+              { id: sessionId, userId },
+              { pendingTranscribeBlocks: blocosCobrados },
+            );
+          });
 
           const trechos = await this.transcreverFatias(fatias);
 
@@ -330,11 +386,15 @@ export class LiveService {
             },
           );
 
-          await this.billing.charge(userId, 'live_extract');
-          await this.sessoes.update(
-            { id: sessionId, userId },
-            { pendingExtractCharge: true },
-          );
+          // Mesma transação, mesmo motivo do débito da transcrição acima.
+          await this.sessoes.manager.transaction(async (m) => {
+            await this.billing.charge(userId, 'live_extract', 1, m);
+            await m.update(
+              LiveSession,
+              { id: sessionId, userId },
+              { pendingExtractCharge: true },
+            );
+          });
 
           const base = await this.extrairBase(trechos);
           if (!base.produtos.length && !base.faq.length) {
@@ -615,6 +675,111 @@ export class LiveService {
   }
 
   // --------------------------------------------------------------- produtos
+  /**
+   * Importa o catálogo de um CSV para dentro da base.
+   *
+   * Existe porque a extração da gravação só conhece o que foi FALADO na live —
+   * e o vendedor mostra vinte itens numa transmissão enquanto tem duzentos na
+   * loja. O chat pergunta pelos duzentos. Sem import, encher a base é digitar
+   * item por item, e ninguém digita duzentos.
+   *
+   * (O plano previa import direto do TikTok Shop. A API oficial exige aprovação
+   * de seller que não depende de nós, e o CSV é o caminho que já resolve hoje:
+   * o Shop exporta o catálogo em planilha.)
+   *
+   * O nome é a CHAVE: reimportar a planilha atualizada corrige os preços em vez
+   * de duplicar a base. Sem isso, a segunda importação deixaria dois "Kit Glow"
+   * com preços diferentes e o copiloto escolhendo entre eles — que é o mesmo que
+   * anunciar preço aleatório ao vivo.
+   */
+  async importarCatalogo(
+    userId: string,
+    sessionId: string,
+    conteudo: Buffer,
+  ): Promise<{
+    criados: number;
+    atualizados: number;
+    ignoradas: Array<{ linha: number; motivo: string }>;
+  }> {
+    await this.acharSessao(userId, sessionId);
+
+    const { produtos, ignoradas } = lerCatalogo(
+      conteudo.toString('utf8'),
+      MAX_PRODUTOS_POR_IMPORTACAO,
+    );
+    if (!produtos.length) {
+      throw new BadRequestException(
+        ignoradas.length
+          ? `Nenhum produto pôde ser lido. Confira se a planilha tem uma coluna de nome. (${ignoradas[0].motivo})`
+          : 'A planilha está vazia ou não tem uma coluna de nome de produto.',
+      );
+    }
+
+    const existentes = await this.produtos.find({
+      where: { userId, liveSessionId: sessionId },
+    });
+    // Comparação sem acento e sem caixa: "Sérum" e "serum" são o mesmo item, e
+    // tratá-los como dois é justamente o que a chave por nome vem evitar.
+    const porNome = new Map(
+      existentes.map((p) => [chaveDeNome(p.name), p] as const),
+    );
+
+    let criados = 0;
+    let atualizados = 0;
+
+    for (const importado of produtos) {
+      const chave = chaveDeNome(importado.name);
+      const atual = porNome.get(chave);
+
+      if (atual) {
+        /*
+         * Célula vazia não apaga o que já existe. A planilha do vendedor
+         * costuma trazer só nome e preço; se a ausência de "frete" zerasse o
+         * frete cadastrado, importar para corrigir um preço destruiria o resto
+         * da base em silêncio.
+         */
+        atual.priceBrl =
+          importado.priceBrl === null
+            ? atual.priceBrl
+            : importado.priceBrl.toFixed(2);
+        if (importado.variants.length) atual.variants = importado.variants;
+        if (importado.shippingInfo) atual.shippingInfo = importado.shippingInfo;
+        if (importado.promo) atual.promo = importado.promo;
+        if (importado.aliases.length) atual.aliases = importado.aliases;
+        atual.origin = 'catalogo';
+        // O que veio da planilha é fato conferido, não palpite do modelo: a
+        // nota de confiança da IA deixa de valer e some.
+        atual.confidence = null;
+        await this.produtos.save(atual);
+        atualizados++;
+        continue;
+      }
+
+      const novo = await this.produtos.save(
+        this.produtos.create({
+          userId,
+          liveSessionId: sessionId,
+          name: importado.name,
+          priceBrl:
+            importado.priceBrl === null ? null : importado.priceBrl.toFixed(2),
+          variants: importado.variants,
+          shippingInfo: importado.shippingInfo,
+          promo: importado.promo,
+          aliases: importado.aliases,
+          confidence: null,
+          origin: 'catalogo',
+          active: true,
+        }),
+      );
+      // Alimenta o mapa: uma planilha com o mesmo nome em duas linhas atualiza
+      // a primeira em vez de gravar duas.
+      porNome.set(chave, novo);
+      criados++;
+    }
+
+    return { criados, atualizados, ignoradas };
+  }
+
   async criarProduto(userId: string, sessionId: string, dto: CriarProdutoDto) {
     await this.acharSessao(userId, sessionId);
     return this.produtos.save(

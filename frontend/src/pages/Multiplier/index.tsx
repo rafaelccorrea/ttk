@@ -59,6 +59,7 @@ import {
   useState,
 } from 'react';
 import { resolveApiUrl } from '@/services/api';
+import { mensagemDeErro } from '@/services/erros';
 import {
   ClipRole,
   Combination,
@@ -851,7 +852,7 @@ function DialogDeResultado({
       onSalvo();
     } catch (err) {
       onErro(
-        err instanceof Error ? err.message : 'Não foi possível salvar o resultado.',
+        mensagemDeErro(err, 'Não foi possível salvar o resultado.'),
       );
     } finally {
       setSalvando(false);
@@ -1442,7 +1443,7 @@ function Galeria({
       onRecarregar();
     } catch (err) {
       setErroDescarte(
-        err instanceof Error ? err.message : 'Não foi possível mover o vídeo.',
+        mensagemDeErro(err, 'Não foi possível mover o vídeo.'),
       );
     }
   }
@@ -1458,7 +1459,7 @@ function Galeria({
       setVisao('pasta');
     } catch (err) {
       setErroDescarte(
-        err instanceof Error ? err.message : 'Não foi possível criar a pasta.',
+        mensagemDeErro(err, 'Não foi possível criar a pasta.'),
       );
     }
   }
@@ -1471,7 +1472,7 @@ function Galeria({
       onRecarregar();
     } catch (err) {
       setErroDescarte(
-        err instanceof Error ? err.message : 'Não foi possível apagar a pasta.',
+        mensagemDeErro(err, 'Não foi possível apagar a pasta.'),
       );
     }
   }
@@ -1485,7 +1486,7 @@ function Galeria({
     } catch (err) {
       setDescartados((prev) => prev.filter((id) => id !== video.id));
       setErroDescarte(
-        err instanceof Error ? err.message : 'Não foi possível descartar o vídeo.',
+        mensagemDeErro(err, 'Não foi possível descartar o vídeo.'),
       );
     }
   }
@@ -2046,7 +2047,7 @@ export function MultiplierPage() {
         setClips((prev) => [...prev, clip]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao enviar o vídeo');
+      setError(mensagemDeErro(err, 'Falha ao enviar o vídeo'));
     } finally {
       setEnviando(null);
     }
@@ -2060,7 +2061,7 @@ export function MultiplierPage() {
       await combinationsService.deleteClip(id);
     } catch (err) {
       setClips(anterior);
-      setError(err instanceof Error ? err.message : 'Falha ao remover o vídeo');
+      setError(mensagemDeErro(err, 'Falha ao remover o vídeo'));
     }
   }
 
@@ -2088,7 +2089,7 @@ export function MultiplierPage() {
       // "Gerar" e continuaria olhando para o formulário que já resolveu.
       setEtapa(2);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao gerar combinações');
+      setError(mensagemDeErro(err, 'Falha ao gerar combinações'));
     } finally {
       setBusy(false);
     }
@@ -2136,7 +2137,7 @@ export function MultiplierPage() {
         }
       }, 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao montar os vídeos');
+      setError(mensagemDeErro(err, 'Falha ao montar os vídeos'));
       setMontando(false);
     }
   }

@@ -570,6 +570,20 @@ export class CombinationsService implements OnApplicationBootstrap {
       );
     }
 
+    /*
+     * O clipe é de graça — quem custa é a montagem. Mas subir dezenas de vídeos
+     * com a carteira zerada leva a um só lugar: a matriz montada, o botão
+     * apertado, e o 402 no fim, com todo o trabalho de curadoria já feito.
+     *
+     * O piso é uma montagem. Não promete que a matriz inteira cabe no saldo (a
+     * conta real depende de quantas combinações ele escolher), só recusa quem
+     * não faria nenhuma — e recusa no primeiro upload, que é quando a notícia
+     * ainda é barata de receber.
+     */
+    await this.billing.assertSaldo(userId, [
+      { action: 'assembly', quantidade: 1 },
+    ]);
+
     const url = await this.mirror.putVideo(buffer, 'combination-clips', crypto.randomUUID());
     if (!url) {
       throw new ConflictException(

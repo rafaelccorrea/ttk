@@ -258,3 +258,23 @@ export class ConfirmarEntregaDto {
   @MaxLength(500)
   failureReason?: string;
 }
+
+/**
+ * Salvar na base uma resposta aprovada no painel.
+ *
+ * O texto é opcional porque os dois caminhos são legítimos e dizem coisas
+ * diferentes: sem ele, o vendedor está dizendo "o copiloto acertou, guarda
+ * assim"; com ele, "quase — é assim que se responde isso". O segundo é o mais
+ * valioso dos dois, e é por isso que a rota aceita edição em vez de só um
+ * polegar para cima.
+ */
+export class SalvarNaBaseDto {
+  @ApiPropertyOptional({
+    description: 'A resposta corrigida. Sem isto, guarda o texto do copiloto.',
+    example: 'Sai por R$ 89,90 e o frete é grátis acima de R$ 99.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  text?: string;
+}

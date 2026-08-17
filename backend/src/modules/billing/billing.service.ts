@@ -7,7 +7,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { AppUser } from '../users/entities/app-user.entity';
 import {
   ACTION_MIN_PLAN,
@@ -159,18 +159,91 @@ export class BillingService implements OnModuleInit {
   }
 
   /**
+   * Confere plano e saldo SEM debitar — a trava de entrada.
+   *
+   * Existe para o caso em que a cobrança acontece longe da porta: o upload da
+   * live é aceito na rota e só é debitado lá dentro, depois do ffmpeg. Sem esta
+   * checagem, quem está com o saldo zerado sobe gigabytes, espera a extração do
+   * áudio e recebe o "créditos insuficientes" no fim — tendo gastado a banda
+   * dele e o nosso CPU para chegar a uma resposta que já era conhecida no
+   * primeiro byte.
+   *
+   * Ela NÃO substitui o débito atômico de `charge`: entre a conferida e a
+   * cobrança o saldo pode mudar (outra aba, outro dispositivo). Quem garante
+   * que ninguém fica negativo continua sendo o UPDATE condicional — isto aqui é
+   * cortesia com quem já sabemos que não vai passar, não controle de corrida.
+   *
+   * Recebe a LISTA de ações porque a pergunta certa quase nunca é sobre uma
+   * delas isolada: a live cobra transcrição e extração em momentos diferentes
+   * do mesmo pipeline, e conferir uma de cada vez aprova quem tem saldo para
+   * cada metade e para nenhum inteiro — que é justamente o pedido que quebra no
+   * meio, depois de já ter debitado a primeira parte.
+   */
+  async assertSaldo(
+    userId: string,
+    itens: Array<{ action: BillableAction; quantidade?: number }>,
+  ): Promise<void> {
+    await this.ensureSignupBonus(userId);
+    const owner = await this.users.findOneBy({ id: userId });
+
+    for (const { action } of itens) {
+      const minPlan = ACTION_MIN_PLAN[action];
+      if ((PLAN_RANK[owner?.plan ?? 'free'] ?? 0) < (PLAN_RANK[minPlan] ?? 0)) {
+        throw new HttpException(
+          `"${ACTION_PRICES[action].label}" está disponível a partir do plano ${minPlan.charAt(0).toUpperCase() + minPlan.slice(1)}. Faça upgrade em Planos & Créditos.`,
+          403,
+        );
+      }
+    }
+
+    const total = itens.reduce(
+      (soma, { action, quantidade }) =>
+        soma +
+        ACTION_PRICES[action].credits * Math.max(Math.trunc(quantidade ?? 1), 1),
+      0,
+    );
+    const saldo = owner?.credits ?? 0;
+    if (saldo < total) {
+      throw new HttpException(
+        `Créditos insuficientes: este envio custa ${total} créditos e você tem ${saldo}. Compre um pacote ou assine um plano em Planos & Créditos.`,
+        402,
+      );
+    }
+  }
+
+  /**
    * Debita créditos de forma atômica: o UPDATE só afeta a linha se o saldo
    * for suficiente, então duas requisições simultâneas nunca deixam o saldo
    * negativo (e nós nunca pagamos IA sem crédito cobrado).
+   *
+   * `manager` faz o débito participar de uma transação de FORA.
+   *
+   * Quem precisa disso é o pipeline da live: ele cobra e, logo depois, grava na
+   * sessão o marcador que torna o estorno possível. Em duas transações
+   * separadas existe uma janela — estreita, mas real — em que o processo pode
+   * morrer com o crédito já debitado e nenhum marcador escrito. O estorno,
+   * tanto o do `catch` quanto o do cron, procura pelo marcador: sem ele, o
+   * crédito some sem rastro e sem ninguém para devolvê-lo, e é o cliente que
+   * paga a conta de um restart nosso. Com o manager, débito e marcador entram e
+   * saem juntos.
+   *
+   * Sem o argumento, tudo segue como antes — cada operação na sua transação
+   * implícita.
    */
   async charge(
     userId: string,
     action: BillableAction,
     quantidade = 1,
+    manager?: EntityManager,
   ): Promise<void> {
+    const usuarios = manager ? manager.getRepository(AppUser) : this.users;
+    const lancamentos = manager
+      ? manager.getRepository(CreditTransaction)
+      : this.transactions;
+
     await this.ensureSignupBonus(userId);
     // Plano mínimo da ação (ex.: vídeo IA só no Pro+).
-    const owner = await this.users.findOneBy({ id: userId });
+    const owner = await usuarios.findOneBy({ id: userId });
     const minPlan = ACTION_MIN_PLAN[action];
     if ((PLAN_RANK[owner?.plan ?? 'free'] ?? 0) < (PLAN_RANK[minPlan] ?? 0)) {
       throw new HttpException(
@@ -184,7 +257,7 @@ export class BillingService implements OnModuleInit {
     // chances de o saldo acabar no meio da fila.
     const itens = Math.max(Math.trunc(quantidade), 1);
     const total = price.credits * itens;
-    const result = await this.users
+    const result = await usuarios
       .createQueryBuilder()
       .update(AppUser)
       .set({ credits: () => `credits - ${total}` })
@@ -198,9 +271,9 @@ export class BillingService implements OnModuleInit {
       );
     }
 
-    const user = await this.users.findOneBy({ id: userId });
-    await this.transactions.save(
-      this.transactions.create({
+    const user = await usuarios.findOneBy({ id: userId });
+    await lancamentos.save(
+      lancamentos.create({
         userId,
         amount: -total,
         balanceAfter: user?.credits ?? 0,

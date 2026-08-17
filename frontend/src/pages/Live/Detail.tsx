@@ -1,4 +1,5 @@
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
+import UploadFileRoundedIcon from '@mui/icons-material/UploadFileRounded';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import EditRoundedIcon from '@mui/icons-material/EditRounded';
@@ -8,6 +9,7 @@ import {
   Box,
   Button,
   Card,
+  CircularProgress,
   CardContent,
   Chip,
   Dialog,
@@ -43,9 +45,11 @@ import {
   LiveProduct,
   LiveSessionDetail,
   ProdutoInput,
+  ResultadoDaImportacao,
   liveService,
 } from '@/services/live.service';
 import { STATUS_UI, StatusChip, OrigemChip, estaProcessando, mensagemDeErro } from './status';
+import { CardDoApp } from './CardDoApp';
 
 const POLL_MS = 8000;
 
@@ -320,6 +324,9 @@ export function LiveDetailPage() {
   const [produtoDialogo, setProdutoDialogo] = useState(false);
   const [faqEditando, setFaqEditando] = useState<LiveFaq | null>(null);
   const [faqDialogo, setFaqDialogo] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [resultadoImport, setResultadoImport] =
+    useState<ResultadoDaImportacao | null>(null);
   const processandoAntes = useRef(false);
 
   const carregar = useCallback(async () => {
@@ -337,6 +344,31 @@ export function LiveDetailPage() {
   useEffect(() => {
     void carregar();
   }, [carregar]);
+
+  /**
+   * Importa a planilha e recarrega a base.
+   *
+   * O resultado fica na tela até o vendedor fechar — não some sozinho. Ele
+   * precisa ler quantas linhas ficaram de fora, e um aviso que desaparece em
+   * três segundos é o mesmo que não avisar.
+   */
+  const importarCsv = useCallback(
+    async (arquivo: File) => {
+      setImportando(true);
+      setErro(null);
+      setResultadoImport(null);
+      try {
+        const resultado = await liveService.importarCatalogo(id, arquivo);
+        setResultadoImport(resultado);
+        await carregar();
+      } catch (error) {
+        setErro(mensagemDeErro(error));
+      } finally {
+        setImportando(false);
+      }
+    },
+    [id, carregar],
+  );
 
   // Mesmo polling da listagem: reagenda enquanto a live trabalha e para sozinho
   // quando ela chega em `pronta` ou `erro`.
@@ -473,6 +505,18 @@ export function LiveDetailPage() {
         </Alert>
       )}
 
+      {/*
+       * O passo que faltava no fluxo.
+       *
+       * Base pronta é meio produto: ela não responde ninguém sozinha. Quem lê o
+       * chat e escreve durante a transmissão é o aplicativo de computador, e
+       * este é o único momento em que o vendedor está olhando para a base dele
+       * pronta — exatamente quando a próxima ação faz sentido. Deixar o convite
+       * só na lista, lá atrás, era pedir que ele descobrisse por conta própria
+       * que existe uma segunda metade.
+       */}
+      {sessao.status === 'pronta' && <CardDoApp paraQuem="detalhe" />}
+
       {/* ------------------------------------------------------- produtos */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -491,17 +535,80 @@ export function LiveDetailPage() {
                   : `${sessao.produtos.length} no total · ${daIa} vieram da sua live`}
               </Typography>
             </Box>
-            <Button
-              variant="outlined"
-              startIcon={<AddRoundedIcon />}
-              onClick={() => {
-                setProdutoEditando(null);
-                setProdutoDialogo(true);
-              }}
-            >
-              Adicionar produto
-            </Button>
+            <Stack direction="row" spacing={1}>
+              {/*
+               * A extração só conhece o que foi FALADO na live — e o vendedor
+               * mostra vinte itens numa transmissão enquanto tem duzentos na
+               * loja. O chat pergunta pelos duzentos, e ninguém cadastra
+               * duzentos à mão.
+               */}
+              <Button
+                component="label"
+                variant="outlined"
+                color="inherit"
+                startIcon={
+                  importando ? (
+                    <CircularProgress size={16} />
+                  ) : (
+                    <UploadFileRoundedIcon />
+                  )
+                }
+                disabled={importando}
+              >
+                {importando ? 'Importando...' : 'Importar CSV'}
+                <input
+                  hidden
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(e) => {
+                    const arquivo = e.target.files?.[0];
+                    // Zera o input: sem isto, escolher o MESMO arquivo de novo
+                    // (o caso normal depois de corrigir a planilha) não dispara
+                    // evento nenhum e a tela parece travada.
+                    e.target.value = '';
+                    if (arquivo) void importarCsv(arquivo);
+                  }}
+                />
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<AddRoundedIcon />}
+                onClick={() => {
+                  setProdutoEditando(null);
+                  setProdutoDialogo(true);
+                }}
+              >
+                Adicionar produto
+              </Button>
+            </Stack>
           </Stack>
+
+          {resultadoImport && (
+            <Alert
+              severity={resultadoImport.ignoradas.length ? 'warning' : 'success'}
+              onClose={() => setResultadoImport(null)}
+              sx={{ mb: 2 }}
+            >
+              <AlertTitle>
+                {resultadoImport.criados} novos ·{' '}
+                {resultadoImport.atualizados} atualizados
+              </AlertTitle>
+              {resultadoImport.ignoradas.length > 0 && (
+                <>
+                  {resultadoImport.ignoradas.length}{' '}
+                  {resultadoImport.ignoradas.length === 1
+                    ? 'linha ficou de fora'
+                    : 'linhas ficaram de fora'}
+                  :{' '}
+                  {resultadoImport.ignoradas
+                    .slice(0, 3)
+                    .map((i: { linha: number; motivo: string }) => `linha ${i.linha} (${i.motivo})`)
+                    .join('; ')}
+                  {resultadoImport.ignoradas.length > 3 && ' ...'}
+                </>
+              )}
+            </Alert>
+          )}
 
           {sessao.produtos.length === 0 ? (
             <Typography variant="body2" color="text.secondary">

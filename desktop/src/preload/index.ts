@@ -111,6 +111,8 @@ const api: PikPokDesktopApi = {
     ipcRenderer.invoke('live:copiarResposta', { replyId, texto }) as Promise<void>,
   copiarTexto: (texto) =>
     ipcRenderer.invoke('live:copiarTexto', texto) as Promise<void>,
+  salvarNaBase: (replyId, texto) =>
+    ipcRenderer.invoke('live:salvarNaBase', { replyId, texto }) as Promise<void>,
   resolverEscalacao: (chatMessageId, desfecho) =>
     ipcRenderer.invoke('live:resolverEscalacao', {
       chatMessageId,

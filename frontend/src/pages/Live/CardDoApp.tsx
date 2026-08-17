@@ -76,15 +76,31 @@ export function CardDoApp({ paraQuem }: { paraQuem: 'lista' | 'detalhe' }) {
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction="row" spacing={1} alignItems="center" mb={0.5}>
             <Typography variant="subtitle1" fontWeight={800}>
-              O copiloto que fica com você na live
+              {paraQuem === 'detalhe'
+                ? 'Falta o app para usar esta base ao vivo'
+                : 'O copiloto que fica com você na live'}
             </Typography>
+            {paraQuem === 'detalhe' && (
+              <Chip
+                size="small"
+                label="Passo 2 de 2"
+                sx={{ fontWeight: 700, bgcolor: 'rgba(254,44,85,0.1)', color: '#fe2c55' }}
+              />
+            )}
             {info.versao && (
               <Chip size="small" variant="outlined" label={`v${info.versao}`} />
             )}
           </Stack>
+          {/*
+           * "Precisa", não "pode". O navegador não tem como escrever no chat do
+           * TikTok — isso exige a sessão logada do vendedor, na máquina dele —,
+           * então o app não é uma versão a mais do produto: é a única forma de a
+           * base virar resposta ao vivo. Uma frase que soe opcional aqui produz
+           * o suporte de segunda-feira: "montei a base e não respondeu nada".
+           */}
           <Typography variant="body2" color="text.secondary">
             {paraQuem === 'detalhe'
-              ? 'Esta base já pode ser usada ao vivo. O aplicativo de computador lê o chat da sua transmissão e responde com o que está aqui.'
+              ? 'A base está pronta. Para ela responder o chat durante a transmissão você precisa do aplicativo de computador — é ele que abre o TikTok com a sua conta e escreve por você. Pelo navegador não dá.'
               : 'A base é montada aqui. Durante a transmissão, quem lê o chat e responde é o aplicativo de computador — ele precisa do TikTok aberto na mesma máquina.'}
           </Typography>
         </Box>

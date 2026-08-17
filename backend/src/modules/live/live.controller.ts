@@ -69,6 +69,15 @@ mkdirSync(PASTA_DE_UPLOAD, { recursive: true });
  */
 const PREFIXOS_ACEITOS = ['video/', 'audio/'];
 
+/**
+ * Teto do CSV de catálogo.
+ *
+ * Quinhentos produtos com todos os campos preenchidos dão algo perto de 100KB.
+ * Dois megabytes é a folga para planilha exportada com lixo de formatação — e
+ * ainda assim pequeno o bastante para o arquivo caber em memória sem risco.
+ */
+const MAX_CSV_BYTES = 2 * 1024 * 1024;
+
 @ApiTags('live')
 @ApiBearerAuth()
 @UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
@@ -139,6 +148,37 @@ export class LiveController {
   }
 
   // --------------------------------------------------------------- produtos
+  /**
+   * Importa o catálogo de uma planilha CSV.
+   *
+   * Fica em memória (`FileInterceptor` sem `dest`) porque um catálogo de 500
+   * itens não passa de algumas dezenas de KB — o teto de 2MB aqui é folga para
+   * planilha mal exportada, não expectativa. Nada a ver com o upload da
+   * gravação, que são gigabytes e por isso vai para disco.
+   */
+  @Post('sessions/:id/products/import')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MAX_CSV_BYTES } }),
+  )
+  @ApiOperation({
+    summary: 'Importa produtos de um CSV para a base (atualiza os que já existem)',
+  })
+  importarCatalogo(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: MAX_CSV_BYTES })],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Envie a planilha em CSV.');
+    }
+    return this.live.importarCatalogo(user.id, id, file.buffer);
+  }
+
   @Post('sessions/:id/products')
   @ApiOperation({ summary: 'Acrescenta um produto à base à mão' })
   createProduct(

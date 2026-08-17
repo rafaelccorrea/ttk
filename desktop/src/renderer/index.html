@@ -13,6 +13,14 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PikPok Copiloto</title>
+    <!--
+      O fundo escuro vale ANTES do React montar. Sem isto o Electron pinta o
+      documento em branco por um quadro e o app pisca claro toda vez que abre.
+      `color-scheme` faz o mesmo pelos widgets nativos (scrollbar, foco).
+    -->
+    <style>
+      html, body { margin: 0; background: #0b0c10; color-scheme: dark; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

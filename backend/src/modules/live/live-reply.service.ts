@@ -33,6 +33,14 @@ import { LiveSession } from './entities/live-session.entity';
 const LIMIAR_SIMILARIDADE = 0.65;
 
 /**
+ * Semelhança mínima para considerar que a base JÁ responde uma pergunta.
+ *
+ * Mais alto que o do chat de propósito — o porquê está por extenso em
+ * `faqParecida`: aqui, fundir demais sobrescreve resposta curada por gente.
+ */
+const LIMIAR_FAQ_PARECIDA = 0.8;
+
+/**
  * Quantas irmãs, no máximo, voltam da consulta de cluster.
  *
  * É teto de resultado, não janela: quem delimita o que é "recente" é
@@ -805,6 +813,243 @@ export class LiveReplyService {
     if (resposta.copiedAt) return resposta;
     resposta.copiedAt = new Date();
     return this.respostas.save(resposta);
+  }
+
+  // ------------------------------------------------- histórico e desempenho
+  /**
+   * As transmissões do vendedor, com o que aconteceu em cada uma.
+   *
+   * Estes números já eram gravados desde a fase 1, e até agora existiam só no
+   * banco: o vendedor não tinha como saber se o copiloto ajudou. Sem isso, a
+   * decisão de renovar o Business vira palpite — e a nossa, de onde mexer no
+   * produto, também.
+   *
+   * A taxa de aproveitamento é a métrica que interessa: das respostas que o
+   * copiloto entregou, quantas o vendedor de fato usou. É a única evidência,
+   * no modo painel, de que ele acertou — o resto são contadores de atividade,
+   * que sobem igual quando o produto está funcionando e quando não está.
+   */
+  async listarRuns(
+    userId: string,
+    limite = 30,
+  ): Promise<
+    Array<{
+      id: string;
+      status: string;
+      mode: string;
+      startedAt: Date | null;
+      endedAt: Date | null;
+      knowledgeSessionId: string;
+      messagesSeen: number;
+      repliesGenerated: number;
+      escalations: number;
+      repliesSent: number;
+      deliveryFailures: number;
+      minutesCharged: number;
+      /** Respostas que o vendedor copiou ou salvou na base. */
+      repliesUsed: number;
+      /** `repliesUsed / repliesGenerated`, ou null quando não houve resposta. */
+      usageRate: number | null;
+      /** Mediana da latência da run, em ms. Null se não houve resposta. */
+      latencyP50Ms: number | null;
+    }>
+  > {
+    const runs = await this.runs.find({
+      where: { userId },
+      order: { startedAt: 'DESC', createdAt: 'DESC' },
+      take: Math.min(Math.max(Math.trunc(limite), 1), 100),
+    });
+    if (!runs.length) return [];
+
+    /*
+     * Um agregado só para todas as runs, e não uma consulta por run: a tela
+     * mostra trinta linhas, e trinta idas ao banco para preencher duas colunas
+     * é o N+1 clássico — some numa base de teste com três lives e aparece como
+     * tela lenta justamente para o cliente que mais usa o produto.
+     *
+     * A mediana vem do `percentile_cont` do Postgres em vez de média: uma única
+     * resposta que demorou 40s por causa de uma reconexão puxa a média para
+     * cima e faz um copiloto rápido parecer lento.
+     */
+    const agregados = (await this.respostas.manager.query(
+      `
+      SELECT "liveRunId",
+             COUNT(*) FILTER (WHERE "copiedAt" IS NOT NULL) AS usadas,
+             percentile_cont(0.5) WITHIN GROUP (ORDER BY "latencyMs") AS p50
+      FROM live_replies
+      WHERE "liveRunId" = ANY($1)
+        AND decision <> 'silenciar'
+      GROUP BY "liveRunId"
+      `,
+      [runs.map((r) => r.id)],
+    )) as Array<{ liveRunId: string; usadas: string; p50: string | null }>;
+
+    const porRun = new Map(agregados.map((a) => [a.liveRunId, a] as const));
+
+    return runs.map((run) => {
+      const agregado = porRun.get(run.id);
+      const usadas = Number(agregado?.usadas ?? 0);
+      return {
+        id: run.id,
+        status: run.status,
+        mode: run.mode,
+        startedAt: run.startedAt,
+        endedAt: run.endedAt,
+        knowledgeSessionId: run.knowledgeSessionId,
+        messagesSeen: run.messagesSeen,
+        repliesGenerated: run.repliesGenerated,
+        escalations: run.escalations,
+        repliesSent: run.repliesSent,
+        deliveryFailures: run.deliveryFailures,
+        minutesCharged: run.minutesCharged,
+        repliesUsed: usadas,
+        // Divisão por zero vira `null`, não `0`: "nenhuma resposta gerada" e
+        // "nenhuma das respostas prestou" são coisas diferentes, e mostrá-las
+        // como o mesmo 0% acusaria o copiloto de um fracasso que não houve.
+        usageRate:
+          run.repliesGenerated > 0 ? usadas / run.repliesGenerated : null,
+        latencyP50Ms:
+          agregado?.p50 != null ? Math.round(Number(agregado.p50)) : null,
+      };
+    });
+  }
+
+  // ------------------------------------------- realimentação da base (f. 3)
+  /**
+   * Guarda na base uma resposta que o vendedor aprovou no painel.
+   *
+   * É o único ponto do produto em que ele fica melhor sozinho. Toda pergunta
+   * que o copiloto escalou é uma lacuna da base — e a resposta que o vendedor
+   * deu (ou corrigiu) é exatamente o que faltava. Sem esta rota, o mesmo buraco
+   * escala de novo na live seguinte, e na outra: o vendedor paga o modelo toda
+   * vez para receber "não sei" sobre algo que ele já explicou três vezes.
+   *
+   * Vai para a SESSÃO DE CONHECIMENTO, não para a run. A run acaba junto com a
+   * transmissão; a base é reaproveitada por todas as próximas, que é onde o
+   * aprendizado precisa aparecer.
+   *
+   * Nasce com `origin: 'manual'` mesmo quando o texto veio inteiro do modelo.
+   * A origem aqui não é sobre quem digitou, é sobre **quem responde por aquilo**
+   * — e um humano leu e aprovou. Isso muda o tratamento: `origin: 'ia'` é
+   * apagável em massa no reprocessamento da live (ver `gravarBase`), e perder a
+   * curadoria do vendedor porque ele reenviou a gravação seria destruir o único
+   * dado do sistema que não dá para refazer.
+   */
+  async promoverParaBase(
+    userId: string,
+    replyId: string,
+    textoEditado?: string,
+  ): Promise<LiveFaq> {
+    const resposta = await this.respostas.findOneBy({ id: replyId, userId });
+    if (!resposta) throw new NotFoundException('Resposta não encontrada.');
+
+    const run = await this.runs.findOneBy({ id: resposta.liveRunId, userId });
+    if (!run) throw new NotFoundException('Transmissão não encontrada.');
+
+    const mensagem = await this.mensagens.findOneBy({
+      id: resposta.chatMessageId,
+    });
+    if (!mensagem) {
+      throw new NotFoundException(
+        'A pergunta que originou esta resposta já não está guardada.',
+      );
+    }
+
+    const pergunta = mensagem.text.trim();
+    const texto = (textoEditado ?? resposta.text).trim();
+    if (!texto) {
+      throw new HttpException('A resposta não pode ficar vazia.', 400);
+    }
+
+    /*
+     * Aprovar é usar. O carimbo de cópia é a métrica de qualidade da fase
+     * painel, e salvar na base é um sinal ainda mais forte do que copiar — não
+     * marcá-lo aqui faria a taxa de acerto ler como pior justamente nos casos
+     * em que o copiloto mais ajudou.
+     */
+    if (!resposta.copiedAt) {
+      resposta.copiedAt = new Date();
+      await this.respostas.save(resposta);
+    }
+
+    const existente = await this.faqParecida(run.knowledgeSessionId, pergunta);
+    if (existente) {
+      /*
+       * A mesma dúvida já está na base — então o vendedor está CORRIGINDO, não
+       * acrescentando. Criar uma segunda linha deixaria duas respostas para a
+       * mesma pergunta na base, e a escolha entre elas cairia no desempate por
+       * prioridade: o copiloto poderia seguir usando a versão velha, que é
+       * justamente a que ele acabou de recusar.
+       */
+      existente.answer = texto;
+      existente.origin = 'manual';
+      existente.priority = Math.max(existente.priority, 0) + 1;
+      return this.faq.save(existente);
+    }
+
+    return this.faq.save(
+      this.faq.create({
+        liveSessionId: run.knowledgeSessionId,
+        userId,
+        question: pergunta,
+        answer: texto,
+        kind: 'faq',
+        origin: 'manual',
+        /*
+         * Só amarra ao produto quando a resposta se apoiou em UM. Com dois ou
+         * mais a pergunta era comparativa ("qual rende mais?"), e prendê-la a
+         * um deles faria a entrada sumir da base no dia em que aquele item for
+         * apagado — levando junto uma resposta que valia para os dois.
+         */
+        liveProductId:
+          resposta.sourceProductIds?.length === 1
+            ? resposta.sourceProductIds[0]
+            : null,
+        priority: 1,
+      }),
+    );
+  }
+
+  /**
+   * Uma entrada da base que já responde esta mesma pergunta, se houver.
+   *
+   * Mesmo trigrama do dedup do chat, e pelo mesmo motivo: ninguém repete uma
+   * pergunta com as mesmas palavras. "chega quando?", "quanto tempo pra chegar"
+   * e "prazo de entrega" são a mesma dúvida, e sem a comparação por semelhança
+   * a base engorda com três linhas quase idênticas a cada live — o que estraga
+   * duas coisas de uma vez: o prompt fica maior (e mais caro) e o modelo passa a
+   * escolher entre respostas concorrentes para a mesma pergunta.
+   *
+   * Limiar mais alto que o do chat (0,80 contra 0,65) porque o custo do erro é
+   * invertido. No chat, fundir demais deixa alguém sem resposta ao vivo; aqui,
+   * fundir demais SOBRESCREVE uma resposta que o vendedor tinha curado. Errar
+   * para o lado de criar uma linha a mais é barato — ele apaga; errar para o
+   * lado de sobrescrever apaga trabalho dele sem avisar.
+   */
+  private async faqParecida(
+    sessionId: string,
+    pergunta: string,
+  ): Promise<LiveFaq | null> {
+    if (!pergunta) return null;
+    const linhas = await this.faq.manager.transaction(async (manager) => {
+      await manager.query(
+        `SET LOCAL pg_trgm.similarity_threshold = ${LIMIAR_FAQ_PARECIDA}`,
+      );
+      return (await manager.query(
+        `
+        SELECT * FROM live_faq
+        WHERE "liveSessionId" = $1
+          AND question % $2
+        ORDER BY priority DESC, "createdAt" ASC
+        LIMIT 1
+        `,
+        [sessionId, pergunta],
+      )) as LiveFaq[];
+    });
+    if (!linhas.length) return null;
+    // A consulta crua devolve linha solta, não entidade: recarrega pelo
+    // repositório para que o `save` a seguir seja um UPDATE, e não um INSERT.
+    return this.faq.findOneBy({ id: linhas[0].id });
   }
 
   // -------------------------------------------------- modo automático (f. 2)

@@ -232,6 +232,11 @@ export interface PikPokDesktopApi {
   readonly copiarResposta: (replyId: string, texto: string) => Promise<void>;
   /** Copia um rascunho de escalação — não há id de resposta para carimbar. */
   readonly copiarTexto: (texto: string) => Promise<void>;
+  /**
+   * Guarda a resposta na base de conhecimento, com a correção do vendedor
+   * quando houver. É como uma lacuna da base deixa de escalar na próxima live.
+   */
+  readonly salvarNaBase: (replyId: string, texto?: string) => Promise<void>;
   /** O vendedor respondeu na voz: tira o card da fila e registra o desfecho. */
   readonly resolverEscalacao: (
     chatMessageId: string,

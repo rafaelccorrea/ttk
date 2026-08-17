@@ -103,10 +103,7 @@ export function OrigemChip({
   );
 }
 
-export function mensagemDeErro(error: unknown): string {
-  const resposta = (error as { response?: { data?: { message?: string | string[] } } })
-    ?.response;
-  const mensagem = resposta?.data?.message;
-  if (Array.isArray(mensagem)) return mensagem.join(' ');
-  return mensagem ?? 'Não foi possível concluir. Tente de novo.';
-}
+// Mora em `services/erros.ts` desde que o Multiplicador precisou dela também.
+// Reexportado aqui para não mexer nos imports (e nos testes) que já apontam
+// para este módulo.
+export { mensagemDeErro } from '@/services/erros';

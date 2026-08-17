@@ -1,5 +1,5 @@
 import SettingsIcon from '@mui/icons-material/SettingsOutlined';
-import { Box, Divider, IconButton, Stack, Typography } from '@mui/material';
+import { Box, IconButton, Stack, Tooltip, Typography, alpha } from '@mui/material';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { EstadoConexao, EstadoEnvio } from '@shared/desktop-api';
 import type { LiveReplyEvent } from '@shared/live-events';
@@ -10,6 +10,8 @@ import { DialogoTermoDeEnvio } from '../components/DialogoTermoDeEnvio';
 import { FeedDeEnvios, type ItemDeEnvio } from '../components/FeedDeEnvios';
 import { Aviso } from '../components/Estados';
 import { useFluxoDaLive } from '../hooks/useFluxoDaLive';
+import { cores } from '../theme/theme';
+import { LINKS } from '../links';
 import { SEM_PONTE, obterPonte } from '../ponte';
 
 /**
@@ -209,20 +211,45 @@ export function Cockpit({
         direction="row"
         alignItems="center"
         spacing={1}
-        sx={{ px: 2, pt: 1.5, pb: 1 }}
+        sx={{
+          px: 2.25,
+          py: 1.25,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          flexShrink: 0,
+        }}
       >
         <Stack sx={{ minWidth: 0 }}>
           <Typography variant="subtitle1" fontWeight={800} noWrap>
             {estadoBarra.tiktokUsername ?? 'Sua live'}
           </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap>
-            {estadoBarra.baseTitulo ?? 'base de conhecimento'}
-          </Typography>
+          {/*
+            A base entra com um ponto ciano na frente: sem ele esta linha é só
+            mais um cinza pequeno, e ela responde a "de onde vêm as respostas
+            que eu estou lendo?" — que é a primeira dúvida quando uma delas sai
+            errada.
+          */}
+          <Stack direction="row" alignItems="center" spacing={0.65} sx={{ minWidth: 0 }}>
+            <Box
+              sx={{
+                width: 5,
+                height: 5,
+                borderRadius: '50%',
+                bgcolor: cores.ciano,
+                flexShrink: 0,
+              }}
+            />
+            <Typography variant="caption" color="text.secondary" noWrap>
+              {estadoBarra.baseTitulo ?? 'base de conhecimento'}
+            </Typography>
+          </Stack>
         </Stack>
         <Box sx={{ flex: 1 }} />
-        <IconButton size="small" onClick={aoAbrirConfiguracoes} aria-label="Ajustes">
-          <SettingsIcon fontSize="small" />
-        </IconButton>
+        <Tooltip title="Ajustes">
+          <IconButton size="small" onClick={aoAbrirConfiguracoes} aria-label="Ajustes">
+            <SettingsIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </Stack>
 
       {/*
@@ -238,7 +265,7 @@ export function Cockpit({
             descricao={`${fluxo.semSaldo} O copiloto parou de ler o chat, mas o que já está aqui continua na tela. Compre um pacote de horas para voltar ainda nesta live.`}
             acao={{
               rotulo: 'Comprar horas',
-              aoClicar: () => void ponte.abrirNoNavegador('https://app.pikpok.com.br/planos'),
+              aoClicar: () => void ponte.abrirNoNavegador(LINKS.planos),
             }}
           />
         </Box>
@@ -284,12 +311,14 @@ export function Cockpit({
       ) : null}
 
       {/* ------------------------------------------------ painel de escalação */}
-      <Box sx={{ px: 2, pb: 1, flex: '0 1 auto', minHeight: 0, overflowY: 'auto' }}>
-        <Typography variant="overline" color="primary.main">
-          precisa de você
-        </Typography>
+      <Box sx={{ px: 2.25, pb: 1, pt: 1, flex: '0 1 auto', minHeight: 0, overflowY: 'auto' }}>
+        <TituloDeSecao
+          texto="precisa de você"
+          cor={cores.vermelho}
+          contagem={fluxo.escalacoes.length}
+        />
         {fluxo.escalacoes.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ py: 1, lineHeight: 1.55 }}>
             Nada travado por aqui. Quando alguém perguntar algo que eu não souber
             responder com segurança, aparece nesta faixa.
           </Typography>
@@ -302,6 +331,10 @@ export function Cockpit({
                   key={e.chatMessageId}
                   escalacao={e}
                   rascunho={rascunho?.text ?? null}
+                  replyId={rascunho?.id ?? null}
+                  aoSalvarNaBase={(replyId, texto) =>
+                    ponte.salvarNaBase(replyId, texto)
+                  }
                   aoCopiar={(texto) => {
                     if (rascunho) void ponte.copiarResposta(rascunho.id, texto);
                     else void ponte.copiarTexto(texto);
@@ -321,13 +354,23 @@ export function Cockpit({
         )}
       </Box>
 
-      <Divider />
-
       {/* ------------------------------------------------- respostas prontas */}
-      <Box sx={{ px: 2, py: 1, flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
-        <Typography variant="overline" color="text.secondary">
-          {envio.modo === 'auto' ? 'enviadas no chat' : 'prontas para copiar'}
-        </Typography>
+      <Box
+        sx={{
+          px: 2.25,
+          py: 1,
+          flex: '1 1 auto',
+          minHeight: 0,
+          overflowY: 'auto',
+          borderTop: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <TituloDeSecao
+          texto={envio.modo === 'auto' ? 'enviadas no chat' : 'prontas para copiar'}
+          cor={envio.modo === 'auto' ? cores.sucesso : cores.ciano}
+          contagem={envio.modo === 'auto' ? envios.length : prontas.length}
+        />
         {/*
           No automático a mesma lista troca de eixo: deixa de ser "o que você
           pode copiar" e passa a ser "o que saiu em seu nome". Duas listas
@@ -337,7 +380,7 @@ export function Cockpit({
         {envio.modo === 'auto' ? (
           <FeedDeEnvios itens={envios} />
         ) : prontas.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ py: 1, lineHeight: 1.55 }}>
             {estadoBarra.status === 'ativa'
               ? 'Estou lendo o chat. A primeira pergunta sobre preço, tamanho ou frete já vira resposta aqui.'
               : 'Assim que a live estiver no ar, as respostas aparecem aqui para você copiar.'}
@@ -379,6 +422,51 @@ export function Cockpit({
         // Recusar fecha e não muda mais nada: o app segue inteiro no painel.
         aoRecusar={() => setTermoAberto(false)}
       />
+    </Stack>
+  );
+}
+
+/**
+ * O rótulo de um dos dois blocos do cockpit.
+ *
+ * A contagem vive AQUI, e não dentro da lista, porque a tela rola por dentro
+ * de cada bloco: com quatro escalações e o bloco mostrando duas, o vendedor não
+ * tem como saber que há mais embaixo. O número no título é o que diz.
+ *
+ * Ele some quando é zero — um "0" ao lado de "precisa de você" é uma etiqueta
+ * chamando atenção para a ausência de trabalho.
+ */
+function TituloDeSecao({
+  texto,
+  cor,
+  contagem,
+}: {
+  readonly texto: string;
+  readonly cor: string;
+  readonly contagem: number;
+}): JSX.Element {
+  return (
+    <Stack direction="row" alignItems="center" spacing={0.85} sx={{ mb: 0.25 }}>
+      <Box sx={{ width: 3, height: 11, borderRadius: 999, bgcolor: cor, flexShrink: 0 }} />
+      <Typography variant="overline" sx={{ color: cor }}>
+        {texto}
+      </Typography>
+      {contagem > 0 ? (
+        <Typography
+          variant="caption"
+          sx={{
+            px: 0.75,
+            borderRadius: 999,
+            fontWeight: 750,
+            fontSize: 10.5,
+            color: cor,
+            bgcolor: alpha(cor, 0.14),
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {contagem}
+        </Typography>
+      ) : null}
     </Stack>
   );
 }

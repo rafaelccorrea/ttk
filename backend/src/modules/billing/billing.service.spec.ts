@@ -1,6 +1,6 @@
 import { HttpException } from '@nestjs/common';
 import { BillingService } from './billing.service';
-import { LIVE_TRIAL_MINUTES } from './billing.config';
+import { ACTION_PRICES, LIVE_TRIAL_MINUTES } from './billing.config';
 
 /**
  * A carteira de minutos de live é dinheiro do cliente, e cada regra aqui existe
@@ -248,5 +248,106 @@ describe('a trava de lançamento do Live Copilot', () => {
     await expect(servico.assertFeature('u1', 'live_copilot')).rejects.toBeInstanceOf(
       HttpException,
     );
+  });
+});
+
+describe('assertSaldo — a trava de entrada', () => {
+  /*
+   * A soma é o ponto inteiro deste método. O upload da live cobra transcrição e
+   * extração em momentos diferentes, e conferir uma de cada vez aprova quem tem
+   * saldo para cada metade e para nenhum inteiro — o pedido que quebra no meio
+   * do pipeline, depois de já ter debitado a primeira parte.
+   */
+  it('soma as ações em vez de conferir uma a uma', async () => {
+    const { servico } = montar({
+      usuario: { ...BUSINESS, credits: ACTION_PRICES.live_extract.credits },
+    });
+    // Sobra para a extração sozinha; não sobra para as duas juntas.
+    await expect(
+      servico.assertSaldo('u1', [
+        { action: 'transcribe' },
+        { action: 'live_extract' },
+      ]),
+    ).rejects.toMatchObject({ status: 402 });
+  });
+
+  it('deixa passar quem cobre a soma', async () => {
+    const { servico } = montar({
+      usuario: {
+        ...BUSINESS,
+        credits:
+          ACTION_PRICES.transcribe.credits + ACTION_PRICES.live_extract.credits,
+      },
+    });
+    await expect(
+      servico.assertSaldo('u1', [
+        { action: 'transcribe' },
+        { action: 'live_extract' },
+      ]),
+    ).resolves.toBeUndefined();
+  });
+
+  it('recusa por plano antes de olhar o saldo', async () => {
+    // Crédito de sobra não compra um recurso que o plano não inclui — e a
+    // mensagem tem de falar de plano, não de saldo, senão o vendedor compra um
+    // pacote de créditos que não vai destravar nada.
+    const { servico } = montar({
+      usuario: { ...BUSINESS, plan: 'free', credits: 10_000 },
+    });
+    await expect(
+      servico.assertSaldo('u1', [{ action: 'live_extract' }]),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('não debita nada — é só uma pergunta', async () => {
+    const { servico, users, creditos } = montar({
+      usuario: { ...BUSINESS, credits: 10_000 },
+    });
+    await servico.assertSaldo('u1', [{ action: 'live_extract' }]);
+    expect(users.builder.set).not.toHaveBeenCalled();
+    expect(creditos.salvos).toHaveLength(0);
+  });
+});
+
+describe('charge dentro de uma transação de fora', () => {
+  /*
+   * O pipeline da live cobra e, logo depois, grava o marcador que torna o
+   * estorno possível. Em transações separadas há uma janela em que o processo
+   * pode morrer com o crédito debitado e nenhum marcador escrito — e aí o
+   * estorno, que procura pelo marcador, não acha nada. O crédito some sem
+   * rastro, e quem paga o restart é o cliente.
+   */
+  it('escreve pelos repositórios do manager, não pelos próprios', async () => {
+    const { servico, users, creditos } = montar({
+      usuario: { ...BUSINESS, plan: 'business', credits: 1000 },
+    });
+
+    const doManager = repositorioDeUsuarios({
+      usuario: { ...BUSINESS, plan: 'business', credits: 1000 },
+    });
+    const lancamentosDoManager = repositorioDeLancamentos();
+    const manager = {
+      getRepository: jest.fn((entidade: { name: string }) =>
+        entidade.name === 'AppUser' ? doManager : lancamentosDoManager,
+      ),
+    };
+
+    await servico.charge('u1', 'transcribe', 1, manager as never);
+
+    // O débito foi pela conexão da transação...
+    expect(doManager.execute).toHaveBeenCalled();
+    expect(lancamentosDoManager.salvos).toHaveLength(1);
+    // ...e não pela do serviço, que ficaria fora do rollback.
+    expect(users.execute).not.toHaveBeenCalled();
+    expect(creditos.salvos).toHaveLength(0);
+  });
+
+  it('sem manager, segue exatamente como antes', async () => {
+    const { servico, users, creditos } = montar({
+      usuario: { ...BUSINESS, plan: 'business', credits: 1000 },
+    });
+    await servico.charge('u1', 'transcribe', 1);
+    expect(users.execute).toHaveBeenCalled();
+    expect(creditos.salvos).toHaveLength(1);
   });
 });

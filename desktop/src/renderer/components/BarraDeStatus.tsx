@@ -2,8 +2,9 @@ import PauseCircleIcon from '@mui/icons-material/PauseCircleOutline';
 import PlayCircleIcon from '@mui/icons-material/PlayCircleOutline';
 import SendIcon from '@mui/icons-material/Send';
 import StopCircleIcon from '@mui/icons-material/StopCircle';
-import { Box, Button, Chip, Stack, Switch, Typography } from '@mui/material';
+import { Box, Button, Chip, Stack, Switch, Typography, alpha } from '@mui/material';
 import type { EstadoConexao, EstadoEnvio } from '@shared/desktop-api';
+import { cores } from '../theme/theme';
 
 /**
  * O rodapé que nunca sai da tela.
@@ -45,28 +46,45 @@ export function BarraDeStatus({
   return (
     <Box
       sx={{
+        position: 'relative',
         borderTop: '1px solid',
-        borderColor: 'divider',
+        borderColor: enviando ? alpha(cores.sucesso, 0.30) : 'divider',
         // A barra inteira muda de cor quando o app está escrevendo no chat. É o
         // sinal periférico que o vendedor capta sem ler nada — e é a diferença
         // entre "o copiloto está me ajudando" e "o copiloto está falando com os
         // meus clientes agora".
-        bgcolor: enviando ? 'rgba(22,163,74,0.06)' : 'background.paper',
+        bgcolor: enviando ? alpha(cores.sucesso, 0.09) : cores.superficie,
+        // No escuro a mudança de fundo sozinha é sutil demais para ser captada
+        // pelo canto do olho: um fio verde aceso na borda de cima é o que
+        // realmente muda o "clima" da barra.
+        boxShadow: enviando ? `0 -8px 28px ${alpha(cores.sucesso, 0.14)}` : 'none',
+        transition: 'background-color .3s ease, border-color .3s ease, box-shadow .3s ease',
         px: 2,
         py: 1.25,
+        flexShrink: 0,
       }}
     >
       {/* --------------------------------------------- a chave do modo, no topo */}
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.75 }}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
         <Switch
           size="small"
           checked={automatico}
           onChange={aoAlternarModo}
+          color="success"
           inputProps={{ 'aria-label': 'Enviar respostas automaticamente no chat' }}
         />
         <Stack sx={{ minWidth: 0 }}>
           <Stack direction="row" alignItems="center" spacing={0.75}>
-            <Typography variant="caption" fontWeight={800} noWrap>
+            <Typography
+              variant="caption"
+              fontWeight={800}
+              noWrap
+              sx={{
+                letterSpacing: '0.08em',
+                fontSize: 11,
+                color: automatico ? cores.sucesso : 'text.secondary',
+              }}
+            >
               {automatico ? 'ENVIANDO NO CHAT' : 'SÓ NO PAINEL'}
             </Typography>
             {automatico && envio.pausado ? (

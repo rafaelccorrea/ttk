@@ -1,8 +1,9 @@
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import HourglassTopIcon from '@mui/icons-material/HourglassTop';
-import { Box, Stack, Typography } from '@mui/material';
+import { Box, Stack, Typography, alpha } from '@mui/material';
 import type { LiveDeliveryStatus } from '@shared/live-events';
+import { cores } from '../theme/theme';
 
 /**
  * O que o app REALMENTE escreveu no chat, em ordem de chegada.
@@ -60,27 +61,53 @@ function LinhaDeEnvio({ item }: { readonly item: ItemDeEnvio }): JSX.Element {
   return (
     <Box
       sx={{
+        position: 'relative',
+        overflow: 'hidden',
         p: 1.25,
+        pl: 1.5,
         borderRadius: 3,
         border: '1px solid',
-        borderColor: falhou ? 'error.main' : 'divider',
-        bgcolor: falhou ? 'rgba(220,38,38,0.04)' : 'background.paper',
+        borderColor: falhou ? alpha(cores.erro, 0.35) : 'divider',
+        bgcolor: falhou ? alpha(cores.erro, 0.07) : cores.superficie,
+        // A barra vermelha na lateral é o que faz a falha ser encontrada numa
+        // rolagem rápida: o vendedor varre a coluna esquerda, não lê os selos.
+        '&::before': falhou
+          ? {
+              content: '""',
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 3,
+              bgcolor: cores.erro,
+            }
+          : undefined,
       }}
     >
       {item.pergunta ? (
-        <Typography variant="caption" color="text.secondary" noWrap display="block">
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          noWrap
+          display="block"
+          sx={{ fontStyle: 'italic', opacity: 0.85 }}
+        >
           “{item.pergunta}”
         </Typography>
       ) : null}
 
-      <Typography variant="body2" sx={{ lineHeight: 1.4, mt: item.pergunta ? 0.5 : 0 }}>
+      <Typography variant="body2" sx={{ lineHeight: 1.5, mt: item.pergunta ? 0.5 : 0 }}>
         {item.texto}
       </Typography>
 
-      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 0.75 }}>
+      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 0.85 }}>
         <Selo status={item.status} />
         <Box sx={{ flex: 1 }} />
-        <Typography variant="caption" color="text.secondary">
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ fontVariantNumeric: 'tabular-nums', fontSize: 11.5 }}
+        >
           {Math.round(item.confianca * 100)}%
         </Typography>
       </Stack>

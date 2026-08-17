@@ -24,7 +24,40 @@ import type { ConfigDeEnvio } from './comment-sender';
  * lido num lugar.
  */
 
-const API_BASE_PADRAO = 'https://api.pikpok.com.br';
+/**
+ * O endereço da API, com o prefixo global incluído.
+ *
+ * Os dois pedaços são obrigatórios e cada um já esteve errado aqui:
+ *
+ *  · a ORIGEM — tem de ser a mesma que o `frontend/.env.production` publica.
+ *    Um domínio bonito que ninguém registrou faz o app falhar no DNS, e o
+ *    sintoma que chega ao suporte é "não conecta", sem nada a que se agarrar.
+ *  · o `/api/v1` — o Nest serve tudo sob `setGlobalPrefix('api/v1')`, e as
+ *    chamadas daqui montam caminhos como `/live/runs/...`. Sem o prefixo na
+ *    base, todas elas viram 404 em produção enquanto funcionam no `dev` de quem
+ *    exporta a variável de ambiente com o caminho completo — que é a pior forma
+ *    de um erro existir: invisível para quem desenvolve, total para quem instala.
+ *
+ * `PIKPOK_API_URL` sobrepõe os dois, para apontar o app para outro ambiente.
+ */
+const API_BASE_PRODUCAO = 'https://ivory-spider-116452.hostingersite.com/api/v1';
+
+/**
+ * Em `npm run dev` o padrão é a máquina local, não produção.
+ *
+ * O caminho contrário — desenvolver contra o servidor de verdade sem ter pedido
+ * isso — é como se estraga dado de cliente sem perceber: abre uma run, debita
+ * minuto de live e grava mensagem de chat na conta real, tudo a partir de um
+ * app que ainda está sendo mexido. O engano é fácil demais para ficar dependendo
+ * de alguém lembrar de exportar uma variável (e no PowerShell a forma
+ * `VAR=valor comando` nem existe, então esquecer é o comportamento padrão).
+ *
+ * `electron-vite dev` define NODE_ENV=development; o build empacotado, não.
+ */
+const API_BASE_PADRAO =
+  process.env['NODE_ENV'] === 'development'
+    ? 'http://localhost:3000/api/v1'
+    : API_BASE_PRODUCAO;
 const INTERVALO_POLL_DEVICE_MS = 3_000;
 const INTERVALO_HEARTBEAT_MS = 60_000;
 
@@ -488,6 +521,20 @@ export class ApiClient {
   /** O carimbo de "o vendedor usou esta resposta" — a métrica da fase. */
   async marcarCopiada(replyId: string): Promise<void> {
     await this.requisitar('POST', `/live/replies/${replyId}/copied`, {});
+  }
+
+  /**
+   * Guarda a resposta na base de conhecimento, corrigida ou não.
+   *
+   * Diferente de `marcarCopiada`, esta chamada NÃO pode falhar em silêncio: o
+   * vendedor acabou de digitar algo e espera que fique guardado. Se o erro for
+   * engolido, ele descobre na live seguinte que a correção nunca existiu — e
+   * aí já respondeu a mesma coisa à mão duas vezes.
+   */
+  async salvarNaBase(replyId: string, texto?: string): Promise<void> {
+    await this.requisitar('POST', `/live/replies/${replyId}/save-to-base`, {
+      ...(texto ? { text: texto } : {}),
+    });
   }
 
   // -------------------------------------------------------------------- SSE

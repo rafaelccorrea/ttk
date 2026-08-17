@@ -1,8 +1,10 @@
-import { Box, Button, Chip, Stack, Typography } from '@mui/material';
+import { Box, Button, Stack, Typography, alpha } from '@mui/material';
 import { useCallback, useEffect, useState } from 'react';
 import type { EstadoAtivacao } from '@shared/desktop-api';
 import { Aviso, Carregando } from '../components/Estados';
+import { Logo } from '../components/Logo';
 import { mensagemDeErro } from '../erros';
+import { cores } from '../theme/theme';
 import { SEM_PONTE, obterPonte } from '../ponte';
 
 /**
@@ -117,11 +119,21 @@ export function Ativacao(): JSX.Element {
 
         <Box
           sx={{
-            py: 3,
-            borderRadius: 3,
+            position: 'relative',
+            overflow: 'hidden',
+            py: 3.5,
+            borderRadius: 4,
             textAlign: 'center',
-            bgcolor: 'rgba(254,44,85,0.06)',
-            border: '1px solid rgba(254,44,85,0.20)',
+            bgcolor: cores.superficieAlta,
+            border: '1px solid',
+            borderColor: alpha(cores.vermelho, 0.28),
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              background: `radial-gradient(70% 100% at 50% 0%, ${alpha(cores.vermelho, 0.18)} 0%, transparent 70%)`,
+            },
+            '& > *': { position: 'relative' },
           }}
         >
           <Typography variant="overline" color="text.secondary">
@@ -133,11 +145,17 @@ export function Ativacao(): JSX.Element {
               // lido em voz alta e digitado à mão. O que importa aqui é não
               // confundir zero com O, não a elegância da fonte.
               fontFamily: 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace',
-              fontSize: 40,
+              fontSize: 46,
               fontWeight: 800,
-              letterSpacing: '0.10em',
-              color: 'primary.main',
-              lineHeight: 1.2,
+              letterSpacing: '0.14em',
+              // Indentação à direita compensando o `letter-spacing`, que
+              // adiciona o espaço DEPOIS do último caractere e desalinharia o
+              // código do centro da caixa.
+              textIndent: '0.14em',
+              lineHeight: 1.15,
+              background: cores.gradiente,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
             }}
           >
             {estado.userCode}
@@ -156,8 +174,19 @@ export function Ativacao(): JSX.Element {
           Autorizar no navegador
         </Button>
 
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Chip size="small" color="primary" variant="outlined" label="aguardando" />
+        <Stack direction="row" spacing={1} alignItems="center" justifyContent="center">
+          {/* Um ponto pulsando no lugar do selo "aguardando": a espera aqui é
+              contínua, e uma etiqueta parada não passa isso. */}
+          <Box
+            sx={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              bgcolor: cores.atencao,
+              animation: 'espera 1.6s ease-in-out infinite',
+              '@keyframes espera': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.25 } },
+            }}
+          />
           <Typography variant="caption" color="text.secondary">
             Assim que você aprovar lá, esta tela passa sozinha.
           </Typography>
@@ -169,8 +198,17 @@ export function Ativacao(): JSX.Element {
 
 function Moldura({ children }: { readonly children: React.ReactNode }): JSX.Element {
   return (
-    <Stack spacing={2} sx={{ p: 3 }}>
-      <Typography variant="h5">Ativar este computador</Typography>
+    <Stack spacing={2.5} sx={{ p: 3, pt: 2, overflowY: 'auto' }}>
+      {/*
+        A primeira tela do app é a única que ninguém pediu para ver: o vendedor
+        baixou um instalador e agora um programa quer que ele digite um código
+        num site. O logo grande aqui é o que amarra esta janela ao produto que
+        ele já usa no navegador — sem ele, esta tela poderia ser de qualquer um.
+      */}
+      <Stack spacing={1.5} alignItems="flex-start">
+        <Logo tamanho={52} />
+        <Typography variant="h5">Ativar este computador</Typography>
+      </Stack>
       {children}
     </Stack>
   );

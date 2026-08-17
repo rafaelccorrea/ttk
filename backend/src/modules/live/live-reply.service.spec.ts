@@ -16,8 +16,11 @@ import {
   normalizarTexto,
   truncarSeguro,
   valoresPermitidos,
+  LiveReplyService,
 } from './live-reply.service';
 import { sanitizarHtml } from './live-config.service';
+import { LiveFaq } from './entities/live-faq.entity';
+import { LiveReply } from './entities/live-reply.entity';
 
 /*
  * O que é testado aqui é a lógica que roda ANTES e DEPOIS do modelo — a parte
@@ -489,5 +492,146 @@ describe('aceite do termo de risco', () => {
         liveAutoAcceptedVersion: '2020-01-01',
       }),
     ).toBe(false);
+  });
+});
+
+/**
+ * A realimentação da base (fase 3).
+ *
+ * O que estes testes protegem: uma correção do vendedor SUBSTITUI a entrada
+ * errada em vez de virar uma segunda linha concorrente, e a curadoria dele
+ * nasce como `manual` — que é o que a faz sobreviver ao reprocessamento da
+ * gravação, onde tudo que veio da IA é apagado e refeito.
+ */
+function servicoParaPromocao(estado: {
+  faqExistente?: Partial<LiveFaq> | null;
+  resposta?: Partial<LiveReply>;
+  mensagem?: { id: string; text: string } | null;
+}) {
+  const respostaBase = {
+    id: 'r1',
+    userId: 'u1',
+    liveRunId: 'run1',
+    chatMessageId: 'm1',
+    text: 'Sai por R$ 89,90.',
+    sourceProductIds: [] as string[],
+    copiedAt: null as Date | null,
+    ...estado.resposta,
+  };
+  const salvos: Record<string, unknown[]> = { faq: [], respostas: [] };
+
+  const faqRepo = {
+    create: jest.fn((x: unknown) => x),
+    save: jest.fn(async (x: unknown) => {
+      salvos.faq.push(x);
+      return x;
+    }),
+    // `faqParecida` recarrega pelo repositório antes de salvar, para que o
+    // save vire UPDATE. Sem isto o teste do caminho de correção passaria
+    // enquanto a produção inseriria uma linha nova.
+    findOneBy: jest.fn(async () => estado.faqExistente ?? null),
+    manager: {
+      transaction: jest.fn(async (cb: (m: unknown) => Promise<unknown>) =>
+        cb({
+          query: jest.fn(async (sql: string) =>
+            sql.includes('SET LOCAL')
+              ? []
+              : estado.faqExistente
+                ? [estado.faqExistente]
+                : [],
+          ),
+        }),
+      ),
+    },
+  };
+
+  const servico = new LiveReplyService(
+    { findOneBy: jest.fn(async () => ({ id: 'run1', userId: 'u1', knowledgeSessionId: 's1' })) } as never,
+    {
+      findOneBy: jest.fn(async () =>
+        estado.mensagem === undefined
+          ? { id: 'm1', text: 'chega quando?' }
+          : estado.mensagem,
+      ),
+    } as never,
+    {
+      findOneBy: jest.fn(async () => respostaBase),
+      save: jest.fn(async (x: unknown) => {
+        salvos.respostas.push(x);
+        return x;
+      }),
+    } as never,
+    {} as never,
+    faqRepo as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
+  return { servico, faqRepo, salvos, respostaBase };
+}
+
+describe('realimentação da base', () => {
+  it('cria a entrada como manual, não como ia', async () => {
+    // `manual` é o que sobrevive ao `delete({ origin: 'ia' })` do
+    // reprocessamento. Nascer como 'ia' apagaria a curadoria do vendedor no dia
+    // em que ele reenviasse a gravação — o único dado aqui que não dá refazer.
+    const { servico, salvos } = servicoParaPromocao({});
+    await servico.promoverParaBase('u1', 'r1');
+    expect((salvos.faq[0] as { origin: string }).origin).toBe('manual');
+    expect((salvos.faq[0] as { liveSessionId: string }).liveSessionId).toBe('s1');
+  });
+
+  it('guarda o texto corrigido, e não o do copiloto', async () => {
+    const { servico, salvos } = servicoParaPromocao({});
+    await servico.promoverParaBase('u1', 'r1', 'Chega em até 7 dias úteis.');
+    expect((salvos.faq[0] as { answer: string }).answer).toBe(
+      'Chega em até 7 dias úteis.',
+    );
+  });
+
+  it('corrige a entrada existente em vez de criar uma concorrente', async () => {
+    // Duas respostas para a mesma pergunta deixam o desempate por prioridade
+    // decidir — e o copiloto poderia seguir usando justamente a versão que o
+    // vendedor acabou de recusar.
+    const { servico, faqRepo, salvos } = servicoParaPromocao({
+      faqExistente: { id: 'f1', question: 'chega quando?', answer: 'velha', priority: 0, origin: 'ia' },
+    });
+    await servico.promoverParaBase('u1', 'r1', 'nova resposta');
+    expect(faqRepo.create).not.toHaveBeenCalled();
+    expect((salvos.faq[0] as { id: string }).id).toBe('f1');
+    expect((salvos.faq[0] as { answer: string }).answer).toBe('nova resposta');
+    expect((salvos.faq[0] as { origin: string }).origin).toBe('manual');
+  });
+
+  it('só amarra ao produto quando a resposta se apoiou em um só', async () => {
+    // Com dois, a pergunta era comparativa: prender a um deles faria a entrada
+    // sumir da base quando aquele item fosse apagado.
+    const um = servicoParaPromocao({ resposta: { sourceProductIds: ['p1'] } });
+    await um.servico.promoverParaBase('u1', 'r1');
+    expect((um.salvos.faq[0] as { liveProductId: string | null }).liveProductId).toBe('p1');
+
+    const dois = servicoParaPromocao({ resposta: { sourceProductIds: ['p1', 'p2'] } });
+    await dois.servico.promoverParaBase('u1', 'r1');
+    expect((dois.salvos.faq[0] as { liveProductId: string | null }).liveProductId).toBeNull();
+  });
+
+  it('conta como aproveitada: salvar é sinal mais forte que copiar', async () => {
+    const { servico, salvos } = servicoParaPromocao({});
+    await servico.promoverParaBase('u1', 'r1');
+    expect((salvos.respostas[0] as { copiedAt: Date | null }).copiedAt).toBeInstanceOf(Date);
+  });
+
+  it('recusa resposta vazia', async () => {
+    const { servico } = servicoParaPromocao({});
+    await expect(servico.promoverParaBase('u1', 'r1', '   ')).rejects.toMatchObject({
+      status: 400,
+    });
+  });
+
+  it('recusa quando a pergunta já saiu pela retenção de 30 dias', async () => {
+    const { servico } = servicoParaPromocao({ mensagem: null });
+    await expect(servico.promoverParaBase('u1', 'r1')).rejects.toThrow();
   });
 });

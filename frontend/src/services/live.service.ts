@@ -81,6 +81,46 @@ export interface LiveSessionDetail extends LiveSession {
  * os aceita: eles contam de onde a linha veio, e procedência não é campo de
  * formulário.
  */
+/**
+ * O que a importação devolve.
+ *
+ * `ignoradas` não é detalhe: uma planilha de 300 linhas que importa 297 precisa
+ * dizer quais três ficaram de fora e por quê. Devolver só o total de sucesso
+ * faria o vendedor acreditar que está tudo lá — e descobrir o contrário quando
+ * o copiloto não soubesse responder sobre um produto ao vivo.
+ */
+/** Uma transmissão passada, com o que aconteceu nela. */
+export interface LiveRunResumo {
+  id: string;
+  status: string;
+  mode: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  knowledgeSessionId: string;
+  messagesSeen: number;
+  repliesGenerated: number;
+  escalations: number;
+  repliesSent: number;
+  deliveryFailures: number;
+  minutesCharged: number;
+  repliesUsed: number;
+  /**
+   * `null` quando não houve resposta nenhuma.
+   *
+   * Não é zero: "nenhuma resposta gerada" e "nenhuma das respostas prestou" são
+   * coisas diferentes, e mostrar as duas como 0% acusaria o copiloto de um
+   * fracasso que não houve.
+   */
+  usageRate: number | null;
+  latencyP50Ms: number | null;
+}
+
+export interface ResultadoDaImportacao {
+  criados: number;
+  atualizados: number;
+  ignoradas: Array<{ linha: number; motivo: string }>;
+}
+
 export interface ProdutoInput {
   name?: string;
   priceBrl?: number | null;
@@ -182,6 +222,9 @@ export const liveService = {
   listSessions: () =>
     api.get<LiveSession[]>('/live/sessions').then((r) => r.data),
 
+  /** Histórico das transmissões, com aproveitamento e latência. */
+  listRuns: () => api.get<LiveRunResumo[]>('/live/runs').then((r) => r.data),
+
   getSession: (id: string) =>
     api.get<LiveSessionDetail>(`/live/sessions/${id}`).then((r) => r.data),
 
@@ -218,6 +261,24 @@ export const liveService = {
     api
       .post<LiveProduct>(`/live/sessions/${sessionId}/products`, dto)
       .then((r) => r.data),
+
+  /**
+   * Importa o catálogo de um CSV.
+   *
+   * O nome do produto é a chave: reimportar a planilha corrigida atualiza os
+   * preços em vez de duplicar a base.
+   */
+  importarCatalogo: (sessionId: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api
+      .post<ResultadoDaImportacao>(
+        `/live/sessions/${sessionId}/products/import`,
+        form,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      )
+      .then((r) => r.data);
+  },
 
   updateProduct: (id: string, dto: ProdutoInput) =>
     api.patch<LiveProduct>(`/live/products/${id}`, dto).then((r) => r.data),

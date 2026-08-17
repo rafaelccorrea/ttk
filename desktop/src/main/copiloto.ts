@@ -585,6 +585,19 @@ export class Copiloto {
   }
 
   /**
+   * Salva a resposta na base — o gesto que faz a próxima live ser melhor.
+   *
+   * O erro SOBE, ao contrário do carimbo de cópia. São promessas diferentes:
+   * copiar entrega o texto na hora e a telemetria é bônus; salvar na base é uma
+   * promessa sobre o futuro, e uma promessa quebrada em silêncio só aparece
+   * semanas depois, quando o copiloto escala de novo a pergunta que o vendedor
+   * jura ter ensinado.
+   */
+  async salvarNaBase(replyId: string, texto?: string): Promise<void> {
+    await this.api.salvarNaBase(replyId, texto);
+  }
+
+  /**
    * O vendedor resolveu a escalação na voz.
    *
    * Não existe rota para isso no backend, e é proposital: o card da escalação

@@ -38,6 +38,7 @@ import {
 } from '@/services/live.service';
 import { STATUS_UI, StatusChip, estaProcessando, mensagemDeErro } from './status';
 import { CardDoApp } from './CardDoApp';
+import { HistoricoDeLives } from './HistoricoDeLives';
 
 /** De quanto em quanto tempo reconsultamos enquanto há live processando. */
 const POLL_MS = 8000;
@@ -71,6 +72,7 @@ function NovaBaseDialog({
   onFechar: () => void;
   onPronta: (sessionId: string) => void;
 }) {
+  const navigate = useNavigate();
   const [titulo, setTitulo] = useState('');
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [duracao, setDuracao] = useState<number | null>(null);
@@ -81,6 +83,13 @@ function NovaBaseDialog({
   const [precos, setPrecos] = useState<{ transcribe: number; live_extract: number }>(
     PRECO_PADRAO,
   );
+  /*
+   * O saldo. `null` enquanto a carteira não respondeu ou falhou — e nesse caso
+   * a tela NÃO bloqueia: quem recusa de verdade é o backend, e travar o botão
+   * porque uma consulta de leitura caiu impediria de enviar quem tem saldo de
+   * sobra. Sem número, o comportamento volta a ser o de antes.
+   */
+  const [saldo, setSaldo] = useState<number | null>(null);
 
   useEffect(() => {
     if (!aberto) return;
@@ -88,13 +97,17 @@ function NovaBaseDialog({
     // avisar um valor e o backend cobrar outro no dia em que o preço mudar.
     billingService
       .wallet()
-      .then((w) =>
+      .then((w) => {
         setPrecos({
           transcribe: w.prices?.transcribe?.credits ?? PRECO_PADRAO.transcribe,
           live_extract: w.prices?.live_extract?.credits ?? PRECO_PADRAO.live_extract,
-        }),
-      )
-      .catch(() => setPrecos(PRECO_PADRAO));
+        });
+        setSaldo(w.credits ?? null);
+      })
+      .catch(() => {
+        setPrecos(PRECO_PADRAO);
+        setSaldo(null);
+      });
   }, [aberto]);
 
   function limpar() {
@@ -125,6 +138,14 @@ function NovaBaseDialog({
 
   const orcamento = estimarCreditos(duracao, precos);
   const longaDemais = duracao != null && duracao > TRANSCRIBE_MAX_MINUTES * 60;
+  /*
+   * Saldo insuficiente vira recusa aqui, na frente, e não uma sessão em 'erro'
+   * lá atrás. Comparar contra o orçamento estimado — e não contra o piso do
+   * backend — é o ponto: uma live de 3 horas com 8 créditos na conta passa na
+   * trava do servidor e quebra no meio do pipeline, depois do upload inteiro.
+   * O navegador é o único lado que conhece a duração antes de o arquivo subir.
+   */
+  const semSaldo = saldo !== null && arquivo !== null && saldo < orcamento.creditos;
 
   async function enviar() {
     if (!arquivo || !titulo.trim()) return;
@@ -203,7 +224,32 @@ function NovaBaseDialog({
             </Alert>
           )}
 
-          {arquivo && !lendo && !longaDemais && (
+          {semSaldo && !lendo && !longaDemais && (
+            <Alert
+              severity="warning"
+              action={
+                <Button
+                  size="small"
+                  color="inherit"
+                  onClick={() => navigate('/planos')}
+                >
+                  Comprar créditos
+                </Button>
+              }
+            >
+              <Typography fontWeight={800} mb={0.5}>
+                Você tem {saldo}{' '}
+                {saldo === 1 ? 'crédito' : 'créditos'} e este envio custa{' '}
+                {orcamento.creditos}
+              </Typography>
+              <Typography variant="body2">
+                Recarregue antes de enviar. Assim a gravação não sobe à toa para
+                parar no meio do processamento.
+              </Typography>
+            </Alert>
+          )}
+
+          {arquivo && !lendo && !longaDemais && !semSaldo && (
             <Alert severity="info" icon={false}>
               <Typography fontWeight={800} mb={0.5}>
                 {orcamento.exato ? 'Vai consumir' : 'Vai consumir a partir de'}{' '}
@@ -244,11 +290,20 @@ function NovaBaseDialog({
         <Button
           variant="contained"
           onClick={enviar}
-          disabled={!arquivo || !titulo.trim() || lendo || enviando || longaDemais}
+          disabled={
+            !arquivo ||
+            !titulo.trim() ||
+            lendo ||
+            enviando ||
+            longaDemais ||
+            semSaldo
+          }
         >
-          {arquivo && !lendo && !longaDemais
-            ? `Enviar e gastar ${orcamento.creditos} créditos`
-            : 'Enviar gravação'}
+          {semSaldo
+            ? 'Créditos insuficientes'
+            : arquivo && !lendo && !longaDemais
+              ? `Enviar e gastar ${orcamento.creditos} créditos`
+              : 'Enviar gravação'}
         </Button>
       </DialogActions>
     </Dialog>
@@ -358,6 +413,13 @@ export function LivePage() {
        * descobrir isso agora, não depois de procurar.
        */}
       <CardDoApp paraQuem="lista" />
+
+      {/*
+       * Some sozinho para quem nunca transmitiu — ver `HistoricoDeLives`. Fica
+       * acima das bases porque, para quem já usa o produto, "como foi a última
+       * live" é a pergunta que traz a pessoa a esta tela.
+       */}
+      <HistoricoDeLives />
 
       {sessoes.length === 0 ? (
         <Card sx={{ textAlign: 'center', py: { xs: 5, md: 8 }, px: 3 }}>

@@ -25,6 +25,7 @@ import {
   ConfirmarEntregaDto,
   EncerrarLiveRunDto,
   LoteDeChatDto,
+  SalvarNaBaseDto,
   TrocarModoDaRunDto,
 } from './dto/live.dto';
 import { LiveRun } from './entities/live-run.entity';
@@ -215,6 +216,26 @@ export class LiveRunController {
     return this.replies.marcarCopiada(user.id, id);
   }
 
+  /**
+   * Guarda a resposta na base de conhecimento, com ou sem correção.
+   *
+   * Cada pergunta escalada é uma lacuna da base, e esta é a rota que fecha a
+   * lacuna com a resposta de quem sabe. Vai para a sessão de conhecimento — que
+   * sobrevive à transmissão — e não para a run, senão o aprendizado morreria
+   * junto com a live em que aconteceu.
+   */
+  @Post('replies/:id/save-to-base')
+  @ApiOperation({
+    summary: 'Salva a resposta (editada ou não) na base de conhecimento',
+  })
+  salvarNaBase(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SalvarNaBaseDto,
+  ) {
+    return this.replies.promoverParaBase(user.id, id, dto.text);
+  }
+
   // ----------------------------------------------------- modo automático
   /**
    * Liga ou desliga o envio automático desta transmissão.
@@ -253,6 +274,20 @@ export class LiveRunController {
    * consegue postá-las e a fila acabaria envelhecendo dentro do cliente, onde o
    * descarte por idade não alcança.
    */
+  /**
+   * O histórico das transmissões, com o desempenho de cada uma.
+   *
+   * Vem antes de `runs/:id/queue` na classe por convenção de leitura, não por
+   * exigência do roteador — `runs` e `runs/:id/queue` não colidem.
+   */
+  @Get('runs')
+  @ApiOperation({
+    summary: 'Histórico de transmissões com aproveitamento e latência',
+  })
+  listarRuns(@CurrentUser() user: AuthUser) {
+    return this.replies.listarRuns(user.id);
+  }
+
   @Get('runs/:id/queue')
   @ApiOperation({ summary: 'Fila de respostas aprovadas esperando envio' })
   async fila(

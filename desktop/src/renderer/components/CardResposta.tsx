@@ -1,8 +1,9 @@
 import CheckIcon from '@mui/icons-material/Check';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import { Box, Button, Stack, Typography } from '@mui/material';
+import { Box, Button, Stack, Typography, alpha } from '@mui/material';
 import { useState } from 'react';
 import type { LiveReplyEvent } from '@shared/live-events';
+import { cores } from '../theme/theme';
 
 /**
  * Uma resposta pronta, de alta confiança.
@@ -32,14 +33,19 @@ export function CardResposta({
       sx={{
         p: 1.5,
         borderRadius: 3,
-        bgcolor: 'background.paper',
+        bgcolor: copiado ? alpha(cores.sucesso, 0.06) : cores.superficie,
         border: '1px solid',
-        borderColor: copiado ? 'success.main' : 'divider',
-        opacity: copiado ? 0.7 : 1,
-        transition: 'border-color .2s ease, opacity .2s ease',
+        borderColor: copiado ? alpha(cores.sucesso, 0.35) : 'divider',
+        // Já usada continua legível, só perde o destaque: no escuro derrubar a
+        // opacidade para 0.7 apagaria o texto de vez.
+        transition: 'border-color .2s ease, background-color .2s ease',
+        '&:hover': { borderColor: copiado ? alpha(cores.sucesso, 0.45) : cores.bordaForte },
       }}
     >
-      <Typography variant="body1" sx={{ lineHeight: 1.4 }}>
+      <Typography
+        variant="body2"
+        sx={{ lineHeight: 1.55, fontSize: 14.5, color: copiado ? 'text.secondary' : 'text.primary' }}
+      >
         {resposta.text}
       </Typography>
 
@@ -57,7 +63,16 @@ export function CardResposta({
           {copiado ? 'Copiado' : 'Copiar'}
         </Button>
         <Box sx={{ flex: 1 }} />
-        <Typography variant="caption" color="text.secondary">
+        {/*
+          Confiança e latência viram números tabulares: numa lista que recebe
+          item a cada poucos segundos, dígitos de largura variável fazem a
+          coluna dançar a cada resposta nova.
+        */}
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ fontVariantNumeric: 'tabular-nums', fontSize: 11.5 }}
+        >
           {Math.round(resposta.confidence * 100)}% · {Math.round(resposta.latencyMs / 100) / 10}s
         </Typography>
       </Stack>

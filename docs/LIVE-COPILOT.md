@@ -23,13 +23,42 @@ TikTok em nome dele.
 | **0** | Gravação → base de conhecimento editável na web | pronta |
 | **1** | Copiloto lê o chat ao vivo e responde **no painel** | pronta |
 | **2** | O app **digita e envia** no chat do TikTok | pronta, atrás de aceite de termo |
-| 3 | Import do TikTok Shop por API, embeddings, analytics de conversão | não iniciada |
+| **3** | A base aprende com o uso, import de catálogo, histórico de desempenho | pronta, menos o que depende do TikTok |
 
 **O modo painel não é degradação, é um caminho de primeira classe.** Ele entrega o
 valor central — a resposta certa, na hora certa, com o preço certo — sem tocar no
 chat e sem risco de ToS. É o default no onboarding, é para onde o app volta
 sozinho quando algo quebra, e é a única forma de operar para quem não aceita o
 termo de risco.
+
+A Fase 3 foi entregue no que depende de nós, e o que ficou de fora ficou por
+motivo declarado:
+
+- **A base aprende com o uso.** Toda escalação é uma lacuna, e o vendedor
+  responde a lacuna direto no painel — corrigindo o rascunho, se quiser. Vai
+  para a sessão de conhecimento como `manual`, e por isso sobrevive ao
+  reprocessamento da gravação. Sem isso, a mesma pergunta escalava live após
+  live e ele pagava o modelo toda vez para receber "não sei" sobre algo que já
+  tinha explicado três vezes.
+- **Import de catálogo por CSV.** A extração só conhece o que foi *falado*; o
+  chat pergunta pelos duzentos itens da loja. O nome é a chave: reimportar a
+  planilha corrigida atualiza os preços em vez de duplicar a base.
+- **Histórico de desempenho.** Os contadores existiam desde a fase 1 e viviam só
+  no banco.
+
+**Import por API do TikTok Shop: não feito**, e não por esforço — a API oficial
+exige aprovação de seller que não depende de nós. O Shop exporta o catálogo em
+planilha, e é por aí que o CSV resolve hoje.
+
+**Embeddings: deliberadamente não feitos.** Uma live tem 5–50 produtos, e a base
+cabe inteira no prompt — é isso que torna o cache viável e a latência baixa.
+Trocar isso por busca vetorial adicionaria infraestrutura para piorar as duas
+coisas. Vale reabrir quando um catálogo real não couber, não antes.
+
+**Analytics de conversão (pergunta → venda): bloqueada.** Amarrar uma pergunta
+do chat a um pedido exige os dados de pedido do TikTok Shop — a mesma aprovação
+acima. O que dava para entregar sem inventar número foi entregue: aproveitamento,
+escalações, latência.
 
 Tudo está escondido do cliente por `LAUNCH_LIVE_COPILOT` até que se decida lançar.
 
@@ -129,6 +158,30 @@ Duas moedas que não se convertem — os números estão em
 - **Minutos de live**: o tempo com o copiloto ligado. Vendidos por hora em
   add-ons, com **10 minutos de cortesia por conta** que entram no mesmo saldo.
 
+### A trava de entrada
+`BillingService.assertSaldo` — confere plano e saldo **sem debitar**.
+
+A cobrança da live mora longe da porta: o preço depende da duração, a duração só
+existe depois do ffmpeg, e por isso o `charge` acontece dentro do pipeline. Sem
+uma conferida na entrada, quem está zerado sobe a gravação inteira, espera a
+extração do áudio e recebe o "créditos insuficientes" no fim — com a sessão
+marcada como `erro`, que ele lê como "minha gravação tem defeito".
+
+Ela recebe a **lista** de ações porque a pergunta certa é sobre a soma:
+conferir transcrição e extração separadamente aprova quem tem saldo para cada
+metade e para nenhum inteiro — exatamente o pedido que quebra no meio, depois de
+já ter debitado a primeira parte.
+
+O que ela **não** é: controle de corrida. Entre a conferida e o débito o saldo
+pode mudar, e quem garante que ninguém fica negativo continua sendo o UPDATE
+condicional do `charge`. O piso checado na rota é o menor envio possível (um
+bloco + extração); o navegador, que conhece a duração antes do upload, bloqueia
+o botão contra o orçamento real.
+
+Mesma trava no Multiplicador: o clipe é de graça, a montagem é que custa — e
+subir dezenas de vídeos com a carteira zerada termina em 402 com a curadoria
+toda já feita.
+
 Exclusivo do plano **Business** — e a razão não é preço, é risco: é o único lugar
 do produto onde escrevemos em nome do vendedor, dentro da plataforma dele. Isso
 pede o degrau que já vem com suporte de gente.
@@ -147,6 +200,8 @@ mostra a margem realizada por recurso e aponta onde o custo **medido** passou do
 | Métrica | Onde | Por que importa |
 |---|---|---|
 | Taxa de cópia | `live_replies.copiedAt` | No modo painel, é a única prova de que a resposta prestou: um humano escolheu usá-la |
+| Aproveitamento por live | `GET /live/runs` | A mesma taxa, por transmissão, na tela do vendedor — é o número que sustenta a renovação do Business |
+| Entradas curadas | `live_faq` com `origin = 'manual'` | Quanto a base aprendeu com o uso. Crescendo, as escalações têm de cair |
 | Taxa de entrega | `deliveryStatus` | No automático, quanto realmente chegou ao chat |
 | Latência p95 | `latencyMs` | Acima de ~15 s a resposta vira ruído: o assunto já passou |
 | Escalações por live | `status = 'escalada'` | Muitas = o produto não está resolvendo sozinho |
@@ -207,11 +262,17 @@ Fase 1 e 2 se apoiam nessa base estar correta, e isso nunca foi verificado com
 áudio de verdade. É o primeiro item antes de qualquer lançamento.
 
 Também aberto:
-- Janela estreita entre o débito do minuto e a gravação do marcador de pendência
-  (crash exatamente ali perde o crédito sem rastro); resolver pede transação.
-- A Fase 3 inteira.
 - Instalador sem assinatura de código.
 - O app nunca rodou contra uma live real do TikTok.
+- Import por API do TikTok Shop e analytics de conversão — os dois presos na
+  mesma aprovação de seller (ver §1).
+
+Fechado desde a última revisão:
+- ~~Janela entre o débito e o marcador de pendência~~. `charge` agora aceita um
+  `EntityManager`, e o pipeline põe débito e marcador na mesma transação: ou os
+  dois acontecem, ou nenhum. Antes, um restart na janela errada sumia com o
+  crédito sem deixar rastro para o estorno achar — e quem pagava o restart era o
+  cliente.
 
 ---
 
@@ -221,7 +282,8 @@ Também aberto:
 # backend (a flag é o que faz a feature aparecer)
 cd backend && LAUNCH_LIVE_COPILOT=true npm run start:dev
 cd frontend && npm run dev
-cd desktop  && npm run dev
+
+cd desktop  && npm run dev      # já aponta para localhost:3000 em dev
 
 # testes
 cd backend  && npm test         # inclui o motor e a carteira de minutos
@@ -231,6 +293,18 @@ cd desktop  && npm test         # os freios do envio e a anonimização
 # a live sintética ponta a ponta (precisa de banco)
 cd backend && npm run simular:live
 ```
+
+**O `/api/v1` faz parte do endereço.** O Nest serve tudo sob
+`setGlobalPrefix('api/v1')` e o `api-client.ts` monta caminhos relativos
+(`/live/runs/...`), então uma base sem o prefixo compila, abre a janela e falha
+em toda chamada com 404. Em `dev` o padrão é `http://localhost:3000/api/v1`; no
+app empacotado, a origem de produção. `PIKPOK_API_URL` sobrepõe os dois — e no
+PowerShell isso se escreve `$env:PIKPOK_API_URL="..."` numa linha separada, não
+como prefixo do comando.
+
+Ao abrir, o app pede o pareamento: mostra um código e abre o navegador em
+`APP_URL/ativar` (`APP_URL` mora no `.env` do backend). Aprove ali com uma conta
+de plano Business e o token volta para o app.
 
 A simulação é o que pega o que teste unitário não vê — ela já encontrou
 fragmentação do dedup em rajada, migration não aplicada e violação de FK na
