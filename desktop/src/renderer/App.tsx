@@ -196,6 +196,7 @@ export function App(): JSX.Element {
           <ConectarLive
             aoConectar={() => setTela('cockpit')}
             aoAbrirConfiguracoes={() => setNosAjustes(true)}
+            aoSair={() => setTela('ativacao')}
           />
         ) : (
           <Cockpit

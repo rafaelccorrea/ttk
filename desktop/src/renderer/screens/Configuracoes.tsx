@@ -1,18 +1,16 @@
-import LogoutIcon from '@mui/icons-material/Logout';
-import PersonIcon from '@mui/icons-material/PersonOutline';
 import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Slider,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import { useCallback, useEffect, useState } from 'react';
-import type { ConfiguracoesCopiloto, SessaoDesktop } from '@shared/desktop-api';
+import type { ConfiguracoesCopiloto } from '@shared/desktop-api';
 import { LOTE_MAXIMO, LOTE_MINIMO } from '@shared/desktop-api';
+import { BlocoDaConta } from '../components/BlocoDaConta';
 import { Aviso, Carregando } from '../components/Estados';
 import { mensagemDeErro } from '../erros';
 import { cores } from '../theme/theme';
@@ -40,7 +38,6 @@ export function Configuracoes({
 }): JSX.Element {
   const ponte = obterPonte();
   const [valores, setValores] = useState<ConfiguracoesCopiloto | null>(null);
-  const [sessao, setSessao] = useState<SessaoDesktop | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
@@ -62,13 +59,6 @@ export function Configuracoes({
     void carregar();
   }, [carregar]);
 
-  useEffect(() => {
-    // A sessão é só para MOSTRAR de quem é a conta antes de sair dela. Se a
-    // leitura falhar, o bloco de conta ainda aparece com o botão: não saber o
-    // e-mail não pode impedir alguém de deslogar.
-    if (!ponte) return;
-    void ponte.obterSessao().then(setSessao).catch(() => undefined);
-  }, [ponte]);
 
   if (!ponte) {
     return (
@@ -206,125 +196,12 @@ export function Configuracoes({
           ) : null}
         </Stack>
 
-        <BlocoDaConta sessao={sessao} aoSair={aoSair} />
+        <BlocoDaConta aoSair={aoSair} />
       </Stack>
     </Moldura>
   );
 }
 
-/**
- * De quem é esta conta, e como sair dela.
- *
- * Fica NOS AJUSTES porque é o único lugar alcançável das duas telas em que o
- * app fica parado — o cockpit tem a engrenagem no cabeçalho e a tela de
- * conectar tem o botão embaixo. Sair não é um ajuste, mas espalhar um segundo
- * caminho por fora custaria mais do que o vendedor ganha: ele desloga uma vez
- * na vida do computador, e o que ele não pode é ter que desinstalar o app para
- * trocar de conta — que era exatamente o estado anterior.
- *
- * A confirmação existe por causa de UM caso: sair no meio de uma live encerra
- * a run. Fora dele o clique não perde nada.
- */
-function BlocoDaConta({
-  sessao,
-  aoSair,
-}: {
-  readonly sessao: SessaoDesktop | null;
-  readonly aoSair: () => void;
-}): JSX.Element {
-  const ponte = obterPonte();
-  const [confirmando, setConfirmando] = useState(false);
-  const [saindo, setSaindo] = useState(false);
-
-  const sair = async (): Promise<void> => {
-    if (!ponte) return;
-    setSaindo(true);
-    try {
-      await ponte.sair();
-    } finally {
-      // Mesmo se o encerramento da run falhar, o token local já foi esquecido:
-      // segurar o vendedor nesta tela o deixaria preso numa conta da qual ele
-      // acabou de pedir para sair.
-      setSaindo(false);
-      aoSair();
-    }
-  };
-
-  return (
-    <Box
-      sx={{
-        mt: 1,
-        p: 2,
-        borderRadius: 3,
-        bgcolor: cores.superficie,
-        border: '1px solid',
-        borderColor: 'divider',
-      }}
-    >
-      <Typography variant="overline" color="text.secondary">
-        conta
-      </Typography>
-
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 0.5, mb: 1.75 }}>
-        <PersonIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-        <Typography variant="body2" fontWeight={650} noWrap sx={{ minWidth: 0 }}>
-          {sessao?.email ?? 'Este computador está ativado.'}
-        </Typography>
-        {sessao?.plano ? (
-          <Chip size="small" variant="outlined" label={sessao.plano} sx={{ flexShrink: 0 }} />
-        ) : null}
-      </Stack>
-
-      {confirmando ? (
-        <Stack spacing={1.25}>
-          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>
-            Sair encerra a live que estiver no ar e este computador precisará de
-            um código novo para entrar de novo. Seus minutos e suas bases não
-            são afetados.
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            <Button
-              size="small"
-              variant="contained"
-              color="error"
-              onClick={() => void sair()}
-              disabled={saindo}
-              startIcon={saindo ? <CircularProgress size={14} color="inherit" /> : null}
-            >
-              {saindo ? 'Saindo…' : 'Sim, sair da conta'}
-            </Button>
-            <Button
-              size="small"
-              color="inherit"
-              onClick={() => setConfirmando(false)}
-              disabled={saindo}
-            >
-              Cancelar
-            </Button>
-          </Stack>
-        </Stack>
-      ) : (
-        <Button
-          size="small"
-          variant="outlined"
-          color="inherit"
-          startIcon={<LogoutIcon sx={{ fontSize: 16 }} />}
-          onClick={() => setConfirmando(true)}
-        >
-          Sair da conta
-        </Button>
-      )}
-    </Box>
-  );
-}
-
-/**
- * Cada ajuste vira um card próprio.
- *
- * Empilhados soltos, os quatro controles liam como um formulário — e um slider
- * sem moldura, no escuro, não deixa claro até onde vai o ajuste que ele
- * controla e onde começa a explicação do seguinte.
- */
 function Ajuste({
   titulo,
   explicacao,

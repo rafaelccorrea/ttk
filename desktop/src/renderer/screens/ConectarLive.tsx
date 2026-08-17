@@ -9,6 +9,7 @@ import {
 } from '@mui/material';
 import { useCallback, useEffect, useState } from 'react';
 import type { BaseDeConhecimento, CarteiraLive } from '@shared/desktop-api';
+import { BlocoDaConta } from '../components/BlocoDaConta';
 import { Aviso, Carregando } from '../components/Estados';
 import { mensagemDeErro } from '../erros';
 import { LINKS } from '../links';
@@ -29,9 +30,12 @@ import { SEM_PONTE, obterPonte } from '../ponte';
 export function ConectarLive({
   aoConectar,
   aoAbrirConfiguracoes,
+  aoSair,
 }: {
   readonly aoConectar: () => void;
   readonly aoAbrirConfiguracoes: () => void;
+  /** Chamado depois do logout: o shell volta para a tela de ativação. */
+  readonly aoSair: () => void;
 }): JSX.Element {
   const ponte = obterPonte();
   const [bases, setBases] = useState<BaseDeConhecimento[] | null>(null);
@@ -69,6 +73,7 @@ export function ConectarLive({
       <Moldura
         titulo="Conectar à live"
         subtitulo="Escolha sobre o que eu respondo e qual live eu vou acompanhar."
+        aoSair={aoSair}
       >
         <Aviso tom="erro" titulo="Não consegui carregar suas bases" descricao={SEM_PONTE} />
       </Moldura>
@@ -80,6 +85,7 @@ export function ConectarLive({
       <Moldura
         titulo="Conectar à live"
         subtitulo="Escolha sobre o que eu respondo e qual live eu vou acompanhar."
+        aoSair={aoSair}
       >
         <Aviso
           tom="erro"
@@ -96,6 +102,7 @@ export function ConectarLive({
       <Moldura
         titulo="Conectar à live"
         subtitulo="Escolha sobre o que eu respondo e qual live eu vou acompanhar."
+        aoSair={aoSair}
       >
         <Carregando texto="Procurando suas bases de conhecimento…" />
       </Moldura>
@@ -107,6 +114,7 @@ export function ConectarLive({
       <Moldura
         titulo="Conectar à live"
         subtitulo="Escolha sobre o que eu respondo e qual live eu vou acompanhar."
+        aoSair={aoSair}
       >
         <Aviso
           titulo="Você ainda não tem uma base pronta"
@@ -144,6 +152,7 @@ export function ConectarLive({
     <Moldura
       titulo="Conectar à live"
       subtitulo="Escolha sobre o que eu respondo e qual live eu vou acompanhar."
+      aoSair={aoSair}
     >
       <Stack spacing={2.5}>
         <Box
@@ -277,10 +286,12 @@ export function ConectarLive({
 function Moldura({
   titulo,
   subtitulo,
+  aoSair,
   children,
 }: {
   readonly titulo: string;
   readonly subtitulo: string;
+  readonly aoSair: () => void;
   readonly children: React.ReactNode;
 }): JSX.Element {
   return (
@@ -292,6 +303,15 @@ function Moldura({
         </Typography>
       </Stack>
       {children}
+      {/*
+        A conta fica na MOLDURA, e não no corpo da tela, porque assim ela existe
+        em TODOS os estados desta tela — inclusive nos dois em que ela mais
+        importa: "não consegui falar com o PikPok" e "você ainda não tem uma
+        base pronta". São exatamente os estados de quem entrou na conta errada,
+        e prender o logout atrás do caminho feliz deixaria essa pessoa sem saída
+        nenhuma dentro do app.
+      */}
+      <BlocoDaConta variante="compacto" aoSair={aoSair} />
     </Stack>
   );
 }
