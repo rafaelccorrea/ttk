@@ -177,7 +177,16 @@ export function App(): JSX.Element {
 
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {nosAjustes ? (
-          <Configuracoes aoVoltar={() => setNosAjustes(false)} />
+          <Configuracoes
+            aoVoltar={() => setNosAjustes(false)}
+            // Sair fecha os ajustes JUNTO com a troca de tela: deixar a
+            // sobreposição aberta mostraria os sliders de um copiloto que não
+            // tem mais conta por trás.
+            aoSair={() => {
+              setNosAjustes(false);
+              setTela('ativacao');
+            }}
+          />
         ) : tela === 'carregando' ? (
           <Carregando texto="Abrindo o copiloto…" />
         ) : tela === 'ativacao' ? (

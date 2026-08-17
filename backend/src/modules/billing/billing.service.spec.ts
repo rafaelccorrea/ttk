@@ -351,3 +351,70 @@ describe('charge dentro de uma transação de fora', () => {
     expect(creditos.salvos).toHaveLength(1);
   });
 });
+
+describe('conta interna (COMP_ACCOUNT_EMAILS)', () => {
+  const ADMIN = 'pikpok@pikpok.app';
+
+  beforeEach(() => {
+    process.env.COMP_ACCOUNT_EMAILS = ADMIN;
+  });
+  afterEach(() => {
+    delete process.env.COMP_ACCOUNT_EMAILS;
+  });
+
+  it('não debita crédito, mesmo com saldo zero', async () => {
+    // O caso real: a conta que demonstra o produto travando por falta de saldo
+    // no meio de uma demonstração.
+    const { servico, users, creditos } = montar({
+      usuario: { ...BUSINESS, email: ADMIN, credits: 0 },
+    });
+    await expect(servico.charge('u1', 'transcribe')).resolves.toBeUndefined();
+    expect(users.builder.set).not.toHaveBeenCalled();
+    // Mas o uso fica no extrato, com valor zero: o histórico segue contando o
+    // que foi feito sem mexer no saldo.
+    expect((creditos.salvos[0] as { amount: number }).amount).toBe(0);
+    expect((creditos.salvos[0] as { description: string }).description).toContain(
+      'uso interno',
+    );
+  });
+
+  it('não consome minuto de live', async () => {
+    const { servico, minutos } = montar({
+      usuario: { ...BUSINESS, email: ADMIN, liveMinutes: 0 },
+    });
+    await expect(servico.chargeLiveMinutes('u1', 1)).resolves.toBe(0);
+    expect((minutos.salvos[0] as { minutes: number }).minutes).toBe(0);
+  });
+
+  it('passa direto pela trava de entrada', async () => {
+    // Sem isto, a trava barraria na PORTA quem o `charge` deixa passar lá
+    // dentro — e o sintoma seria "o upload nem começa".
+    const { servico } = montar({
+      usuario: { ...BUSINESS, email: ADMIN, credits: 0 },
+    });
+    await expect(
+      servico.assertSaldo('u1', [
+        { action: 'transcribe' },
+        { action: 'live_extract' },
+      ]),
+    ).resolves.toBeUndefined();
+  });
+
+  it('marca a carteira como ilimitada para a interface', async () => {
+    const { servico } = montar({
+      usuario: { ...BUSINESS, email: ADMIN, credits: 0, liveMinutes: 0 },
+    });
+    const carteira = await servico.getWallet('u1');
+    expect(carteira.unlimited).toBe(true);
+  });
+
+  it('cliente comum continua sendo cobrado normalmente', async () => {
+    // A trava não pode valer para quem paga: seria receita virando zero.
+    const { servico, users, creditos } = montar({
+      usuario: { ...BUSINESS, email: 'cliente@loja.com', credits: 1000 },
+    });
+    await servico.charge('u1', 'transcribe');
+    expect(users.execute).toHaveBeenCalled();
+    expect((creditos.salvos[0] as { amount: number }).amount).toBeLessThan(0);
+  });
+});

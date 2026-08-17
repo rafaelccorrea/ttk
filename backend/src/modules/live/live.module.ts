@@ -16,6 +16,7 @@ import { LiveSession } from './entities/live-session.entity';
 import { LiveSelectorFailure } from './entities/live-selector-failure.entity';
 import { LiveController } from './live.controller';
 import { LiveConfigController } from './live-config.controller';
+import { DownloadController } from './download.controller';
 import { LiveConfigService } from './live-config.service';
 import { LiveEventsService } from './live-events.service';
 import { LiveReplyService } from './live-reply.service';
@@ -64,7 +65,14 @@ import { LiveService } from './live.service';
     BillingModule,
     StudioModule,
   ],
-  controllers: [LiveController, LiveRunController, LiveConfigController],
+  controllers: [
+    LiveController,
+    LiveRunController,
+    LiveConfigController,
+    // Publico e sem guard, ao contrario dos outros tres — o porque esta no
+    // comentario de topo do proprio controller.
+    DownloadController,
+  ],
   providers: [
     LiveService,
     LiveReplyService,

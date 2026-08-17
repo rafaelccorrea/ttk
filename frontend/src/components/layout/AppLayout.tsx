@@ -172,6 +172,8 @@ export function AppLayout() {
    * possível para alguém desistir de experimentar o produto.
    */
   const [cortesiaDeLive, setCortesiaDeLive] = useState<number | null>(null);
+  /** Conta interna: os dois selos viram "ilimitado" em vez de um número morto. */
+  const [ilimitado, setIlimitado] = useState(false);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [plan, setPlan] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -258,6 +260,7 @@ export function AppLayout() {
               ? (w.liveCopilot?.trialMinutes ?? 0)
               : null,
           );
+          setIlimitado(Boolean(w.unlimited));
         })
         .catch(() => setCredits(null));
     load();
@@ -559,8 +562,9 @@ export function AppLayout() {
                * O caso que não pode existir é o laranja em cima de quem ainda
                * não gastou a cortesia: seria alarme sobre saldo que a conta tem.
                */
-              const temCortesia = minutosDeLive <= 0 && cortesiaDeLive !== null;
-              const positivo = minutosDeLive > 0 || temCortesia;
+              const temCortesia =
+                !ilimitado && minutosDeLive <= 0 && cortesiaDeLive !== null;
+              const positivo = ilimitado || minutosDeLive > 0 || temCortesia;
               const cor = temCortesia
                 ? { fundo: 'rgba(76,175,80,0.14)', tinta: '#1b6e21' }
                 : positivo
@@ -569,11 +573,13 @@ export function AppLayout() {
               return (
                 <Tooltip
                   title={
-                    temCortesia
-                      ? `Cortesia de estreia: ${cortesiaDeLive} minutos de copiloto ao vivo, por nossa conta. Só começam a contar quando você abrir a primeira transmissão.`
-                      : minutosDeLive > 0
-                        ? 'Tempo de copiloto respondendo o chat da sua live. É separado dos créditos de IA.'
-                        : 'Suas horas de live acabaram. O copiloto não responde o chat sem elas.'
+                    ilimitado
+                      ? 'Conta interna: o copiloto ao vivo não consome minutos.'
+                      : temCortesia
+                        ? `Cortesia de estreia: ${cortesiaDeLive} minutos de copiloto ao vivo, por nossa conta. Só começam a contar quando você abrir a primeira transmissão.`
+                        : minutosDeLive > 0
+                          ? 'Tempo de copiloto respondendo o chat da sua live. É separado dos créditos de IA.'
+                          : 'Suas horas de live acabaram. O copiloto não responde o chat sem elas.'
                   }
                 >
                   <Chip
@@ -583,9 +589,11 @@ export function AppLayout() {
                     size="small"
                     icon={<HeadsetMicRoundedIcon sx={{ fontSize: 16 }} />}
                     label={
-                      temCortesia
-                        ? `${cortesiaDeLive} min grátis`
-                        : formatarTempoDeLive(minutosDeLive)
+                      ilimitado
+                        ? 'live ilimitada'
+                        : temCortesia
+                          ? `${cortesiaDeLive} min grátis`
+                          : formatarTempoDeLive(minutosDeLive)
                     }
                     sx={{
                       flexShrink: 0,
@@ -601,14 +609,20 @@ export function AppLayout() {
               );
             })()}
           {credits !== null && (
-            <Tooltip title="Créditos de IA: roteiro, imagem, vídeo, transcrição e a base de conhecimento da live.">
+            <Tooltip
+              title={
+                ilimitado
+                  ? 'Conta interna: os recursos de IA não consomem créditos.'
+                  : 'Créditos de IA: roteiro, imagem, vídeo, transcrição e a base de conhecimento da live.'
+              }
+            >
               <Chip
                 component={Link}
                 to="/planos"
                 clickable
                 size="small"
                 icon={<BoltRoundedIcon sx={{ fontSize: 16 }} />}
-                label={`${credits} créditos`}
+                label={ilimitado ? 'créditos ilimitados' : `${credits} créditos`}
                 sx={{
                   flexShrink: 0,
                   bgcolor: 'rgba(254,44,85,0.10)',

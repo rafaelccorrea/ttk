@@ -5,6 +5,7 @@ import {
   app,
   globalShortcut,
   ipcMain,
+  nativeTheme,
   shell,
 } from 'electron';
 import type { ConfiguracoesCopiloto } from '../shared/desktop-api';
@@ -56,6 +57,20 @@ const CAMINHO_ICONE = app.isPackaged
  */
 if (process.platform === 'win32') app.setAppUserModelId('com.pikpok.desktop');
 
+/**
+ * A BARRA DE TÍTULO também é o app.
+ *
+ * Sem isto o Windows desenha a barra na cor de acento do usuário — verde, azul,
+ * o que ele tiver escolhido — em cima de uma janela que é preta do TikTok à
+ * esquerda e preta do painel à direita. `themeSource = 'dark'` liga o modo
+ * escuro imersivo do Windows e a barra passa a acompanhar a janela, junto com
+ * os menus de contexto e a barra de rolagem nativa.
+ *
+ * É forçado em vez de seguir o sistema porque o app NÃO tem tema claro: quem
+ * usa o Windows no claro receberia uma barra branca colada num painel preto.
+ */
+nativeTheme.themeSource = 'dark';
+
 const LARGURA_INICIAL = 1440;
 const ALTURA_INICIAL = 900;
 
@@ -81,6 +96,14 @@ function criarJanela(): BrowserWindow {
     minHeight: 700,
     title: 'PikPok Copiloto',
     icon: CAMINHO_ICONE,
+    /*
+     * O menu "File / Edit / View / Window / Help" padrão do Electron some da
+     * tela, mas NÃO é removido: ele volta com o Alt e, principalmente, é ele
+     * que registra os aceleradores de recortar/copiar/colar. Um
+     * `Menu.setApplicationMenu(null)` mataria o Ctrl+C — o gesto central deste
+     * produto, que é copiar a resposta e colar no chat.
+     */
+    autoHideMenuBar: true,
     // Só aparece quando o conteúdo já pintou: abrir a janela em branco e
     // preenchê-la depois lê como travamento.
     show: false,
@@ -177,6 +200,20 @@ function anexarTikTok(janela: BrowserWindow): void {
   // divisão quando a janela muda de forma; recalcular na mão mantém os 60/40
   // exatos em qualquer tamanho.
   janela.on('resize', posicionar);
+  /*
+   * E DE NOVO NA HORA DE APARECER.
+   *
+   * A janela é pedida com 1440x900, mas o Windows a encolhe para caber na tela
+   * (monitor menor, escala em 125%, barra de tarefas). Esse ajuste acontece
+   * depois do `posicionar()` de cima e nem sempre emite `resize`: a view fica
+   * com a largura do tamanho PEDIDO enquanto o painel se posiciona pelos 60% do
+   * tamanho REAL, e a diferença aparece como o TikTok invadindo a faixa do
+   * painel. Medir mais uma vez quando a janela vai à tela custa um cálculo e
+   * fecha o caso das telas pequenas, que são justamente as dos notebooks.
+   */
+  janela.once('ready-to-show', posicionar);
+  janela.on('maximize', posicionar);
+  janela.on('unmaximize', posicionar);
 }
 
 /**

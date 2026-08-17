@@ -102,7 +102,11 @@ function NovaBaseDialog({
           transcribe: w.prices?.transcribe?.credits ?? PRECO_PADRAO.transcribe,
           live_extract: w.prices?.live_extract?.credits ?? PRECO_PADRAO.live_extract,
         });
-        setSaldo(w.credits ?? null);
+        // Conta interna não tem saldo a conferir: `null` desliga a trava, do
+        // mesmo jeito que uma carteira que não respondeu. Sem isto ela seria
+        // barrada AQUI, na porta, enquanto o backend a deixaria passar lá
+        // dentro — o pior tipo de bug para diagnosticar.
+        setSaldo(w.unlimited ? null : (w.credits ?? null));
       })
       .catch(() => {
         setPrecos(PRECO_PADRAO);

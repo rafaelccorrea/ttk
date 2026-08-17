@@ -366,9 +366,20 @@ export const PLAN_RANK: Record<string, number> = {
  * sobrevivem ao paywall — sem isso, no dia da virada nós mesmos perdemos o
  * acesso à plataforma, já que o time entra pelo mesmo login dos clientes.
  *
- * Vale só para o PLANO (acesso a recursos), nunca para créditos: quem está aqui
- * continua gastando crédito de IA normalmente, para que o custo do uso interno
- * apareça no relatório em vez de virar consumo invisível.
+ * Vale para o PLANO e, desde a fase 3, também para o SALDO: a conta da equipe
+ * não gasta crédito nem minuto de live.
+ *
+ * A regra anterior era o contrário — "continua gastando normalmente, para que o
+ * custo do uso interno apareça no relatório". O raciocínio estava certo e a
+ * conclusão, errada: o custo do uso interno aparece em `ai_cost_events`, que
+ * grava os tokens REAIS de cada chamada e é a fonte do relatório de margem. O
+ * saldo de créditos nunca foi essa fonte — ele é preço de venda, não custo. Ou
+ * seja: cobrar da própria equipe não media nada e ainda produzia o pior
+ * resultado possível, que é a conta de quem opera o produto travar no meio de
+ * uma demonstração por falta de saldo.
+ *
+ * O gasto continua no extrato, com valor zero e etiqueta de uso interno: o
+ * histórico segue contando o que foi feito, sem mexer no saldo.
  */
 export const COMP_ACCOUNT_PLAN = 'business';
 

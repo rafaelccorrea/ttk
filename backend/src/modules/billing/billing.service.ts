@@ -83,6 +83,13 @@ export class BillingService implements OnModuleInit {
     return {
       credits: user.credits,
       plan: user.plan,
+      /*
+       * Conta da equipe: nada é debitado dela (ver `charge`). A interface
+       * precisa saber disso porque, sem o aviso, o cabeçalho mostraria um saldo
+       * parado para sempre — e um número que nunca muda lê como bug, não como
+       * cortesia. Só diz QUE é ilimitada; o motivo não interessa ao navegador.
+       */
+      unlimited: isCompAccount(user.email),
       prices: ACTION_PRICES,
       features,
       featureMinPlan: FEATURE_MIN_PLAN,
@@ -186,6 +193,13 @@ export class BillingService implements OnModuleInit {
     await this.ensureSignupBonus(userId);
     const owner = await this.users.findOneBy({ id: userId });
 
+    /*
+     * A conta da equipe passa direto. Sem isto, a trava barraria na PORTA quem
+     * o `charge` deixaria passar lá dentro — e o sintoma seria o pior tipo de
+     * bug: "o upload nem começa, mas quando eu contornava a tela funcionava".
+     */
+    if (isCompAccount(owner?.email)) return;
+
     for (const { action } of itens) {
       const minPlan = ACTION_MIN_PLAN[action];
       if ((PLAN_RANK[owner?.plan ?? 'free'] ?? 0) < (PLAN_RANK[minPlan] ?? 0)) {
@@ -244,6 +258,31 @@ export class BillingService implements OnModuleInit {
     await this.ensureSignupBonus(userId);
     // Plano mínimo da ação (ex.: vídeo IA só no Pro+).
     const owner = await usuarios.findOneBy({ id: userId });
+
+    /*
+     * A conta da equipe não paga — mas o uso fica registrado.
+     *
+     * O custo real do que ela consome já é medido em `ai_cost_events`, com os
+     * tokens de verdade; o crédito é preço de venda, e cobrar preço de venda de
+     * nós mesmos não mede nada. O que isso evitava era só uma coisa: a conta que
+     * demonstra o produto travar por falta de saldo no meio de uma demonstração.
+     *
+     * O lançamento de valor zero mantém o extrato honesto — dá para ver o que
+     * foi usado e quando, sem o saldo se mexer.
+     */
+    if (isCompAccount(owner?.email)) {
+      await lancamentos.save(
+        lancamentos.create({
+          userId,
+          amount: 0,
+          balanceAfter: owner?.credits ?? 0,
+          kind: 'spend',
+          action,
+          description: `${ACTION_PRICES[action].label} (uso interno)`,
+        }),
+      );
+      return;
+    }
     const minPlan = ACTION_MIN_PLAN[action];
     if ((PLAN_RANK[owner?.plan ?? 'free'] ?? 0) < (PLAN_RANK[minPlan] ?? 0)) {
       throw new HttpException(
@@ -345,6 +384,23 @@ export class BillingService implements OnModuleInit {
         `O Live Copilot é exclusivo do plano ${minPlan.charAt(0).toUpperCase() + minPlan.slice(1)}. Faça upgrade em Planos & Créditos.`,
         403,
       );
+    }
+
+    // Conta da equipe: o minuto é registrado e não é descontado. Mesmo motivo
+    // do débito de créditos — uma live de demonstração não pode acabar porque o
+    // saldo interno zerou.
+    if (isCompAccount(owner?.email)) {
+      const saldoAtual = owner?.liveMinutes ?? 0;
+      await this.liveTransactions.save(
+        this.liveTransactions.create({
+          userId,
+          minutes: 0,
+          balanceAfter: saldoAtual,
+          kind: 'spend',
+          description: `Copiloto ao vivo — ${total} ${total === 1 ? 'minuto' : 'minutos'} (uso interno)`,
+        }),
+      );
+      return saldoAtual;
     }
 
     const result = await this.users

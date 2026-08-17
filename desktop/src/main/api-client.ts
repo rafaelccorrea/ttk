@@ -143,18 +143,41 @@ export class ApiClient {
   private readonly disco = new Store<EsquemaDoDisco>({ name: 'pikpok' });
 
   private token: string | null = null;
+  /**
+   * Se o disco já foi consultado nesta execução.
+   *
+   * O TOKEN NÃO PODE SER LIDO NO CONSTRUTOR, e isso já custou uma ativação
+   * repetida a cada abertura do app. O `Copiloto` — e portanto este cliente —
+   * nasce no topo do módulo do processo principal, que é avaliado ANTES do
+   * `app.whenReady()`. Nesse instante o `safeStorage` ainda não tem cifra
+   * disponível: `isEncryptionAvailable()` responde `false`, `lerToken()`
+   * devolve `null` sem erro nenhum, e o painel abre na tela de ativação com o
+   * token válido intacto no `%APPDATA%`, a um palmo de distância.
+   *
+   * Adiantar o `whenReady` aqui dentro não serve (o construtor é síncrono) e
+   * mover a criação do `Copiloto` para dentro do `whenReady` obrigaria todo o
+   * registro de IPC a mudar de forma. Ler sob demanda resolve na origem: a
+   * primeira consulta ao token acontece quando o painel pergunta pela sessão,
+   * que é sempre depois de a janela existir.
+   */
+  private tokenLido = false;
   private runId: string | null = null;
 
   private heartbeat: NodeJS.Timeout | null = null;
   private sseAtivo = false;
   private sseAbort: AbortController | null = null;
 
-  constructor() {
-    this.token = this.lerToken();
+  /** O token da sessão, lido do disco na primeira vez que alguém precisa. */
+  private get tokenAtual(): string | null {
+    if (!this.tokenLido) {
+      this.tokenLido = true;
+      this.token = this.lerToken();
+    }
+    return this.token;
   }
 
   get autenticado(): boolean {
-    return this.token !== null;
+    return this.tokenAtual !== null;
   }
 
   get runAtual(): string | null {
@@ -256,7 +279,7 @@ export class ApiClient {
 
   /** A conta ativada, ou `null` se o app nunca foi pareado. */
   async obterSessao(): Promise<SessaoDesktop | null> {
-    if (!this.token) return null;
+    if (!this.tokenAtual) return null;
     // O plano vem da carteira, e não de um campo guardado no disco: ele muda na
     // web (assinatura, downgrade, cancelamento) sem o desktop saber, e um plano
     // velho em cache mostraria o cockpit para quem já não tem direito a ele.
@@ -333,6 +356,10 @@ export class ApiClient {
    */
   private guardarToken(token: string, email: string | null): void {
     this.token = token;
+    // Sem isto, a primeira leitura preguiçosa aconteceria DEPOIS desta escrita
+    // e devolveria o que estava no disco por cima do token que acabou de ser
+    // emitido — trocando a sessão nova pela antiga logo após a ativação.
+    this.tokenLido = true;
     // O e-mail é do PRÓPRIO vendedor, e serve só para o painel dizer em qual
     // conta ele está; vai em texto puro porque não é credencial de nada.
     if (email) this.disco.set('email', email);
@@ -365,6 +392,11 @@ export class ApiClient {
 
   desconectar(): void {
     this.token = null;
+    // Sair é definitivo nesta execução: sem a marca, a próxima chamada leria o
+    // disco de novo e ressuscitaria a sessão que o vendedor acabou de encerrar
+    // (a escrita do `delete` abaixo é o que impede, mas depender da ordem de
+    // duas operações para não voltar a logar alguém é frágil demais).
+    this.tokenLido = true;
     this.disco.delete('tokenCifrado');
     this.disco.delete('email');
   }
@@ -603,7 +635,7 @@ export class ApiClient {
       method: 'GET',
       headers: {
         Accept: 'text/event-stream',
-        Authorization: `Bearer ${this.token ?? ''}`,
+        Authorization: `Bearer ${this.tokenAtual ?? ''}`,
       },
       signal: abort.signal,
     });
@@ -672,7 +704,7 @@ export class ApiClient {
     opcoes: { autenticado?: boolean } = {},
   ): Promise<T> {
     const autenticado = opcoes.autenticado !== false;
-    if (autenticado && !this.token) {
+    if (autenticado && !this.tokenAtual) {
       throw new Error('Dispositivo não pareado.');
     }
 
@@ -680,7 +712,7 @@ export class ApiClient {
       method: metodo,
       headers: {
         'Content-Type': 'application/json',
-        ...(autenticado ? { Authorization: `Bearer ${this.token}` } : {}),
+        ...(autenticado ? { Authorization: `Bearer ${this.tokenAtual}` } : {}),
       },
       body: corpo === undefined ? undefined : JSON.stringify(corpo),
     });
@@ -705,14 +737,29 @@ export class ApiClient {
    * O backend responde erro em português e já pensado para o usuário final
    * ("Você não tem minutos de live suficientes"), então a mensagem dele vale
    * mais que qualquer texto genérico que fosse escrito aqui.
+   *
+   * MAS ISSO SÓ VALE PARA AS EXCEÇÕES QUE NÓS ESCREVEMOS. As do framework
+   * escapam com o nome da classe dentro do `message`, e o vendedor recebia na
+   * tela, em inglês, "ThrottlerException: Too Many Requests" — que não diz o
+   * que aconteceu nem o que fazer. Os status abaixo têm texto próprio; o resto
+   * segue confiando no backend.
    */
   private async mensagemDeErro(resposta: Response): Promise<string> {
+    if (resposta.status === 429) {
+      return 'Muitas tentativas em pouco tempo. Espere um minuto e tente de novo.';
+    }
+    if (resposta.status >= 500) {
+      return 'O PikPok não respondeu agora. Tente de novo em alguns segundos.';
+    }
+
     try {
       const corpo = (await resposta.json()) as { message?: string | string[] };
       const mensagem = Array.isArray(corpo.message)
         ? corpo.message.join('; ')
         : corpo.message;
-      if (mensagem) return mensagem;
+      // Uma mensagem com "Exception" no meio é vazamento de framework, não
+      // texto de produto: não vai para a tela de ninguém.
+      if (mensagem && !/exception/i.test(mensagem)) return mensagem;
     } catch {
       // Corpo vazio ou não-JSON: cai no genérico abaixo.
     }

@@ -19,6 +19,13 @@ export interface ActionPrice {
 export interface Wallet {
   credits: number;
   plan: string;
+  /**
+   * Conta interna: nada é debitado dela.
+   *
+   * Sem isto o cabeçalho mostraria um saldo parado para sempre — e um número
+   * que nunca muda lê como bug, não como cortesia.
+   */
+  unlimited?: boolean;
   prices: Record<string, ActionPrice>;
   /** recurso → liberado no plano atual (ex.: ai_videos, ingestion). */
   features?: Record<string, boolean>;

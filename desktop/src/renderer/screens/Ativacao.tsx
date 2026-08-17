@@ -1,5 +1,5 @@
 import { Box, Button, Stack, Typography, alpha } from '@mui/material';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EstadoAtivacao } from '@shared/desktop-api';
 import { Aviso, Carregando } from '../components/Estados';
 import { Logo } from '../components/Logo';
@@ -24,6 +24,17 @@ export function Ativacao(): JSX.Element {
   const ponte = obterPonte();
   const [estado, setEstado] = useState<EstadoAtivacao | null>(null);
   const [pedindo, setPedindo] = useState(false);
+  /**
+   * Um código por montagem, e não por invocação de efeito.
+   *
+   * O `StrictMode` roda o efeito duas vezes em desenvolvimento, e cada volta
+   * pedia um código novo: dois dos dez que a rota `/device/code` permite por
+   * minuto iam embora em cada abertura do app, e algumas recargas depois a tela
+   * de ativação passava a nascer com "muitas tentativas". O `ref` não é
+   * paranoia de re-render — é o que mantém a cota alinhada com o que o vendedor
+   * realmente pediu.
+   */
+  const jaPediu = useRef(false);
 
   const pedirCodigo = useCallback(async (): Promise<void> => {
     if (!ponte) return;
@@ -48,7 +59,10 @@ export function Ativacao(): JSX.Element {
     // O desfecho da autorização chega pelo processo principal, que é quem faz o
     // polling do token: o painel não fica perguntando nada, só escuta.
     const cancelar = ponte.aoMudarAtivacao(setEstado);
-    void pedirCodigo();
+    if (!jaPediu.current) {
+      jaPediu.current = true;
+      void pedirCodigo();
+    }
     return cancelar;
   }, [ponte, pedirCodigo]);
 

@@ -107,16 +107,44 @@ export function AtivarDispositivoPage() {
       alignItems="center"
       minHeight="100vh"
       px={2}
-      sx={{ bgcolor: 'background.default' }}
+      py={4}
+      sx={{
+        bgcolor: 'background.default',
+        // A página de ativação é vista UMA vez por computador e sempre vinda de
+        // fora do site (o app abriu o navegador). O halo da marca é o que faz
+        // ela parecer a mesma empresa do aplicativo que acabou de abri-la, em
+        // vez de um formulário solto num fundo cinza.
+        backgroundImage:
+          'radial-gradient(60% 50% at 50% 0%, rgba(254,44,85,0.10) 0%, transparent 70%),' +
+          'radial-gradient(50% 40% at 100% 100%, rgba(0,194,187,0.08) 0%, transparent 70%)',
+      }}
     >
-      <Card sx={{ width: '100%', maxWidth: 460 }}>
-        <CardContent sx={{ p: 4 }}>
-          <Typography variant="h5" gutterBottom textAlign="center">
-            Pik
-            <Box component="span" sx={{ color: 'primary.main' }}>
-              Pok
-            </Box>
-          </Typography>
+      <Card
+        sx={{
+          width: '100%',
+          maxWidth: 470,
+          borderRadius: 4,
+          boxShadow: '0 18px 60px rgba(22,24,35,0.10)',
+          // O card não reage ao ponteiro: aqui não há nada para clicar nele
+          // inteiro, e o hover herdado do tema sugeriria que há.
+          '&:hover': { boxShadow: '0 18px 60px rgba(22,24,35,0.10)' },
+        }}
+      >
+        <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
+          <Stack direction="row" spacing={1.25} alignItems="center" justifyContent="center" mb={3}>
+            <Box
+              component="img"
+              src="/icon-192.png"
+              alt=""
+              sx={{ width: 34, height: 34, borderRadius: 2 }}
+            />
+            <Typography variant="h6" fontWeight={800}>
+              Pik
+              <Box component="span" sx={{ color: 'primary.main' }}>
+                Pok
+              </Box>
+            </Typography>
+          </Stack>
 
           {etapa === 'carregando' && (
             <Box textAlign="center" py={4}>
@@ -129,7 +157,27 @@ export function AtivarDispositivoPage() {
 
           {etapa === 'aprovado' && (
             <Stack spacing={2} alignItems="center" py={3}>
-              <CheckCircleRoundedIcon color="success" sx={{ fontSize: 56 }} />
+              <Box
+                sx={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: '50%',
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: 'success.main',
+                  bgcolor: 'rgba(22,163,74,0.10)',
+                  // O anel cresce uma vez, no aparecimento: é o fecho de um
+                  // fluxo que começou noutra tela, e vale marcar a chegada.
+                  animation: 'entra .35s ease-out',
+                  '@keyframes entra': {
+                    from: { transform: 'scale(0.85)', opacity: 0 },
+                    to: { transform: 'scale(1)', opacity: 1 },
+                  },
+                  '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+                }}
+              >
+                <CheckCircleRoundedIcon sx={{ fontSize: 40 }} />
+              </Box>
               <Typography variant="h6" textAlign="center">
                 Dispositivo liberado
               </Typography>
@@ -155,19 +203,64 @@ export function AtivarDispositivoPage() {
 
           {(etapa === 'conferir' || etapa === 'erro') && (
             <Stack spacing={2.5}>
-              <Stack spacing={1} alignItems="center">
-                <DevicesRoundedIcon color="primary" sx={{ fontSize: 44 }} />
+              <Stack spacing={1.25} alignItems="center">
+                <Box
+                  sx={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: '50%',
+                    display: 'grid',
+                    placeItems: 'center',
+                    color: 'primary.main',
+                    bgcolor: 'rgba(254,44,85,0.08)',
+                  }}
+                >
+                  <DevicesRoundedIcon sx={{ fontSize: 30 }} />
+                </Box>
                 <Typography variant="h6" textAlign="center">
                   Liberar acesso pelo aplicativo
                 </Typography>
+                <Typography variant="body2" color="text.secondary" textAlign="center">
+                  Confira se o código abaixo é o mesmo que está na tela do
+                  aplicativo antes de liberar.
+                </Typography>
               </Stack>
 
-              <Alert severity="warning">
-                Ao liberar, este aplicativo passa a entrar na sua conta PikPok
-                sozinho — com os seus dados, os seus créditos e os seus minutos
-                de live. Só continue se foi você quem abriu o aplicativo agora e
-                se o código abaixo é exatamente o que aparece na tela dele.
-              </Alert>
+              {/*
+                O aviso deixa de ser um `Alert` amarelo de biblioteca e vira
+                texto com uma barra na lateral. O amarelo de sistema é o mesmo
+                de "cookies" e "sua sessão vai expirar", e é lido como ruído
+                dispensável — que é exatamente o oposto do que este parágrafo
+                precisa ser, já que ele é a única defesa contra alguém liberar
+                um código de phishing.
+              */}
+              <Box
+                sx={{
+                  p: 2,
+                  pl: 2.25,
+                  borderRadius: 3,
+                  position: 'relative',
+                  overflow: 'hidden',
+                  bgcolor: 'rgba(245,158,11,0.07)',
+                  border: '1px solid rgba(245,158,11,0.28)',
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 3,
+                    bgcolor: '#f59e0b',
+                  },
+                }}
+              >
+                <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
+                  Ao liberar, este aplicativo passa a entrar na sua conta PikPok
+                  sozinho — com os seus dados, os seus créditos e os seus
+                  minutos de live. Só continue se foi <strong>você</strong> quem
+                  abriu o aplicativo agora.
+                </Typography>
+              </Box>
 
               <TextField
                 label="Código do aplicativo"
@@ -175,13 +268,47 @@ export function AtivarDispositivoPage() {
                 onChange={(e) => setCodigo(e.target.value.toUpperCase())}
                 placeholder="PIKPOK-XXXX"
                 fullWidth
-                inputProps={{ style: { letterSpacing: 4, fontSize: 22 } }}
+                inputProps={{
+                  style: {
+                    letterSpacing: '0.22em',
+                    fontSize: 24,
+                    fontWeight: 700,
+                    textAlign: 'center',
+                    // Monoespaçada: este código é comparado caractere a
+                    // caractere com o da outra tela, e é aí que 0 e O, 1 e l
+                    // custam caro.
+                    fontFamily:
+                      'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace',
+                    // Compensa o espaço que o `letter-spacing` adiciona depois
+                    // do último caractere e que tira o texto do centro.
+                    textIndent: '0.22em',
+                  },
+                }}
               />
 
               {info?.deviceName && (
-                <Typography color="text.secondary" variant="body2">
-                  Aplicativo: <strong>{info.deviceName}</strong>
-                </Typography>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="center"
+                  sx={{
+                    px: 1.75,
+                    py: 1.25,
+                    borderRadius: 3,
+                    bgcolor: 'rgba(22,24,35,0.03)',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
+                  <DevicesRoundedIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                  <Typography variant="body2" color="text.secondary">
+                    Aplicativo
+                  </Typography>
+                  <Box sx={{ flex: 1 }} />
+                  <Typography variant="body2" fontWeight={700} noWrap>
+                    {info.deviceName}
+                  </Typography>
+                </Stack>
               )}
 
               {erro && <Alert severity="error">{erro}</Alert>}

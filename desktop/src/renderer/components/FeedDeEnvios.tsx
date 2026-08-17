@@ -26,7 +26,7 @@ export function FeedDeEnvios({
 }): JSX.Element {
   if (itens.length === 0) {
     return (
-      <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ py: 1, lineHeight: 1.55 }}>
         Nada enviado ainda. Assim que uma resposta sair para o chat, ela aparece
         aqui com o resultado.
       </Typography>

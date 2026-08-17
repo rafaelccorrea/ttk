@@ -240,6 +240,27 @@ function listaDoAmbiente(chave: string, padrao: string[]): string[] {
  * Ligado, todo mundo cai para somente-painel: o copiloto continua gerando a
  * resposta e mostrando na tela, e o vendedor copia. O produto degrada, não para.
  */
+/**
+ * Onde o instalador está no disco DESTE servidor, se estiver.
+ *
+ * É função de módulo, e não método do serviço, porque quem a usa é o
+ * `DownloadController` — que é público de propósito (ver o comentário longo lá)
+ * e por isso não pode depender de um serviço que vive atrás do guard de plano.
+ *
+ * Serve para operar sem CDN: o vendedor baixa direto do backend. Em produção o
+ * caminho preferido continua sendo `DESKTOP_DOWNLOAD_WINDOWS` apontando para um
+ * GitHub Release, que tira 80MB de tráfego de dentro do processo da API.
+ */
+export function caminhoDoInstalador(
+  plataforma: 'windows' | 'mac',
+): string | null {
+  const variavel =
+    plataforma === 'windows'
+      ? process.env.DESKTOP_INSTALADOR_WINDOWS
+      : process.env.DESKTOP_INSTALADOR_MAC;
+  return variavel?.trim() || null;
+}
+
 export function killSwitchLigado(): boolean {
   return process.env.LIVE_ENVIO_KILL_SWITCH === 'true';
 }
