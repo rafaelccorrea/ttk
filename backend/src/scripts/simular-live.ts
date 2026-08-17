@@ -181,6 +181,14 @@ async function run(): Promise<void> {
         priceBrl: '1499.90',
         variants: ['rosa', 'nude'],
         aliases: ['kit completo', 'kit grande'],
+        /*
+         * O frete é cadastrado COM valor de propósito: é ele que autoriza a
+         * resposta a dizer "frete grátis acima de R$ 99" sem ser acusada de
+         * inventar preço. Sem esta linha a simulação nunca exercita o caminho
+         * feliz — tudo escala, e o relatório sai com zero respostas prontas
+         * parecendo saúde quando na verdade é o produto não respondendo nada.
+         */
+        shippingInfo: 'Frete grátis acima de R$ 99 para todo o Brasil',
         origin: 'manual',
         active: true,
       }),
@@ -260,6 +268,33 @@ async function run(): Promise<void> {
               return `preço partido: "${resposta.text}"`;
             }
             if (resposta.text.includes('{{')) return `marcador não resolvido: "${resposta.text}"`;
+          }
+          return null;
+        },
+      },
+      {
+        /*
+         * A cena mais importante do roteiro, e a última a ser escrita — porque
+         * até ela existir a simulação passava com o motor ESCALANDO TUDO, o que
+         * é o retrato de um produto que não responde nada. Uma bateria que só
+         * verifica o que deve ser barrado dá nota máxima para um copiloto mudo.
+         */
+        nome: 'pergunta boa vira resposta PRONTA, com preço e frete da base',
+        mensagens: [
+          msg('o kit completo tem em nude?', 'feliz-1', new Date(agora + 2500)),
+        ],
+        esperado: 'decisão enviar, com o preço da base e sem valor inventado',
+        conferir: (r) => {
+          const prontas = r.respostas.filter((x) => x.decision === 'enviar');
+          if (!prontas.length) {
+            return 'nenhuma resposta chegou a "enviar" — o copiloto está mudo';
+          }
+          const texto = prontas[0].text;
+          if (!/R\$\s*1\.499,90/.test(texto)) {
+            return `preço da base não saiu inteiro: "${texto}"`;
+          }
+          if (!prontas[0].sourceProductIds?.length) {
+            return 'resposta pronta sem fonte citada';
           }
           return null;
         },
