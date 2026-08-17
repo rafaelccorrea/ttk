@@ -1594,6 +1594,21 @@ export class LiveReplyService {
     normalizado: string,
   ): Promise<LiveChatMessage[]> {
     if (!normalizado) return [];
+    /*
+     * O desempate por id na ordenação abaixo NÃO é decoração: numa rajada o
+     * webcast entrega várias mensagens com o MESMO instante de recebimento, e aí
+     * "a mais antiga do cluster" — que é quem carrega o contador de repetição e
+     * a resposta já dada — passava a ser escolhida por ordem indeterminada do
+     * Postgres — e desempatar por id não resolve, porque UUID é aleatório: "a
+     * mais antiga" sairia sorteada. Quem reflete a ordem real de gravação é o
+     * createdAt. Cada duplicata elegia uma original diferente e o cluster se
+     * fragmentava: a mesma pergunta gerava duas respostas, duas linhas no painel
+     * do vendedor e duas linhas de custo.
+     *
+     * Foi assim que a simulação de live pegou o defeito — quatro variações de
+     * "quanto custa o kit" no mesmo milissegundo, todas com semelhança acima do
+     * limiar, e ainda assim duas respostas saindo.
+     */
     const desde = new Date(Date.now() - JANELA_DO_CLUSTER_MS);
     return this.mensagens.manager.transaction(async (manager) => {
       await manager.query(
@@ -1607,7 +1622,7 @@ export class LiveReplyService {
           AND "isQuestion" = true
           AND "receivedAt" >= $3
           AND ("clusterKey" = $4 OR text % $5)
-        ORDER BY "receivedAt" DESC
+        ORDER BY "receivedAt" DESC, "createdAt" DESC
         LIMIT ${MENSAGENS_PARA_COMPARAR}
         `,
         // O trigrama compara texto CRU com texto CRU: o índice GIN está sobre a

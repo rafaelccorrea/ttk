@@ -53,6 +53,22 @@ export class LiveConfigController {
   }
 
   /**
+   * Onde baixar o app, e qual versão está publicada.
+   *
+   * A URL vem de variável de ambiente e não do código porque publicar release é
+   * ato de operação, não de deploy: sai um instalador novo sem o backend mudar
+   * de linha. E enquanto não houver release nenhum, a resposta diz isso
+   * explicitamente — a tela mostra "em breve" em vez de um botão que baixa 404,
+   * que é a pior forma de anunciar um produto que ainda não existe para o
+   * cliente.
+   */
+  @Get('download')
+  @ApiOperation({ summary: 'URL e versão do instalador do app de desktop' })
+  download() {
+    return this.config.downloadDoApp();
+  }
+
+  /**
    * O termo de risco e o que este usuário já aceitou.
    *
    * O app precisa dos dois na mesma resposta: o texto para exibir e o carimbo

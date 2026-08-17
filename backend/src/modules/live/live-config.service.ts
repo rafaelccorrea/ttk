@@ -382,6 +382,38 @@ export class LiveConfigService {
     private readonly usuarios: Repository<AppUser>,
   ) {}
 
+  /**
+   * Onde o vendedor baixa o app, e para qual sistema.
+   *
+   * Sai de variável de ambiente porque publicar um instalador é operação, não
+   * deploy: o release novo entra sem o backend mudar de linha. `disponivel:
+   * false` é um estado de primeira classe, não erro — enquanto não houver
+   * release, a tela precisa poder dizer "em breve" em vez de oferecer um botão
+   * que baixa 404.
+   *
+   * Sem assinatura de código o Windows exibe o aviso do SmartScreen na
+   * instalação, e o vendedor que vê isso desiste ou liga para o suporte. Por
+   * isso a tela avisa ANTES: assustar no aviso é melhor que assustar no meio da
+   * instalação.
+   */
+  downloadDoApp(): {
+    disponivel: boolean;
+    versao: string | null;
+    windows: string | null;
+    mac: string | null;
+    assinado: boolean;
+  } {
+    const windows = process.env.DESKTOP_DOWNLOAD_WINDOWS?.trim() || null;
+    const mac = process.env.DESKTOP_DOWNLOAD_MAC?.trim() || null;
+    return {
+      disponivel: Boolean(windows || mac),
+      versao: process.env.DESKTOP_VERSION?.trim() || null,
+      windows,
+      mac,
+      assinado: process.env.DESKTOP_ASSINADO === 'true',
+    };
+  }
+
   /** A configuração que o app desktop busca antes de cada live. */
   configDeEnvio(): ConfigDeEnvio {
     const desligado = killSwitchLigado();

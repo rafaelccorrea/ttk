@@ -1,0 +1,252 @@
+import { HttpException } from '@nestjs/common';
+import { BillingService } from './billing.service';
+import { LIVE_TRIAL_MINUTES } from './billing.config';
+
+/**
+ * A carteira de minutos de live é dinheiro do cliente, e cada regra aqui existe
+ * porque a alternativa custa caro para alguém: cobrar duas vezes, dar hora de
+ * graça, ou deixar o copiloto rodando com saldo negativo.
+ *
+ * O que os testes protegem, em uma frase: o débito é atômico, a cortesia é uma
+ * só, e o webhook do Stripe nunca credita duas vezes.
+ */
+
+/**
+ * Dublê de repositório com o mínimo que estes fluxos tocam.
+ *
+ * O `createQueryBuilder` é dublado porque é ele que carrega a parte que importa:
+ * o débito e a concessão da cortesia são UPDATE CONDICIONAL, e `affected` é a
+ * resposta do banco a "você ganhou a corrida?". Um mock que sempre devolve
+ * `affected: 1` não testaria nada — então `afetadas` é controlado por teste.
+ */
+function repositorioDeUsuarios(estado: {
+  usuario?: Record<string, unknown> | null;
+  afetadas?: number[];
+}) {
+  const afetadas = [...(estado.afetadas ?? [1])];
+  const execute = jest.fn(async () => ({
+    affected: afetadas.length > 1 ? afetadas.shift() : afetadas[0],
+  }));
+  const builder = {
+    update: jest.fn().mockReturnThis(),
+    set: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    execute,
+  };
+  return {
+    findOneBy: jest.fn(async () => estado.usuario ?? null),
+    createQueryBuilder: jest.fn(() => builder),
+    increment: jest.fn(async () => ({ affected: 1 })),
+    builder,
+    execute,
+  };
+}
+
+function repositorioDeLancamentos(existente: unknown = null) {
+  const salvos: unknown[] = [];
+  return {
+    findOneBy: jest.fn(async () => existente),
+    create: jest.fn((x: unknown) => x),
+    save: jest.fn(async (x: unknown) => {
+      salvos.push(x);
+      return x;
+    }),
+    find: jest.fn(async () => []),
+    salvos,
+  };
+}
+
+function montar(estado: {
+  usuario?: Record<string, unknown> | null;
+  afetadas?: number[];
+  lancamentoExistente?: unknown;
+}) {
+  const users = repositorioDeUsuarios(estado);
+  const creditos = repositorioDeLancamentos();
+  const minutos = repositorioDeLancamentos(estado.lancamentoExistente ?? null);
+  const servico = new BillingService(
+    users as never,
+    creditos as never,
+    minutos as never,
+  );
+  return { servico, users, creditos, minutos };
+}
+
+const BUSINESS = {
+  id: 'u1',
+  email: 'vendedor@loja.com',
+  plan: 'business',
+  liveMinutes: 120,
+  liveTrialGrantedAt: null,
+};
+
+describe('carteira de minutos — consumo', () => {
+  it('debita o minuto de quem tem saldo e plano', async () => {
+    const { servico, minutos } = montar({ usuario: { ...BUSINESS } });
+    await expect(servico.chargeLiveMinutes('u1', 1)).resolves.toBeDefined();
+    // Todo débito deixa rastro no extrato próprio da moeda.
+    expect(minutos.save).toHaveBeenCalled();
+    expect((minutos.salvos[0] as { minutes: number }).minutes).toBe(-1);
+  });
+
+  it('recusa com 402 quando o saldo não cobre', async () => {
+    // `affected: 0` é o banco dizendo que a condição de saldo não passou — é
+    // assim que a corrida é resolvida, não com um `if` antes do UPDATE.
+    const { servico } = montar({ usuario: { ...BUSINESS }, afetadas: [0] });
+    await expect(servico.chargeLiveMinutes('u1', 1)).rejects.toMatchObject({
+      status: 402,
+    });
+  });
+
+  it('não deixa dois débitos simultâneos furarem o saldo', async () => {
+    // Saldo para um: o primeiro UPDATE afeta a linha, o segundo não. Sem a
+    // condição no UPDATE, os dois leriam "tem saldo" e o cliente ficaria devendo
+    // tempo que não comprou.
+    const { servico } = montar({ usuario: { ...BUSINESS }, afetadas: [1, 0] });
+    await expect(servico.chargeLiveMinutes('u1', 1)).resolves.toBeDefined();
+    await expect(servico.chargeLiveMinutes('u1', 1)).rejects.toMatchObject({
+      status: 402,
+    });
+  });
+
+  it('recusa quem não é Business, mesmo com saldo', async () => {
+    // O saldo pode existir de uma assinatura anterior; o recurso é do topo.
+    const { servico } = montar({
+      usuario: { ...BUSINESS, plan: 'pro', liveMinutes: 500 },
+    });
+    await expect(servico.chargeLiveMinutes('u1', 1)).rejects.toMatchObject({
+      status: 403,
+    });
+  });
+
+  it('nunca debita menos de um minuto, nem fração', async () => {
+    const { servico, minutos } = montar({ usuario: { ...BUSINESS } });
+    await servico.chargeLiveMinutes('u1', 0);
+    await servico.chargeLiveMinutes('u1', 0.4);
+    await servico.chargeLiveMinutes('u1', -5);
+    for (const lancamento of minutos.salvos as Array<{ minutes: number }>) {
+      expect(lancamento.minutes).toBe(-1);
+    }
+  });
+});
+
+describe('carteira de minutos — a cortesia de estreia', () => {
+  it('concede os dez minutos a quem nunca recebeu', async () => {
+    const { servico, minutos } = montar({
+      usuario: { ...BUSINESS, liveMinutes: LIVE_TRIAL_MINUTES },
+    });
+    await expect(servico.grantLiveTrial('u1')).resolves.toBe(LIVE_TRIAL_MINUTES);
+    expect((minutos.salvos[0] as { kind: string }).kind).toBe('trial');
+  });
+
+  it('não concede duas vezes — nem em duas abas ao mesmo tempo', async () => {
+    /*
+     * A segunda chamada não afeta linha porque o UPDATE exige
+     * `liveTrialGrantedAt IS NULL`. Se a trava fosse um `if` sobre o valor lido,
+     * duas requisições simultâneas dariam vinte minutos de graça por conta.
+     */
+    const { servico, minutos } = montar({
+      usuario: { ...BUSINESS },
+      afetadas: [1, 0],
+    });
+    await expect(servico.grantLiveTrial('u1')).resolves.toBe(LIVE_TRIAL_MINUTES);
+    await expect(servico.grantLiveTrial('u1')).resolves.toBe(0);
+    expect(minutos.salvos).toHaveLength(1);
+  });
+
+  it('é chamável à vontade sem efeito para quem já ganhou', async () => {
+    const { servico, minutos } = montar({
+      usuario: { ...BUSINESS, liveTrialGrantedAt: new Date() },
+      afetadas: [0],
+    });
+    await expect(servico.grantLiveTrial('u1')).resolves.toBe(0);
+    expect(minutos.salvos).toHaveLength(0);
+  });
+});
+
+describe('carteira de minutos — compra e estorno', () => {
+  it('credita as horas do add-on pago', async () => {
+    const { servico, users, minutos } = montar({ usuario: { ...BUSINESS } });
+    await servico.grantLiveMinutes('u1', 300, 'cs_test_1', '5 horas de live');
+    expect(users.increment).toHaveBeenCalledWith({ id: 'u1' }, 'liveMinutes', 300);
+    expect((minutos.salvos[0] as { kind: string }).kind).toBe('purchase');
+  });
+
+  it('não credita duas vezes o mesmo pagamento', async () => {
+    // O Stripe reenvia evento. Sem esta guarda, o cliente ganharia as horas
+    // quantas vezes o webhook chegasse.
+    const { servico, users, minutos } = montar({
+      usuario: { ...BUSINESS },
+      lancamentoExistente: { id: 'ja-existe' },
+    });
+    await servico.grantLiveMinutes('u1', 300, 'cs_test_1', '5 horas de live');
+    expect(users.increment).not.toHaveBeenCalled();
+    expect(minutos.salvos).toHaveLength(0);
+  });
+
+  it('devolve minutos de transmissão que o copiloto não atendeu', async () => {
+    const { servico, users, minutos } = montar({ usuario: { ...BUSINESS } });
+    await servico.refundLiveMinutes('u1', 3, 'A live caiu');
+    expect(users.increment).toHaveBeenCalledWith({ id: 'u1' }, 'liveMinutes', 3);
+    expect((minutos.salvos[0] as { kind: string; minutes: number })).toMatchObject({
+      kind: 'refund',
+      minutes: 3,
+    });
+  });
+});
+
+describe('a trava de lançamento do Live Copilot', () => {
+  const anterior = process.env.LAUNCH_LIVE_COPILOT;
+  const compAnterior = process.env.COMP_ACCOUNT_EMAILS;
+
+  afterEach(() => {
+    if (anterior === undefined) delete process.env.LAUNCH_LIVE_COPILOT;
+    else process.env.LAUNCH_LIVE_COPILOT = anterior;
+    if (compAnterior === undefined) delete process.env.COMP_ACCOUNT_EMAILS;
+    else process.env.COMP_ACCOUNT_EMAILS = compAnterior;
+  });
+
+  it('esconde o recurso de quem paga enquanto não foi lançado', async () => {
+    delete process.env.LAUNCH_LIVE_COPILOT;
+    delete process.env.COMP_ACCOUNT_EMAILS;
+    const { servico } = montar({ usuario: { ...BUSINESS } });
+    // 404 e não 403: para quem não pode ver, o recurso não existe — mandar um
+    // assinante do topo "fazer upgrade" seria pior que não responder.
+    await expect(servico.assertFeature('u1', 'live_copilot')).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
+  it('deixa a equipe atravessar para testar em produção', async () => {
+    delete process.env.LAUNCH_LIVE_COPILOT;
+    process.env.COMP_ACCOUNT_EMAILS = 'vendedor@loja.com';
+    const { servico } = montar({ usuario: { ...BUSINESS } });
+    await expect(
+      servico.assertFeature('u1', 'live_copilot'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('libera para todo mundo quando a flag sobe', async () => {
+    process.env.LAUNCH_LIVE_COPILOT = 'true';
+    delete process.env.COMP_ACCOUNT_EMAILS;
+    const { servico } = montar({ usuario: { ...BUSINESS } });
+    await expect(
+      servico.assertFeature('u1', 'live_copilot'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('não afeta os outros recursos do produto', async () => {
+    delete process.env.LAUNCH_LIVE_COPILOT;
+    const { servico } = montar({ usuario: { ...BUSINESS } });
+    await expect(servico.assertFeature('u1', 'discovery')).resolves.toBeUndefined();
+    await expect(servico.assertFeature('u1', 'multiplier')).resolves.toBeUndefined();
+  });
+
+  it('continua barrando por plano quem não paga o degrau', async () => {
+    process.env.LAUNCH_LIVE_COPILOT = 'true';
+    const { servico } = montar({ usuario: { ...BUSINESS, plan: 'essencial' } });
+    await expect(servico.assertFeature('u1', 'live_copilot')).rejects.toBeInstanceOf(
+      HttpException,
+    );
+  });
+});

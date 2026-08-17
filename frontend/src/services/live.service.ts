@@ -99,6 +99,21 @@ export interface FaqInput {
   priority?: number;
 }
 
+/**
+ * O instalador do app de desktop.
+ *
+ * `disponivel: false` não é erro: é o estado normal enquanto não houver release
+ * publicado, e a tela mostra "em breve" em vez de um botão que baixa 404.
+ */
+export interface DownloadDoApp {
+  disponivel: boolean;
+  versao: string | null;
+  windows: string | null;
+  mac: string | null;
+  /** Sem assinatura, o Windows exibe o aviso do SmartScreen na instalação. */
+  assinado: boolean;
+}
+
 /** Bloco de cobrança da transcrição, em minutos (espelha o backend). */
 export const TRANSCRIBE_BLOCK_MINUTES = 10;
 
@@ -220,4 +235,8 @@ export const liveService = {
     api.patch<LiveFaq>(`/live/faq/${id}`, dto).then((r) => r.data),
 
   deleteFaq: (id: string) => api.delete(`/live/faq/${id}`).then(() => undefined),
+
+  // ------------------------------------------------------------- app desktop
+  getDownload: () =>
+    api.get<DownloadDoApp>('/live/download').then((r) => r.data),
 };

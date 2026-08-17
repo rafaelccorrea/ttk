@@ -37,6 +37,7 @@ import {
   liveService,
 } from '@/services/live.service';
 import { STATUS_UI, StatusChip, estaProcessando, mensagemDeErro } from './status';
+import { CardDoApp } from './CardDoApp';
 
 /** De quanto em quanto tempo reconsultamos enquanto há live processando. */
 const POLL_MS = 8000;
@@ -349,6 +350,14 @@ export function LivePage() {
           {erro}
         </Alert>
       )}
+
+      {/*
+       * O app vem ANTES da lista, e não no fim da página, porque sem ele metade
+       * do produto não existe: a base montada aqui só vira resposta no chat
+       * quando o aplicativo está rodando na live. Quem chega nesta tela precisa
+       * descobrir isso agora, não depois de procurar.
+       */}
+      <CardDoApp paraQuem="lista" />
 
       {sessoes.length === 0 ? (
         <Card sx={{ textAlign: 'center', py: { xs: 5, md: 8 }, px: 3 }}>

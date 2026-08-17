@@ -24,6 +24,21 @@ export interface Wallet {
   features?: Record<string, boolean>;
   /** recurso → plano mínimo. */
   featureMinPlan?: Record<string, string>;
+  /**
+   * A segunda carteira: tempo de copiloto ao vivo.
+   *
+   * Vem junto do saldo de créditos, mas separada dentro dele — as duas moedas
+   * não se convertem uma na outra, e a interface não pode dar a entender que
+   * convertem.
+   */
+  liveCopilot?: {
+    /** Saldo em minutos. A venda é por hora; o consumo, por minuto. */
+    minutes: number;
+    trialMinutes: number;
+    /** Esta conta ainda tem a cortesia de estreia por gastar? */
+    trialAvailable: boolean;
+    packs: Array<{ id: string; name: string; hours: number; priceBrl: number }>;
+  };
   history: CreditTransaction[];
 }
 

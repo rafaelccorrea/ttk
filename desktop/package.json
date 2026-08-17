@@ -44,6 +44,18 @@
     },
     "win": {
       "target": "nsis"
-    }
+    },
+    "npmRebuild": false,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "rafaelccorrea",
+        "repo": "ttk"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rafaelccorrea/ttk.git"
   }
 }
