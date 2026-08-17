@@ -1053,7 +1053,12 @@ function Galeria({
   const termo = busca.trim().toLowerCase();
   // A busca casa com a sigla do produto OU com o nome do arquivo: o vendedor
   // às vezes procura "cinta", às vezes cola o nome do MP4 que já postou.
-  const gruposVisiveis = grupos
+  // `videos` vem do backend, e um backend mais antigo que esta tela devolve a
+  // galeria como lista plana de vídeos, sem o grupo em volta. Sem esta guarda o
+  // `.filter` estoura no primeiro item e a tela inteira fica branca — uma
+  // divergência de versão tem que degradar para galeria vazia, não para crash.
+  const gruposVisiveis = (Array.isArray(grupos) ? grupos : [])
+    .filter((grupo) => Array.isArray(grupo?.videos))
     .map((grupo) => ({
       ...grupo,
       videos: grupo.videos.filter(

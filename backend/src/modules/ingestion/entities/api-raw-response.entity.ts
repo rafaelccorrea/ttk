@@ -29,8 +29,16 @@ export class ApiRawResponse {
   @Column()
   endpoint: string;
 
-  /** Parâmetros da query, para reproduzir a chamada exatamente. */
-  @Column({ type: 'jsonb', default: () => "'{}'::jsonb" })
+  /**
+   * Parâmetros da query, para reproduzir a chamada exatamente.
+   *
+   * O default vai SEM o `::jsonb`: ao ler a coluna, o TypeORM tira o cast do
+   * que o Postgres reporta (`'{}'::jsonb` vira `'{}'`) mas compara com o texto
+   * daqui como está. Com o cast escrito aqui, os dois lados nunca batem e o
+   * `schema:log` acusa drift a cada rodada, com o banco correto. Sem ele, o
+   * DDL continua idêntico — o Postgres converte o literal sozinho.
+   */
+  @Column({ type: 'jsonb', default: () => "'{}'" })
   params: Record<string, unknown>;
 
   /**
