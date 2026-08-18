@@ -32,6 +32,7 @@
     "testar:campanhas": "ts-node src/scripts/testar-campanhas.ts",
     "testar:campanhas:completo": "ts-node src/scripts/testar-campanhas.ts --com-ia",
     "atualiza:completo": "ts-node src/scripts/atualizar.ts --completo",
+    "zerar:cota": "ts-node src/scripts/zerar-cota.ts",
     "simular:live": "ts-node src/scripts/simular-live.ts",
     "simular:processamento-live": "ts-node src/scripts/simular-processamento-live.ts"
   },
