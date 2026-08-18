@@ -71,6 +71,9 @@ const api: PikPokDesktopApi = {
   obterVersao: () => ipcRenderer.invoke('app:versao') as Promise<string>,
   plataforma: process.platform,
 
+  tiktokLogado: () => ipcRenderer.invoke('tiktok:logado') as Promise<boolean>,
+  aoMudarTikTok: (ouvinte) => assinar<boolean>('tiktok:logado', ouvinte),
+
   iniciarAtivacao: () =>
     ipcRenderer.invoke('ativacao:iniciar') as Promise<EstadoAtivacao>,
   aoMudarAtivacao: (ouvinte) => assinar<EstadoAtivacao>('ativacao:estado', ouvinte),

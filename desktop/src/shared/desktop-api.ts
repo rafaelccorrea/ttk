@@ -188,6 +188,18 @@ export interface PikPokDesktopApi {
   /** Plataforma, para os atalhos de teclado do painel (Cmd vs Ctrl). */
   readonly plataforma: NodeJS.Platform;
 
+  // --------------------------------------------------------------- TikTok
+  /**
+   * Se há sessão do TikTok viva na BrowserView.
+   *
+   * O painel não enxerga dentro da view — esta é a única janela que ele tem
+   * para o outro lado da tela, e serve para não oferecer uma live que o
+   * copiloto não teria como ler nem responder.
+   */
+  readonly tiktokLogado: () => Promise<boolean>;
+  /** Assina login, logout e expiração da sessão do TikTok. */
+  readonly aoMudarTikTok: (ouvinte: (logado: boolean) => void) => () => void;
+
   // ------------------------------------------------------------- ativação
   /** Pede um código novo e começa o polling no processo principal. */
   readonly iniciarAtivacao: () => Promise<EstadoAtivacao>;

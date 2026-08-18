@@ -15,6 +15,7 @@ import { mensagemDeErro } from '../erros';
 import { LINKS } from '../links';
 import { cores } from '../theme/theme';
 import { SEM_PONTE, obterPonte } from '../ponte';
+import { useTikTokLogado } from '../hooks/useTikTokLogado';
 
 /**
  * Tela 2 — escolher a base e entrar na live.
@@ -38,6 +39,7 @@ export function ConectarLive({
   readonly aoSair: () => void;
 }): JSX.Element {
   const ponte = obterPonte();
+  const tiktokLogado = useTikTokLogado();
   const [bases, setBases] = useState<BaseDeConhecimento[] | null>(null);
   const [carteira, setCarteira] = useState<CarteiraLive | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -131,6 +133,13 @@ export function ConectarLive({
   }
 
   const semSaldo = carteira.minutos <= 0 && !carteira.trialDisponivel;
+  /*
+   * Sem sessão do TikTok o copiloto não lê o chat nem digita nele: entrar na
+   * live abriria uma run que COBRA minuto e não teria como entregar resposta
+   * nenhuma. Só bloqueia no `false` — no `null` a leitura ainda não voltou, e
+   * travar o botão por não saber seguraria quem está logado.
+   */
+  const semTikTok = tiktokLogado === false;
 
   const conectar = async (): Promise<void> => {
     setConectando(true);
@@ -247,6 +256,13 @@ export function ConectarLive({
           />
         ) : null}
 
+        {semTikTok ? (
+          <Aviso
+            titulo="Entre na sua conta do TikTok"
+            descricao="A tela do TikTok aqui do lado está deslogada. É por ela que eu leio as perguntas do chat e escrevo as respostas — sem esse login não dá para acompanhar a live. Assim que você entrar, este aviso some sozinho."
+          />
+        ) : null}
+
         {erroConexao ? (
           <Aviso
             tom="erro"
@@ -260,10 +276,16 @@ export function ConectarLive({
           fullWidth
           size="large"
           variant="contained"
-          disabled={!baseId || usuario.trim().length === 0 || conectando || semSaldo}
+          disabled={
+            !baseId || usuario.trim().length === 0 || conectando || semSaldo || semTikTok
+          }
           onClick={() => void conectar()}
         >
-          {conectando ? 'Entrando na live…' : 'Entrar na live'}
+          {conectando
+            ? 'Entrando na live…'
+            : semTikTok
+              ? 'Entre no TikTok para continuar'
+              : 'Entrar na live'}
         </Button>
 
         <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">

@@ -267,6 +267,49 @@ function anexarTikTok(janela: BrowserWindow): void {
  * página logada em memória, e a única prova de que o logout funcionou só
  * apareceria na próxima abertura do app.
  */
+/**
+ * Se há alguém logado no TikTok dentro do app.
+ *
+ * A pergunta é respondida pelo COOKIE `sessionid` da partição, e não pelo DOM da
+ * página: ler a tela do tiktok.com significaria depender do layout dele, que
+ * muda sem avisar, e é exatamente esse acoplamento que já obrigou o app a ter um
+ * relatório de falha de seletor. O cookie é o mesmo dado que o site usa para
+ * decidir se você está logado, e some sozinho quando a sessão expira.
+ *
+ * Vale para os dois passos de onboarding e para o botão de conectar: sem esta
+ * sessão o copiloto não lê o chat nem digita nele, então prometer uma live
+ * seria vender o que não dá para entregar.
+ */
+async function tiktokLogado(): Promise<boolean> {
+  const cookies = await session
+    .fromPartition(PARTICAO_TIKTOK)
+    .cookies.get({ domain: '.tiktok.com', name: 'sessionid' })
+    .catch(() => []);
+  return cookies.some((c) => c.value.length > 0);
+}
+
+/**
+ * Avisa o painel quando esse login entra ou sai.
+ *
+ * Sem isto, quem terminasse o login à esquerda ficaria olhando para um passo 1
+ * que continua pedindo login — o painel não tem como enxergar dentro da
+ * BrowserView, e ninguém deveria precisar reabrir o app para a tela perceber.
+ * O evento `changed` da sessão cobre login, logout e expiração pelo mesmo
+ * caminho.
+ */
+function observarLoginDoTikTok(): void {
+  const particao = session.fromPartition(PARTICAO_TIKTOK);
+  particao.cookies.on('changed', (_evento, cookie) => {
+    if (cookie.name !== 'sessionid') return;
+    void tiktokLogado().then((logado) => {
+      const janela = janelaPrincipal;
+      if (janela && !janela.isDestroyed()) {
+        janela.webContents.send('tiktok:logado', logado);
+      }
+    });
+  });
+}
+
 async function limparSessaoTikTok(): Promise<void> {
   const particao = session.fromPartition(PARTICAO_TIKTOK);
   await particao.clearStorageData();
@@ -315,6 +358,7 @@ function registrarIpc(): void {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
   });
 
+  ipcMain.handle('tiktok:logado', () => tiktokLogado());
   ipcMain.handle('ativacao:iniciar', () => copiloto.iniciarAtivacao());
   ipcMain.handle('sessao:obter', () => copiloto.obterSessao());
   // A ordem importa: o copiloto encerra a run com o token ainda válido, e só
@@ -456,6 +500,7 @@ void app.whenReady().then(() => {
 
   registrarIpc();
   registrarAtalhoDePausa();
+  observarLoginDoTikTok();
 
   janelaPrincipal = criarJanela();
 
