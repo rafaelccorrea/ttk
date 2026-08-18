@@ -660,7 +660,14 @@ export class LiveService {
           aliases: p.aliases ?? [],
           confidence: p.confianca.toFixed(2),
           origin: 'ia',
-          sourceStartSec: p.inicioSec,
+          // Coluna `int`, e o offset vem somando durações de fatia medidas
+          // pelo ffmpeg — fracionárias. Piso, não arredondamento: a marca leva
+          // o vendedor de volta à gravação, e é melhor cair um instante antes
+          // da menção do que depois dela.
+          sourceStartSec:
+            p.inicioSec === null || p.inicioSec === undefined
+              ? null
+              : Math.floor(p.inicioSec),
           active: true,
         }),
       ),

@@ -134,9 +134,19 @@ export class AudioChunkerService {
         TIMEOUT_MS,
       );
 
+      /*
+       * Inteiro, sempre. O ffmpeg mede em fração de segundo (879.57), e essa
+       * duração termina gravada em `live_sessions.duration_seconds`, que é
+       * `int`: mandar o valor cru derrubava o processamento inteiro no fim com
+       * `invalid input syntax for type integer`. Arredonda para cima porque a
+       * duração alimenta a cobrança por bloco, e o segundo quebrado é áudio
+       * que o Whisper transcreve de verdade.
+       */
+      const duracao = await this.ffmpeg.duracao(saida);
+
       return fn({
         audioPath: saida,
-        durationSeconds: await this.ffmpeg.duracao(saida),
+        durationSeconds: duracao === null ? null : Math.ceil(duracao),
         pasta,
       });
     });

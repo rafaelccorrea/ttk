@@ -52,6 +52,27 @@ const TOP_VENDIDOS = Number(
   process.argv.find((a) => a.startsWith('--top='))?.split('=')[1] ?? 50,
 );
 
+/**
+ * `--so-top`: roda SOMENTE o top de vendas e sai.
+ *
+ * É o caminho barato de validar esse passo. Sem ele, a única forma de exercitar
+ * o top seria pelo `--completo`, que arrasta junto a ingestão inteira — com
+ * Playwright e transcrição no Whisper — para testar uma chamada de dez
+ * requisições. Ensaiar não pode custar o preço da estreia.
+ */
+const SO_TOP = process.argv.includes('--so-top');
+
+/**
+ * `--max-req=N`: teto duro de requisições do passo do top.
+ *
+ * Separado do orçamento mensal de propósito: aquele responde "quanto posso
+ * gastar até o fim do mês", este responde "quanto eu quero gastar AGORA". No
+ * ensaio contra a base de produção, é o segundo que importa.
+ */
+const MAX_REQ = Number(
+  process.argv.find((a) => a.startsWith('--max-req='))?.split('=')[1] ?? 0,
+);
+
 async function main() {
   const inicio = Date.now();
   const app = await NestFactory.createApplicationContext(AppModule, {
@@ -64,6 +85,22 @@ async function main() {
   const produtos = app.get<Repository<Product>>(getRepositoryToken(Product));
   const videos = app.get<Repository<Video>>(getRepositoryToken(Video));
   const criadores = app.get<Repository<Creator>>(getRepositoryToken(Creator));
+
+  // Ensaio: só o top, e sai. Nenhuma etapa de manutenção roda, então o que
+  // aparecer no log veio deste passo e de mais nada.
+  if (SO_TOP) {
+    log.log(
+      `Só o top ${TOP_VENDIDOS} de vendas` +
+        (MAX_REQ > 0 ? ` · teto de ${MAX_REQ} requisições` : ' · sem teto extra'),
+    );
+    const top = await ingestion.atualizarTopVendidos(TOP_VENDIDOS, MAX_REQ);
+    log.log(
+      `${top.vistos} vistos · ${top.aceitos} aceitos · ${top.requisicoes} requisições`,
+    );
+    log.log(`Concluído em ${Math.round((Date.now() - inicio) / 1000)}s`);
+    await app.close();
+    return;
+  }
 
   // ---------------------------------------------------------------- 1) ingestão
   if (COM_INGESTAO) {
@@ -91,7 +128,7 @@ async function main() {
      */
     log.log(`2/6 Top ${TOP_VENDIDOS} mais vendidos (global, por GMV de 30 dias)...`);
     try {
-      const top = await ingestion.atualizarTopVendidos(TOP_VENDIDOS);
+      const top = await ingestion.atualizarTopVendidos(TOP_VENDIDOS, MAX_REQ);
       log.log(
         `     ${top.vistos} vistos · ${top.aceitos} aceitos · ${top.requisicoes} requests`,
       );

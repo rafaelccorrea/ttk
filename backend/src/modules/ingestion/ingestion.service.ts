@@ -408,7 +408,17 @@ export class IngestionService implements OnModuleInit {
    * de capa, mesmo upsert), então um produto que já existe é ATUALIZADO, não
    * duplicado, e o histórico diário dele continua de pé.
    */
-  async atualizarTopVendidos(limite = 50): Promise<{
+  async atualizarTopVendidos(
+    limite = 50,
+    /**
+     * Teto de requisições desta chamada, mais apertado que o orçamento do mês.
+     *
+     * Existe para o ensaio: validar o passo em produção com um punhado de
+     * requisições é diferente de rodá-lo inteiro, e "confio no limite que a
+     * conta mensal calculou" não é resposta quando se quer gastar cinco.
+     */
+    tetoRequisicoes?: number,
+  ): Promise<{
     vistos: number;
     aceitos: number;
     requisicoes: number;
@@ -416,7 +426,11 @@ export class IngestionService implements OnModuleInit {
     // Janela de cota própria: este passo pode ser chamado sozinho pelo script,
     // fora de uma execução do cron, e sem abrir a janela o provider gastaria
     // request sem ninguém contabilizar.
-    const allowance = await this.openApiAllowance();
+    const mensal = await this.openApiAllowance();
+    const allowance =
+      tetoRequisicoes && tetoRequisicoes > 0
+        ? Math.min(mensal, tetoRequisicoes)
+        : mensal;
     if (allowance <= 0) {
       this.logger.warn('Cota mensal esgotada: top de vendas não será atualizado.');
       return { vistos: 0, aceitos: 0, requisicoes: 0 };
