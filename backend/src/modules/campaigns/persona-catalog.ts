@@ -136,10 +136,26 @@ export const PERSONA_GROUPS: AttributeGroup[] = [
 
 export type PersonaAttributes = Record<PersonaAttributeKey, string>;
 
-/** Traço fixo que vale para toda persona, em qualquer cena. */
+/**
+ * Traço fixo que vale para toda persona, em qualquer cena.
+ *
+ * A cláusula final não é redundância: "smartphone video still, shot on iPhone"
+ * é ambíguo e os modelos de imagem leem das duas formas — "um still de vídeo
+ * gravado no celular", que é a intenção, ou "um still que MOSTRA um celular",
+ * que foi o que voltou na primeira geração real: a foto certa, com a moldura de
+ * um iPhone desenhada em volta, botão de gravar, cronômetro e etiqueta de
+ * localização por cima. Como retrato-semente isso é inútil — animar aquilo dá
+ * um vídeo de um celular, não da apresentadora.
+ *
+ * Dizer o que NÃO pode aparecer é o que desfaz a ambiguidade sem perder o
+ * "cara de UGC", que é justamente o que faz o anúncio não parecer anúncio.
+ */
 const BASE_STYLE =
   'photorealistic vertical UGC smartphone video still, natural lighting, ' +
-  'shot on iPhone, amateur authentic look, Brazilian';
+  'shot on iPhone, amateur authentic look, Brazilian, ' +
+  'full-bleed photograph filling the entire frame, ' +
+  'no phone frame, no device mockup, no screen recording interface, ' +
+  'no user interface overlays, no captions, no watermark, no text of any kind';
 
 /**
  * Valida os ids escolhidos e devolve os atributos limpos.

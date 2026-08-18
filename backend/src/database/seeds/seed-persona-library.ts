@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { execFile } from 'node:child_process';
+import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { DataSource } from 'typeorm';
 import { Persona } from '../../modules/campaigns/entities/persona.entity';
@@ -35,7 +35,7 @@ import {
  * Antes da primeira execução: `higgsfield auth login` (abre o navegador).
  */
 
-const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 /**
  * Dono das personas da biblioteca.
@@ -156,23 +156,37 @@ function a(
  * `result_url` virou `resultUrl` numa atualização não vale o campo cravado.
  */
 async function gerarRetrato(prompt: string): Promise<string | null> {
-  const { stdout } = await execFileAsync(
+  /*
+   * A chamada passa pelo shell e por isso o prompt PRECISA vir citado.
+   *
+   * No Windows o executável é um `.cmd`, e o Node se recusa a lançar `.cmd`
+   * sem shell desde a correção de injeção de argumento — então shell não é
+   * escolha, é requisito. Só que com shell os argumentos são concatenados sem
+   * citação nenhuma: o fragmento da persona é uma frase com vírgulas e espaços,
+   * e chegava do outro lado como dezenas de argumentos posicionais
+   * ("Too many positional args"). Citar aqui é o que mantém a frase inteira.
+   */
+  const citar = (valor: string): string =>
+    process.platform === 'win32'
+      ? `"${valor.replace(/"/g, '""')}"`
+      : `'${valor.replace(/'/g, `'\\''`)}'`;
+
+  const comando = [
     'higgsfield',
-    [
-      'generate',
-      'create',
-      MODELO,
-      '--prompt',
-      prompt,
-      // 9:16 porque todo o produto é vídeo vertical de TikTok; um retrato
-      // quadrado entraria cortado como frame base.
-      '--aspect_ratio',
-      '9:16',
-      '--wait',
-      '--json',
-    ],
-    { maxBuffer: 16 * 1024 * 1024, shell: process.platform === 'win32' },
-  );
+    'generate',
+    'create',
+    MODELO,
+    '--prompt',
+    citar(prompt),
+    // 9:16 porque todo o produto é vídeo vertical de TikTok; um retrato
+    // quadrado entraria cortado como frame base.
+    '--aspect_ratio',
+    '9:16',
+    '--wait',
+    '--json',
+  ].join(' ');
+
+  const { stdout } = await execAsync(comando, { maxBuffer: 16 * 1024 * 1024 });
 
   let dados: unknown;
   try {
