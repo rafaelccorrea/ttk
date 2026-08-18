@@ -93,9 +93,95 @@ export class HiggsfieldCliService implements GeradorDeMidia {
    * sendo melhor que semear, e por essa mesma razão: sem reescrita, não há
    * conflito possível com a rotação.
    */
+  /**
+   * Recupera o JSON da credencial de como o painel o entregou.
+   *
+   * O valor colado no painel da hospedagem não volta como foi escrito: veio
+   * `\{   "auth_version": ...`, com barra invertida antes das chaves e espaços
+   * no lugar das quebras de linha. `JSON.parse` recusa, o arquivo é gravado
+   * corrompido, e — o que custou horas para enxergar — a CLI também não
+   * consegue ler o token ali dentro. Ela então faz a requisição sem
+   * autenticação válida e reporta "request failed (no response received)", que
+   * parece problema de REDE e não é.
+   *
+   * Por isso a normalização tenta três formas, da mais provável para a mais
+   * defensiva, e valida cada uma com um `parse` de verdade em vez de confiar na
+   * aparência do texto:
+   *   1. já é JSON válido — o caso de quem monta o arquivo à mão;
+   *   2. está em base64 — a forma recomendada justamente por atravessar
+   *      qualquer painel sem ser reescrita;
+   *   3. veio escapado — desfaz as barras invertidas.
+   *
+   * Devolve null quando nenhuma serve, para o chamador gravar nada em vez de
+   * gravar lixo: arquivo ausente produz uma falha honesta ("sem credencial"),
+   * arquivo corrompido produz uma mentira.
+   */
+  private static normalizarCredencial(bruto: string): string | null {
+    const tentativas = [
+      bruto,
+      (() => {
+        try {
+          return Buffer.from(bruto.trim(), 'base64').toString('utf8');
+        } catch {
+          return '';
+        }
+      })(),
+      bruto.replace(/\\(.)/g, '$1'),
+    ];
+    for (const tentativa of tentativas) {
+      try {
+        const objeto = JSON.parse(tentativa) as { access_token?: string };
+        // O parse sozinho não basta: base64 de lixo às vezes vira um número
+        // válido. O que importa é ter o campo que a CLI vai usar.
+        if (objeto?.access_token) return JSON.stringify(objeto);
+      } catch {
+        // Próxima forma.
+      }
+    }
+    return null;
+  }
+
+  /** O arquivo existe E dá para ler o token dele? */
+  private static credencialUtilizavel(caminho: string): boolean {
+    try {
+      const { access_token: token } = JSON.parse(readFileSync(caminho, 'utf8')) as {
+        access_token?: string;
+      };
+      return Boolean(token);
+    } catch {
+      return false;
+    }
+  }
+
   private semear(): void {
-    const conteudo = this.config.get<string>('HIGGSFIELD_CREDENTIALS_JSON');
-    if (!conteudo || !this.credenciais || existsSync(this.credenciais)) return;
+    const bruto = this.config.get<string>('HIGGSFIELD_CREDENTIALS_JSON');
+    if (!bruto || !this.credenciais) return;
+    /*
+     * "Não sobrescrever o que já existe" vira "não sobrescrever o que já
+     * existe E PRESTA".
+     *
+     * A regra original protegia a rotação do token: a CLI reescreve o arquivo a
+     * cada renovação, e restaurar a versão do ambiente por cima apagaria o
+     * token novo. Só que ela também protegia um arquivo CORROMPIDO — foi
+     * exatamente o que aconteceu quando o painel devolveu o JSON escapado: o
+     * arquivo ruim foi gravado uma vez e nenhum boot seguinte o consertava,
+     * porque ele "existia".
+     */
+    if (existsSync(this.credenciais)) {
+      if (HiggsfieldCliService.credencialUtilizavel(this.credenciais)) return;
+      this.logger.warn(
+        'Credencial da Higgsfield no disco está ilegível; regravando a partir do ambiente.',
+      );
+    }
+    const conteudo = HiggsfieldCliService.normalizarCredencial(bruto);
+    if (!conteudo) {
+      this.logger.error(
+        'HIGGSFIELD_CREDENTIALS_JSON não contém um credentials.json legível ' +
+          '(nem puro, nem base64, nem escapado). A geração fica desligada — ' +
+          'gere o valor com: base64 -w0 ~/.config/higgsfield/credentials.json',
+      );
+      return;
+    }
     try {
       mkdirSync(dirname(this.credenciais), { recursive: true });
       // 0600: o arquivo carrega um refresh token, e num servidor compartilhado
