@@ -41,6 +41,8 @@ export class HiggsfieldCliService implements GeradorDeMidia {
   private readonly credenciais: string | null;
   private readonly modeloImagem: string;
   private readonly modeloVideo: string;
+  /** undefined = ainda não perguntei; null = perguntei e não há. */
+  private workspace: string | null | undefined;
 
   constructor(private readonly config: ConfigService) {
     this.binario =
@@ -194,6 +196,53 @@ export class HiggsfieldCliService implements GeradorDeMidia {
    * chegar do outro lado como dezenas de argumentos posicionais.
    */
   private async cli(args: string[]): Promise<string> {
+    return this.executar(args, await this.resolverWorkspace());
+  }
+
+  /**
+   * Descobre em qual workspace cobrar, e guarda a resposta.
+   *
+   * A conta pode ter mais de um workspace e a CLI recusa qualquer comando sem
+   * um escolhido — `No workspace selected`. Localmente isso se resolve uma vez
+   * com `workspace set`, que grava num arquivo de configuração; no servidor,
+   * esse arquivo não existe e a geração morria aí, depois de já ter passado
+   * pela permissão e pelo interpretador.
+   *
+   * Descobrir sozinho em vez de exigir `HIGGSFIELD_WORKSPACE_ID` no painel é
+   * deliberado: cada variável a mais é um passo que alguém esquece ao recriar o
+   * ambiente, e a falha volta como "indisponível" sem explicar por quê. A
+   * variável continua valendo para quem tem vários workspaces e precisa
+   * escolher — mas quem tem um só não precisa saber que isso existe.
+   *
+   * O valor fica em memória porque não muda durante a vida do processo, e uma
+   * consulta por geração seria uma chamada de rede a mais no caminho de quem
+   * está esperando.
+   */
+  private async resolverWorkspace(): Promise<string | null> {
+    const configurado = this.config.get<string>('HIGGSFIELD_WORKSPACE_ID');
+    if (configurado) return configurado;
+    if (this.workspace !== undefined) return this.workspace;
+
+    try {
+      const stdout = await this.executar(['workspace', 'list', '--json'], null);
+      const lista = JSON.parse(stdout) as Array<{ id?: string; is_selected?: boolean }>;
+      // O já selecionado ganha do primeiro: se alguém escolheu, a escolha vale.
+      const escolhido = lista?.find((w) => w.is_selected) ?? lista?.[0];
+      this.workspace = escolhido?.id ?? null;
+      if (this.workspace) {
+        this.logger.log(`Workspace da Higgsfield resolvido: ${this.workspace}`);
+      }
+    } catch {
+      // Sem lista, segue sem workspace: o comando seguinte falha com a
+      // mensagem da própria CLI, que é mais informativa do que qualquer
+      // suposição feita aqui.
+      this.workspace = null;
+    }
+    return this.workspace;
+  }
+
+  /** A execução crua. Separada de `cli` para o resolvedor não chamar a si mesmo. */
+  private async executar(args: string[], workspace: string | null): Promise<string> {
     if (!this.isConfigured) {
       throw new ServiceUnavailableException(
         'Geração de mídia indisponível: credencial da Higgsfield ausente.',
@@ -211,6 +260,8 @@ export class HiggsfieldCliService implements GeradorDeMidia {
           // É o que faz a CLI ler a credencial do servidor em vez do HOME do
           // usuário que por acaso está executando o processo do Node.
           ...(this.credenciais ? { HIGGSFIELD_CREDENTIALS_PATH: this.credenciais } : {}),
+        // Substitui o arquivo de configuração que o servidor não tem.
+        ...(workspace ? { HIGGSFIELD_WORKSPACE_ID: workspace } : {}),
         },
       });
       return stdout;
