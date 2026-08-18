@@ -3,6 +3,7 @@ import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import ImageNotSupportedRoundedIcon from '@mui/icons-material/ImageNotSupportedRounded';
+import PhotoLibraryRoundedIcon from '@mui/icons-material/PhotoLibraryRounded';
 import ZoomInRoundedIcon from '@mui/icons-material/ZoomInRounded';
 import {
   Alert,
@@ -14,6 +15,7 @@ import {
   CircularProgress,
   Dialog,
   DialogContent,
+  DialogTitle,
   Fade,
   Grid,
   IconButton,
@@ -51,29 +53,32 @@ import { mensagemDeErro } from '@/services/erros';
  * arquivos faria as duas divergirem no primeiro ajuste de validação.
  */
 /**
- * Card do produto com a galeria.
+ * Galeria de fotos do produto, em modal.
  *
- * A foto não é enfeite de cadastro: as cenas de demonstração são animadas a
- * partir dela. Sem foto, a IA inventa um objeto parecido e o anúncio mostra um
- * produto que não é o que o vendedor vende — por isso o aviso fica no card, e
- * não escondido numa ajuda.
+ * Fica fora do card de propósito: a fileira de miniaturas com upload e lixeiras
+ * dentro de cada card transformava a lista de produtos numa parede de imagens,
+ * e a lista existe para o vendedor ACHAR o produto, não para editar fotos. O
+ * modal é o lugar onde se mexe nas fotos; o card só informa quantas há.
  */
-function ProdutoCard({
+function GaleriaDialog({
   produto,
+  aberto,
+  onClose,
   onChange,
 }: {
   produto: UserProduct;
+  aberto: boolean;
+  onClose: () => void;
   onChange: () => void;
 }) {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [ampliada, setAmpliada] = useState<string | null>(null);
-  // Arrastar o arquivo para cima do card é o primeiro gesto que todo mundo
+  // Arrastar o arquivo para dentro do modal é o primeiro gesto que todo mundo
   // tenta; sem realce visual não dá para saber se a área aceita a solta.
   const [arrastando, setArrastando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const capa = produto.images[0];
   const total = produto.images.length;
   const lotado = total >= LIMITES.fotosPorProduto;
   const faltam = Math.max(0, LIMITES.fotosMinimasPorProduto - total);
@@ -93,7 +98,7 @@ function ProdutoCard({
       return;
     }
 
-    const cabem = LIMITES.fotosPorProduto - produto.images.length;
+    const cabem = LIMITES.fotosPorProduto - total;
     if (lista.length > cabem) {
       setErro(
         `Cabem mais ${cabem} foto(s) neste produto (limite de ${LIMITES.fotosPorProduto}).`,
@@ -117,150 +122,66 @@ function ProdutoCard({
   }
 
   return (
-    <Card
-      // Aceita a solta no card inteiro: mirar o botão tracejado de 96px com o
-      // mouse carregado é uma precisão que não se deve exigir de ninguém.
-      onDragOver={(e) => {
-        if (lotado || enviando) return;
-        e.preventDefault();
-        setArrastando(true);
-      }}
-      onDragLeave={() => setArrastando(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setArrastando(false);
-        if (lotado || enviando) return;
-        void enviar(e.dataTransfer.files);
-      }}
-      sx={{
-        position: 'relative',
-        overflow: 'hidden',
-        ...(arrastando && {
-          borderColor: 'primary.main',
-          boxShadow: (t) => `0 0 0 4px ${alpha(t.palette.primary.main, 0.14)}`,
-        }),
-      }}
-    >
-      {/* Fio da marca no topo, aceso só quando o produto já pode virar
-          campanha: separa um card do outro e serve de semáforo de relance. */}
-      <Box
-        sx={{
-          height: 3,
-          background: faltam
-            ? 'rgba(22,24,35,0.08)'
-            : 'linear-gradient(90deg, #fe2c55 0%, #00c2bb 100%)',
-        }}
-      />
-      <CardContent>
-        <Box display="flex" alignItems="flex-start" gap={1.75}>
-          {/* Capa: a primeira foto é a referência principal das cenas, então
-              ela aparece no cabeçalho em vez de sumir no meio da fileira. */}
-          <Box
-            sx={{
-              width: 52,
-              aspectRatio: '9 / 16',
-              flexShrink: 0,
-              borderRadius: 2,
-              overflow: 'hidden',
-              border: '1px solid',
-              borderColor: 'divider',
-              bgcolor: capa ? '#fff' : 'rgba(22,24,35,0.03)',
-              display: 'grid',
-              placeItems: 'center',
-            }}
-          >
-            {capa ? (
-              <SmartImage src={capa} alt={produto.name} objectFit="contain" />
-            ) : (
-              <ImageNotSupportedRoundedIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
-            )}
-          </Box>
-
+    <Dialog open={aberto} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ pb: 1 }}>
+        <Stack direction="row" alignItems="center" gap={1}>
           <Box flexGrow={1} minWidth={0}>
-            <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-              <Typography variant="subtitle1" fontWeight={800} letterSpacing="-0.01em">
-                {produto.name}
-              </Typography>
-              {/* `toFixed` devolvia "R$ 99.00", com ponto — errado em pt-BR. */}
-              <Chip
-                size="small"
-                label={produto.priceBrl ? formatMoney(Number(produto.priceBrl)) : 'sem preço'}
-                sx={{
-                  height: 22,
-                  fontWeight: 800,
-                  fontSize: 12,
-                  color: produto.priceBrl ? 'primary.main' : 'text.secondary',
-                  bgcolor: (t) =>
-                    produto.priceBrl
-                      ? alpha(t.palette.primary.main, 0.1)
-                      : 'rgba(22,24,35,0.05)',
-                }}
-              />
-              {!faltam && (
-                <Chip
-                  size="small"
-                  icon={<CheckCircleRoundedIcon sx={{ fontSize: 14 }} />}
-                  label="pronto para campanha"
-                  sx={{
-                    height: 22,
-                    fontWeight: 700,
-                    fontSize: 11,
-                    color: 'success.main',
-                    bgcolor: (t) => alpha(t.palette.success.main, 0.1),
-                    '& .MuiChip-icon': { color: 'success.main', ml: 0.75 },
-                  }}
-                />
-              )}
-            </Stack>
-            {produto.benefit && (
-              <Typography variant="body2" color="text.secondary" mt={0.25}>
-                {produto.benefit}
-              </Typography>
-            )}
-          </Box>
-
-          <Tooltip title="Excluir produto">
-            <IconButton
-              size="small"
-              onClick={async () => {
-                await campaignsService.deleteProduct(produto.id);
-                onChange();
-              }}
-              // Cinza em repouso, vermelho ao mirar: excluir não pode disputar
-              // atenção com as fotos, mas tem que avisar que é destrutivo.
-              sx={{
-                color: 'text.disabled',
-                '&:hover': {
-                  color: 'error.main',
-                  bgcolor: (t) => alpha(t.palette.error.main, 0.08),
-                },
-              }}
-            >
-              <DeleteOutlineRoundedIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Box>
-
-        {/* As regras ficam à vista ANTES de escolher o arquivo. Descobrir o
-            limite pelo erro depois do upload é o caminho mais caro. */}
-        <Box mt={2} mb={1.25}>
-          <Box display="flex" alignItems="baseline" gap={1} flexWrap="wrap">
-            <Typography variant="overline" color="text.secondary">
-              Fotos do produto
+            <Typography variant="h6" fontWeight={800} noWrap>
+              Fotos de {produto.name}
             </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Mínimo de {LIMITES.fotosMinimasPorProduto}, máximo de{' '}
+              {LIMITES.fotosPorProduto} · JPG, PNG ou WebP até{' '}
+              {LIMITES.fotoBytes / 1024 / 1024}MB cada
+            </Typography>
+          </Box>
+          <IconButton onClick={onClose} size="small">
+            <CloseRoundedIcon />
+          </IconButton>
+        </Stack>
+      </DialogTitle>
+
+      <DialogContent
+        // Aceita a solta no corpo inteiro do modal: mirar o botão tracejado de
+        // 96px com o mouse carregado é uma precisão que não se deve exigir.
+        onDragOver={(e) => {
+          if (lotado || enviando) return;
+          e.preventDefault();
+          setArrastando(true);
+        }}
+        onDragLeave={() => setArrastando(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setArrastando(false);
+          if (lotado || enviando) return;
+          void enviar(e.dataTransfer.files);
+        }}
+        sx={{
+          pb: 2,
+          outline: (t) =>
+            arrastando ? `2px dashed ${t.palette.primary.main}` : '2px dashed transparent',
+          outlineOffset: -8,
+          borderRadius: 2,
+          transition: 'outline-color .15s ease',
+        }}
+      >
+        {/* A barra mede o piso, não o teto: o que importa é quanto falta para
+            poder criar a campanha, e o traço marca esse ponto. */}
+        <Box mb={2}>
+          <Box display="flex" alignItems="baseline" gap={1}>
             <Typography
               variant="caption"
-              color={faltam ? 'warning.main' : 'success.main'}
               fontWeight={800}
+              color={faltam ? 'warning.main' : 'success.main'}
             >
-              {total}/{LIMITES.fotosPorProduto}
+              {total}/{LIMITES.fotosPorProduto} fotos
             </Typography>
-            <Typography variant="caption" color="text.disabled" ml="auto">
-              JPG, PNG ou WebP até {LIMITES.fotoBytes / 1024 / 1024}MB cada
+            <Typography variant="caption" color="text.secondary" ml="auto">
+              {faltam
+                ? `faltam ${faltam} para liberar a campanha`
+                : 'pronto para campanha'}
             </Typography>
           </Box>
-          {/* A barra mede o piso, não o teto: o que importa é quanto falta
-              para poder criar a campanha, e o traço marca esse ponto. */}
           <Box sx={{ position: 'relative', mt: 0.75 }}>
             <LinearProgress
               variant="determinate"
@@ -292,7 +213,7 @@ function ProdutoCard({
         </Box>
 
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          {produto.images.map((foto) => (
+          {produto.images.map((foto, indice) => (
             <Box
               key={foto}
               sx={{
@@ -337,6 +258,7 @@ function ProdutoCard({
                     recortar de novo aqui desfaria o trabalho. */}
                 <SmartImage src={foto} alt={produto.name} objectFit="contain" />
               </Box>
+
               {/* Véu só no hover, e sem capturar o clique — quem clica quer
                   ampliar a foto que está embaixo, não acertar o véu. */}
               <Box
@@ -360,6 +282,26 @@ function ProdutoCard({
                   }}
                 />
               </Box>
+
+              {/* A primeira foto é a que o card mostra e a referência principal
+                  das cenas — vale dizer qual é, senão a ordem parece aleatória. */}
+              {indice === 0 && (
+                <Chip
+                  size="small"
+                  label="capa"
+                  sx={{
+                    position: 'absolute',
+                    bottom: 4,
+                    right: 4,
+                    height: 18,
+                    fontSize: 10,
+                    fontWeight: 800,
+                    color: '#fff',
+                    bgcolor: 'rgba(0,0,0,0.55)',
+                  }}
+                />
+              )}
+
               <IconButton
                 className="acoes"
                 size="small"
@@ -450,17 +392,18 @@ function ProdutoCard({
 
         {erro && (
           <Fade in>
-            <Alert severity="error" variant="outlined" sx={{ mt: 1.5, borderRadius: 2 }}>
+            <Alert severity="error" variant="outlined" sx={{ mt: 2, borderRadius: 2 }}>
               {erro}
             </Alert>
           </Fade>
         )}
+
         {Boolean(faltam) && (
-          // Tom baixo, não um Alert cheio: é a orientação permanente de um
-          // card incompleto, e não um erro que acabou de acontecer.
+          // Tom baixo, não um Alert cheio: é a orientação permanente de uma
+          // galeria incompleta, e não um erro que acabou de acontecer.
           <Box
             sx={{
-              mt: 1.5,
+              mt: 2,
               px: 1.5,
               py: 1.25,
               borderRadius: 2,
@@ -471,19 +414,19 @@ function ProdutoCard({
               border: (t) => `1px solid ${alpha(t.palette.warning.main, 0.22)}`,
             }}
           >
-            <ImageNotSupportedRoundedIcon
-              sx={{ fontSize: 18, color: 'warning.main', mt: '1px' }}
-            />
+            <ImageNotSupportedRoundedIcon sx={{ fontSize: 18, color: 'warning.main', mt: '1px' }} />
             <Typography variant="caption" color="text.secondary" lineHeight={1.5}>
               {total
                 ? `Faltam ${faltam} foto(s) para criar campanha com este produto.`
                 : 'Sem foto, o vídeo não mostra o seu produto — a IA desenha um objeto parecido.'}{' '}
-              Cada cena de demonstração parte de uma foto diferente, por isso o
-              mínimo é {LIMITES.fotosMinimasPorProduto}.
+              Cada cena de demonstração parte de uma foto diferente, por isso o mínimo
+              é {LIMITES.fotosMinimasPorProduto}.
             </Typography>
           </Box>
         )}
 
+        {/* Zoom sobre o modal: a miniatura de 96px não serve para conferir
+            enquadramento, e é o enquadramento que vira o frame da cena. */}
         <Dialog
           open={Boolean(ampliada)}
           onClose={() => setAmpliada(null)}
@@ -521,7 +464,167 @@ function ProdutoCard({
             </IconButton>
           </DialogContent>
         </Dialog>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Linha do produto na lista.
+ *
+ * Enxuta de propósito: nome, preço, benefício e QUANTAS fotos existem. Mexer
+ * nas fotos é tarefa ocasional e acontece no modal — a lista precisa caber na
+ * tela quando o vendedor tem dez produtos cadastrados.
+ *
+ * A contagem não é enfeite: as cenas de demonstração são animadas a partir das
+ * fotos, e sem o mínimo a campanha nem abre. Por isso o estado aparece no card,
+ * e não escondido dentro do modal.
+ */
+function ProdutoCard({
+  produto,
+  onChange,
+}: {
+  produto: UserProduct;
+  onChange: () => void;
+}) {
+  const [galeria, setGaleria] = useState(false);
+
+  const capa = produto.images[0];
+  const total = produto.images.length;
+  const faltam = Math.max(0, LIMITES.fotosMinimasPorProduto - total);
+
+  return (
+    <Card sx={{ position: 'relative', overflow: 'hidden' }}>
+      {/* Fio da marca no topo, aceso só quando o produto já pode virar
+          campanha: separa um card do outro e serve de semáforo de relance. */}
+      <Box
+        sx={{
+          height: 3,
+          background: faltam
+            ? 'rgba(22,24,35,0.08)'
+            : 'linear-gradient(90deg, #fe2c55 0%, #00c2bb 100%)',
+        }}
+      />
+      <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1.75 }}>
+        {/* Capa: a primeira foto é a referência principal das cenas, então é
+            ela que representa o produto na lista. */}
+        <Box
+          sx={{
+            width: 52,
+            aspectRatio: '9 / 16',
+            flexShrink: 0,
+            borderRadius: 2,
+            overflow: 'hidden',
+            border: '1px solid',
+            borderColor: 'divider',
+            bgcolor: capa ? '#fff' : 'rgba(22,24,35,0.03)',
+            display: 'grid',
+            placeItems: 'center',
+          }}
+        >
+          {capa ? (
+            <SmartImage src={capa} alt={produto.name} objectFit="contain" />
+          ) : (
+            <ImageNotSupportedRoundedIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+          )}
+        </Box>
+
+        <Box flexGrow={1} minWidth={0}>
+          <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+            <Typography variant="subtitle1" fontWeight={800} letterSpacing="-0.01em">
+              {produto.name}
+            </Typography>
+            {/* `toFixed` devolvia "R$ 99.00", com ponto — errado em pt-BR. */}
+            <Chip
+              size="small"
+              label={produto.priceBrl ? formatMoney(Number(produto.priceBrl)) : 'sem preço'}
+              sx={{
+                height: 22,
+                fontWeight: 800,
+                fontSize: 12,
+                color: produto.priceBrl ? 'primary.main' : 'text.secondary',
+                bgcolor: (t) =>
+                  produto.priceBrl ? alpha(t.palette.primary.main, 0.1) : 'rgba(22,24,35,0.05)',
+              }}
+            />
+            {/* Um chip só resume o estado das fotos: quantas há e se libera a
+                campanha. É o que a fileira de miniaturas dizia ocupando meia
+                tela. */}
+            <Chip
+              size="small"
+              icon={
+                faltam ? (
+                  <PhotoLibraryRoundedIcon sx={{ fontSize: 14 }} />
+                ) : (
+                  <CheckCircleRoundedIcon sx={{ fontSize: 14 }} />
+                )
+              }
+              label={
+                faltam
+                  ? `${total}/${LIMITES.fotosMinimasPorProduto} fotos`
+                  : `${total} fotos · pronto`
+              }
+              sx={{
+                height: 22,
+                fontWeight: 700,
+                fontSize: 11,
+                color: faltam ? 'warning.main' : 'success.main',
+                bgcolor: (t) =>
+                  alpha(faltam ? t.palette.warning.main : t.palette.success.main, 0.1),
+                '& .MuiChip-icon': {
+                  color: faltam ? 'warning.main' : 'success.main',
+                  ml: 0.75,
+                },
+              }}
+            />
+          </Stack>
+          {produto.benefit && (
+            <Typography variant="body2" color="text.secondary" mt={0.25} noWrap>
+              {produto.benefit}
+            </Typography>
+          )}
+        </Box>
+
+        <Button
+          variant={faltam ? 'contained' : 'outlined'}
+          size="small"
+          color={faltam ? 'primary' : 'inherit'}
+          startIcon={<PhotoLibraryRoundedIcon />}
+          onClick={() => setGaleria(true)}
+          sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+        >
+          {faltam ? 'Enviar fotos' : 'Fotos'}
+        </Button>
+
+        <Tooltip title="Excluir produto">
+          <IconButton
+            size="small"
+            onClick={async () => {
+              await campaignsService.deleteProduct(produto.id);
+              onChange();
+            }}
+            // Cinza em repouso, vermelho ao mirar: excluir não pode disputar
+            // atenção com a ação principal, mas tem que avisar que é destrutivo.
+            sx={{
+              flexShrink: 0,
+              color: 'text.disabled',
+              '&:hover': {
+                color: 'error.main',
+                bgcolor: (t) => alpha(t.palette.error.main, 0.08),
+              },
+            }}
+          >
+            <DeleteOutlineRoundedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </CardContent>
+
+      <GaleriaDialog
+        produto={produto}
+        aberto={galeria}
+        onClose={() => setGaleria(false)}
+        onChange={onChange}
+      />
     </Card>
   );
 }
