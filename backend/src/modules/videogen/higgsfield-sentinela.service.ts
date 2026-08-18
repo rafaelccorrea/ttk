@@ -78,6 +78,23 @@ export class HiggsfieldSentinelaService {
          * precisa saber o que fazer sem abrir o código. É a única falha do
          * sistema cuja correção é um comando manual num navegador.
          */
+        /*
+         * Antes de culpar a autenticação, separa as duas causas possíveis.
+         *
+         * "A CLI falhou" não diz se o servidor não alcança a Higgsfield ou se
+         * é o binário que não consegue falar. As correções são opostas — uma é
+         * trocar de hospedagem, a outra é ajustar o processo —, e sem esta
+         * linha o log manda rodar `auth login`, que não conserta nem uma nem
+         * outra. Errar esse diagnóstico já custou caro aqui.
+         */
+        const rede = await this.cli.verificarRede();
+        this.logger.error(
+          rede.ok
+            ? `DIAGNÓSTICO: o servidor ALCANÇA a Higgsfield por HTTP (${rede.status}). ` +
+              'A rede está boa — a falha é do binário da CLI.'
+            : `DIAGNÓSTICO: o servidor NÃO alcança a Higgsfield por HTTP ` +
+              `(${rede.status ?? rede.detalhe}). A barreira é de rede.`,
+        );
         this.logger.error(
           'ALERTA: a autenticação da Higgsfield caiu — a geração de mídia está ' +
             'fora do ar. Rode `higgsfield auth login` e reponha o arquivo em ' +

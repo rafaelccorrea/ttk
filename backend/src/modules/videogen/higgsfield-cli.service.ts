@@ -1,6 +1,12 @@
 import { exec } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -411,6 +417,44 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       videoUrl: url,
       error: job?.error ? String(job.error) : undefined,
     };
+  }
+
+  /**
+   * A mesma consulta da CLI, feita pelo `fetch` do Node.
+   *
+   * Existe para separar duas causas que produzem a MESMA tela para o cliente e
+   * exigem correções opostas. Quando a CLI falha com "request failed (no
+   * response received)", isso pode ser a rede do servidor não alcançar a
+   * Higgsfield — e aí não há o que fazer no código — ou pode ser só o binário
+   * Go não encontrar os certificados raiz do sistema, coisa que o Node não
+   * sofre porque carrega os dele embutidos.
+   *
+   * Se esta sonda responder e a CLI não, a rede está boa e o problema é do
+   * binário. Se as duas falharem, o servidor realmente não fala com eles. Um
+   * teste que distingue as duas coisas vale mais que qualquer suposição — e a
+   * suposição custou caro aqui.
+   */
+  async verificarRede(): Promise<{ ok: boolean; status?: number; detalhe?: string }> {
+    if (!this.credenciais || !existsSync(this.credenciais)) {
+      return { ok: false, detalhe: 'sem credencial' };
+    }
+    try {
+      const { access_token: token } = JSON.parse(
+        readFileSync(this.credenciais, 'utf8'),
+      ) as { access_token?: string };
+      const resposta = await fetch('https://fnf-api-gw.higgsfield.ai/fnf/workspaces', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // Identificação honesta: é o PikPok chamando, e a API responde a
+          // clientes identificados. Requisição sem agente nenhum é tratada
+          // como tráfego anônimo e recusada.
+          'User-Agent': 'PikPok/1.0 (+https://pikpokviral.com.br)',
+        },
+      });
+      return { ok: resposta.ok, status: resposta.status };
+    } catch (erro) {
+      return { ok: false, detalhe: erro instanceof Error ? erro.message : String(erro) };
+    }
   }
 
   /**
