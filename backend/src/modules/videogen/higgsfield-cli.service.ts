@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -673,7 +674,7 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       linhas.push(`  não foi possível inspecionar o pacote: ${String(erro)}`);
     }
 
-    // `--version` é a pergunta mais barata que existe: não usa rede, não usa
+    // `version` é a pergunta mais barata que existe: não usa rede, não usa
     // credencial e não gasta crédito. Se nem ela responde, o problema é o
     // executável, e não nada do que vem depois dele.
     try {
@@ -688,6 +689,43 @@ export class HiggsfieldCliService implements GeradorDeMidia {
         `  version -> FALHOU code=${e?.code} msg=${e?.message?.slice(0, 200)} ` +
           `stderr=${JSON.stringify((e?.stderr ?? '').slice(0, 200))}`,
       );
+    }
+
+    /*
+     * O mesmo comando, agora escrevendo num ARQUIVO em vez do cano do `exec`.
+     *
+     * Separa as duas explicações que sobraram para "saída vazia com código
+     * zero", e elas pedem decisões opostas: se o arquivo tiver conteúdo, o
+     * binário fala e quem perde a saída é o encanamento entre os processos —
+     * conserto nosso. Se o arquivo vier vazio também, o executável realmente
+     * não produz nada nesta máquina, e aí nenhuma mudança de código resolve.
+     *
+     * O `echo` do código de saída vai junto porque um processo morto por limite
+     * do servidor e um processo que terminou bem em silêncio se parecem iguais
+     * daqui — e não são a mesma conversa.
+     */
+    const saidaEmArquivo = join(tmpdir(), `hf-diag-${randomUUID()}.txt`);
+    try {
+      const { stdout } = await execAsync(
+        `${this.binario} version > ${saidaEmArquivo} 2>&1; echo "codigo=$?"`,
+        { maxBuffer: 1024 * 1024 },
+      );
+      const conteudo = existsSync(saidaEmArquivo)
+        ? readFileSync(saidaEmArquivo, 'utf8')
+        : '(arquivo não criado)';
+      linhas.push(`  version em arquivo -> ${(stdout ?? '').trim()}`);
+      linhas.push(
+        `  version em arquivo -> conteúdo (${conteudo.length} chars): ` +
+          `${JSON.stringify(conteudo.slice(0, 300))}`,
+      );
+    } catch (erro) {
+      linhas.push(`  version em arquivo -> FALHOU: ${String(erro).slice(0, 200)}`);
+    } finally {
+      try {
+        if (existsSync(saidaEmArquivo)) unlinkSync(saidaEmArquivo);
+      } catch {
+        // Arquivo de diagnóstico órfão em /tmp não justifica derrubar nada.
+      }
     }
 
     this.logger.error(`DIAGNÓSTICO DA CLI:\n${linhas.join('\n')}`);
