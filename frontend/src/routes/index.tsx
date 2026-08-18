@@ -93,6 +93,28 @@ export function AppRoutes() {
               <FreeSampleGate pago={<VideosPage />} amostra={<FreeVideosPage />} />
             }
           />
+          {/* Favoritos e Criadores também têm modo amostra: favoritar é barato e
+              cria hábito, e a amostra de criadores é a CAUDA do ranking (ver
+              docs/CONTA-FREE.md) — prova que a base existe sem entregar quem
+              fatura mais, que é o que a tela paga vende. */}
+          <Route
+            path="/favoritos"
+            element={
+              <FreeSampleGate
+                pago={<FavoritesPage />}
+                amostra={<FreeFavoritosPage />}
+              />
+            }
+          />
+          <Route
+            path="/criadores"
+            element={
+              <FreeSampleGate
+                pago={<CreatorsPage />}
+                amostra={<FreeCriadoresPage />}
+              />
+            }
+          />
           {/* Planos e Perfil também ficam fora do paywall, e por motivos
               diferentes. Planos é a TELA DE COMPRA: com ela bloqueada, todo CTA
               da amostra levava à tela de bloqueio — que por sua vez oferece
