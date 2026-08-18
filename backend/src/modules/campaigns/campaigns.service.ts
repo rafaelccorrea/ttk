@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
+import { garantirConteudoPermitido } from '../../common/moderacao';
 import { BillingService } from '../billing/billing.service';
 import { ACTION_PRICES } from '../billing/billing.config';
 import { MEDIA_ROUTE, MediaMirrorService } from '../media/media-mirror.service';
@@ -98,6 +99,9 @@ export class CampaignsService {
   // ---------------------------------------------------------------- produtos
   async criarProduto(userId: string, dto: CreateUserProductDto): Promise<UserProduct> {
     let { name, priceBrl, benefit, problemSolved } = dto;
+    // Estes campos entram DIRETO nos prompts de roteiro e de vídeo. Barrar
+    // aqui é imediato e grátis; barrar na fornecedora é depois da cobrança.
+    garantirConteudoPermitido({ name, benefit, problemSolved });
 
     // Importado do catálogo: os campos vêm preenchidos e o vendedor ajusta.
     if (dto.sourceProductId) {
@@ -218,6 +222,8 @@ export class CampaignsService {
    * vez — a persona é reusada em quantas campanhas o vendedor quiser.
    */
   async criarPersona(userId: string, dto: CreatePersonaDto): Promise<Persona> {
+    // O rótulo entra no prompt do roteiro ("Quem apresenta: ...").
+    garantirConteudoPermitido({ label: dto.label });
     let attrs;
     try {
       attrs = validarAtributos(dto.attrs as never);
@@ -359,6 +365,10 @@ export class CampaignsService {
       cenas: this.cenasPara(campanha.durationSeconds),
       persona: persona.label,
       temFotoDoProduto: produto.images.length > 0,
+      // Quantas fotos existem, não só se existe alguma: com cinco ângulos dá
+      // para planejar mais de uma demonstração, e o roteiro deixava esse
+      // material parado.
+      fotosDoProduto: produto.images.length,
       referencias: await this.ganchosDaCategoria(produto),
     };
 
@@ -368,9 +378,16 @@ export class CampaignsService {
       : await run();
 
     await this.cenas.delete({ campaignId });
+    // Contador PRÓPRIO das cenas de produto. Antes a rotação usava o índice de
+    // todas as cenas, então num roteiro com uma demonstração só ela caía
+    // sempre na mesma foto — o vendedor subia cinco e via uma.
+    let demonstracao = 0;
     await this.cenas.save(
       resultado.cenas.map((cena, i) => {
         const mostraProduto = cena.mostraProduto && produto.images.length > 0;
+        const foto = mostraProduto
+          ? produto.images[demonstracao++ % produto.images.length]
+          : null;
         return this.cenas.create({
           campaignId,
           ordem: i + 1,
@@ -379,9 +396,7 @@ export class CampaignsService {
           tipo: mostraProduto ? 'produto' : 'apresentador',
           // Alterna entre as fotos disponíveis para não repetir o mesmo
           // enquadramento em duas demonstrações seguidas.
-          baseImageUrl: mostraProduto
-            ? produto.images[i % produto.images.length]
-            : null,
+          baseImageUrl: foto,
           status: 'pendente',
         });
       }),
@@ -408,18 +423,43 @@ export class CampaignsService {
     const categoria = produto.sourceProductId
       ? (await this.catalogo.findOneBy({ id: produto.sourceProductId }))?.category
       : null;
-    if (!categoria) return [];
 
-    const linhas = await this.videos
+    const consulta = this.videos
       .createQueryBuilder('v')
       .select('v.caption', 'caption')
       .innerJoin(Product, 'p', 'p.id = v."productId"')
-      .where('p.category = :categoria', { categoria })
       .andWhere("v.caption IS NOT NULL AND length(v.caption) > 20")
       .orderBy('v.views', 'DESC')
-      .limit(MAX_REFERENCIAS)
-      .getRawMany<{ caption: string }>();
+      .limit(MAX_REFERENCIAS);
 
+    if (categoria) {
+      consulta.where('p.category = :categoria', { categoria });
+    } else {
+      /*
+       * Produto digitado à mão não tem categoria — e era exatamente o caso
+       * mais comum. O retorno vazio aqui significava que o roteirista escrevia
+       * ÀS CEGAS, sem nenhum gancho real, justamente para o vendedor típico.
+       *
+       * Sem categoria, casamos pelo nome: as palavras significativas do
+       * produto contra o título do produto do catálogo e a legenda do vídeo.
+       * É mais grosseiro que a categoria, mas gancho de "batom" serve a batom
+       * — e gancho nenhum não serve a nada.
+       */
+      const palavras = produto.name
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((p) => p.length >= 4)
+        .slice(0, 3);
+      if (!palavras.length) return [];
+      palavras.forEach((palavra, i) => {
+        const clausula = `(p.title ILIKE :p${i} OR v.caption ILIKE :p${i})`;
+        const valor = { [`p${i}`]: `%${palavra}%` };
+        if (i === 0) consulta.where(clausula, valor);
+        else consulta.orWhere(clausula, valor);
+      });
+    }
+
+    const linhas = await consulta.getRawMany<{ caption: string }>();
     return linhas.map((l) => l.caption);
   }
 
@@ -429,9 +469,73 @@ export class CampaignsService {
     if (cena.status === 'pronta') {
       throw new ConflictException('Cena já renderizada não pode ser editada.');
     }
+    // A fala e a ação editadas vão para o prompt da renderização sem outra
+    // revisão — este é o último ponto onde dá para recusar de graça.
+    garantirConteudoPermitido({ fala: dto.fala, acaoVisual: dto.acaoVisual });
     if (dto.fala !== undefined) cena.fala = dto.fala;
     if (dto.acaoVisual !== undefined) cena.acaoVisual = dto.acaoVisual;
+
+    if (dto.baseImageUrl !== undefined) {
+      if (cena.tipo !== 'produto') {
+        throw new ConflictException(
+          'Só a cena de produto parte de uma foto. A cena do apresentador parte do retrato.',
+        );
+      }
+      const campanha = await this.campanhas.findOneByOrFail({ id: cena.campaignId });
+      const produto = await this.produtos.findOneBy({ id: campanha.userProductId });
+      // A URL tem que ser uma das fotos JÁ espelhadas do produto. Sem esta
+      // conferência, o cliente escolheria qualquer imagem da internet como
+      // frame do vídeo — é a diferença entre trocar a foto e injetar uma.
+      if (!produto?.images.includes(dto.baseImageUrl)) {
+        throw new BadRequestException('Escolha uma das fotos cadastradas no produto.');
+      }
+      cena.baseImageUrl = dto.baseImageUrl;
+    }
+
     return this.cenas.save(cena);
+  }
+
+  /**
+   * Renderiza de uma vez tudo o que ainda falta.
+   *
+   * A cobrança continua sendo cena a cena, dentro do `renderizarCena` — o que
+   * muda é só o número de cliques. Quem desiste no meio já pagou apenas o que
+   * disparou, e a montagem final acontece sozinha quando a última fica pronta
+   * (ver `atualizarCampanha`).
+   */
+  async renderizarTudo(userId: string, campaignId: string) {
+    const campanha = await this.campanhas.findOneBy({ id: campaignId, userId });
+    if (!campanha) throw new NotFoundException('Campanha não encontrada.');
+
+    const cenas = await this.cenas.find({
+      where: { campaignId },
+      order: { ordem: 'ASC' },
+    });
+    if (!cenas.length) throw new ConflictException('Gere o roteiro antes de renderizar.');
+
+    const pendentes = cenas.filter(
+      (c) => c.status === 'pendente' || c.status === 'falhou',
+    );
+    if (!pendentes.length) return this.detalharCampanha(userId, campaignId);
+
+    // O retrato é pré-requisito das cenas de apresentador. Falhar ANTES de
+    // disparar qualquer uma evita cobrar metade e travar na outra metade.
+    if (pendentes.some((c) => c.tipo === 'apresentador')) {
+      const persona = await this.personas.findOneBy({ id: campanha.personaId });
+      if (!persona?.seedImageUrl || persona.status !== 'pronta') {
+        throw new ConflictException(
+          'O retrato do apresentador ainda não está pronto. Aguarde alguns segundos e tente de novo.',
+        );
+      }
+    }
+
+    // Em série, de propósito: cada cena é uma cobrança, e disparar em paralelo
+    // faria o saldo ser lido pelos dois lados antes de qualquer débito.
+    for (const cena of pendentes) {
+      await this.renderizarCena(userId, cena.id);
+    }
+
+    return this.detalharCampanha(userId, campaignId);
   }
 
   /**

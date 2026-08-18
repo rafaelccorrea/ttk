@@ -40,6 +40,7 @@ import {
   liveService,
 } from '@/services/live.service';
 import { STATUS_UI, StatusChip, estaProcessando, mensagemDeErro } from './status';
+import { useConfirmarGasto } from '@/hooks/useConfirmarGasto';
 import { CardDoApp } from './CardDoApp';
 import { HistoricoDeLives } from './HistoricoDeLives';
 
@@ -76,6 +77,7 @@ function NovaBaseDialog({
   onPronta: (sessionId: string) => void;
 }) {
   const navigate = useNavigate();
+  const { confirmar, dialogo } = useConfirmarGasto();
   const [titulo, setTitulo] = useState('');
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [duracao, setDuracao] = useState<number | null>(null);
@@ -175,6 +177,21 @@ function NovaBaseDialog({
 
   async function enviar() {
     if (!arquivo || !titulo.trim()) return;
+    /*
+     * Um envio cobra DUAS ações: a transcrição, por bloco de 10 minutos, e a
+     * montagem da base, uma vez. O diálogo usa o total já calculado na tela
+     * (`orcamento`) em vez do preço de uma delas — confirmar só metade da conta
+     * seria pior do que não confirmar.
+     */
+    const autorizado = await confirmar({
+      acao: 'live_extract',
+      titulo: 'Processar gravação da live',
+      custoTotal: orcamento.creditos,
+      detalhe: `${orcamento.blocos} ${
+        orcamento.blocos === 1 ? 'bloco' : 'blocos'
+      } de transcrição mais a montagem da base de conhecimento.`,
+    });
+    if (!autorizado) return;
     setEnviando(true);
     setErro(null);
     setProgresso(0);

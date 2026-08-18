@@ -91,9 +91,14 @@ export class CreateCampaignDto {
   @IsUUID()
   personaId: string;
 
-  @ApiPropertyOptional({ enum: [15, 30], default: 15 })
+  /**
+   * 15s era o único formato "curto", e é o pior para vender: com a regra de
+   * gancho com rosto, sobra um slot de demonstração. 45s e 60s existem porque
+   * o custo é linear por cena — não havia razão técnica para o teto de 30s.
+   */
+  @ApiPropertyOptional({ enum: [15, 30, 45, 60], default: 15 })
   @IsOptional()
-  @IsIn([15, 30])
+  @IsIn([15, 30, 45, 60])
   durationSeconds?: number;
 }
 
@@ -109,4 +114,17 @@ export class UpdateSceneDto {
   @IsString()
   @MaxLength(400)
   acaoVisual?: string;
+
+  /**
+   * Troca a foto de onde a cena de produto parte.
+   *
+   * Só aceita uma URL que JÁ esteja na galeria do produto — o servidor
+   * confere. Aceitar URL livre aqui seria deixar o cliente escolher qualquer
+   * imagem da internet como frame do vídeo (SSRF e conteúdo de terceiros).
+   */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  baseImageUrl?: string;
 }

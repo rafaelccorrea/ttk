@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiCostService } from '../telemetry/ai-cost.service';
 import { CostFeature } from '../telemetry/entities/ai-cost-event.entity';
@@ -129,6 +129,12 @@ export interface CampanhaRequest {
   persona: string;
   /** O vendedor tem foto do produto? Habilita cenas de demonstração reais. */
   temFotoDoProduto?: boolean;
+  /**
+   * QUANTAS fotos ele tem. Não é redundante com o booleano: quem enviou cinco
+   * ângulos consegue sustentar mais de uma demonstração, e o roteiro deixava
+   * esse material parado por não saber que ele existia.
+   */
+  fotosDoProduto?: number;
   /** Ganchos que estão performando na categoria, se houver. */
   referencias?: string[];
 }
@@ -152,13 +158,22 @@ Responda em português do Brasil, em Markdown, com exatamente estas seções:
 Reescreva o vídeo na MESMA estrutura, mas vendendo o produto informado (com indicação de cena por fala).
 Se nenhum produto for informado, gere um template genérico com placeholders [PRODUTO], [BENEFÍCIO], [PREÇO].`;
 
-const CAMPAIGN_SYSTEM = `Você é um roteirista de anúncios curtos do TikTok Shop Brasil.
+const CAMPAIGN_SYSTEM = `Você é um roteirista sênior de anúncios curtos do TikTok Shop Brasil. Seus roteiros competem com o feed inteiro: ou a primeira frase segura o dedo, ou o vídeo morreu.
 Você recebe um produto, quem apresenta e o número de cenas, e devolve o roteiro JÁ dividido em cenas de ~5 segundos.
 
 A estrutura obrigatória, distribuída entre as cenas disponíveis:
 - primeira cena: GANCHO — o problema ou a promessa, nos primeiros 3 segundos, ou o scroll leva embora;
 - cenas do meio: CORPO — demonstração e prova, uma ideia por cena;
 - última cena: CTA — comando direto para tocar no carrinho.
+
+O que separa um roteiro que vende de um que enfeita (siga TUDO):
+- Se houver "Problema que resolve", o GANCHO nasce dele: a primeira fala encena ou nomeia ESSE problema, com as palavras de quem o sofre. Nada de abrir com o nome do produto.
+- Se houver "Principal benefício", ele aparece no corpo como CENA, não como adjetivo: mostre o benefício acontecendo ("passa às 7h, às 22h ainda tá lá"), nunca o declare ("é de alta qualidade").
+- Se houver preço, o CTA o usa como argumento concreto ("por R$ 10 você resolve isso hoje"). Sem preço, o CTA usa urgência ou prova.
+- Especificidade vende: números, tempo, situação concreta do dia a dia ("na correria de sair de casa", "durou o churrasco inteiro"). Cada fala precisa de ao menos um detalhe concreto.
+- PROIBIDO o vocabulário de anúncio genérico: "incrível", "perfeito", "revolucionário", "surpreendente", "o melhor do mercado", "você precisa disso", "olha isso". Se a fala servir para qualquer produto, reescreva até servir só para este.
+- Fale como gente no WhatsApp, não como locutor: frases curtas, contração natural ("tá", "pra"), uma ideia por cena.
+- As cenas se emendam: cada fala puxa a seguinte (pergunta → resposta, problema → virada, prova → oferta). Lidas em sequência, formam UMA conversa, não slides soltos.
 
 Responda APENAS com um array JSON, sem texto antes ou depois, no formato:
 [{"fala": "...", "acaoVisual": "...", "mostraProduto": false}]
@@ -168,10 +183,13 @@ Regras para cada campo:
 - "acaoVisual": o que a câmera mostra — AÇÃO e ENQUADRAMENTO apenas;
 - "mostraProduto": true quando a cena é uma demonstração em close do produto, sem a pessoa em quadro. Nessas cenas a imagem parte de uma FOTO REAL do produto, então "acaoVisual" deve descrever só movimento de câmera e do objeto (girar, aproximar, mãos usando), nunca a pessoa.
 
-A primeira e a última cena são sempre da pessoa falando ("mostraProduto": false): gancho e CTA precisam de rosto.
+A primeira cena é SEMPRE da pessoa falando ("mostraProduto": false): gancho precisa de rosto. O CTA final normalmente também converte melhor com rosto — mas se o produto em close com a oferta narrada contar melhor a história (ex.: unboxing, resultado final), a última cena pode ser de produto.
+
+Antes de responder, releia cada fala e pergunte: "eu pararia o scroll por isso?". Se alguma resposta for não, reescreva essa fala — a resposta final já vem revisada.
 
 NUNCA descreva a aparência física de quem apresenta em "acaoVisual" (rosto, cabelo, roupa, corpo, idade): isso já está definido em outro lugar e descrever de novo faz o apresentador mudar de aparência entre as cenas.
-NUNCA cite pessoas reais, marcas de terceiros ou celebridades.`;
+NUNCA cite pessoas reais, marcas de terceiros ou celebridades.
+Se o produto ou as instruções envolverem conteúdo sexual, drogas, armas, apologia a ódio ou qualquer coisa envolvendo menores nesses contextos, NÃO escreva o roteiro: devolva um array com uma única cena cuja fala seja exatamente "CONTEUDO_NAO_PERMITIDO" — o sistema trata a recusa.`;
 
 const COFRE_SYSTEM = `Você destila prompts REUTILIZÁVEIS de geração de vídeo/imagem por IA a partir de anúncios que estão performando no TikTok Shop Brasil.
 
@@ -641,12 +659,23 @@ export class AiService {
         this.logger.warn('Resposta sem cenas utilizáveis; usando template.');
         return this.campanhaFallback(request);
       }
+      // A sentinela de recusa do prompt: o modelo detectou conteúdo proibido
+      // que passou pelo filtro de palavras. Recusar aqui derruba o run() e o
+      // withCharge estorna — melhor um estorno que um anúncio de banimento.
+      if (cenas.some((c) => c.fala.includes('CONTEUDO_NAO_PERMITIDO'))) {
+        throw new BadRequestException(
+          'Esse conteúdo não pode virar anúncio (política do TikTok Shop). Revise o produto e os textos.',
+        );
+      }
       return {
         content: this.cenasParaMarkdown(request.productName, cenas),
         cenas,
         model: response.model,
       };
     } catch (error) {
+      // A recusa de conteúdo NÃO cai no template: o fallback escreveria o
+      // anúncio que acabamos de nos recusar a escrever.
+      if (error instanceof BadRequestException) throw error;
       this.logger.error(`Falha na campanha: ${error}. Usando template.`);
       return this.campanhaFallback(request);
     }
@@ -678,17 +707,15 @@ export class AiService {
           typeof c?.fala === 'string' && typeof c?.acaoVisual === 'string',
       )
       .slice(0, esperadas)
-      .map((c, i, todas) => ({
+      .map((c, i) => ({
         fala: c.fala.trim().slice(0, 400),
         acaoVisual: c.acaoVisual.trim().slice(0, 400),
-        // Gancho e CTA são sempre com rosto, mesmo se o modelo marcar diferente:
-        // abrir num close de objeto não segura o scroll, e CTA sem pessoa não
-        // converte.
-        mostraProduto:
-          permitirProduto &&
-          i !== 0 &&
-          i !== todas.length - 1 &&
-          c.mostraProduto === true,
+        // O gancho é sempre com rosto, mesmo se o modelo marcar diferente:
+        // abrir num close de objeto não segura o scroll. A última cena ficou
+        // por conta do modelo — travá-la em rosto deixava um único slot de
+        // demonstração no vídeo de 15s, e o vendedor via as cinco fotos dele
+        // viraram uma.
+        mostraProduto: permitirProduto && i !== 0 && c.mostraProduto === true,
       }));
   }
 
@@ -711,7 +738,10 @@ export class AiService {
       `Quem apresenta: ${r.persona}`,
       `Número de cenas: ${r.cenas} (cada uma com ~5 segundos de fala)`,
       r.temFotoDoProduto
-        ? 'O vendedor tem fotos reais do produto: use "mostraProduto": true nas cenas de demonstração.'
+        ? `O vendedor tem ${r.fotosDoProduto ?? 1} foto(s) real(is) do produto: use "mostraProduto": true nas cenas de demonstração. ` +
+          'Cada cena de demonstração parte de uma foto DIFERENTE, então aproveite o material — ' +
+          'com mais de uma foto, marque mais de uma cena do miolo como demonstração. ' +
+          'A primeira e a última cena são sempre com a pessoa em quadro (gancho e CTA).'
         : 'Não há foto do produto: use "mostraProduto": false em TODAS as cenas.',
     ].filter(Boolean) as string[];
 
@@ -772,15 +802,12 @@ export class AiService {
       },
     ];
 
-    // Mesmas travas da saída do modelo: sem foto não existe cena de produto, e
-    // gancho e CTA são sempre com rosto.
-    const cenas = base.slice(0, r.cenas).map((cena, i, todas) => ({
+    // Mesmas travas da saída do modelo: sem foto não existe cena de produto,
+    // e o gancho é sempre com rosto.
+    const cenas = base.slice(0, r.cenas).map((cena, i) => ({
       ...cena,
       mostraProduto:
-        Boolean(r.temFotoDoProduto) &&
-        i !== 0 &&
-        i !== todas.length - 1 &&
-        cena.mostraProduto === true,
+        Boolean(r.temFotoDoProduto) && i !== 0 && cena.mostraProduto === true,
     }));
     return {
       content: this.cenasParaMarkdown(r.productName, cenas),

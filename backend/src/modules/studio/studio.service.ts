@@ -1,3 +1,4 @@
+import { garantirConteudoPermitido } from '../../common/moderacao';
 import {
   BadRequestException,
   Injectable,
@@ -106,6 +107,11 @@ export class StudioService {
   }
 
   async generate(userId: string, dto: GenerateScriptDto): Promise<Script> {
+    // O nome e a descrição digitados viram prompt sem outra revisão.
+    garantirConteudoPermitido({
+      productName: dto.productName,
+      productDescription: dto.productDescription,
+    });
     let productName = dto.productName ?? '';
     let productDescription = dto.productDescription;
     let price: number | undefined;

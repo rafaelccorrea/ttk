@@ -713,6 +713,7 @@ export function MeusProdutos({
               <TextField
                 required
                 label="Nome do produto"
+                placeholder="Ex.: Batom matte longa duração"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onBlur={() => setTocado((t) => ({ ...t, name: true }))}
@@ -732,7 +733,7 @@ export function MeusProdutos({
               />
               <TextField
                 label="Principal benefício"
-                placeholder="Corta tudo em segundos, sem sujeira."
+                placeholder="Ex.: Fixa o dia inteiro sem retocar. (é a promessa do seu gancho)"
                 value={benefit}
                 onChange={(e) => setBenefit(e.target.value)}
                 onBlur={() => setTocado((t) => ({ ...t, benefit: true }))}
@@ -748,12 +749,12 @@ export function MeusProdutos({
                 }}
                 helperText={
                   mostrar('benefit') ??
-                  `Vira a promessa do gancho. ${contador(benefit, LIMITES.beneficio)}`
+                  `Seja específico: número, tempo ou situação real vendem mais que adjetivo. ${contador(benefit, LIMITES.beneficio)}`
                 }
               />
               <TextField
                 label="Problema que resolve"
-                placeholder="Perder 20 minutos picando cebola."
+                placeholder="Ex.: Batom que sai no primeiro café. (o vídeo abre encenando isso)"
                 value={problemSolved}
                 onChange={(e) => setProblemSolved(e.target.value)}
                 onBlur={() => setTocado((t) => ({ ...t, problemSolved: true }))}
@@ -769,7 +770,7 @@ export function MeusProdutos({
                 }}
                 helperText={
                   mostrar('problemSolved') ??
-                  `Vira a primeira frase do vídeo. ${contador(problemSolved, LIMITES.problema)}`
+                  `Descreva com as palavras de quem sofre o problema — vira a primeira frase do vídeo. ${contador(problemSolved, LIMITES.problema)}`
                 }
               />
               {erro && <Alert severity="error">{erro}</Alert>}

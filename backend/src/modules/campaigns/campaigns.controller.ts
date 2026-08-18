@@ -188,6 +188,15 @@ export class CampaignsController {
     return this.campaigns.montar(user.id, id);
   }
 
+  @Post(':id/render-all')
+  @UseInterceptors(SingleFlightInterceptor)
+  @ApiOperation({
+    summary: 'Renderiza todas as cenas que faltam (cobra por cena) e monta o final',
+  })
+  renderAll(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.campaigns.renderizarTudo(user.id, id);
+  }
+
   @Get(':id/refresh')
   @ApiOperation({ summary: 'Atualiza o status das cenas em renderização' })
   refresh(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
@@ -203,7 +212,7 @@ export class CampaignsController {
 
   // ------------------------------------------------------------------- cenas
   @Patch('scenes/:sceneId')
-  @ApiOperation({ summary: 'Edita a fala e a ação de uma cena' })
+  @ApiOperation({ summary: 'Edita a fala, a ação e a foto de uma cena' })
   updateScene(
     @CurrentUser() user: AuthUser,
     @Param('sceneId', ParseUUIDPipe) sceneId: string,

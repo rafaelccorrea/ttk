@@ -5,6 +5,9 @@ import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
+import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
+import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
+import PhotoLibraryRoundedIcon from '@mui/icons-material/PhotoLibraryRounded';
 import RocketLaunchRoundedIcon from '@mui/icons-material/RocketLaunchRounded';
 import {
   Alert,
@@ -15,24 +18,35 @@ import {
   Chip,
   CircularProgress,
   Dialog,
+  DialogActions,
   DialogContent,
+  DialogTitle,
   Divider,
   Grid,
   IconButton,
   MenuItem,
   Skeleton,
   Stack,
-  Tab,
-  Tabs,
+  Step,
+  StepButton,
+  StepLabel,
+  Stepper,
   TextField,
+  Tooltip,
   Typography,
+  alpha,
 } from '@mui/material';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSaldo } from '@/hooks/useSaldo';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { CurrencyField } from '@/components/ui/CurrencyField';
 import { MeusProdutos } from '@/components/produtos/MeusProdutos';
+import {
+  useConfirmarGasto,
+  type PedidoDeGasto,
+} from '@/hooks/useConfirmarGasto';
 import { resolveApiUrl } from '@/services/api';
 import { formatMoney } from '@/utils/format';
 import {
@@ -57,6 +71,97 @@ import {
   UserProduct,
   campaignsService,
 } from '@/services/campaigns.service';
+
+/**
+ * Troca a foto de onde a cena de produto parte.
+ *
+ * O vendedor sobe até cinco ângulos e o roteiro escolhe um por cena; quando a
+ * escolha não é a que ele queria, o único caminho era gerar o roteiro de novo
+ * — e isso é crédito gasto para mudar uma imagem. Aqui a troca é de graça.
+ */
+function TrocarFotoDialog({
+  aberto,
+  fotos,
+  atual,
+  onClose,
+  onEscolher,
+}: {
+  aberto: boolean;
+  fotos: string[];
+  atual: string | null;
+  onClose: () => void;
+  onEscolher: (url: string) => void;
+}) {
+  return (
+    <Dialog open={aberto} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ fontWeight: 800 }}>
+        De qual foto esta cena parte?
+        <Typography variant="caption" color="text.secondary" display="block">
+          É literalmente o primeiro frame do vídeo da cena.
+        </Typography>
+      </DialogTitle>
+      <DialogContent>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          {fotos.map((foto) => {
+            const escolhida = foto === atual;
+            return (
+              <Box
+                key={foto}
+                component="button"
+                type="button"
+                onClick={() => onEscolher(foto)}
+                aria-label="Usar esta foto na cena"
+                sx={{
+                  all: 'unset',
+                  // `position` depois do `all: unset`, que zera tudo: o
+                  // SmartImage é `absolute; inset: 0` e precisa desta âncora.
+                  position: 'relative',
+                  cursor: 'pointer',
+                  width: 104,
+                  aspectRatio: '9 / 16',
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                  bgcolor: '#fff',
+                  border: '2px solid',
+                  borderColor: escolhida ? 'primary.main' : 'divider',
+                  boxShadow: (t) =>
+                    escolhida ? `0 0 0 4px ${alpha(t.palette.primary.main, 0.16)}` : 'none',
+                  transition: 'border-color .15s ease, box-shadow .2s ease',
+                }}
+              >
+                <SmartImage src={foto} alt="Foto do produto" objectFit="contain" />
+                {escolhida && (
+                  <Chip
+                    size="small"
+                    label="em uso"
+                    sx={{
+                      position: 'absolute',
+                      bottom: 4,
+                      left: 4,
+                      height: 18,
+                      fontSize: 10,
+                      fontWeight: 800,
+                      color: '#fff',
+                      bgcolor: 'primary.main',
+                    }}
+                  />
+                )}
+              </Box>
+            );
+          })}
+        </Stack>
+        {!fotos.length && (
+          <Alert severity="warning">
+            Este produto não tem fotos cadastradas. Envie fotos na aba Produtos.
+          </Alert>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Fechar</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
 
 /** Enquanto houver retrato ou cena em andamento, reconsulta neste intervalo. */
 const POLL_MS = 6000;
@@ -83,6 +188,7 @@ function PersonasTab({
   const [label, setLabel] = useState('');
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const { confirmar, dialogo } = useConfirmarGasto();
 
   // Pré-seleciona a primeira opção de cada grupo: campo vazio é erro garantido.
   useEffect(() => {
@@ -95,6 +201,12 @@ function PersonasTab({
   const completo = grupos.length > 0 && grupos.every((g) => attrs[g.key]);
 
   async function criar() {
+    const autorizado = await confirmar({
+      acao: 'image',
+      titulo: 'Gerar retrato do apresentador',
+      detalhe: 'O retrato é gerado uma vez e reusado em todas as cenas.',
+    });
+    if (!autorizado) return;
     setGerando(true);
     setErro(null);
     try {
@@ -224,6 +336,7 @@ function PersonasTab({
           ))}
         </Grid>
       </Grid>
+      {dialogo}
     </Grid>
   );
 }
@@ -306,15 +419,44 @@ function Storyboard({
 }) {
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  // Cena cuja foto está sendo trocada (null = diálogo fechado).
+  const [trocandoFoto, setTrocandoFoto] = useState<string | null>(null);
+  const [confirmarTudo, setConfirmarTudo] = useState(false);
+  const { saldo, ilimitado } = useSaldo('video');
+  const { confirmar, dialogo } = useConfirmarGasto();
+
   const personaPronta = detalhe.persona?.status === 'pronta';
   const todasProntas =
     detalhe.cenas.length > 0 && detalhe.cenas.every((c) => c.status === 'pronta');
 
-  async function acao(fn: () => Promise<unknown>) {
+  const fotosDoProduto = detalhe.produto?.images ?? [];
+  const cenaEmTroca = detalhe.cenas.find((c) => c.id === trocandoFoto) ?? null;
+
+  // O que ainda falta pagar: cena pendente ou que falhou. Renderizando já foi
+  // cobrada, e pronta idem — somá-las inflaria o total do diálogo.
+  const faltaRenderizar = detalhe.cenas.filter(
+    (c) => c.status === 'pendente' || c.status === 'falhou',
+  );
+  const custoTotal = precos ? faltaRenderizar.length * precos.cena : null;
+  const semSaldo =
+    !ilimitado && saldo !== null && custoTotal !== null && saldo < custoTotal;
+  const renderizando = detalhe.cenas.some((c) => c.status === 'renderizando');
+
+  /**
+   * @param gasto quando informado, pede confirmação antes de executar.
+   *
+   * A confirmação entra AQUI, e não em cada botão, porque as três ações pagas
+   * desta tela já passavam por este mesmo caminho. Espalhar o diálogo pelos
+   * `onClick` deixaria a próxima ação paga nascer sem ele — que é exatamente
+   * como o Multiplicador ficou sem aviso nenhum.
+   */
+  async function acao(fn: () => Promise<unknown>, gasto?: PedidoDeGasto) {
     // Guarda de reentrância. `disabled={ocupado}` só passa a valer depois do
     // repinte do React, e dois cliques rápidos cabem nessa janela — em
     // "Gerar roteiro" e "Renderizar cena" isso é crédito cobrado duas vezes.
     if (ocupado) return;
+    // Antes da trava: cancelar no diálogo não pode deixar a tela ocupada.
+    if (gasto && !(await confirmar(gasto))) return;
     setOcupado(true);
     setErro(null);
     try {
@@ -338,6 +480,18 @@ function Storyboard({
       </Box>
 
       {erro && <Alert severity="error">{erro}</Alert>}
+
+      {/* A fala não entra no prompt do vídeo (só a ação visual entra), então o
+          clipe sai sem narração automática. Prometer implicitamente o
+          contrário — deixando o vendedor revisar cada fala com cuidado — e
+          entregar um vídeo mudo é a pior surpresa possível depois do gasto. */}
+      {detalhe.cenas.length > 0 && !detalhe.finalVideoUrl && (
+        <Alert severity="info" variant="outlined">
+          A <strong>fala</strong> de cada cena é o seu guia de narração e legenda:
+          o vídeo gerado mostra a ação, e você grava a voz por cima ou usa o texto
+          como legenda ao publicar.
+        </Alert>
+      )}
 
       {/* O entregável fica no topo: quem abre uma campanha pronta veio buscar
           o vídeo, não revisar as cenas. */}
@@ -388,7 +542,12 @@ function Storyboard({
                 variant="contained"
                 startIcon={<MovieFilterRoundedIcon />}
                 disabled={ocupado}
-                onClick={() => acao(() => campaignsService.assemble(detalhe.id))}
+                onClick={() =>
+                  acao(() => campaignsService.assemble(detalhe.id), {
+                    acao: 'script',
+                    titulo: 'Gerar roteiro da campanha',
+                  })
+                }
               >
                 {ocupado ? 'Montando...' : 'Montar vídeo final'}
               </Button>
@@ -420,6 +579,104 @@ function Storyboard({
           </CardContent>
         </Card>
       )}
+
+      {/* A ação que o vendedor quer é UMA: sair daqui com o vídeo. Renderizar
+          cena por cena e depois montar à mão era ele executando o pipeline no
+          lugar do produto. */}
+      {faltaRenderizar.length > 0 && (
+        <Card
+          sx={{
+            borderColor: 'primary.main',
+            background: (t) => alpha(t.palette.primary.main, 0.04),
+          }}
+        >
+          <CardContent>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={2}
+              alignItems={{ sm: 'center' }}
+            >
+              <Box flexGrow={1}>
+                <Typography fontWeight={800}>Gerar o vídeo completo</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Renderiza as {faltaRenderizar.length} cena(s) que faltam e junta
+                  tudo num vídeo 9:16 sozinho, quando a última ficar pronta.
+                </Typography>
+              </Box>
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={
+                  ocupado || renderizando ? (
+                    <CircularProgress size={18} color="inherit" />
+                  ) : (
+                    <RocketLaunchRoundedIcon />
+                  )
+                }
+                disabled={ocupado || renderizando}
+                onClick={() => setConfirmarTudo(true)}
+                sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+              >
+                {renderizando
+                  ? 'Gerando...'
+                  : `Gerar vídeo completo${custoTotal !== null ? ` · ${custoTotal} créditos` : ''}`}
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Confirmação do total: é o maior gasto da tela, e um clique sem aviso
+          num botão desse tamanho é crédito queimado sem volta. */}
+      <Dialog
+        open={confirmarTudo}
+        onClose={() => setConfirmarTudo(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 800 }}>Gerar o vídeo completo?</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1}>
+            <Typography variant="body2">
+              {faltaRenderizar.length} cena(s) serão renderizadas
+              {precos ? ` a ${precos.cena} créditos cada` : ''}.
+            </Typography>
+            {custoTotal !== null && (
+              <Typography variant="h6" fontWeight={800} color="primary.main">
+                Total: {custoTotal} créditos
+              </Typography>
+            )}
+            {!ilimitado && saldo !== null && (
+              <Typography variant="caption" color={semSaldo ? 'error.main' : 'text.secondary'}>
+                Seu saldo: {saldo} créditos
+                {semSaldo ? ' — não dá para gerar todas agora.' : ''}
+              </Typography>
+            )}
+            <Typography variant="caption" color="text.secondary">
+              A montagem final não custa créditos. Cena que falhar é estornada.
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmarTudo(false)}>Cancelar</Button>
+          <Button
+            variant="contained"
+            disabled={ocupado || semSaldo}
+            startIcon={<RocketLaunchRoundedIcon />}
+            onClick={() => {
+              setConfirmarTudo(false);
+              void acao(() => campaignsService.renderAll(detalhe.id), {
+                acao: 'video',
+                titulo: 'Gerar vídeo completo',
+                quantidade: detalhe.cenas.length,
+                detalhe: `${detalhe.cenas.length} cenas serão renderizadas.`,
+              });
+            }}
+          >
+            Gerar agora
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {!personaPronta && detalhe.cenas.length > 0 && (
         <Alert severity="info">
@@ -483,6 +740,23 @@ function Storyboard({
                     </Stack>
                   )}
                 </Box>
+
+                {/* Trocar a foto é grátis e só faz sentido antes de renderizar
+                    — depois de pronta, o vídeo já existe. */}
+                {cena.tipo === 'produto' && cena.status !== 'pronta' && (
+                  <Tooltip title="Escolher de qual foto esta cena parte">
+                    <Button
+                      size="small"
+                      fullWidth
+                      startIcon={<PhotoLibraryRoundedIcon />}
+                      onClick={() => setTrocandoFoto(cena.id)}
+                      disabled={ocupado || cena.status === 'renderizando'}
+                      sx={{ mt: 1 }}
+                    >
+                      Trocar foto
+                    </Button>
+                  </Tooltip>
+                )}
               </Grid>
 
               <Grid item xs={12} sm={7}>
@@ -536,7 +810,12 @@ function Storyboard({
                         cena.status === 'renderizando' ||
                         (cena.tipo === 'apresentador' && !personaPronta)
                       }
-                      onClick={() => acao(() => campaignsService.renderScene(cena.id))}
+                      onClick={() =>
+                        acao(() => campaignsService.renderScene(cena.id), {
+                          acao: 'video',
+                          titulo: 'Renderizar cena',
+                        })
+                      }
                     >
                       {cena.status === 'renderizando'
                         ? 'Renderizando...'
@@ -549,18 +828,37 @@ function Storyboard({
           </CardContent>
         </Card>
       ))}
+
+      <TrocarFotoDialog
+        aberto={Boolean(cenaEmTroca)}
+        fotos={fotosDoProduto}
+        atual={cenaEmTroca?.baseImageUrl ?? null}
+        onClose={() => setTrocandoFoto(null)}
+        onEscolher={(url) => {
+          const id = cenaEmTroca?.id;
+          setTrocandoFoto(null);
+          if (id) void acao(() => campaignsService.updateScene(id, { baseImageUrl: url }));
+        }}
+      />
+      {dialogo}
     </Stack>
   );
 }
 
 // --------------------------------------------------------------- campanhas
 function CampanhasTab({
+  etapa,
+  onEtapa,
   produtos,
   personas,
   campanhas,
   precos,
   onChange,
 }: {
+  /** Passo escolhido lá em cima — voltar para "Roteiro" fecha a campanha. */
+  etapa: number;
+  /** Avisa a página se estamos montando o roteiro (2) ou vendo o vídeo (3). */
+  onEtapa: (etapa: number) => void;
   produtos: UserProduct[];
   personas: Persona[];
   campanhas: Campaign[];
@@ -577,6 +875,26 @@ function CampanhasTab({
   const [aberta, setAberta] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<CampaignDetail | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+
+  // O passo do topo acompanha o que está na tela: lista/criação é "Roteiro",
+  // campanha aberta é "Vídeo". Sem isto o cabeçalho mente sobre onde a pessoa
+  // está.
+  useEffect(() => {
+    onEtapa(aberta ? 3 : 2);
+  }, [aberta, onEtapa]);
+
+  // Clicar em "Roteiro" no topo com uma campanha aberta volta para a lista.
+  //
+  // Mas SÓ quando a etapa MUDOU para 2 — comparar apenas o valor fechava a
+  // campanha no instante de abrir: os dois efeitos rodam no mesmo commit, e
+  // este aqui ainda enxergava a etapa antiga (2) com `aberta` recém-setada,
+  // desfazendo o clique em "Abrir" antes de a tela aparecer.
+  const etapaAnterior = useRef(etapa);
+  useEffect(() => {
+    const mudouParaRoteiro = etapa === 2 && etapaAnterior.current === 3;
+    etapaAnterior.current = etapa;
+    if (mudouParaRoteiro && aberta) setAberta(null);
+  }, [etapa, aberta]);
 
   const carregarDetalhe = useCallback(async (id: string) => {
     // `refresh` consulta as gerações em andamento e devolve a campanha inteira.
@@ -699,6 +1017,8 @@ function CampanhasTab({
               >
                 <MenuItem value={15}>15 segundos · 3 cenas</MenuItem>
                 <MenuItem value={30}>30 segundos · 6 cenas</MenuItem>
+                <MenuItem value={45}>45 segundos · 9 cenas</MenuItem>
+                <MenuItem value={60}>60 segundos · 12 cenas</MenuItem>
               </TextField>
               {precos && (
                 <Alert severity="info">
@@ -707,7 +1027,7 @@ function CampanhasTab({
                   <strong>
                     {precos.roteiro + precos.cena * Math.round(durationSeconds / 5)} créditos
                   </strong>
-                  . Você só paga cada cena ao renderizá-la.
+                  . Você só paga cada cena ao renderizá-la — dá para parar no meio.
                 </Alert>
               )}
               {Boolean(fotosFaltando) && (
@@ -779,8 +1099,26 @@ function CampanhasTab({
 }
 
 // -------------------------------------------------------------------- página
+/**
+ * Os quatro passos da fábrica.
+ *
+ * A frase do topo já prometia um caminho ("cadastre o produto, escolha quem
+ * apresenta, aprove o roteiro e receba o vídeo"), mas a tela entregava três
+ * abas soltas e cabia à pessoa descobrir a ordem — e descobrir tarde, quando o
+ * botão travava sem dizer o que faltava. Aqui a ordem é a própria interface.
+ *
+ * Os passos continuam clicáveis fora de ordem: quem já tem produto e
+ * apresentador cadastrados não deve ser obrigado a passear por eles.
+ */
+const PASSOS = [
+  { titulo: 'Produto', ajuda: 'O que você vende, com fotos reais.' },
+  { titulo: 'Apresentador', ajuda: 'Quem aparece no vídeo.' },
+  { titulo: 'Roteiro', ajuda: 'A fala e as cenas, revisadas por você.' },
+  { titulo: 'Vídeo', ajuda: 'Renderiza e monta o arquivo final.' },
+];
+
 export function CampaignsPage() {
-  const [aba, setAba] = useState(0);
+  const [passo, setPasso] = useState(0);
   const [grupos, setGrupos] = useState<AttributeGroup[]>([]);
   const [produtos, setProdutos] = useState<UserProduct[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -830,6 +1168,28 @@ export function CampaignsPage() {
 
   if (carregando) return <BrandLoader minHeight={320} />;
 
+  // Cada passo é "cumprido" pelo que existe de verdade na conta, não por ter
+  // sido visitado: visitar não produz nada.
+  const cumprido = [
+    produtos.some((p) => p.images.length >= LIMITES.fotosMinimasPorProduto),
+    personas.some((p) => p.status === 'pronta'),
+    campanhas.length > 0,
+    campanhas.some((c) => c.finalVideoUrl),
+  ];
+
+  // O que impede o avanço, em uma frase. É a informação que antes só aparecia
+  // como um botão cinza sem explicação.
+  const bloqueio = [
+    produtos.length
+      ? `Envie ao menos ${LIMITES.fotosMinimasPorProduto} fotos de um produto.`
+      : 'Cadastre o produto que você vende.',
+    personas.length
+      ? 'Aguarde o retrato do apresentador ficar pronto.'
+      : 'Monte quem vai apresentar o vídeo.',
+    null,
+    null,
+  ][passo];
+
   return (
     <Box>
       <Typography variant="h4" fontWeight={900} gutterBottom>
@@ -840,15 +1200,37 @@ export function CampaignsPage() {
         o vídeo pronto para publicar.
       </Typography>
 
-      <Tabs value={aba} onChange={(_, v) => setAba(v)} sx={{ mb: 3 }}>
-        <Tab label={`Produtos (${produtos.length})`} />
-        <Tab label={`Apresentadores (${personas.length})`} />
-        <Tab label={`Campanhas (${campanhas.length})`} />
-      </Tabs>
+      <Stepper
+        nonLinear
+        activeStep={passo}
+        alternativeLabel
+        sx={{
+          mb: 3,
+          '& .MuiStepConnector-line': { borderColor: 'divider' },
+        }}
+      >
+        {PASSOS.map((p, i) => (
+          <Step key={p.titulo} completed={cumprido[i]}>
+            <StepButton onClick={() => setPasso(i)}>
+              <StepLabel
+                optional={
+                  <Typography variant="caption" color="text.secondary">
+                    {p.ajuda}
+                  </Typography>
+                }
+              >
+                <Typography component="span" fontWeight={passo === i ? 800 : 600}>
+                  {p.titulo}
+                </Typography>
+              </StepLabel>
+            </StepButton>
+          </Step>
+        ))}
+      </Stepper>
       <Divider sx={{ mb: 3 }} />
 
-      {aba === 0 && <MeusProdutos produtos={produtos} onChange={recarregar} />}
-      {aba === 1 && (
+      {passo === 0 && <MeusProdutos produtos={produtos} onChange={recarregar} />}
+      {passo === 1 && (
         <PersonasTab
           grupos={grupos}
           personas={personas}
@@ -856,14 +1238,46 @@ export function CampaignsPage() {
           onChange={recarregar}
         />
       )}
-      {aba === 2 && (
+      {passo >= 2 && (
         <CampanhasTab
+          etapa={passo}
+          onEtapa={setPasso}
           produtos={produtos}
           personas={personas}
           campanhas={campanhas}
           precos={precos}
           onChange={recarregar}
         />
+      )}
+
+      {/* Navegação só nos dois primeiros passos: do roteiro em diante quem
+          manda no fluxo é a própria campanha (criar, gerar, renderizar). */}
+      {passo <= 1 && (
+        <Stack direction="row" spacing={1.5} alignItems="center" mt={3}>
+          <Button
+            startIcon={<ArrowBackRoundedIcon />}
+            disabled={passo === 0}
+            onClick={() => setPasso((p) => p - 1)}
+          >
+            Voltar
+          </Button>
+          <Box flexGrow={1} />
+          {bloqueio && !cumprido[passo] && (
+            <Typography variant="caption" color="text.secondary">
+              {bloqueio}
+            </Typography>
+          )}
+          <Button
+            variant="contained"
+            endIcon={<ArrowForwardRoundedIcon />}
+            // Trava com a razão à mostra ao lado — botão cinza mudo é o que
+            // fazia a tela parecer quebrada.
+            disabled={!cumprido[passo]}
+            onClick={() => setPasso((p) => p + 1)}
+          >
+            Continuar
+          </Button>
+        </Stack>
       )}
     </Box>
   );

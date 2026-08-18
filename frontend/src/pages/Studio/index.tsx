@@ -33,6 +33,7 @@ import { ImageDropzone } from '@/components/ui/ImageDropzone';
 import { formatCurrency, formatNumber } from '@/utils/format';
 import { proxyImage } from '@/utils/tiktok';
 import { useSaldo } from '@/hooks/useSaldo';
+import { useConfirmarGasto } from '@/hooks/useConfirmarGasto';
 import { apiErrorMessage } from '@/contexts/AuthContext';
 import { billingService } from '@/services/billing.service';
 import { freeService } from '@/services/free.service';
@@ -258,6 +259,7 @@ export function StudioPage() {
    * `script` na tabela do backend — a mesma chave que o 402 usaria.
    */
   const saldo = useSaldo('script');
+  const { confirmar, dialogo } = useConfirmarGasto();
 
   useEffect(() => {
     studioService.listScripts().then(setScripts).catch(console.error);
@@ -350,6 +352,13 @@ export function StudioPage() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (busyRef.current) return;
+    // Antes da trava de duplo-clique: a confirmação é assíncrona e, se ela
+    // ficasse depois, um cancelamento deixaria a trava fechada para sempre.
+    const autorizado = await confirmar({
+      acao: 'script',
+      titulo: type === 'live' ? 'Gerar roteiro de live' : 'Gerar roteiro do vídeo',
+    });
+    if (!autorizado) return;
     busyRef.current = true;
     setError(null);
     setBusy(true);
@@ -905,6 +914,7 @@ export function StudioPage() {
           </CardContent>
         </Card>
       </Collapse>
+      {dialogo}
     </>
   );
 }

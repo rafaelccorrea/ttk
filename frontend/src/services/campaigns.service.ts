@@ -173,6 +173,16 @@ export const campaignsService = {
     return data;
   },
 
+  /**
+   * Dispara de uma vez todas as cenas que faltam. A cobrança continua por
+   * cena, no servidor; o que muda é o número de cliques. A montagem final
+   * acontece sozinha quando a última cena fica pronta.
+   */
+  async renderAll(id: string): Promise<CampaignDetail> {
+    const { data } = await api.post<CampaignDetail>(`/campaigns/${id}/render-all`);
+    return data;
+  },
+
   async refresh(id: string): Promise<CampaignDetail> {
     const { data } = await api.get<CampaignDetail>(`/campaigns/${id}/refresh`);
     return data;
@@ -184,7 +194,9 @@ export const campaignsService = {
 
   async updateScene(
     sceneId: string,
-    input: { fala?: string; acaoVisual?: string },
+    // `baseImageUrl` só vale para cena de produto, e o servidor confere que a
+    // URL é uma das fotos cadastradas — aqui é só o transporte.
+    input: { fala?: string; acaoVisual?: string; baseImageUrl?: string },
   ): Promise<CampaignScene> {
     const { data } = await api.patch<CampaignScene>(
       `/campaigns/scenes/${sceneId}`,

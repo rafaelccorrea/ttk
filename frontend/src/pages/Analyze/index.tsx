@@ -17,6 +17,7 @@ import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { useSaldo } from '@/hooks/useSaldo';
+import { useConfirmarGasto } from '@/hooks/useConfirmarGasto';
 import { apiErrorMessage } from '@/contexts/AuthContext';
 import { api } from '@/services/api';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
@@ -30,6 +31,7 @@ export function AnalyzePage() {
   // `transcribe`. Cada botão trava pelo próprio preço.
   const saldoAnalise = useSaldo('analyze');
   const saldoTranscricao = useSaldo('transcribe');
+  const { confirmar, dialogo } = useConfirmarGasto();
   const [fileName, setFileName] = useState<string | null>(null);
   const [transcript, setTranscript] = useState('');
   const [products, setProducts] = useState<RankedProduct[]>([]);
@@ -86,6 +88,21 @@ export function AnalyzePage() {
     const file = event.target.files?.[0];
     if (!file) return;
     if (transcribingRef.current) return;
+    /*
+     * O custo depende da DURAÇÃO, que só o servidor conhece depois do upload:
+     * cobra-se por bloco de 10 minutos começado. Prometer um total aqui seria
+     * inventar — o diálogo mostra o preço do bloco e diz de que ele depende.
+     */
+    const autorizado = await confirmar({
+      acao: 'transcribe',
+      titulo: 'Transcrever vídeo',
+      detalhe:
+        'Cobrado por bloco de 10 minutos começado — o total depende da duração do arquivo.',
+    });
+    if (!autorizado) {
+      event.target.value = '';
+      return;
+    }
     transcribingRef.current = true;
     setError(null);
     setFileName(file.name);
@@ -111,6 +128,11 @@ export function AnalyzePage() {
 
   async function handleAnalyze() {
     if (analyzingRef.current) return;
+    const autorizado = await confirmar({
+      acao: 'analyze',
+      titulo: 'Analisar vídeo viral',
+    });
+    if (!autorizado) return;
     analyzingRef.current = true;
     setError(null);
     setAnalyzing(true);
@@ -320,6 +342,7 @@ export function AnalyzePage() {
           )}
         </Grid>
       </Grid>
+      {dialogo}
     </>
   );
 }

@@ -60,6 +60,7 @@ import {
 } from 'react';
 import { resolveApiUrl } from '@/services/api';
 import { mensagemDeErro } from '@/services/erros';
+import { useConfirmarGasto } from '@/hooks/useConfirmarGasto';
 import {
   ClipRole,
   Combination,
@@ -1926,6 +1927,7 @@ const DICA_DA_ETAPA = [
 ];
 
 export function MultiplierPage() {
+  const { confirmar, dialogo } = useConfirmarGasto();
   const [etapa, setEtapa] = useState(0);
   const [sigla, setSigla] = useState('');
   const [format, setFormat] = useState<PlanFormat>('9:16');
@@ -2104,6 +2106,28 @@ export function MultiplierPage() {
    * banco à toa, mais longo faz parecer travado.
    */
   async function handleRender(planId: string) {
+    /*
+     * A quantidade sai do plano, não do formulário.
+     *
+     * Montar a partir de "Planos salvos" não passa pela tela de montagem, e
+     * `result` pode ser de outro plano — confirmar com o número errado seria
+     * pior que não confirmar, porque o número parece conferido.
+     */
+    const doPlano =
+      result?.id === planId
+        ? (result?.combinations.length ?? 0)
+        : ((await combinationsService.findOne(planId)).combinations.length ?? 0);
+    const autorizado = await confirmar({
+      acao: 'assembly',
+      titulo: 'Montar os vídeos',
+      quantidade: doPlano,
+      detalhe: `${doPlano} ${plural(doPlano, 'vídeo', 'vídeos')} ${plural(
+        doPlano,
+        'será montado',
+        'serão montados',
+      )} a partir dos seus clipes.`,
+    });
+    if (!autorizado) return;
     setError(null);
     setMontando(true);
     // Montar já leva para a última etapa: é lá que o progresso e a galeria
@@ -2719,6 +2743,7 @@ export function MultiplierPage() {
               )}
             </CardContent>
       </Card>
+      {dialogo}
     </>
   );
 }
