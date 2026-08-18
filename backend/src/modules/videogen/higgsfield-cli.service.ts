@@ -396,18 +396,31 @@ export class HiggsfieldCliService implements GeradorDeMidia {
     // argumentos.
     const comando = [this.binario, ...args].join(' ');
     try {
-      const { stdout } = await execAsync(comando, {
+      const { stdout, stderr } = await execAsync(comando, {
         maxBuffer: 16 * 1024 * 1024,
         env: {
           ...process.env,
           // É o que faz a CLI ler a credencial do servidor em vez do HOME do
           // usuário que por acaso está executando o processo do Node.
           ...(this.credenciais ? { HIGGSFIELD_CREDENTIALS_PATH: this.credenciais } : {}),
-        // Substitui o arquivo de configuração que o servidor não tem.
-        ...(workspace ? { HIGGSFIELD_WORKSPACE_ID: workspace } : {}),
+          // Substitui o arquivo de configuração que o servidor não tem.
+          ...(workspace ? { HIGGSFIELD_WORKSPACE_ID: workspace } : {}),
         },
       });
-      return stdout;
+      /*
+       * Saída vazia com código de saída ZERO é o caso que não estava previsto.
+       *
+       * A CLI repassa os argumentos para um binário nativo, e um processo que
+       * termina bem sem imprimir nada não cai no `catch` — sobe como sucesso e
+       * quebra o `JSON.parse` lá na frente. Registrar o `stderr` aqui é o que
+       * transforma "não sei o que houve" em uma linha de log com a resposta.
+       */
+      if (!stdout || !stdout.trim()) {
+        this.logger.error(
+          `CLI terminou sem saída. stderr: ${(stderr || '(vazio)').slice(0, 500)}`,
+        );
+      }
+      return stdout ?? '';
     } catch (erro) {
       /*
        * Traduzir a falha do processo é o que separa um 500 de um 503.
@@ -449,13 +462,28 @@ export class HiggsfieldCliService implements GeradorDeMidia {
    * arquitetura que já existe em vez de furá-la.
    */
   private async submeter(args: string[]): Promise<SubmitResult> {
-    const stdout = await this.cli([...args, '--json']);
+    /*
+     * `?? ''` porque a saída pode vir vazia, e não deveria explodir aqui.
+     *
+     * Vinha `undefined`, e o `.slice` do relato de erro estourava com
+     * "Cannot read properties of undefined" — um TypeError, que o Nest traduz
+     * para 500. Ou seja: o tratamento de erro virou a causa de um erro pior que
+     * o original, e escondeu o de verdade. Quem falha aqui é a Higgsfield, e
+     * isso é 503; TypeError nosso no meio do caminho só atrapalha quem lê o log.
+     */
+    const saida = (await this.cli([...args, '--json'])) ?? '';
     let dados: unknown;
     try {
-      dados = JSON.parse(stdout);
+      dados = JSON.parse(saida);
     } catch {
+      // O texto cru vai para o log, não para o cliente: se a CLI imprimiu algo
+      // inesperado, é isso que diz o que houve — e adivinhar já custou caro.
+      this.logger.error(
+        `Saída não-JSON da CLI (${saida.length} chars): ${saida.slice(0, 500) || '(vazia)'}`,
+      );
       throw new ServiceUnavailableException(
-        `Resposta ilegível da Higgsfield: ${stdout.slice(0, 200)}`,
+        'A geração de mídia está temporariamente indisponível. Seus créditos ' +
+          'não foram cobrados — tente de novo em alguns minutos.',
       );
     }
     const id = Array.isArray(dados)
