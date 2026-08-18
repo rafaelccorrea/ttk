@@ -25,7 +25,24 @@ da landing cobre parte disso, mas ela é anônima — não cria conta, não cria
 tem para onde converter além do botão de assinar.
 
 A conta gratuita volta como o degrau intermediário: **a plataforma real, com uma amostra
-real, pequena e congelada.** Ela existe para provar e para converter, não para operar.
+real, pequena e congelada — e com as ferramentas de IA ligadas, limitadas por saldo.** Ela
+existe para provar e para converter, não para operar.
+
+## 1.1 A régua: o que é limitável por saldo abre; o que é ilimitável, não
+
+Esta é a frase que decide tudo o que vem abaixo, e ela separa os dois custos do produto:
+
+| | Dado de mercado (`discovery`) | Ferramentas de IA (`ai_*`) |
+|---|---|---|
+| Como custa | por consulta ao fornecedor | por chamada, e a chamada já é medida em crédito |
+| Tem teto natural? | **não** | **sim: o saldo** |
+| No gratuito | só a **amostra** fixa | **abertas**, com 25 créditos de cortesia |
+
+Abrir o roteiro, a análise, a transcrição e a imagem para quem não paga não abre torneira
+nenhuma: o teto é o saldo, o saldo é concedido uma vez e não renova. E é o que faz a conta
+gratuita valer alguma coisa — o vendedor vê o roteiro sair **com o produto dele**, que é a
+única demonstração que converte. Já `discovery` não tem teto: liberá-la seria entregar o
+produto.
 
 ---
 
@@ -40,11 +57,18 @@ documento inteiro:
 |---|---|---|
 | Dar F5 | pode revelar itens novos | devolve exatamente os mesmos itens |
 | Criar uma segunda conta | dobra o que se vê | não revela **nada** novo |
-| Custo por conta gratuita nova | linear | zero |
-| Anti-abuso necessário | detecção de multi-conta, e-mail descartável | nenhum |
+| Custo do DADO por conta nova | linear | zero |
+| Anti-abuso necessário **para o dado** | detecção de multi-conta, e-mail descartável | nenhum |
 
-É por isso que o desenho não precisa de defesa contra fraude: **não há o que ganhar
-burlando.** A décima conta de uma mesma pessoa vê os mesmos 20 produtos que a primeira.
+Do lado do dado, portanto, não há o que ganhar burlando: a décima conta de uma mesma pessoa
+vê os mesmos 20 produtos que a primeira.
+
+**Isso vale para o dado, e não para a cortesia de créditos.** Desde que a conta gratuita
+passou a receber 25 créditos de IA (seção 1.1), uma conta nova vale até R$ 1,50 — e aí o
+incentivo a criar contas em série existe de verdade. O que segura é a cortesia ser concedida
+**uma vez por conta**, não renovar, e o cadastro exigir confirmação de e-mail; o que não
+existe é limite por IP ou por domínio. Está descrito com números em
+[Precificação, seção 8.3](PRECIFICACAO.md).
 
 Consequência de projeto: o snapshot é **persistido em tabela**, não guardado em memória.
 Um deploy no meio da semana não pode trocar a amostra — o congelamento é a promessa, e uma
@@ -68,10 +92,22 @@ estão sendo lidas quando alguém for mexer no funil.
 itens do mesmo nicho, e aí a amostra prova que a base é grande em um assunto só — que é o
 contrário do que ela precisa provar.
 
-**A troca é por expiração, não por cron.** Existe um job semanal, mas ele é só aquecimento:
-quem decide é o `expiresAt` lido na requisição. Se o cron cair, a amostra ainda gira. Um
-produto que depende do agendador para funcionar quebra silenciosamente no primeiro
-domingo em que o agendador não rodar.
+**A troca é por expiração, não por cron.** Existe um job, mas ele é só aquecimento: quem
+decide é o `slot` calculado na requisição. Se o cron cair, a amostra ainda gira. Um produto
+que depende do agendador para funcionar quebra silenciosamente no primeiro domingo em que
+o agendador não rodar.
+
+O job roda **diário** (`0 4 * * *`), e não semanal, pelo mesmo raciocínio: um job semanal
+que falha perde a única chance da semana; este perde uma tentativa e refaz em 24h.
+`currentSample()` é idempotente dentro da janela, então rodar todo dia não gera trabalho
+extra.
+
+**Como a janela é calculada.** `slot = floor(agora / 7 dias)` desde a época Unix — não a
+partir da primeira geração. Alinhar à época faz a troca acontecer no mesmo instante para
+todo mundo; alinhar à primeira geração faria a data de rotação depender de qual visitante
+acordou o snapshot primeiro. O `slot` é também o `UNIQUE` da tabela, e é ele que garante
+que duas requisições simultâneas numa janela vazia não criem dois snapshots concorrentes:
+a segunda perde a corrida no banco e lê o que a primeira gravou.
 
 ---
 
@@ -151,17 +187,24 @@ pagou.
 
 ---
 
-## 6. O que a conta gratuita **não** acessa
+## 6. O que abre e o que não abre
 
-Tudo que custa por chamada, sem exceção: roteiros, análise de vídeo viral, transcrição,
-imagens, vídeos com IA, multiplicador, campanhas, Live Copilot, uploads e coleta. E também
-tendências, criadores e a busca — que são dado de fornecedor.
+**Abre** (mínimo `free` em `FEATURE_MIN_PLAN`, limitado pelo saldo): roteiros com IA,
+análise de vídeo viral, transcrição, imagens com IA, gerador local do estúdio e upload de
+arquivo do próprio vendedor.
 
-Nada disso exigiu mudança: já era o comportamento de `plan: 'free'` em
-`FEATURE_MIN_PLAN`. O modo amostra é aditivo, e é assim que ele deve continuar. **Se algum
-dia uma feature precisar ser aberta ao gratuito, a mudança certa é uma rota nova no módulo
-`free`, não um `free` dentro de `FEATURE_MIN_PLAN`** — o mapa é a linha de defesa que
-`assertFeature` aplica em toda a API, e furá-lo em um lugar fura em todos.
+**Não abre:** o dado de mercado completo (`discovery` — ranking, busca, filtros, tendências,
+criadores, favoritos), vídeos com IA, multiplicador, campanhas, Live Copilot e coleta. Os
+quatro últimos porque são de planos acima do Essencial; `discovery` porque não tem teto
+(seção 1.1).
+
+A régua para features futuras: **pergunte se o recurso tem teto de saldo.** Se tiver, pode
+descer para `free` em `FEATURE_MIN_PLAN`. Se não tiver — qualquer coisa que consulte
+fornecedor por item, ou que dependa de volume — o lugar dela é o piso pago, e o que se
+oferece ao gratuito é uma amostra fixa, como a de produtos e vídeos. Herdar `essencial` da
+linha de cima sem responder essa pergunta é como um custo sem teto entra no gratuito sem
+ninguém decidir. O teste `abre no gratuito exatamente o que o crédito limita`
+(`billing.config.spec.ts`) lista os recursos um a um justamente para forçar a resposta.
 
 ---
 
@@ -195,8 +238,20 @@ Uma conta gratuita que não sabe que é gratuita não faz upgrade — ela conclu
 `refreshAt`) porque o front precisa distinguir **"sem acesso"** de **"acesso em amostra"** —
 são duas telas diferentes, e hoje ele só sabe responder a primeira.
 
-`RequireSubscription` deixa de ser tudo-ou-nada: libera as telas de descoberta em modo
-amostra e continua mandando **todas** as outras rotas para `/assinatura`.
+`RequireSubscription` deixa de ser tudo-ou-nada. As três telas de descoberta (`/produtos`,
+`/produtos/:id`, `/videos`) saíram de dentro dele e passaram a ser decididas pelo
+`FreeSampleGate`, que escolhe entre a versão paga e a amostra. Todo o resto continua atrás
+do paywall.
+
+**Mudou também para onde a conta gratuita é mandada.** Antes, toda rota paga jogava para
+`/assinatura`. Agora joga para `/produtos` quando a conta tem amostra: é a única porta que
+ela pode abrir, e mandá-la ao checkout a cada clique transformaria o app inteiro num pedido
+de dinheiro. A tela de assinatura fica a um clique, em todo CTA da amostra. Sem amostra
+(backend antigo, estado desconhecido), o destino continua sendo `/assinatura`.
+
+O detalhe de um produto fora da amostra vira **tela de upgrade, não erro**: quem chegou por
+um link antigo bateu no limite do plano, não num bug, e a tela nomeia o que falta (loja,
+números exatos, série diária, criadores, IA) em vez de dizer "assine para ver mais".
 
 ---
 
@@ -209,7 +264,14 @@ amostra e continua mandando **todas** as outras rotas para `/assinatura`.
 | Conta free em qualquer rota de IA → 403 | o vazamento pelo `FEATURE_MIN_PLAN` |
 | Quantidades = 20 e 10 | o limite que cresce sem decisão |
 | Snapshot expirado gera um novo | a amostra que congela para sempre |
-| Conta free não dispara consulta ao fornecedor | o custo por visitante voltando pela porta dos fundos |
+| Duas gerações concorrentes convergem | contas vendo amostras diferentes na mesma semana |
+| O card não tem `storeName`, `tiktokUrl`, `revenue`, `playbackUrl`, `transcript` | o campo novo que vaza por omissão |
+| `FreeSampleService` recebe só repositórios | o dia em que alguém injetar o fornecedor aqui e a conta gratuita voltar a custar por visita |
+| Plano pago é barrado em `/free/*` | a rota reduzida degradando em silêncio o produto de quem pagou |
+
+Onde: `backend/src/modules/free/free-sample.service.spec.ts` e `free-plan.guard.spec.ts`.
+A trava contra rota de IA já é coberta pelos testes de `PlanFeatureGuard`/`assertFeature`,
+que não mudaram — o modo amostra é aditivo e não tocou em `FEATURE_MIN_PLAN`.
 
 ---
 

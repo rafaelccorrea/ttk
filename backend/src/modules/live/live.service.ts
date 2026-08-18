@@ -11,6 +11,7 @@ import { readFile, unlink } from 'node:fs/promises';
 import { In, LessThan, Repository } from 'typeorm';
 import {
   ACTION_PRICES,
+  LIVE_MIN_MINUTES,
   TRANSCRIBE_MAX_MINUTES,
   transcribeBlocks,
 } from '../billing/billing.config';
@@ -334,6 +335,22 @@ export class LiveService {
           if (durationSeconds && durationSeconds > TRANSCRIBE_MAX_MINUTES * 60) {
             throw new BadRequestException(
               `A gravação tem ${Math.round(durationSeconds / 60)} minutos e o limite é de ${TRANSCRIBE_MAX_MINUTES}. Corte a live em partes e envie uma de cada vez.`,
+            );
+          }
+          /*
+           * E o piso, pelo mesmo motivo invertido: abaixo de LIVE_MIN_MINUTES a
+           * gravação não tem conversa suficiente para virar base, e deixar
+           * passar cobraria a transcrição para entregar uma base vazia. A recusa
+           * vem ANTES do débito logo abaixo — de propósito.
+           *
+           * Só barra com duração conhecida: quando o ffmpeg não consegue medir,
+           * o resto do fluxo já trata como incerteza e erra a favor de quem
+           * enviou, e inventar um "curto demais" a partir de um `null` recusaria
+           * uma live boa por causa de um cabeçalho ilegível.
+           */
+          if (durationSeconds && durationSeconds < LIVE_MIN_MINUTES * 60) {
+            throw new BadRequestException(
+              `Esta gravação tem ${Math.max(1, Math.round(durationSeconds / 60))} minuto(s), e eu preciso de pelo menos ${LIVE_MIN_MINUTES} para montar uma base que sirva de alguma coisa. Envie a live inteira, e não só um trecho.`,
             );
           }
 

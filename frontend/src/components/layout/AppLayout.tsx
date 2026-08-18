@@ -73,20 +73,61 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Descoberta',
     items: [
+      /*
+       * Produtos e Vídeos NÃO levam `feature`, e é de propósito: a conta
+       * gratuita entra nos dois (em modo amostra, ver docs/CONTA-FREE.md).
+       * Marcá-los com `discovery` poria cadeado justamente nas duas portas que
+       * ela pode abrir.
+       */
       { to: '/produtos', label: 'Produtos', icon: <LocalFireDepartmentRoundedIcon /> },
       { to: '/videos', label: 'Vídeos que Vendem', icon: <OndemandVideoRoundedIcon /> },
-      { to: '/tendencias', label: 'Tendências', icon: <TrendingUpRoundedIcon /> },
-      { to: '/criadores', label: 'Criadores', icon: <GroupsRoundedIcon /> },
-      { to: '/favoritos', label: 'Favoritos', icon: <StarRoundedIcon /> },
+      {
+        to: '/tendencias',
+        label: 'Tendências',
+        icon: <TrendingUpRoundedIcon />,
+        feature: 'discovery',
+      },
+      {
+        to: '/criadores',
+        label: 'Criadores',
+        icon: <GroupsRoundedIcon />,
+        feature: 'discovery',
+      },
+      {
+        to: '/favoritos',
+        label: 'Favoritos',
+        icon: <StarRoundedIcon />,
+        feature: 'discovery',
+      },
     ],
   },
   {
     title: 'Estúdio',
     items: [
-      { to: '/campanhas', label: 'Fábrica de Criativos', icon: <TheatersRoundedIcon /> },
-      { to: '/estudio', label: 'Roteirizar com IA', icon: <AutoFixHighRoundedIcon /> },
-      { to: '/analisar', label: 'Analisar Vídeo', icon: <TroubleshootRoundedIcon /> },
-      { to: '/multiplicador', label: 'Multiplicador', icon: <DynamicFeedRoundedIcon /> },
+      {
+        to: '/campanhas',
+        label: 'Fábrica de Criativos',
+        icon: <TheatersRoundedIcon />,
+        feature: 'campaigns',
+      },
+      {
+        to: '/estudio',
+        label: 'Roteirizar com IA',
+        icon: <AutoFixHighRoundedIcon />,
+        feature: 'ai_scripts',
+      },
+      {
+        to: '/analisar',
+        label: 'Analisar Vídeo',
+        icon: <TroubleshootRoundedIcon />,
+        feature: 'ai_analyze',
+      },
+      {
+        to: '/multiplicador',
+        label: 'Multiplicador',
+        icon: <DynamicFeedRoundedIcon />,
+        feature: 'multiplier',
+      },
       {
         to: '/copiloto',
         label: 'Copiloto de Live',
@@ -334,7 +375,23 @@ export function AppLayout() {
             '&::-webkit-scrollbar': { display: 'none' },
           }}
         >
-          {[...NAV_SECTIONS, ...(isAdmin ? [ADMIN_SECTION] : [])].map(
+          {[...NAV_SECTIONS, ...(isAdmin ? [ADMIN_SECTION] : [])]
+            /*
+             * A conta gratuita não tem Dashboard: ela é redirecionada dali para
+             * a amostra (ver RequireSubscription). Deixar o item no menu criaria
+             * o pior tipo de link — o que sempre leva a outro lugar, sem
+             * cadeado que explique. As demais telas pagas continuam à vista,
+             * com cadeado: recurso invisível não vende degrau nenhum.
+             */
+            .map((section) => ({
+              ...section,
+              items:
+                plan === 'free'
+                  ? section.items.filter((i) => i.to !== '/dashboard')
+                  : section.items,
+            }))
+            .filter((section) => section.items.length > 0)
+            .map(
             (section, sectionIndex) => (
             <List
               key={section.title ?? sectionIndex}

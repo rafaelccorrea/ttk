@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { FreeSampleGate } from '@/components/ui/FreeSampleGate';
 import { PlanGate } from '@/components/ui/PlanGate';
 import { RequireSubscription } from '@/components/ui/RequireSubscription';
 import { AcademyPage } from '@/pages/Academy';
@@ -12,6 +13,9 @@ import { ConfirmEmailPage } from '@/pages/ConfirmEmail';
 import { CreatorsPage } from '@/pages/Creators';
 import { DashboardPage } from '@/pages/Dashboard';
 import { FavoritesPage } from '@/pages/Favorites';
+import { FreeProdutoDetalhePage } from '@/pages/Free/ProdutoDetalhe';
+import { FreeProdutosPage } from '@/pages/Free/Produtos';
+import { FreeVideosPage } from '@/pages/Free/Videos';
 import { ForgotPasswordPage } from '@/pages/ForgotPassword';
 import { ResetPasswordPage } from '@/pages/ResetPassword';
 import { GenerationsPage } from '@/pages/Generations';
@@ -57,17 +61,62 @@ export function AppRoutes() {
             vencida — inclusive para recusar um pedido que não foi seu. */}
         <Route path="/ativar" element={<AtivarDispositivoPage />} />
         <Route element={<AppLayout />}>
-          {/* Estar logado não basta: conta sem assinatura vai para /planos. */}
+          {/* As três telas de descoberta ficam FORA do RequireSubscription:
+              são as únicas que a conta gratuita abre, em modo amostra (ver
+              docs/CONTA-FREE.md). O FreeSampleGate escolhe qual versão
+              renderizar e manda para /assinatura quem não se encaixa em
+              nenhuma das duas. Todo o resto do app continua com o paywall na
+              entrada, logo abaixo. */}
+          <Route
+            path="/produtos"
+            element={
+              <FreeSampleGate
+                pago={<ProductsPage />}
+                amostra={<FreeProdutosPage />}
+              />
+            }
+          />
+          <Route
+            path="/produtos/:id"
+            element={
+              <FreeSampleGate
+                pago={<ProductDetailPage />}
+                amostra={<FreeProdutoDetalhePage />}
+              />
+            }
+          />
+          <Route
+            path="/videos"
+            element={
+              <FreeSampleGate pago={<VideosPage />} amostra={<FreeVideosPage />} />
+            }
+          />
+          {/* Planos e Perfil também ficam fora do paywall, e por motivos
+              diferentes. Planos é a TELA DE COMPRA: com ela bloqueada, todo CTA
+              da amostra levava à tela de bloqueio — que por sua vez oferece
+              "Ver planos". O caminho de conversão inteiro se fechava num
+              círculo. Perfil é a própria conta (nome, e-mail, senha), não é
+              dado de mercado: trancar alguém fora dos próprios dados por não
+              ter assinatura não protege nada. */}
+          <Route path="/planos" element={<PlansPage />} />
+          <Route path="/perfil" element={<ProfilePage />} />
+          {/* As ferramentas de IA do Essencial também abrem no gratuito, e o
+              teto delas não é o plano — é o SALDO. Quem não assina começa com a
+              cortesia de cadastro (SIGNUP_BONUS_CREDITS) e gasta até acabar; o
+              backend cobra crédito a cada chamada e responde 402 quando não há
+              saldo, que é uma resposta muito melhor do que "faça upgrade" para
+              quem só quer experimentar. Ver FEATURE_MIN_PLAN e
+              docs/CONTA-FREE.md. */}
+          <Route path="/estudio" element={<StudioPage />} />
+          <Route path="/analisar" element={<AnalyzePage />} />
+          <Route path="/geracoes" element={<GenerationsPage />} />
+          <Route path="/prompts" element={<PromptsPage />} />
+          {/* Estar logado não basta: conta sem assinatura não entra no resto. */}
           <Route element={<RequireSubscription />}>
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/produtos" element={<ProductsPage />} />
-            <Route path="/produtos/:id" element={<ProductDetailPage />} />
-            <Route path="/videos" element={<VideosPage />} />
             <Route path="/tendencias" element={<TrendsPage />} />
             <Route path="/criadores" element={<CreatorsPage />} />
             <Route path="/favoritos" element={<FavoritesPage />} />
-            <Route path="/perfil" element={<ProfilePage />} />
-            <Route path="/estudio" element={<StudioPage />} />
             {/* Campanhas e Multiplicador são Pro no backend; sem o gate aqui,
                 quem assina o Essencial abria a tela e só descobria no 403. */}
             <Route
@@ -106,8 +155,6 @@ export function AppRoutes() {
             />
             <Route path="/academy" element={<AcademyPage />} />
             <Route path="/indique" element={<ReferralPage />} />
-            <Route path="/prompts" element={<PromptsPage />} />
-            <Route path="/geracoes" element={<GenerationsPage />} />
             <Route
               path="/coleta"
               element={
@@ -116,8 +163,6 @@ export function AppRoutes() {
                 </PlanGate>
               }
             />
-            <Route path="/analisar" element={<AnalyzePage />} />
-            <Route path="/planos" element={<PlansPage />} />
             {/* A rota existe para qualquer logado; quem barra é o AdminGuard
                 do backend, que responde 403 em todas as chamadas /admin. */}
             <Route path="/admin" element={<AdminPage />} />

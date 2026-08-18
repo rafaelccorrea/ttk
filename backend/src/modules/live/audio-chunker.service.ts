@@ -83,6 +83,40 @@ export class AudioChunkerService {
       );
     }
 
+    /*
+     * A conferência vem ANTES da extração porque o fracasso dela é mudo.
+     *
+     * Sem trilha de áudio, o `-vn` abaixo descarta o vídeo e não sobra nada para
+     * escrever: o ffmpeg morre com "Output file does not contain any stream",
+     * essa linha sobe inteira até a tela da live e o vendedor recebe um erro de
+     * ferramenta no lugar do fato — a gravação dele está sem som. Perguntar
+     * antes custa uma leitura de cabeçalho e devolve a frase certa.
+     */
+    const streams = await this.ffmpeg.streamsDe(entradaPath);
+    if (!streams.legivel) {
+      throw new Error(
+        'Não consegui ler este arquivo de vídeo. Envie a gravação da live num formato comum (MP4, MOV ou MKV) e confira se o envio terminou por completo.',
+      );
+    }
+    /*
+     * Áudio puro é recusado por decisão de produto, e não por limitação: o
+     * pipeline extrairia a trilha de um MP3 sem reclamar. A regra e o porquê
+     * moram em PREFIXOS_ACEITOS, no controller — aqui é a trava que o
+     * `mimetype` não dá, já que ele é declarado por quem envia e um MP3 passa
+     * renomeado como "video/mp4". Quem sabe o que o arquivo é de verdade é o
+     * ffmpeg.
+     */
+    if (!streams.video) {
+      throw new Error(
+        'Este arquivo é só áudio. Envie o vídeo da live — é da gravação da transmissão, com imagem, que eu monto a base.',
+      );
+    }
+    if (!streams.audio) {
+      throw new Error(
+        'Esta gravação não tem áudio. É da fala da live que eu monto a base de conhecimento, então preciso de um arquivo com som — confira se o microfone estava sendo gravado e envie de novo.',
+      );
+    }
+
     return this.ffmpeg.comTmp('pikpok-live-audio-', async (pasta) => {
       const saida = join(pasta, 'audio.ogg');
 

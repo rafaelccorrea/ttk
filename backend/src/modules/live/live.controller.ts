@@ -62,12 +62,22 @@ const PASTA_DE_UPLOAD = join(tmpdir(), 'pikpok-live-uploads');
 mkdirSync(PASTA_DE_UPLOAD, { recursive: true });
 
 /**
- * O que o pipeline sabe abrir. Só o prefixo é checado porque o container varia
- * demais (mp4, mov, mkv, webm, ogg, m4a) e quem decide de verdade se o arquivo
- * é legível é o ffmpeg, na extração — isto aqui é a peneira barata que impede
- * um PDF ou um ZIP de chegar até lá.
+ * O que o pipeline aceita como gravação de live: VÍDEO.
+ *
+ * Tecnicamente o áudio puro bastaria — o pipeline extrai a trilha e joga o
+ * vídeo fora no primeiro passo. Aceitá-lo era o padrão, e o que se viu na
+ * prática foi gente subindo MP3 solto: mais leve, mais fácil, e é o arquivo que
+ * a pessoa tem quando gravou "só para ouvir depois". O problema é que a live é
+ * um evento com tela — o que o vendedor mostra, o preço que ele levanta na mão,
+ * a etiqueta que ele aponta — e a base montada a partir de um áudio avulso
+ * chega pela metade sem ninguém entender por quê.
+ *
+ * Então a entrada é a gravação da transmissão, e o resto é recusado na porta,
+ * com a frase dizendo o que fazer. Só o prefixo é checado porque o container
+ * varia demais (mp4, mov, mkv, webm) e quem decide de verdade se o arquivo é
+ * legível é o ffmpeg, na extração.
  */
-const PREFIXOS_ACEITOS = ['video/', 'audio/'];
+const PREFIXOS_ACEITOS = ['video/'];
 
 /**
  * Teto do CSV de catálogo.
@@ -141,7 +151,7 @@ export class LiveController {
       // deixaria gigabytes de lixo no tmp a cada tentativa errada.
       if (file?.path) void unlink(file.path).catch(() => undefined);
       throw new BadRequestException(
-        'Envie a gravação da live em vídeo ou áudio (mp4, mov, mkv, m4a, mp3...).',
+        'Envie o VÍDEO da live (mp4, mov, mkv ou webm). Arquivo só de áudio não serve: é da gravação da transmissão que eu monto a base.',
       );
     }
     return this.live.processarUpload(user.id, id, file);

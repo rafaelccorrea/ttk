@@ -18,24 +18,58 @@ import {
   planLiveMinutes,
   PlanFeature,
   SIGNUP_BONUS_CREDITS,
+  worstCostPerCredit,
 } from './billing.config';
 
 /**
- * O paywall na entrada é uma regra de negócio que mora inteira em constantes —
- * e constante não quebra teste quando alguém a edita "só para testar" e esquece
- * de voltar. Estes testes são o alarme: se qualquer recurso reabrir para conta
- * não paga, o CI para.
+ * A fronteira da conta gratuita é uma regra de negócio que mora inteira em
+ * constantes — e constante não quebra teste quando alguém a edita "só para
+ * testar" e esquece de voltar. Estes testes são o alarme.
+ *
+ * A régua que eles defendem (ver FEATURE_MIN_PLAN e docs/CONTA-FREE.md): **o
+ * que é limitável por saldo abre no gratuito; o que é ilimitável fica atrás do
+ * plano.** É por isso que a lista abaixo é exaustiva e escrita à mão — a
+ * pergunta "este recurso novo tem teto?" precisa ser respondida por uma pessoa,
+ * uma vez, e não herdada por engano de um `essencial` copiado da linha de cima.
  */
-describe('billing.config — paywall na entrada', () => {
-  it('não libera nenhum recurso para o plano free', () => {
-    const abertos = (Object.keys(FEATURE_MIN_PLAN) as PlanFeature[]).filter(
-      (f) => planAllows('free', f),
+describe('billing.config — a fronteira da conta gratuita', () => {
+  it('abre no gratuito exatamente o que o crédito limita', () => {
+    const abertos = (Object.keys(FEATURE_MIN_PLAN) as PlanFeature[])
+      .filter((f) => planAllows('free', f))
+      .sort();
+    expect(abertos).toEqual(
+      [
+        'ai_analyze',
+        'ai_images',
+        'ai_scripts',
+        'ai_transcribe',
+        'studio_templates',
+        'uploads',
+      ].sort(),
     );
-    expect(abertos).toEqual([]);
   });
 
-  it('não dá créditos de boas-vindas a quem não pagou', () => {
-    expect(SIGNUP_BONUS_CREDITS).toBe(0);
+  it('mantém o dado de mercado fora do gratuito', () => {
+    /*
+     * `discovery` é o único recurso do Essencial que NÃO desce: custa por
+     * consulta ao fornecedor e não tem teto de saldo. A conta gratuita vê a
+     * amostra fixa (modules/free), que não consulta ninguém.
+     */
+    expect(planAllows('free', 'discovery')).toBe(false);
+  });
+
+  it('não abre no gratuito nada que custe acima do Essencial', () => {
+    for (const f of ['ai_videos', 'multiplier', 'campaigns', 'live_copilot', 'ingestion'] as PlanFeature[]) {
+      expect(planAllows('free', f)).toBe(false);
+    }
+  });
+
+  it('dá a cortesia de boas-vindas, e ela cabe no custo de aquisição', () => {
+    // 25 créditos × R$ 0,06 (pior custo por crédito) = R$ 1,50 por conta, no
+    // pior caso. Subir isto é subir o custo de todo cadastro que nunca pagar.
+    expect(SIGNUP_BONUS_CREDITS).toBe(25);
+    const custoMaximo = SIGNUP_BONUS_CREDITS * worstCostPerCredit();
+    expect(Number(custoMaximo.toFixed(2))).toBeLessThanOrEqual(1.5);
   });
 
   it('não vende plano de preço zero', () => {

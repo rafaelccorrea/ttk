@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { toRange } from '../../common/format/sales-range';
 import { ProductsService } from '../products/products.service';
 
 /** Um produto como o visitante não logado vê: prova, não entrega. */
@@ -23,7 +24,15 @@ export interface ShowcaseSnapshot {
 }
 
 /**
- * Vitrine pública da landing: o que substituiu a conta gratuita.
+ * Vitrine pública da landing: o degrau anônimo, antes do cadastro.
+ *
+ * Ela já foi "o que substituiu a conta gratuita". Hoje a conta gratuita existe
+ * de novo, um degrau acima daqui (ver `modules/free` e `docs/CONTA-FREE.md`), e
+ * a divisão entre as duas é o cadastro: esta prova para quem chegou da rua,
+ * aquela entrega uma amostra fixa para quem já criou conta. A régua do corte de
+ * dado é a mesma nas duas — e o formatador de faixa é literalmente o mesmo
+ * (`common/format/sales-range`), para que o mesmo produto nunca apareça com
+ * duas ordens de grandeza diferentes em duas telas do mesmo site.
  *
  * O dilema era real — vender dado de mercado exige provar que o dado existe,
  * mas conta grátis com dado real é justamente o que destruía o produto (cada
@@ -83,7 +92,7 @@ export class ShowcaseService {
         category: p.category,
         imageUrl: p.imageUrl,
         price: p.price,
-        salesRange: ShowcaseService.toRange(p.salesPeriod),
+        salesRange: toRange(p.salesPeriod),
         growthPct: p.growthPct === null ? null : Math.round(p.growthPct),
       })),
       stats: { products: total, categories: categories.length },
@@ -91,19 +100,4 @@ export class ShowcaseService {
     };
   }
 
-  /**
-   * Vendas viram um piso, não o número exato: "25.317" → "25 mil+".
-   *
-   * A primeira versão arredondava para a potência de 10 abaixo, e o resultado
-   * na tela foi oito cards dizendo "10.000+ vendas" — como a amostra é o topo
-   * do ranking, todo mundo caía no mesmo balde e a seção não provava nada.
-   * Piso no milhar mantém o número exato escondido (que é o que se vende) e
-   * devolve a diferença entre um produto de 25 mil e um de 90 mil, que é
-   * justamente o que faz o visitante querer ver a lista inteira.
-   */
-  private static toRange(sales: number): string {
-    if (!sales || sales < 100) return '<100';
-    if (sales < 1000) return `${Math.floor(sales / 100) * 100}+`;
-    return `${Math.floor(sales / 1000).toLocaleString('pt-BR')} mil+`;
-  }
 }

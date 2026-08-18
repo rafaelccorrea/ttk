@@ -1,6 +1,10 @@
 import { HttpException } from '@nestjs/common';
 import { BillingService } from './billing.service';
-import { ACTION_PRICES, LIVE_TRIAL_MINUTES } from './billing.config';
+import {
+  ACTION_PRICES,
+  LIVE_TRIAL_MINUTES,
+  SIGNUP_BONUS_CREDITS,
+} from './billing.config';
 
 /**
  * A carteira de minutos de live é dinheiro do cliente, e cada regra aqui existe
@@ -42,6 +46,21 @@ function repositorioDeUsuarios(estado: {
   };
 }
 
+/**
+ * Só os lançamentos de COBRANÇA.
+ *
+ * A cortesia de cadastro (`signup_bonus`, 25 créditos) é concedida na primeira
+ * vez que a conta passa por `charge`/`assertSaldo`/`getWallet`, então ela
+ * aparece na lista de lançamentos junto com o que o teste quer observar.
+ * Filtrar por aqui deixa cada teste falando do que ele realmente afirma —
+ * "cobrou" ou "não cobrou" —, em vez de contar linhas.
+ */
+function gastos(salvos: unknown[]) {
+  return (salvos as Array<{ kind?: string }>).filter(
+    (t) => t.kind !== 'signup_bonus',
+  );
+}
+
 function repositorioDeLancamentos(existente: unknown = null) {
   const salvos: unknown[] = [];
   return {
@@ -60,9 +79,21 @@ function montar(estado: {
   usuario?: Record<string, unknown> | null;
   afetadas?: number[];
   lancamentoExistente?: unknown;
+  /** Conta recém-criada: a cortesia de cadastro ainda não foi concedida. */
+  bonusPendente?: boolean;
 }) {
   const users = repositorioDeUsuarios(estado);
-  const creditos = repositorioDeLancamentos();
+  /*
+   * A conta destes testes é uma conta EXISTENTE: a cortesia de cadastro já foi
+   * concedida (`signup_bonus` no extrato), então `ensureSignupBonus` não faz
+   * nada. Sem isto, toda cobrança viria precedida de um crédito de 25 e os
+   * testes de débito passariam a medir o bônus em vez da cobrança.
+   *
+   * A concessão em si tem teste próprio, logo abaixo: "cortesia de cadastro".
+   */
+  const creditos = repositorioDeLancamentos(
+    estado.bonusPendente ? null : { kind: 'signup_bonus' },
+  );
   const minutos = repositorioDeLancamentos(estado.lancamentoExistente ?? null);
   const servico = new BillingService(
     users as never,
@@ -319,7 +350,13 @@ describe('assertSaldo — a trava de entrada', () => {
     });
     await servico.assertSaldo('u1', [{ action: 'live_extract' }]);
     expect(users.builder.set).not.toHaveBeenCalled();
-    expect(creditos.salvos).toHaveLength(0);
+    /*
+     * "Nada" aqui quer dizer nenhum DÉBITO. Desde a cortesia de boas-vindas
+     * (SIGNUP_BONUS_CREDITS), a primeira passagem de uma conta por aqui pode
+     * gravar o crédito de cadastro — que é um lançamento positivo, e não uma
+     * cobrança. Comparar o tamanho da lista confundia as duas coisas.
+     */
+    expect(gastos(creditos.salvos)).toHaveLength(0);
   });
 });
 
@@ -350,7 +387,7 @@ describe('charge dentro de uma transação de fora', () => {
 
     // O débito foi pela conexão da transação...
     expect(doManager.execute).toHaveBeenCalled();
-    expect(lancamentosDoManager.salvos).toHaveLength(1);
+    expect(gastos(lancamentosDoManager.salvos)).toHaveLength(1);
     // ...e não pela do serviço, que ficaria fora do rollback.
     expect(users.execute).not.toHaveBeenCalled();
     expect(creditos.salvos).toHaveLength(0);
@@ -362,7 +399,7 @@ describe('charge dentro de uma transação de fora', () => {
     });
     await servico.charge('u1', 'transcribe', 1);
     expect(users.execute).toHaveBeenCalled();
-    expect(creditos.salvos).toHaveLength(1);
+    expect(gastos(creditos.salvos)).toHaveLength(1);
   });
 });
 
@@ -386,8 +423,8 @@ describe('conta interna (COMP_ACCOUNT_EMAILS)', () => {
     expect(users.builder.set).not.toHaveBeenCalled();
     // Mas o uso fica no extrato, com valor zero: o histórico segue contando o
     // que foi feito sem mexer no saldo.
-    expect((creditos.salvos[0] as { amount: number }).amount).toBe(0);
-    expect((creditos.salvos[0] as { description: string }).description).toContain(
+    expect((gastos(creditos.salvos)[0] as { amount: number }).amount).toBe(0);
+    expect((gastos(creditos.salvos)[0] as { description: string }).description).toContain(
       'uso interno',
     );
   });
@@ -429,6 +466,39 @@ describe('conta interna (COMP_ACCOUNT_EMAILS)', () => {
     });
     await servico.charge('u1', 'transcribe');
     expect(users.execute).toHaveBeenCalled();
-    expect((creditos.salvos[0] as { amount: number }).amount).toBeLessThan(0);
+    expect((gastos(creditos.salvos)[0] as { amount: number }).amount).toBeLessThan(0);
+  });
+});
+
+/**
+ * A cortesia de cadastro — o que faz a conta gratuita conseguir experimentar a
+ * IA sem assinar (docs/CONTA-FREE.md). É dinheiro nosso saindo, então o que
+ * estes testes protegem é o "uma vez por conta".
+ */
+describe('cortesia de cadastro (SIGNUP_BONUS_CREDITS)', () => {
+  it('credita na primeira passagem de uma conta nova', async () => {
+    const { servico, creditos } = montar({
+      usuario: { ...BUSINESS, plan: 'free', credits: 0 },
+      bonusPendente: true,
+    });
+    await servico.getWallet('u1');
+    const bonus = (creditos.salvos as Array<{ kind: string; amount: number }>).find(
+      (t) => t.kind === 'signup_bonus',
+    );
+    expect(bonus?.amount).toBe(SIGNUP_BONUS_CREDITS);
+  });
+
+  it('não credita de novo em quem já recebeu', async () => {
+    // `bonusPendente` ausente = já existe o lançamento no extrato. É esta
+    // consulta, e não um campo no usuário, que impede a segunda concessão.
+    const { servico, creditos } = montar({
+      usuario: { ...BUSINESS, plan: 'free', credits: 0 },
+    });
+    await servico.getWallet('u1');
+    expect(
+      (creditos.salvos as Array<{ kind: string }>).filter(
+        (t) => t.kind === 'signup_bonus',
+      ),
+    ).toHaveLength(0);
   });
 });

@@ -177,6 +177,16 @@ export interface EstadoEnvio {
   degradacao: string | null;
 }
 
+/**
+ * O piso de seguidores que o TikTok pede para liberar a live.
+ *
+ * É a regra pública deles, não nossa, e pode mudar sem aviso — por isso ela só
+ * alimenta um AVISO na tela de conectar, nunca um bloqueio. Se o TikTok baixar
+ * o piso amanhã, o pior que acontece é o app dar um conselho desatualizado; se
+ * fosse bloqueio, ele impediria uma live perfeitamente possível.
+ */
+export const MINIMO_SEGUIDORES_LIVE = 1000;
+
 /** Limites que a tela de configurações mostra e o preload não deixa passar. */
 export const LOTE_MINIMO = 1;
 export const LOTE_MAXIMO = 40;
@@ -199,6 +209,15 @@ export interface PikPokDesktopApi {
   readonly tiktokLogado: () => Promise<boolean>;
   /** Assina login, logout e expiração da sessão do TikTok. */
   readonly aoMudarTikTok: (ouvinte: (logado: boolean) => void) => () => void;
+  /**
+   * Seguidores da conta, lidos do perfil público, ou `null` quando não der.
+   *
+   * Serve para uma coisa só: avisar que provavelmente falta seguidor para o
+   * TikTok liberar a live. NÃO é veredito de elegibilidade — idade, região e
+   * restrições de conta também contam e não são consultáveis — e por isso nada
+   * na tela deve ser BLOQUEADO com base nele.
+   */
+  readonly seguidoresDoTikTok: (usuario: string) => Promise<number | null>;
 
   // ------------------------------------------------------------- ativação
   /** Pede um código novo e começa o polling no processo principal. */

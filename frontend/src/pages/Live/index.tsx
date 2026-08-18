@@ -28,9 +28,11 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { CREDITS_CHANGED_EVENT } from '@/services/api';
 import { billingService } from '@/services/billing.service';
 import {
+  LIVE_MIN_MINUTES,
   LiveSession,
   MAX_UPLOAD_BYTES,
   PRECO_PADRAO,
+  TRANSCRIBE_BLOCK_MINUTES,
   TRANSCRIBE_MAX_MINUTES,
   estimarCreditos,
   lerDuracaoLocal,
@@ -126,6 +128,19 @@ function NovaBaseDialog({
   async function escolher(file: File | undefined) {
     if (!file) return;
     setErro(null);
+    /*
+     * Áudio puro é recusado aqui na frente, e não depois de subir gigabytes: o
+     * `accept` do seletor já filtra, mas ele é dica e não trava — arrastar um
+     * MP3 ou escolher "todos os arquivos" passa por cima dele em qualquer
+     * navegador. O backend recusa de novo, pelo ffmpeg; esta é a recusa que
+     * chega ANTES do upload.
+     */
+    if (file.type.startsWith('audio/')) {
+      setErro(
+        'Este arquivo é só áudio. Envie o vídeo da live — é da gravação da transmissão, com imagem, que eu monto a base.',
+      );
+      return;
+    }
     if (file.size > MAX_UPLOAD_BYTES) {
       setErro(
         `A gravação tem ${tamanhoLegivel(file.size)} e o limite por envio é de ${tamanhoLegivel(MAX_UPLOAD_BYTES)}. Corte a live em partes e envie uma de cada vez.`,
@@ -142,6 +157,12 @@ function NovaBaseDialog({
 
   const orcamento = estimarCreditos(duracao, precos);
   const longaDemais = duracao != null && duracao > TRANSCRIBE_MAX_MINUTES * 60;
+  /*
+   * O piso, medido aqui no navegador pelo mesmo motivo do teto: o arquivo ainda
+   * não subiu. Barrar só depois, no backend, faria o vendedor esperar o upload
+   * inteiro de uma gravação que já se sabia curta demais.
+   */
+  const curtaDemais = duracao != null && duracao < LIVE_MIN_MINUTES * 60;
   /*
    * Saldo insuficiente vira recusa aqui, na frente, e não uma sessão em 'erro'
    * lá atrás. Comparar contra o orçamento estimado — e não contra o piso do
@@ -203,14 +224,14 @@ function NovaBaseDialog({
               <input
                 hidden
                 type="file"
-                accept="video/*,audio/*"
+                accept="video/*"
                 onChange={(e) => escolher(e.target.files?.[0])}
               />
             </Button>
             <Typography variant="caption" color="text.secondary" display="block" mt={1}>
-              Vídeo ou áudio (mp4, mov, mkv, m4a, mp3...), até{' '}
-              {tamanhoLegivel(MAX_UPLOAD_BYTES)} e {TRANSCRIBE_MAX_MINUTES / 60} horas
-              por envio.
+              O vídeo da live (mp4, mov, mkv ou webm), de {LIVE_MIN_MINUTES} minutos a{' '}
+              {TRANSCRIBE_MAX_MINUTES / 60} horas e até {tamanhoLegivel(MAX_UPLOAD_BYTES)}{' '}
+              por envio. Arquivo só de áudio não serve.
             </Typography>
             {arquivo && (
               <Typography variant="body2" mt={1} fontWeight={700}>
@@ -228,7 +249,15 @@ function NovaBaseDialog({
             </Alert>
           )}
 
-          {semSaldo && !lendo && !longaDemais && (
+          {curtaDemais && (
+            <Alert severity="warning">
+              Esta gravação tem menos de {LIVE_MIN_MINUTES} minutos. É da fala da
+              live que eu tiro produtos, preços e objeções — num trecho curto não
+              há material suficiente, e a base sairia vazia. Envie a live inteira.
+            </Alert>
+          )}
+
+          {semSaldo && !lendo && !longaDemais && !curtaDemais && (
             <Alert
               severity="warning"
               action={
@@ -253,19 +282,37 @@ function NovaBaseDialog({
             </Alert>
           )}
 
-          {arquivo && !lendo && !longaDemais && !semSaldo && (
+          {arquivo && !lendo && !longaDemais && !curtaDemais && !semSaldo && (
             <Alert severity="info" icon={false}>
               <Typography fontWeight={800} mb={0.5}>
                 {orcamento.exato ? 'Vai consumir' : 'Vai consumir a partir de'}{' '}
                 {orcamento.creditos} créditos
               </Typography>
-              <Typography variant="body2">
-                {precos.transcribe} créditos por cada 10 minutos de gravação (
-                {orcamento.blocos}{' '}
-                {orcamento.blocos === 1 ? 'bloco' : 'blocos'}) mais{' '}
-                {precos.live_extract} créditos para montar a base.
+              {/*
+                A conta aparece SOMADA, com o subtotal da transcrição escrito.
+                A versão anterior dizia "6 créditos por cada 10 minutos (2
+                blocos) mais 17" e estampava 29: os três números estavam certos
+                e mesmo assim a frase não fechava, porque o 12 — o único que
+                explica o salto — nunca era dito. Preço que parece errado é
+                tratado como erro, e aí o vendedor não envia.
+              */}
+              <Typography variant="body2" component="div">
+                <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                  <li>
+                    Transcrição: {orcamento.blocos} ×{' '}
+                    {precos.transcribe} = <strong>
+                      {precos.transcribe * orcamento.blocos}
+                    </strong>{' '}
+                    créditos ({TRANSCRIBE_BLOCK_MINUTES} minutos por bloco, sempre
+                    arredondando o bloco começado para cima)
+                  </li>
+                  <li>
+                    Montagem da base: <strong>{precos.live_extract}</strong>{' '}
+                    créditos, uma vez por live
+                  </li>
+                </Box>
                 {!orcamento.exato &&
-                  ' Não conseguimos ler a duração deste arquivo aqui no navegador — o valor final sai da duração real e pode ser maior.'}
+                  'Não conseguimos ler a duração deste arquivo aqui no navegador — o valor final sai da duração real e pode ser maior.'}
               </Typography>
             </Alert>
           )}
@@ -300,10 +347,13 @@ function NovaBaseDialog({
             lendo ||
             enviando ||
             longaDemais ||
+            curtaDemais ||
             semSaldo
           }
         >
-          {semSaldo
+          {curtaDemais
+            ? `Mínimo de ${LIVE_MIN_MINUTES} minutos`
+            : semSaldo
             ? 'Créditos insuficientes'
             : arquivo && !lendo && !longaDemais
               ? `Enviar e gastar ${orcamento.creditos} créditos`

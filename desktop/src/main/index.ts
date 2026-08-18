@@ -289,6 +289,56 @@ async function tiktokLogado(): Promise<boolean> {
 }
 
 /**
+ * Quantos seguidores a conta tem, ou `null` quando não der para saber.
+ *
+ * POR QUE ISTO É UMA INDICAÇÃO, E NUNCA UM VEREDITO
+ * -------------------------------------------------
+ * O TikTok não publica API de elegibilidade para live. A regra conhecida é o
+ * piso de mil seguidores, mas idade, região e restrições de conta também pesam
+ * e nenhuma delas é consultável. Então isto responde "provavelmente falta
+ * seguidor", e não "esta conta não pode transmitir" — quem tem mil e está
+ * restrito passaria por aqui igual.
+ *
+ * Por isso a leitura NÃO trava nada. Ela existe para o vendedor descobrir o
+ * motivo mais comum antes de comprar minutos, e é lida da página pública do
+ * perfil pela sessão do próprio app: o cookie vai junto, então o TikTok
+ * responde o mesmo que responderia ao navegador dele.
+ *
+ * Qualquer tropeço — rede, captcha, HTML remontado — devolve `null` e a tela
+ * simplesmente não fala do assunto. Um palpite errado aqui assustaria alguém
+ * que pode transmitir, o que é pior do que não dizer nada.
+ */
+async function seguidoresDe(usuario: string): Promise<number | null> {
+  const limpo = usuario.trim().replace(/^@/, '');
+  // O @ vai para dentro de uma URL: só o que é nome de usuário do TikTok passa,
+  // e o resto nem sai daqui.
+  if (!/^[A-Za-z0-9._]{2,24}$/.test(limpo)) return null;
+
+  try {
+    // `fetch` DA SESSÃO, e não o `net.fetch` global: é o que faz a requisição
+    // sair com os cookies da partição do TikTok, como se fosse a aba do
+    // vendedor. Pelo global, o perfil viria como o de um visitante anônimo.
+    const resposta = await session
+      .fromPartition(PARTICAO_TIKTOK)
+      .fetch(`https://www.tiktok.com/@${limpo}`);
+    if (!resposta.ok) return null;
+    const html = await resposta.text();
+    /*
+     * O número vem do JSON que o TikTok embute na página para hidratar o app
+     * dele. É frágil por natureza — é dado de terceiro, num formato que ninguém
+     * nos prometeu — e é exatamente por isso que a falha aqui é `null` em vez de
+     * erro: a tela some com o aviso, e o vendedor continua o fluxo.
+     */
+    const m = /"followerCount":\s*(\d+)/.exec(html);
+    if (!m) return null;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Avisa o painel quando esse login entra ou sai.
  *
  * Sem isto, quem terminasse o login à esquerda ficaria olhando para um passo 1
@@ -359,6 +409,9 @@ function registrarIpc(): void {
   });
 
   ipcMain.handle('tiktok:logado', () => tiktokLogado());
+  ipcMain.handle('tiktok:seguidores', (_evento, usuario: string) =>
+    seguidoresDe(usuario),
+  );
   ipcMain.handle('ativacao:iniciar', () => copiloto.iniciarAtivacao());
   ipcMain.handle('sessao:obter', () => copiloto.obterSessao());
   // A ordem importa: o copiloto encerra a run com o token ainda válido, e só
