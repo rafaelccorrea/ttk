@@ -128,4 +128,6 @@ divergirem do schema resultante.
 ## Documentação
 
 - [Arquitetura](docs/ARCHITECTURE.md) — organização de pastas, convenções e padrões de reuso.
+- [Precificação](docs/PRECIFICACAO.md) — de onde vem cada valor cobrado e como validá-lo.
+- [Conta gratuita](docs/CONTA-FREE.md) — o modo amostra: o que o não assinante vê e por quê.
 - Swagger da API: `http://localhost:3000/docs` com o backend rodando.
