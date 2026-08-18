@@ -55,7 +55,9 @@ export function PlanGate({ feature, children }: PlanGateProps) {
       .catch(() => setAllowed(true)); // em erro, deixa o backend barrar
   }, [feature]);
 
-  if (allowed === null) return <BrandLoader label="Verificando seu plano..." />;
+  // Mesmo motivo do RequireSubscription: o rótulo é sobre a tela que vem, não
+  // sobre a conferência de plano que roda por trás.
+  if (allowed === null) return <BrandLoader label="Carregando..." />;
   if (allowed) return <>{children}</>;
 
   /*

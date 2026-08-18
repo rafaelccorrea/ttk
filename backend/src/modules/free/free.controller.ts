@@ -1,6 +1,15 @@
-import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { FreeSampleService } from './free-sample.service';
 import { FreePlanGuard } from './free-plan.guard';
@@ -36,14 +45,30 @@ export class FreeController {
   @ApiOperation({
     summary: 'Amostra da conta gratuita (fixa por 7 dias, igual para todos)',
   })
-  sample() {
-    return this.free.snapshot();
+  sample(@CurrentUser() user: AuthUser) {
+    // O usuário entra só para marcar os favoritos; o conjunto não muda com ele.
+    return this.free.snapshot(user.id);
+  }
+
+  @Get('favorites')
+  @ApiOperation({ summary: 'Favoritos desta conta, dentro da amostra vigente' })
+  favorites(@CurrentUser() user: AuthUser) {
+    return this.free.listarFavoritos(user.id);
+  }
+
+  @Post('products/:id/favorite')
+  @ApiOperation({ summary: 'Favorita/desfavorita — 403 fora da amostra' })
+  toggleFavorite(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.free.alternarFavorito(user.id, id);
   }
 
   @Get('products/:id')
   @ApiOperation({ summary: 'Detalhe reduzido — 403 se o id não está na amostra' })
-  product(@Param('id', ParseUUIDPipe) id: string) {
-    return this.free.produto(id);
+  product(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+    return this.free.produto(id, user.id);
   }
 
   @Get('videos/:id')

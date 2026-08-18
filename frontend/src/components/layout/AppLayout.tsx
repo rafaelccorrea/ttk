@@ -91,13 +91,11 @@ const NAV_SECTIONS: NavSection[] = [
         to: '/criadores',
         label: 'Criadores',
         icon: <GroupsRoundedIcon />,
-        feature: 'discovery',
       },
       {
         to: '/favoritos',
         label: 'Favoritos',
         icon: <StarRoundedIcon />,
-        feature: 'discovery',
       },
     ],
   },

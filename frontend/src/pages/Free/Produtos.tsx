@@ -1,3 +1,5 @@
+import StarRoundedIcon from '@mui/icons-material/StarRounded';
+import StarBorderRoundedIcon from '@mui/icons-material/StarBorderRounded';
 import TrendingDownRoundedIcon from '@mui/icons-material/TrendingDownRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import {
@@ -7,6 +9,7 @@ import {
   CardActionArea,
   Chip,
   Grid,
+  IconButton,
   Stack,
   Typography,
 } from '@mui/material';
@@ -47,6 +50,40 @@ export function FreeProdutosPage() {
     };
   }, []);
 
+  /**
+   * Favoritar dentro da amostra.
+   *
+   * A lista é atualizada na hora, sem refazer a chamada: são 20 itens em
+   * memória e a resposta do servidor só confirma o que já sabemos. Se falhar,
+   * o estado volta — melhor uma estrela que pisca do que uma que mente.
+   */
+  async function alternarFavorito(id: string) {
+    setSnapshot((atual) =>
+      atual
+        ? {
+            ...atual,
+            products: atual.products.map((p) =>
+              p.id === id ? { ...p, isFavorite: !p.isFavorite } : p,
+            ),
+          }
+        : atual,
+    );
+    try {
+      await freeService.alternarFavorito(id);
+    } catch {
+      setSnapshot((atual) =>
+        atual
+          ? {
+              ...atual,
+              products: atual.products.map((p) =>
+                p.id === id ? { ...p, isFavorite: !p.isFavorite } : p,
+              ),
+            }
+          : atual,
+      );
+    }
+  }
+
   if (erro) return <Alert severity="error">{erro}</Alert>;
   if (!snapshot) return <BrandLoader label="Carregando a amostra..." />;
 
@@ -68,7 +105,31 @@ export function FreeProdutosPage() {
       <Grid container spacing={2}>
         {snapshot.products.map((p) => (
           <Grid item xs={12} sm={6} md={4} lg={3} key={p.id}>
-            <Card variant="outlined" sx={{ borderRadius: 3, height: '100%' }}>
+            <Card
+              variant="outlined"
+              sx={{ borderRadius: 3, height: '100%', position: 'relative' }}
+            >
+              {/* Fora do CardActionArea: dentro dele, o clique na estrela
+                  navegaria para o detalhe junto de favoritar. */}
+              <IconButton
+                aria-label={p.isFavorite ? 'Remover dos favoritos' : 'Favoritar'}
+                onClick={() => alternarFavorito(p.id)}
+                size="small"
+                sx={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  zIndex: 1,
+                  bgcolor: 'rgba(255,255,255,0.92)',
+                  '&:hover': { bgcolor: '#fff' },
+                }}
+              >
+                {p.isFavorite ? (
+                  <StarRoundedIcon fontSize="small" sx={{ color: '#fe2c55' }} />
+                ) : (
+                  <StarBorderRoundedIcon fontSize="small" />
+                )}
+              </IconButton>
               <CardActionArea
                 component={Link}
                 to={`/produtos/${p.id}`}

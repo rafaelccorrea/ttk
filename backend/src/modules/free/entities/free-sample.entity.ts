@@ -37,6 +37,10 @@ export class FreeSample {
   @Column({ type: 'jsonb', default: () => `'[]'` })
   videoIds: string[];
 
+  /** Criadores da janela: a cauda do ranking, nunca o topo. */
+  @Column({ type: 'jsonb', default: () => `'[]'` })
+  creatorIds: string[];
+
   @CreateDateColumn()
   createdAt: Date;
 }

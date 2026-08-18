@@ -4,6 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { toRange } from '../../common/format/sales-range';
 import { FREE_SAMPLE } from '../billing/billing.config';
+import { Creator } from '../creators/entities/creator.entity';
+import { ProductFavorite } from '../products/entities/product-favorite.entity';
 import { Product } from '../products/entities/product.entity';
 import { Video } from '../videos/entities/video.entity';
 import { FreeSample } from './entities/free-sample.entity';
@@ -19,6 +21,23 @@ export interface FreeProduct {
   salesRange: string;
   /** Crescimento no período, arredondado para inteiro. */
   growthPct: number | null;
+  /** Favoritado por esta conta? Favoritar é permitido DENTRO da amostra. */
+  isFavorite?: boolean;
+}
+
+/**
+ * Um criador como a conta gratuita vê.
+ *
+ * Sem GMV e sem vendas exatas — é o que se paga para saber. Seguidores em
+ * faixa, pelo mesmo motivo dos produtos.
+ */
+export interface FreeCreator {
+  id: string;
+  handle: string;
+  name: string;
+  category: string;
+  avatarUrl: string | null;
+  followersRange: string;
 }
 
 /** Um vídeo como a conta gratuita vê: capa, faixas e o link do original. */
@@ -38,9 +57,15 @@ export interface FreeVideo {
 export interface FreeSnapshot {
   products: FreeProduct[];
   videos: FreeVideo[];
+  creators: FreeCreator[];
   /** Quando a amostra troca. A tela anuncia isso em vez de esconder. */
   refreshAt: string;
-  limits: { products: number; videos: number; refreshDays: number };
+  limits: {
+    products: number;
+    videos: number;
+    creators: number;
+    refreshDays: number;
+  };
 }
 
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -75,6 +100,15 @@ export class FreeSampleService {
     private readonly products: Repository<Product>,
     @InjectRepository(Video)
     private readonly videos: Repository<Video>,
+    @InjectRepository(Creator)
+    private readonly creators: Repository<Creator>,
+    /*
+     * Favoritar é a única ESCRITA que a conta gratuita faz no catálogo, e ela
+     * é barata (uma linha) e cria hábito — por isso está liberada, desde que
+     * dentro da amostra (ver `alternarFavorito`).
+     */
+    @InjectRepository(ProductFavorite)
+    private readonly favoritos: Repository<ProductFavorite>,
   ) {}
 
   /**
@@ -106,9 +140,10 @@ export class FreeSampleService {
     const existente = await this.samples.findOneBy({ slot });
     if (existente) return existente;
 
-    const [productIds, videoIds] = await Promise.all([
+    const [productIds, videoIds, creatorIds] = await Promise.all([
       this.escolherProdutos(),
       this.escolherVideos(),
+      this.escolherCriadores(),
     ]);
 
     try {
@@ -118,6 +153,7 @@ export class FreeSampleService {
           expiresAt: this.expiraEm(slot),
           productIds,
           videoIds,
+          creatorIds,
         }),
       );
     } catch {
@@ -134,30 +170,78 @@ export class FreeSampleService {
     }
   }
 
-  /** O snapshot já formatado para a tela. */
-  async snapshot(): Promise<FreeSnapshot> {
+  /**
+   * O snapshot já formatado para a tela.
+   *
+   * `userId` entra só para marcar o que esta conta favoritou — o CONJUNTO é o
+   * mesmo para todo mundo, e continua sendo. É a única coisa nesta resposta
+   * que varia por usuário, e ela não revela nada do catálogo.
+   */
+  async snapshot(userId?: string): Promise<FreeSnapshot> {
     const sample = await this.currentSample();
-    const [products, videos] = await Promise.all([
-      this.hidratarProdutos(sample.productIds),
+    const [products, videos, creators] = await Promise.all([
+      this.hidratarProdutos(sample.productIds, userId),
       this.hidratarVideos(sample.videoIds),
+      this.hidratarCriadores(sample.creatorIds ?? []),
     ]);
     return {
       products,
       videos,
+      creators,
       refreshAt: sample.expiresAt.toISOString(),
       limits: {
         products: FREE_SAMPLE.products,
         videos: FREE_SAMPLE.videos,
+        creators: FREE_SAMPLE.creators,
         refreshDays: FREE_SAMPLE.refreshDays,
       },
     };
   }
 
+  /**
+   * Favoritos desta conta — só os que estão na amostra vigente.
+   *
+   * O filtro pela amostra não é detalhe: um produto favoritado numa semana pode
+   * sair da amostra na seguinte, e devolvê-lo assim mesmo transformaria a lista
+   * de favoritos num jeito de acumular catálogo semana após semana — 20 itens
+   * por semana viram 80 por mês, e o limite deixaria de existir.
+   */
+  async listarFavoritos(userId: string): Promise<FreeProduct[]> {
+    const sample = await this.currentSample();
+    const marcados = await this.favoritos.find({ where: { userId } });
+    const naAmostra = marcados
+      .map((f) => f.productId)
+      .filter((id) => sample.productIds.includes(id));
+    return this.hidratarProdutos(naAmostra, userId);
+  }
+
+  /**
+   * Favoritar/desfavoritar — 403 fora da amostra.
+   *
+   * Sem a checagem, o toggle viraria uma forma silenciosa de confirmar que um
+   * id existe no catálogo: bastaria favoritar um uuid qualquer e ver se deu
+   * certo. É a mesma trava do detalhe, pela mesma razão.
+   */
+  async alternarFavorito(
+    userId: string,
+    productId: string,
+  ): Promise<{ isFavorite: boolean }> {
+    const sample = await this.currentSample();
+    if (!sample.productIds.includes(productId)) throw this.foraDaAmostra();
+    const existente = await this.favoritos.findOneBy({ userId, productId });
+    if (existente) {
+      await this.favoritos.delete({ id: existente.id });
+      return { isFavorite: false };
+    }
+    await this.favoritos.save(this.favoritos.create({ userId, productId }));
+    return { isFavorite: true };
+  }
+
   /** Detalhe do produto — 403 fora da amostra (invariante 3). */
-  async produto(id: string): Promise<FreeProduct> {
+  async produto(id: string, userId?: string): Promise<FreeProduct> {
     const sample = await this.currentSample();
     if (!sample.productIds.includes(id)) throw this.foraDaAmostra();
-    const [item] = await this.hidratarProdutos([id]);
+    const [item] = await this.hidratarProdutos([id], userId);
     if (!item) throw this.foraDaAmostra();
     return item;
   }
@@ -241,6 +325,53 @@ export class FreeSampleService {
   }
 
   /**
+   * Os criadores da janela: a CAUDA do ranking.
+   *
+   * O ranking pago ordena por GMV decrescente; aqui pegamos o fim da fila entre
+   * os perfis reais do TikTok (`source`), e depois exibimos na ordem natural.
+   * É deliberado: o valor da tela paga é saber QUEM fatura mais, e entregar os
+   * cinco primeiros seria entregar a resposta. A cauda mostra que a base existe
+   * e como é a ficha, sem dar o ranking.
+   *
+   * O filtro exclui `seed` (dado de demonstração), e é por EXCLUSÃO e não por
+   * lista: a primeira versão exigia `source = 'tiktok'` e devolvia zero
+   * criadores em produção, onde a coleta grava `echotik`. Filtro que enumera
+   * as fontes boas quebra em silêncio a cada fonte nova; filtro que exclui as
+   * ruins só deixa de valer quando alguém cria uma fonte ruim nova.
+   */
+  private async escolherCriadores(): Promise<string[]> {
+    const rows = await this.creators.query(
+      `
+      SELECT id FROM creators
+       WHERE source <> 'seed'
+       ORDER BY "gmvPeriod" ASC, id ASC
+       LIMIT $1
+      `,
+      [FREE_SAMPLE.creators],
+    );
+    return rows.map((r: { id: string }) => r.id);
+  }
+
+  private async hidratarCriadores(ids: string[]): Promise<FreeCreator[]> {
+    if (!ids.length) return [];
+    const rows = await this.creators.find({ where: { id: In(ids) } });
+    const porId = new Map(rows.map((c) => [c.id, c]));
+    return ids
+      .map((id) => porId.get(id))
+      .filter((c): c is Creator => Boolean(c))
+      .map((c) => ({
+        id: c.id,
+        handle: c.handle,
+        name: c.name,
+        category: c.category,
+        avatarUrl: c.avatarUrl ?? null,
+        // Faixa, como em todo o resto da amostra: dá a ordem de grandeza sem
+        // virar planilha.
+        followersRange: toRange(c.followers),
+      }));
+  }
+
+  /**
    * Ids → cards, preservando a ordem congelada.
    *
    * O `IN` do Postgres não devolve na ordem da lista, e a ordem faz parte do
@@ -251,10 +382,20 @@ export class FreeSampleService {
    * janela — é melhor do que um card quebrado, e é por isso que os ids não têm
    * FK.
    */
-  private async hidratarProdutos(ids: string[]): Promise<FreeProduct[]> {
+  private async hidratarProdutos(
+    ids: string[],
+    userId?: string,
+  ): Promise<FreeProduct[]> {
     if (!ids.length) return [];
     const rows = await this.products.find({ where: { id: In(ids) } });
     const porId = new Map(rows.map((p) => [p.id, p]));
+    const favoritos = userId
+      ? new Set(
+          (await this.favoritos.find({ where: { userId } })).map(
+            (f) => f.productId,
+          ),
+        )
+      : new Set<string>();
     return ids
       .map((id) => porId.get(id))
       .filter((p): p is Product => Boolean(p))
@@ -266,6 +407,7 @@ export class FreeSampleService {
         price: Number(p.price),
         salesRange: toRange(p.sales30d),
         growthPct: this.crescimento(p),
+        isFavorite: favoritos.has(p.id),
       }));
   }
 
@@ -322,7 +464,7 @@ export class FreeSampleService {
     try {
       const sample = await this.currentSample();
       this.logger.log(
-        `Amostra gratuita da janela ${sample.slot}: ${sample.productIds.length} produtos, ${sample.videoIds.length} vídeos.`,
+        `Amostra gratuita da janela ${sample.slot}: ${sample.productIds.length} produtos, ${sample.videoIds.length} vídeos, ${(sample.creatorIds ?? []).length} criadores.`,
       );
     } catch (e) {
       this.logger.warn(`Falha ao aquecer a amostra gratuita: ${e}`);

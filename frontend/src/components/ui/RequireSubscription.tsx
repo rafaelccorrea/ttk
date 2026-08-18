@@ -1,5 +1,7 @@
-import LockRoundedIcon from '@mui/icons-material/LockRounded';
-import { Box, Button, Typography } from '@mui/material';
+import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
+import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
+import StorefrontRoundedIcon from '@mui/icons-material/StorefrontRounded';
+import { Box, Button, Paper, Stack, Typography } from '@mui/material';
 import { Link, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { BrandLoader } from '@/components/ui/BrandLoader';
@@ -55,7 +57,13 @@ export function RequireSubscription() {
   }, []);
 
   if (estado === 'carregando') {
-    return <BrandLoader label="Verificando sua assinatura..." />;
+    /*
+     * O rótulo fala do que a pessoa está esperando (a tela), não do que o
+     * sistema está fazendo (conferindo pagamento). "Verificando sua
+     * assinatura" aparecia em toda navegação e transformava cada troca de tela
+     * numa lembrança de cobrança — inclusive para quem já paga.
+     */
+    return <BrandLoader label="Carregando..." />;
   }
   if (estado === 'entra') return <Outlet />;
   if (estado === 'sem-acesso') return <Navigate to="/assinatura" replace />;
@@ -70,38 +78,82 @@ export function RequireSubscription() {
 /**
  * O que a conta gratuita vê ao clicar numa tela paga.
  *
- * Fala do que ela TEM (a amostra continua ali, num clique) antes de falar do
- * que falta — uma tela de bloqueio que só cobra deixa a pessoa sem próximo
- * passo a não ser fechar a aba.
+ * O tom é deliberado. A primeira versão abria com "Esta área faz parte dos
+ * planos pagos" — factual e, na prática, uma porta na cara: a pessoa clicou
+ * num item do menu e recebeu uma cobrança. Aqui a tela começa pelo que ela JÁ
+ * tem, mostra os caminhos abertos (a amostra, os criadores, o estúdio) e deixa
+ * o plano como convite no fim. É a mesma informação, na ordem que não afasta.
+ *
+ * E nunca é uma tela vazia: os atalhos existem para que "não posso entrar
+ * aqui" venha sempre com "então faça isto".
  */
 function BloqueioDePlano() {
+  const atalhos = [
+    {
+      to: '/produtos',
+      icon: <StorefrontRoundedIcon />,
+      titulo: 'Amostra da semana',
+      texto: '20 produtos e 10 vídeos, atualizados a cada 7 dias',
+    },
+    {
+      to: '/estudio',
+      icon: <AutoAwesomeRoundedIcon />,
+      titulo: 'Roteirizar com IA',
+      texto: 'Use seus créditos para gerar um roteiro agora',
+    },
+    {
+      to: '/criadores',
+      icon: <GroupsRoundedIcon />,
+      titulo: 'Criadores',
+      texto: 'Veja perfis que vendem no TikTok Shop',
+    },
+  ];
+
   return (
-    <Box
-      sx={{
-        border: '1px dashed rgba(22,24,35,0.15)',
-        borderRadius: 4,
-        p: { xs: 4, md: 8 },
-        textAlign: 'center',
-        maxWidth: 560,
-        mx: 'auto',
-        mt: 6,
-      }}
-    >
-      <LockRoundedIcon sx={{ fontSize: 44, color: '#fe2c55', mb: 1 }} />
-      <Typography variant="h6" fontWeight={800} mb={0.5}>
-        Esta área faz parte dos planos pagos
-      </Typography>
-      <Typography color="text.secondary" mb={2.5}>
-        Sua conta gratuita vê uma amostra fixa de produtos e vídeos. Com um plano
-        você abre o catálogo completo, as tendências, os criadores e todas as
-        ferramentas de IA.
-      </Typography>
-      <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center' }}>
-        <Button component={Link} to="/produtos" variant="outlined">
-          Voltar à amostra
-        </Button>
-        <Button component={Link} to="/planos" variant="contained">
-          Ver planos
+    <Box sx={{ maxWidth: 620, mx: 'auto', mt: 5 }}>
+      <Box sx={{ textAlign: 'center', mb: 3 }}>
+        <Typography variant="h6" fontWeight={800} mb={0.5}>
+          Esta parte abre com um plano
+        </Typography>
+        <Typography color="text.secondary">
+          Sua conta gratuita continua com a amostra da semana, os créditos de IA
+          e os favoritos. O ranking completo, as tendências e o histórico de
+          cada produto vêm com a assinatura.
+        </Typography>
+      </Box>
+
+      <Stack spacing={1.5}>
+        {atalhos.map((a) => (
+          <Paper
+            key={a.to}
+            component={Link}
+            to={a.to}
+            variant="outlined"
+            sx={{
+              p: 2,
+              borderRadius: 3,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              textDecoration: 'none',
+              color: 'inherit',
+              '&:hover': { borderColor: '#fe2c55' },
+            }}
+          >
+            <Box sx={{ color: '#fe2c55', display: 'flex' }}>{a.icon}</Box>
+            <Box>
+              <Typography fontWeight={700}>{a.titulo}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {a.texto}
+              </Typography>
+            </Box>
+          </Paper>
+        ))}
+      </Stack>
+
+      <Box sx={{ textAlign: 'center', mt: 3 }}>
+        <Button component={Link} to="/planos" variant="contained" size="large">
+          Conhecer os planos
         </Button>
       </Box>
     </Box>

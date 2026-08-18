@@ -19,6 +19,7 @@ export interface FreeProduct {
   /** Faixa de vendas ("25 mil+"), nunca o número exato. */
   salesRange: string;
   growthPct: number | null;
+  isFavorite?: boolean;
 }
 
 export interface FreeVideo {
@@ -34,12 +35,28 @@ export interface FreeVideo {
   videoUrl: string | null;
 }
 
+/** Um criador como a conta gratuita vê: ficha, sem GMV e sem vendas. */
+export interface FreeCreator {
+  id: string;
+  handle: string;
+  name: string;
+  category: string;
+  avatarUrl: string | null;
+  followersRange: string;
+}
+
 export interface FreeSnapshot {
   products: FreeProduct[];
   videos: FreeVideo[];
+  creators: FreeCreator[];
   /** ISO: quando a amostra troca. A tela anuncia isso. */
   refreshAt: string;
-  limits: { products: number; videos: number; refreshDays: number };
+  limits: {
+    products: number;
+    videos: number;
+    creators: number;
+    refreshDays: number;
+  };
 }
 
 export const freeService = {
@@ -48,6 +65,13 @@ export const freeService = {
     api.get<FreeProduct>(`/free/products/${id}`).then((r) => r.data),
   video: (id: string) =>
     api.get<FreeVideo>(`/free/videos/${id}`).then((r) => r.data),
+  favoritos: () =>
+    api.get<FreeProduct[]>('/free/favorites').then((r) => r.data),
+  // Favoritar é a única escrita da conta gratuita, e só vale dentro da amostra.
+  alternarFavorito: (id: string) =>
+    api
+      .post<{ isFavorite: boolean }>(`/free/products/${id}/favorite`)
+      .then((r) => r.data),
 };
 
 /** "atualiza em 3 dias" — o texto do banner, a partir do `refreshAt`. */

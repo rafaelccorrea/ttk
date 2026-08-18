@@ -13,6 +13,8 @@ import { ConfirmEmailPage } from '@/pages/ConfirmEmail';
 import { CreatorsPage } from '@/pages/Creators';
 import { DashboardPage } from '@/pages/Dashboard';
 import { FavoritesPage } from '@/pages/Favorites';
+import { FreeCriadoresPage } from '@/pages/Free/Criadores';
+import { FreeFavoritosPage } from '@/pages/Free/Favoritos';
 import { FreeProdutoDetalhePage } from '@/pages/Free/ProdutoDetalhe';
 import { FreeProdutosPage } from '@/pages/Free/Produtos';
 import { FreeVideosPage } from '@/pages/Free/Videos';
@@ -91,6 +93,28 @@ export function AppRoutes() {
               <FreeSampleGate pago={<VideosPage />} amostra={<FreeVideosPage />} />
             }
           />
+          {/* Favoritos e Criadores também têm modo amostra: favoritar é barato e
+              cria hábito, e a amostra de criadores é a CAUDA do ranking (ver
+              docs/CONTA-FREE.md) — prova que a base existe sem entregar quem
+              fatura mais, que é o que a tela paga vende. */}
+          <Route
+            path="/favoritos"
+            element={
+              <FreeSampleGate
+                pago={<FavoritesPage />}
+                amostra={<FreeFavoritosPage />}
+              />
+            }
+          />
+          <Route
+            path="/criadores"
+            element={
+              <FreeSampleGate
+                pago={<CreatorsPage />}
+                amostra={<FreeCriadoresPage />}
+              />
+            }
+          />
           {/* Planos e Perfil também ficam fora do paywall, e por motivos
               diferentes. Planos é a TELA DE COMPRA: com ela bloqueada, todo CTA
               da amostra levava à tela de bloqueio — que por sua vez oferece
@@ -115,8 +139,6 @@ export function AppRoutes() {
           <Route element={<RequireSubscription />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/tendencias" element={<TrendsPage />} />
-            <Route path="/criadores" element={<CreatorsPage />} />
-            <Route path="/favoritos" element={<FavoritesPage />} />
             {/* Campanhas e Multiplicador são Pro no backend; sem o gate aqui,
                 quem assina o Essencial abria a tela e só descobria no 403. */}
             <Route
