@@ -173,8 +173,17 @@ export class CampaignsService {
         'Não foi possível ler a imagem. Envie um JPG, PNG ou WebP.',
       );
     }
-    // A mesma foto enviada de novo devolve a mesma chave; não duplica.
-    if (!produto.images.includes(url)) produto.images = [...produto.images, url];
+    // A chave no S3 é o hash do conteúdo: reenviar a MESMA foto devolve a
+    // mesma URL. Antes isso virava um no-op silencioso — o upload dava 200, a
+    // galeria não mudava e o vendedor ficava clicando achando que travou.
+    // Recusar com mensagem é o único jeito de ele saber que precisa de uma
+    // foto DIFERENTE (e o mínimo de fotos existe justamente por isso).
+    if (produto.images.includes(url)) {
+      throw new ConflictException(
+        'Essa mesma foto já está no produto. Envie uma imagem diferente — cada cena parte de um ângulo distinto.',
+      );
+    }
+    produto.images = [...produto.images, url];
     return this.produtos.save(produto);
   }
 

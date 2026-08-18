@@ -4,6 +4,7 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import ImageNotSupportedRoundedIcon from '@mui/icons-material/ImageNotSupportedRounded';
 import PhotoLibraryRoundedIcon from '@mui/icons-material/PhotoLibraryRounded';
+import SaveRoundedIcon from '@mui/icons-material/SaveRounded';
 import ZoomInRoundedIcon from '@mui/icons-material/ZoomInRounded';
 import {
   Alert,
@@ -112,10 +113,13 @@ function GaleriaDialog({
       for (const arquivo of lista) {
         await campaignsService.addPhoto(produto.id, arquivo);
       }
-      onChange();
     } catch (error) {
       setErro(mensagemDeErro(error));
     } finally {
+      // Recarrega SEMPRE, inclusive no erro: num lote de três, a terceira pode
+      // falhar depois das duas primeiras já terem subido — sem isto a galeria
+      // ficava mostrando um estado velho que já não é o do servidor.
+      onChange();
       setEnviando(false);
       if (inputRef.current) inputRef.current.value = '';
     }
@@ -510,6 +514,10 @@ function ProdutoCard({
             ela que representa o produto na lista. */}
         <Box
           sx={{
+            // `relative` é obrigatório: o SmartImage se posiciona com
+            // `absolute; inset: 0`, então sem âncora aqui ele se prende ao
+            // Card e a foto sai flutuando por cima do nome e do benefício.
+            position: 'relative',
             width: 52,
             aspectRatio: '9 / 16',
             flexShrink: 0,
@@ -659,6 +667,9 @@ export function MeusProdutos({
   }
 
   async function salvar() {
+    // Guarda de reentrância: o `disabled` só vale depois do repinte, e dois
+    // cliques rápidos cabem antes disso — cadastravam o produto duas vezes.
+    if (salvando) return;
     // Ao enviar, tudo passa a ser "tocado": senão o botão fica desabilitado
     // sem o usuário saber qual campo está errado.
     setTocado({ name: true, priceBrl: true, benefit: true, problemSolved: true });
@@ -760,10 +771,20 @@ export function MeusProdutos({
               {erro && <Alert severity="error">{erro}</Alert>}
               <Button
                 variant="contained"
+                size="large"
                 onClick={salvar}
                 // Não desabilita por campo inválido: botão morto sem explicação
                 // é o pior dos dois mundos. Clicar revela o que falta.
                 disabled={salvando}
+                // Spinner no lugar do ícone: a largura do botão não muda no
+                // meio do clique e a espera fica visível sem ler o texto.
+                startIcon={
+                  salvando ? (
+                    <CircularProgress size={18} color="inherit" />
+                  ) : (
+                    <SaveRoundedIcon />
+                  )
+                }
               >
                 {salvando ? 'Salvando...' : 'Salvar produto'}
               </Button>

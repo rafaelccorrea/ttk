@@ -5,6 +5,7 @@ import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import MovieFilterRoundedIcon from '@mui/icons-material/MovieFilterRounded';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
+import RocketLaunchRoundedIcon from '@mui/icons-material/RocketLaunchRounded';
 import {
   Alert,
   Box,
@@ -559,6 +560,10 @@ function CampanhasTab({
   const [userProductId, setUserProductId] = useState('');
   const [personaId, setPersonaId] = useState('');
   const [durationSeconds, setDuration] = useState(15);
+  // Trava de clique repetido. Sem ela, cada clique durante a espera da rede
+  // criava uma campanha — e cada campanha é um roteiro a caminho, ou seja,
+  // crédito queimado por impaciência. O estado sobe ANTES do await.
+  const [criando, setCriando] = useState(false);
   const [aberta, setAberta] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<CampaignDetail | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -589,6 +594,10 @@ function CampanhasTab({
   }, [aberta, detalhe, carregarDetalhe]);
 
   async function criar() {
+    // Guarda de reentrância: o `disabled` do botão depende do React ter
+    // repintado, e dois cliques rápidos cabem antes disso.
+    if (criando) return;
+    setCriando(true);
     setErro(null);
     try {
       const nova = await campaignsService.create({
@@ -600,6 +609,8 @@ function CampanhasTab({
       setAberta(nova.id);
     } catch (error) {
       setErro(mensagemDeErro(error));
+    } finally {
+      setCriando(false);
     }
   }
 
@@ -624,7 +635,7 @@ function CampanhasTab({
   const fotosFaltando = produtoEscolhido
     ? Math.max(0, LIMITES.fotosMinimasPorProduto - produtoEscolhido.images.length)
     : 0;
-  const podeCriar = Boolean(userProductId && personaId) && !fotosFaltando;
+  const podeCriar = Boolean(userProductId && personaId) && !fotosFaltando && !criando;
 
   return (
     <Grid container spacing={3}>
@@ -699,8 +710,23 @@ function CampanhasTab({
                 </Alert>
               )}
               {erro && <Alert severity="error">{erro}</Alert>}
-              <Button variant="contained" onClick={criar} disabled={!podeCriar}>
-                Criar campanha
+              <Button
+                variant="contained"
+                size="large"
+                onClick={criar}
+                disabled={!podeCriar}
+                // O ícone troca pelo spinner no mesmo lugar: o botão não muda
+                // de largura no meio do clique, e a espera fica evidente sem
+                // precisar ler o texto.
+                startIcon={
+                  criando ? (
+                    <CircularProgress size={18} color="inherit" />
+                  ) : (
+                    <RocketLaunchRoundedIcon />
+                  )
+                }
+              >
+                {criando ? 'Criando campanha...' : 'Criar campanha'}
               </Button>
             </Stack>
           </CardContent>
