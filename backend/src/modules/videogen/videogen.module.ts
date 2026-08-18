@@ -18,8 +18,20 @@ import { SingleFlightInterceptor } from '../../common/interceptors/single-flight
  * `api` fala com `platform.higgsfield.ai` por chave de servidor; `cli` gasta os
  * créditos do plano pela linha de comando. São saldos separados que não se
  * comunicam, então isto não é preferência de implementação — é de onde sai o
- * dinheiro. O padrão é `cli` porque é a carteira que tem saldo; quando a de API
- * for recarregada, `HIGGSFIELD_DRIVER=api` volta atrás sem tocar em código.
+ * dinheiro.
+ *
+ * Sem `HIGGSFIELD_DRIVER` a escolha é por DETECÇÃO, e não por um padrão fixo. A
+ * primeira versão deste arquivo assumia `cli`, e o efeito foi imediato ao subir:
+ * o servidor não tinha a CLI nem a credencial, e uma feature que estava quebrada
+ * por falta de crédito do fornecedor passou a estar quebrada por configuração
+ * nossa — mesma tela para o cliente, causa muito mais difícil de achar. Ativar
+ * um caminho que exige infraestrutura ausente não pode ser o comportamento de
+ * quem não configurou nada.
+ *
+ * Com detecção, quem manda é o que existe: havendo credencial de CLI, ela vence,
+ * porque é a carteira com saldo. Não havendo, cai na API, que é o que o sistema
+ * sempre fez. `HIGGSFIELD_DRIVER` continua valendo e ganha de tudo, para forçar
+ * um lado quando os dois estiverem disponíveis.
  *
  * A escolha é registrada no boot de propósito. "Por que a geração parou" e "por
  * que o crédito não baixou onde eu esperava" são as duas perguntas que esta
@@ -27,23 +39,26 @@ import { SingleFlightInterceptor } from '../../common/interceptors/single-flight
  */
 function escolherGerador(config: ConfigService): GeradorDeMidia {
   const logger = new Logger('GeradorDeMidia');
-  const driver = (config.get<string>('HIGGSFIELD_DRIVER') ?? 'cli').toLowerCase();
+  const pedido = config.get<string>('HIGGSFIELD_DRIVER')?.toLowerCase();
+  const cli = new HiggsfieldCliService(config);
+  const usarCli = pedido ? pedido === 'cli' : cli.isConfigured;
 
-  if (driver === 'api') {
-    const api = new HiggsfieldService(config);
+  if (usarCli) {
     logger.log(
-      `Carteira: API (platform.higgsfield.ai)${api.isConfigured ? '' : ' — SEM CHAVE, geração desligada'}`,
+      cli.isConfigured
+        ? 'Carteira: plano, via CLI.'
+        : 'Carteira: plano, via CLI — SEM credencial em HIGGSFIELD_CREDENTIALS_PATH, geração desligada.',
     );
-    return api;
+    return cli;
   }
 
-  const cli = new HiggsfieldCliService(config);
+  const api = new HiggsfieldService(config);
   logger.log(
-    cli.isConfigured
-      ? 'Carteira: plano, via CLI.'
-      : 'Carteira: plano, via CLI — SEM credencial em HIGGSFIELD_CREDENTIALS_PATH, geração desligada.',
+    `Carteira: API (platform.higgsfield.ai)` +
+      (api.isConfigured ? '' : ' — SEM CHAVE, geração desligada') +
+      (pedido ? '' : ' — sem credencial de CLI, então este é o caminho por detecção.'),
   );
-  return cli;
+  return api;
 }
 
 @Module({

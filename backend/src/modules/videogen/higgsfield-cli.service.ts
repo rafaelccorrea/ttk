@@ -43,7 +43,8 @@ export class HiggsfieldCliService implements GeradorDeMidia {
   private readonly modeloVideo: string;
 
   constructor(private readonly config: ConfigService) {
-    this.binario = this.config.get<string>('HIGGSFIELD_CLI_BIN') ?? 'higgsfield';
+    this.binario =
+      this.config.get<string>('HIGGSFIELD_CLI_BIN') ?? HiggsfieldCliService.acharBinario();
     this.credenciais = this.config.get<string>('HIGGSFIELD_CREDENTIALS_PATH') ?? null;
     /*
      * Modelos por ambiente, com padrão conservador.
@@ -57,6 +58,28 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       this.config.get<string>('HIGGSFIELD_CLI_IMAGE_MODEL') ?? 'nano_banana_2';
     this.modeloVideo =
       this.config.get<string>('HIGGSFIELD_CLI_VIDEO_MODEL') ?? 'kling3_0_turbo';
+  }
+
+  /**
+   * Onde está o executável da CLI.
+   *
+   * A preferência é o binário do próprio projeto, porque `@higgsfield/cli` é
+   * dependência daqui e portanto sobe junto no deploy. Depender de um
+   * `npm install -g` no servidor seria depender de um passo manual que ninguém
+   * lembra de repetir quando a máquina é recriada — e a falha apareceria como
+   * geração desligada, sem dizer por quê.
+   *
+   * O `higgsfield` solto no PATH continua como reserva: é o que existe na
+   * máquina de quem roda o `seed:personas` no próprio computador.
+   */
+  private static acharBinario(): string {
+    const local = join(
+      process.cwd(),
+      'node_modules',
+      '.bin',
+      process.platform === 'win32' ? 'higgsfield.cmd' : 'higgsfield',
+    );
+    return existsSync(local) ? local : 'higgsfield';
   }
 
   /**
@@ -85,7 +108,10 @@ export class HiggsfieldCliService implements GeradorDeMidia {
         'Geração de mídia indisponível: credencial da Higgsfield ausente.',
       );
     }
-    const comando = [this.binario, ...args].join(' ');
+    // O caminho do binário também é citado: em servidor Windows ele mora sob
+    // "Program Files", e um espaço não citado transformaria o executável em dois
+    // argumentos.
+    const comando = [this.citar(this.binario), ...args].join(' ');
     const { stdout } = await execAsync(comando, {
       maxBuffer: 16 * 1024 * 1024,
       env: {
