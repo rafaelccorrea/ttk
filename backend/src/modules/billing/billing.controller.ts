@@ -32,6 +32,11 @@ class CheckoutDto {
   @IsString()
   planId?: string;
 
+  /** Add-on de horas de live (ver LIVE_HOUR_PACKS) — outra moeda, outro saldo. */
+  @IsOptional()
+  @IsString()
+  livePackId?: string;
+
   @IsOptional()
   @IsIn(['month', 'year'])
   cycle?: BillingCycle;
@@ -53,11 +58,14 @@ export class BillingController {
   ) {}
 
   @Post('checkout')
-  @ApiOperation({ summary: 'Cria uma sessão de pagamento no Stripe (pack ou plano)' })
+  @ApiOperation({
+    summary: 'Cria uma sessão de pagamento no Stripe (pack, horas de live ou plano)',
+  })
   checkout(@CurrentUser() user: AuthUser, @Body() dto: CheckoutDto) {
     return this.stripeService.createCheckout(user.id, user.email, {
       packId: dto.packId,
       planId: dto.planId,
+      livePackId: dto.livePackId,
       cycle: dto.cycle,
     });
   }

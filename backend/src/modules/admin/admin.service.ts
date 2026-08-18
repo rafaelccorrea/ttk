@@ -10,8 +10,10 @@ import {
   compAccountEmails,
   CREDIT_VALUE_BRL,
   findPlan,
+  LIVE_HOUR_PACKS,
   PLANS,
 } from '../billing/billing.config';
+import { AiCostService } from '../telemetry/ai-cost.service';
 import { BillingService } from '../billing/billing.service';
 import { StripeService } from '../billing/stripe.service';
 import { CreditTransaction } from '../billing/entities/credit-transaction.entity';
@@ -45,7 +47,54 @@ export class AdminService {
     private readonly transactions: Repository<CreditTransaction>,
     private readonly billing: BillingService,
     private readonly stripe: StripeService,
+    private readonly custos: AiCostService,
   ) {}
+
+  /**
+   * A margem que aconteceu, contra a que a tabela de preços promete.
+   *
+   * O `billing.config` afirma um custo de pior caso por ação, calculado à mão —
+   * e conta à mão envelhece calada: o fornecedor reajusta, o prompt engorda, o
+   * cache pega menos do que se supunha. Este relatório é o contraditório, feito
+   * com o `usage` que a própria API reportou.
+   *
+   * `alertas` é o que se olha primeiro: são as ações cujo custo MEDIDO já
+   * passou do ESTIMADO. Cada linha ali é uma margem sendo corroída em silêncio,
+   * e o preço correspondente precisa ser refeito.
+   *
+   * O minuto de live é convertido a preço pelo add-on mais barato, de propósito:
+   * é o pior cenário de receita por minuto, e margem se apura pelo pior caso.
+   */
+  async margemRealizada(dias: number) {
+    const ate = new Date();
+    const desde = new Date(ate.getTime() - dias * 24 * 60 * 60 * 1000);
+    const menorPacote = [...LIVE_HOUR_PACKS].sort(
+      (a, b) => a.priceBrl / a.hours - b.priceBrl / b.hours,
+    )[0];
+    const precoDoMinuto = menorPacote
+      ? menorPacote.priceBrl / (menorPacote.hours * 60)
+      : 0;
+
+    const [porRecurso, alertas] = await Promise.all([
+      this.custos.margemPorRecurso(desde, ate, precoDoMinuto),
+      this.custos.acoesAcimaDoEstimado(desde),
+    ]);
+
+    const custoBrl = porRecurso.reduce((s, l) => s + l.custoBrl, 0);
+    const receitaBrl = porRecurso.reduce((s, l) => s + l.receitaBrl, 0);
+
+    return {
+      periodo: { desde, ate, dias },
+      margemMinima: this.custos.margemMinima,
+      total: {
+        custoBrl: Number(custoBrl.toFixed(2)),
+        receitaBrl: Number(receitaBrl.toFixed(2)),
+        margem: custoBrl > 0 ? Number((receitaBrl / custoBrl).toFixed(2)) : null,
+      },
+      porRecurso,
+      alertas,
+    };
+  }
 
   /**
    * Painel — só número real, nada projetado.

@@ -4,3 +4,7 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Cache incremental do tsc: muda a cada build e polui todo diff.
+tsconfig.tsbuildinfo
+*.tsbuildinfo

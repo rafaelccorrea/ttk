@@ -5,13 +5,14 @@ import { UsersModule } from '../users/users.module';
 import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
 import { CreditTransaction } from './entities/credit-transaction.entity';
+import { LiveMinuteTransaction } from './entities/live-minute-transaction.entity';
 import { PlanFeatureGuard } from './plan-feature.guard';
 import { StripeService } from './stripe.service';
 import { StripeWebhookController } from './stripe-webhook.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AppUser, CreditTransaction]),
+    TypeOrmModule.forFeature([AppUser, CreditTransaction, LiveMinuteTransaction]),
     UsersModule,
   ],
   controllers: [BillingController, StripeWebhookController],

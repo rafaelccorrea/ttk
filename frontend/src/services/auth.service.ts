@@ -71,4 +71,34 @@ export const authService = {
     }>('/auth/reset-password', { token, password });
     return data;
   },
+
+  /** Device flow: o que está sendo autorizado, para a pessoa conferir antes. */
+  async deviceInfo(userCode: string): Promise<DeviceAuthorizationInfo> {
+    const { data } = await api.get<DeviceAuthorizationInfo>(
+      `/auth/device/${encodeURIComponent(userCode)}`,
+    );
+    return data;
+  },
+
+  async approveDevice(userCode: string) {
+    const { data } = await api.post<{ status: string; deviceName?: string | null }>(
+      '/auth/device/approve',
+      { userCode },
+    );
+    return data;
+  },
+
+  async denyDevice(userCode: string) {
+    const { data } = await api.post<{ status: string }>('/auth/device/deny', {
+      userCode,
+    });
+    return data;
+  },
 };
+
+export interface DeviceAuthorizationInfo {
+  userCode: string;
+  deviceName: string | null;
+  status: 'pendente' | 'aprovado' | 'negado' | 'expirado';
+  expiresAt: string;
+}

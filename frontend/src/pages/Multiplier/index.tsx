@@ -40,6 +40,7 @@ import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
+import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import ExpandLessRoundedIcon from '@mui/icons-material/ExpandLessRounded';
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded';
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
@@ -58,6 +59,7 @@ import {
   useState,
 } from 'react';
 import { resolveApiUrl } from '@/services/api';
+import { mensagemDeErro } from '@/services/erros';
 import {
   ClipRole,
   Combination,
@@ -69,11 +71,14 @@ import {
   CombinationVideo,
   GaleriaGrupo,
   CombinationVideoStatus,
+  FAIXAS_DE_DURACAO,
   ORIGINALITY_HINT,
   ORIGINALITY_LABEL,
   PlanFormat,
   PlanoInsights,
+  SituacaoDeDuracao,
   combinationsService,
+  situacaoDaDuracao,
 } from '@/services/combinations.service';
 
 /**
@@ -169,6 +174,34 @@ function formatarTamanho(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/**
+ * Duração em segundos, sempre curta.
+ *
+ * Os clipes vivem na casa dos segundos: "3,2s" cabe no selo ao lado do nome do
+ * arquivo, e é a mesma unidade da fórmula (3s/10s/5s) que a tela ensina.
+ */
+function formatarDuracao(ms: number): string {
+  const s = ms / 1000;
+  return `${s < 10 ? s.toFixed(1) : Math.round(s)}s`;
+}
+
+/** Cor e explicação do selo de duração — a cor é o aviso, o texto é o porquê. */
+const DURACAO_ESTILO: Record<
+  SituacaoDeDuracao,
+  { cor: 'success' | 'warning' | 'error' | 'default'; dica: string }
+> = {
+  ideal: { cor: 'success', dica: 'Dentro do tempo ideal deste bloco.' },
+  'fora-da-faixa': {
+    cor: 'warning',
+    dica: 'Fora do tempo ideal — dá para montar, mas costuma render menos.',
+  },
+  'acima-do-limite': {
+    cor: 'error',
+    dica: 'Longo demais para este bloco: a montagem vai ser recusada.',
+  },
+  desconhecida: { cor: 'default', dica: 'Não foi possível medir a duração.' },
+};
 
 /**
  * Checa o arquivo ANTES de subir.
@@ -324,7 +357,10 @@ function ClipDropzone({
 
       <Box sx={{ p: 1.25, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
         <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-          {bloco.ajuda}
+          {bloco.ajuda}{' '}
+          <Box component="span" sx={{ fontWeight: 700, color: 'text.primary' }}>
+            Alvo: {FAIXAS_DE_DURACAO[bloco.role].alvo}s.
+          </Box>
         </Typography>
 
         <Stack spacing={0.5} sx={{ mb: clips.length ? 1 : 0 }}>
@@ -363,6 +399,34 @@ function ClipDropzone({
                   {clip.label}
                 </Typography>
               </Tooltip>
+              {/* O selo de duração fica ao lado do código da peça porque é
+                  exatamente aí que a decisão acontece: este G2 de 11s vai
+                  entrar em 15 vídeos, e é agora — não depois de montar — que
+                  trocar o arquivo ainda é de graça. */}
+              {clip.durationMs > 0 &&
+                (() => {
+                  const estado = situacaoDaDuracao(clip.role, clip.durationMs);
+                  const estilo = DURACAO_ESTILO[estado];
+                  return (
+                    <Tooltip
+                      title={`${estilo.dica} Alvo do bloco: ${FAIXAS_DE_DURACAO[clip.role].alvo}s.`}
+                    >
+                      <Chip
+                        size="small"
+                        label={formatarDuracao(clip.durationMs)}
+                        color={estilo.cor}
+                        variant={estado === 'ideal' ? 'filled' : 'outlined'}
+                        sx={{
+                          height: 17,
+                          flexShrink: 0,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          '& .MuiChip-label': { px: 0.6 },
+                        }}
+                      />
+                    </Tooltip>
+                  );
+                })()}
               <IconButton
                 size="small"
                 aria-label={`Remover ${clip.label}`}
@@ -569,11 +633,19 @@ function RenderProgress({ videos }: { videos: CombinationVideo[] }) {
 function RankingDePecas({
   planId,
   videos,
+  podeDerivar,
+  onDerivado,
 }: {
   planId: string;
   videos: CombinationVideo[];
+  /** `false` quando o plano foi apagado: sem plano não há o que derivar. */
+  podeDerivar: boolean;
+  onDerivado: () => void;
 }) {
   const [dados, setDados] = useState<PlanoInsights | null>(null);
+  const [derivando, setDerivando] = useState(false);
+  const [erroDerivar, setErroDerivar] = useState<string | null>(null);
+  const [derivado, setDerivado] = useState<string | null>(null);
   const lancados = videos.filter((v) => v.views !== null || v.sales !== null).length;
 
   useEffect(() => {
@@ -599,6 +671,32 @@ function RankingDePecas({
   const melhor = ganchos[0];
   const media = dados.mediaGeralViews ?? 0;
   const vezes = media > 0 && melhor.mediaViews ? melhor.mediaViews / media : null;
+
+  /*
+   * Derivar só faz sentido quando existe uma poda defensável: pelo menos duas
+   * peças com dado firme para escolher entre elas. Com menos que isso o botão
+   * criaria um plano idêntico ao atual e cobraria do vendedor a montagem de
+   * novo — atalho que só parece um atalho.
+   */
+  const podamos = ganchos.filter((p) => !p.dadoFraco).length >= 2;
+
+  async function derivar() {
+    setDerivando(true);
+    setErroDerivar(null);
+    try {
+      const novo = await combinationsService.derive(planId);
+      setDerivado(novo.sigla);
+      onDerivado();
+    } catch (err) {
+      setErroDerivar(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível criar o plano derivado.',
+      );
+    } finally {
+      setDerivando(false);
+    }
+  }
 
   return (
     <Box sx={{ px: 1.5, pb: 1.5 }}>
@@ -641,14 +739,64 @@ function RankingDePecas({
               <Typography variant="caption" color="text.secondary">
                 média · {peca.videos} {plural(peca.videos, 'vídeo', 'vídeos')}
               </Typography>
+              {/* Sem esta marca a média de 1 vídeo senta no topo com a mesma
+                  cara de quem venceu 15 vezes — e é o topo que o vendedor usa
+                  para decidir o que gravar de novo. */}
+              {peca.dadoFraco && (
+                <Tooltip
+                  title={`Média de poucos vídeos. A partir de ${dados.minimoConfiavel} lançados o número fica confiável.`}
+                >
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    color="warning"
+                    label="dado fraco"
+                    sx={{ height: 18, fontSize: 10 }}
+                  />
+                </Tooltip>
+              )}
             </Stack>
           ))}
         </Stack>
-        {vezes && vezes >= 1.2 && (
+        {vezes && vezes >= 1.2 && !melhor.dadoFraco && (
           <Typography variant="caption" color="success.main" display="block" mt={1}>
             {melhor.codigo} está {vezes.toFixed(1).replace('.', ',')}× acima da
             média do produto — grave mais variações dele.
           </Typography>
+        )}
+
+        {/* O ranking sem esta saída termina num beco: o vendedor descobre a
+            peça campeã e não tem o que fazer com a descoberta além de remontar
+            tudo de memória. */}
+        {podeDerivar && podamos && !derivado && (
+          <Button
+            size="small"
+            fullWidth
+            variant="outlined"
+            startIcon={
+              derivando ? (
+                <CircularProgress size={14} color="inherit" />
+              ) : (
+                <DynamicFeedRoundedIcon />
+              )
+            }
+            disabled={derivando}
+            onClick={() => void derivar()}
+            sx={{ mt: 1.5 }}
+          >
+            {derivando ? 'Criando…' : 'Criar plano só com as campeãs'}
+          </Button>
+        )}
+        {derivado && (
+          <Alert severity="success" sx={{ mt: 1.5 }}>
+            Plano <strong>{derivado}</strong> criado com as peças que melhor
+            performaram. Ele está na lista de planos, pronto para montar.
+          </Alert>
+        )}
+        {erroDerivar && (
+          <Alert severity="error" sx={{ mt: 1.5 }}>
+            {erroDerivar}
+          </Alert>
         )}
       </Box>
     </Box>
@@ -704,7 +852,7 @@ function DialogDeResultado({
       onSalvo();
     } catch (err) {
       onErro(
-        err instanceof Error ? err.message : 'Não foi possível salvar o resultado.',
+        mensagemDeErro(err, 'Não foi possível salvar o resultado.'),
       );
     } finally {
       setSalvando(false);
@@ -755,6 +903,170 @@ function DialogDeResultado({
         <Button onClick={onFechar}>Cancelar</Button>
         <Button variant="contained" disabled={salvando} onClick={() => void salvar()}>
           {salvando ? 'Salvando…' : 'Salvar'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/**
+ * Lançamento de todos os vídeos de um produto numa tela só.
+ *
+ * O diálogo de um vídeo por vez é correto e inútil na escala real: com 150
+ * arquivos, lançar resultado custava 150 aberturas, e o resultado prático era
+ * que ninguém lançava — o que deixava o ranking de peças, que é a única coisa
+ * aqui que a concorrência não copia, permanentemente vazio.
+ *
+ * A ordem é a de postagem, a mesma da galeria: o vendedor desce a lista do
+ * TikTok num monitor e a planilha aqui no outro, na mesma sequência.
+ *
+ * Só o que MUDOU é enviado. Sem isso, abrir e salvar sem digitar nada
+ * reescreveria as 150 linhas — e um campo esvaziado por acidente apagaria um
+ * número que o vendedor tinha lançado semanas antes.
+ */
+function DialogDeLancamentoEmMassa({
+  grupo,
+  onFechar,
+  onSalvo,
+  onErro,
+}: {
+  grupo: GaleriaGrupo | null;
+  onFechar: () => void;
+  onSalvo: () => void;
+  onErro: (mensagem: string) => void;
+}) {
+  const [campos, setCampos] = useState<
+    Record<string, { views: string; sales: string }>
+  >({});
+  const [salvando, setSalvando] = useState(false);
+
+  // Recarrega ao trocar de produto: sem isto a planilha abriria com os números
+  // do produto anterior por baixo dos campos vazios.
+  useEffect(() => {
+    const inicial: Record<string, { views: string; sales: string }> = {};
+    for (const v of grupo?.videos ?? []) {
+      inicial[v.id] = {
+        views: v.views === null ? '' : String(v.views),
+        sales: v.sales === null ? '' : String(v.sales),
+      };
+    }
+    setCampos(inicial);
+  }, [grupo]);
+
+  if (!grupo) return null;
+
+  const numeroOuNulo = (texto: string) =>
+    texto.trim() === '' ? null : Math.max(Math.trunc(Number(texto)), 0);
+
+  const original = (v: CombinationVideo) => ({
+    views: v.views === null ? '' : String(v.views),
+    sales: v.sales === null ? '' : String(v.sales),
+  });
+
+  const alterados = grupo.videos.filter((v) => {
+    const atual = campos[v.id];
+    if (!atual) return false;
+    const antes = original(v);
+    return atual.views !== antes.views || atual.sales !== antes.sales;
+  });
+
+  async function salvar() {
+    if (!alterados.length) {
+      onFechar();
+      return;
+    }
+    setSalvando(true);
+    try {
+      await combinationsService.setResults(
+        alterados.map((v) => ({
+          id: v.id,
+          views: numeroOuNulo(campos[v.id].views),
+          sales: numeroOuNulo(campos[v.id].sales),
+        })),
+      );
+      onSalvo();
+    } catch (err) {
+      onErro(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível salvar os resultados.',
+      );
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Dialog open onClose={onFechar} fullWidth maxWidth="sm">
+      <DialogTitle>Lançar resultados · {grupo.sigla}</DialogTitle>
+      <DialogContent dividers>
+        <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+          Na ordem de postagem. Deixe vazio o que ainda não tem número — só o
+          que você mudar é enviado.
+        </Typography>
+        <Stack spacing={0.75}>
+          {grupo.videos.map((v) => (
+            <Stack key={v.id} direction="row" spacing={1} alignItems="center">
+              <Box
+                sx={{
+                  px: 0.6,
+                  py: 0.2,
+                  borderRadius: 0.75,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  bgcolor: 'action.hover',
+                  minWidth: 62,
+                  textAlign: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                {v.code}
+              </Box>
+              <TextField
+                size="small"
+                type="number"
+                label="Views"
+                value={campos[v.id]?.views ?? ''}
+                inputProps={{ min: 0 }}
+                onChange={(e) =>
+                  setCampos((prev) => ({
+                    ...prev,
+                    [v.id]: { ...prev[v.id], views: e.target.value },
+                  }))
+                }
+                sx={{ flexGrow: 1 }}
+              />
+              <TextField
+                size="small"
+                type="number"
+                label="Vendas"
+                value={campos[v.id]?.sales ?? ''}
+                inputProps={{ min: 0 }}
+                onChange={(e) =>
+                  setCampos((prev) => ({
+                    ...prev,
+                    [v.id]: { ...prev[v.id], sales: e.target.value },
+                  }))
+                }
+                sx={{ width: 110 }}
+              />
+            </Stack>
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onFechar}>Cancelar</Button>
+        <Button
+          variant="contained"
+          disabled={salvando || !alterados.length}
+          onClick={() => void salvar()}
+        >
+          {salvando
+            ? 'Salvando…'
+            : alterados.length
+              ? `Salvar ${alterados.length} ${plural(alterados.length, 'vídeo', 'vídeos')}`
+              : 'Nada mudou'}
         </Button>
       </DialogActions>
     </Dialog>
@@ -1043,6 +1355,8 @@ function Galeria({
   const [corDaPasta, setCorDaPasta] = useState(CORES_DE_PASTA[0]);
   const [pastaParaApagar, setPastaParaApagar] = useState<GaleriaGrupo | null>(null);
   const [lancando, setLancando] = useState<CombinationVideo | null>(null);
+  /** Produto com a planilha de lançamento aberta. */
+  const [lancandoGrupo, setLancandoGrupo] = useState<GaleriaGrupo | null>(null);
 
   const recarregarPastas = useCallback(() => {
     combinationsService.listFolders().then(setPastas).catch(console.error);
@@ -1129,7 +1443,7 @@ function Galeria({
       onRecarregar();
     } catch (err) {
       setErroDescarte(
-        err instanceof Error ? err.message : 'Não foi possível mover o vídeo.',
+        mensagemDeErro(err, 'Não foi possível mover o vídeo.'),
       );
     }
   }
@@ -1145,7 +1459,7 @@ function Galeria({
       setVisao('pasta');
     } catch (err) {
       setErroDescarte(
-        err instanceof Error ? err.message : 'Não foi possível criar a pasta.',
+        mensagemDeErro(err, 'Não foi possível criar a pasta.'),
       );
     }
   }
@@ -1158,7 +1472,7 @@ function Galeria({
       onRecarregar();
     } catch (err) {
       setErroDescarte(
-        err instanceof Error ? err.message : 'Não foi possível apagar a pasta.',
+        mensagemDeErro(err, 'Não foi possível apagar a pasta.'),
       );
     }
   }
@@ -1172,7 +1486,7 @@ function Galeria({
     } catch (err) {
       setDescartados((prev) => prev.filter((id) => id !== video.id));
       setErroDescarte(
-        err instanceof Error ? err.message : 'Não foi possível descartar o vídeo.',
+        mensagemDeErro(err, 'Não foi possível descartar o vídeo.'),
       );
     }
   }
@@ -1247,6 +1561,8 @@ function Galeria({
                   setAncoraMenu(alvo);
                 }}
                 onLancarResultado={setLancando}
+                onLancarTudo={() => setLancandoGrupo(grupo)}
+                onDerivado={onRecarregar}
               />
             ))}
           </Stack>
@@ -1357,6 +1673,16 @@ function Galeria({
           onErro={setErroDescarte}
         />
 
+        <DialogDeLancamentoEmMassa
+          grupo={lancandoGrupo}
+          onFechar={() => setLancandoGrupo(null)}
+          onSalvo={() => {
+            setLancandoGrupo(null);
+            onRecarregar();
+          }}
+          onErro={setErroDescarte}
+        />
+
         <Dialog open={Boolean(pastaParaApagar)} onClose={() => setPastaParaApagar(null)}>
           <DialogTitle>Apagar “{pastaParaApagar?.sigla}”?</DialogTitle>
           <DialogContent>
@@ -1396,6 +1722,8 @@ function GrupoDeProduto({
   onDescartar,
   onMover,
   onLancarResultado,
+  onLancarTudo,
+  onDerivado,
 }: {
   grupo: GaleriaGrupo;
   abertoPorPadrao: boolean;
@@ -1404,6 +1732,8 @@ function GrupoDeProduto({
   onDescartar: (video: CombinationVideo) => void;
   onMover: (video: CombinationVideo, alvo: HTMLElement) => void;
   onLancarResultado: (video: CombinationVideo) => void;
+  onLancarTudo: () => void;
+  onDerivado: () => void;
 }) {
   const [aberto, setAberto] = useState(abertoPorPadrao);
   const originais = grupo.videos.filter((v) => v.originality === 'original');
@@ -1442,6 +1772,25 @@ function GrupoDeProduto({
           </Tooltip>
         )}
         <Box sx={{ flexGrow: 1 }} />
+        {/* O atalho para a planilha fica no cabeçalho do produto porque é por
+            produto que o vendedor lança: ele abre o TikTok, vê os números da
+            campanha da cinta e quer digitar os dez de uma vez. */}
+        {grupo.videos.length > 1 && (
+          <Tooltip title="Lançar views e vendas de todos os vídeos deste produto">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<InsightsRoundedIcon />}
+              onClick={(e) => {
+                e.stopPropagation();
+                onLancarTudo();
+              }}
+              sx={{ flexShrink: 0 }}
+            >
+              Lançar resultados
+            </Button>
+          </Tooltip>
+        )}
         {podeApagar && (
           <Tooltip title="Apagar a pasta — os vídeos voltam para “Sem pasta”">
             <IconButton
@@ -1461,7 +1810,14 @@ function GrupoDeProduto({
         </IconButton>
       </Stack>
 
-      {aberto && <RankingDePecas planId={grupo.planId} videos={grupo.videos} />}
+      {aberto && (
+        <RankingDePecas
+          planId={grupo.planId}
+          videos={grupo.videos}
+          podeDerivar={grupo.planoExiste}
+          onDerivado={onDerivado}
+        />
+      )}
 
       {aberto && grupo.videos.length === 0 && (
         <Typography variant="body2" color="text.secondary" sx={{ px: 1.5, pb: 1.5 }}>
@@ -1635,6 +1991,19 @@ export function MultiplierPage() {
   const acimaDoTeto = total > MAX_VIDEOS;
 
   /**
+   * Clipes que o servidor vai recusar na montagem por serem longos demais.
+   *
+   * A tela precisa saber disso ANTES do clique em "Montar vídeos": o erro do
+   * backend chega depois de o vendedor já ter planejado a matriz inteira em
+   * cima de um gancho que não serve.
+   */
+  const clipesLongos = (['hook', 'body', 'cta'] as const).flatMap((role) =>
+    doBloco(role).filter(
+      (c) => situacaoDaDuracao(role, c.durationMs) === 'acima-do-limite',
+    ),
+  );
+
+  /**
    * O requisito de cada etapa para liberar a seguinte.
    *
    * É o mesmo critério que o `Passo` já usava para marcar o check — mantê-lo
@@ -1678,7 +2047,7 @@ export function MultiplierPage() {
         setClips((prev) => [...prev, clip]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao enviar o vídeo');
+      setError(mensagemDeErro(err, 'Falha ao enviar o vídeo'));
     } finally {
       setEnviando(null);
     }
@@ -1692,7 +2061,7 @@ export function MultiplierPage() {
       await combinationsService.deleteClip(id);
     } catch (err) {
       setClips(anterior);
-      setError(err instanceof Error ? err.message : 'Falha ao remover o vídeo');
+      setError(mensagemDeErro(err, 'Falha ao remover o vídeo'));
     }
   }
 
@@ -1720,7 +2089,7 @@ export function MultiplierPage() {
       // "Gerar" e continuaria olhando para o formulário que já resolveu.
       setEtapa(2);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao gerar combinações');
+      setError(mensagemDeErro(err, 'Falha ao gerar combinações'));
     } finally {
       setBusy(false);
     }
@@ -1768,7 +2137,7 @@ export function MultiplierPage() {
         }
       }, 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao montar os vídeos');
+      setError(mensagemDeErro(err, 'Falha ao montar os vídeos'));
       setMontando(false);
     }
   }
@@ -2093,6 +2462,17 @@ export function MultiplierPage() {
                     montagem. Remova clipes de um dos blocos.
                   </Alert>
                 )}
+                {clipesLongos.length > 0 && (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    {clipesLongos.length === 1
+                      ? 'Um clipe é longo demais para o bloco em que está'
+                      : `${clipesLongos.length} clipes são longos demais para o bloco em que estão`}{' '}
+                    ({clipesLongos.map((c) => c.label).join(', ')}). Corte para
+                    o alvo — {FAIXAS_DE_DURACAO.hook.alvo}s de gancho,{' '}
+                    {FAIXAS_DE_DURACAO.body.alvo}s de corpo e{' '}
+                    {FAIXAS_DE_DURACAO.cta.alvo}s de CTA — e envie de novo.
+                  </Alert>
+                )}
                 {error && (
                   <Alert severity="error" sx={{ mb: 2 }}>
                     {error}
@@ -2174,7 +2554,10 @@ export function MultiplierPage() {
                             <MovieFilterRoundedIcon />
                           )
                         }
-                        disabled={montando}
+                        // Um clipe acima do limite faz o servidor recusar a
+                        // montagem inteira: deixar o botão ativo só gasta um
+                        // clique para receber o mesmo "não" com mais espera.
+                        disabled={montando || clipesLongos.length > 0}
                         onClick={() => void handleRender(result.id)}
                       >
                         {montando ? 'Montando...' : 'Montar vídeos'}

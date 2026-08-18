@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { FfmpegRunner } from '../../common/media/ffmpeg-runner';
 import { BillingModule } from '../billing/billing.module';
 import { UsersModule } from '../users/users.module';
 import { MediaModule } from '../media/media.module';
@@ -26,6 +27,6 @@ import { CombinationVideo } from './entities/combination-video.entity';
   ],
   controllers: [CombinationsController],
   // A montagem é a mesma das campanhas — um só caminho até o ffmpeg.
-  providers: [CombinationsService, VideoAssemblyService],
+  providers: [CombinationsService, VideoAssemblyService, FfmpegRunner],
 })
 export class CombinationsModule {}

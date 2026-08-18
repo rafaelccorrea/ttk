@@ -185,7 +185,7 @@ export function Hero() {
                 <BrowserFrame
                   src="/screens/dashboard.jpg"
                   alt="Dashboard do PikPok com faturamento rastreado e produtos em alta"
-                  caption="app.pikpok.com.br/dashboard"
+                  caption="pikpokviral.com.br/dashboard"
                   priority
                 />
               </Box>

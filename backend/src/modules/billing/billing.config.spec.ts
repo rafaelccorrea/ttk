@@ -6,10 +6,16 @@ import {
   MIN_MARGIN,
   transcribeBlocks,
   FEATURE_MIN_PLAN,
+  featureLancada,
   isCompAccount,
+  LIVE_COST_PER_MINUTE_BRL,
+  LIVE_HOUR_PACKS,
+  livePackMinutes,
+  LIVE_TRIAL_MINUTES,
   PLAN_RANK,
   PLANS,
   planAllows,
+  planLiveMinutes,
   PlanFeature,
   SIGNUP_BONUS_CREDITS,
 } from './billing.config';
@@ -63,9 +69,24 @@ describe('billing.config — paywall na entrada', () => {
   });
 
   it('cobra mais caro por crédito no plano menor (o volume tem desconto)', () => {
+    /*
+     * O preço do plano paga DUAS coisas desde que o Business passou a incluir
+     * 5 horas de live: créditos de IA e tempo de copiloto. Dividir o preço
+     * cheio pelos créditos passou a dar um número sem sentido — pelo bruto, o
+     * Business ficou mais caro por crédito que o Pro (R$ 0,0964 contra
+     * R$ 0,0899), como se o degrau de cima fosse o pior negócio.
+     *
+     * A comparação certa desconta o que as horas valem sozinhas (o pacote de
+     * 5h, R$ 49,90) e olha o que sobra para os créditos: R$ 0,0786, que é o
+     * desconto de volume que sempre existiu. Sem esse ajuste o teste passaria a
+     * cobrar uma escada que o produto não vende mais.
+     */
     const porCredito = (id: string) => {
       const p = PLANS.find((x) => x.id === id)!;
-      return p.priceBrl / p.monthlyCredits;
+      const horas = (p.monthlyLiveMinutes ?? 0) / 60;
+      const pacoteDeUmaHora = LIVE_HOUR_PACKS.find((h) => h.hours === 5)!;
+      const valorDasHoras = horas > 0 ? pacoteDeUmaHora.priceBrl : 0;
+      return (p.priceBrl - valorDasHoras) / p.monthlyCredits;
     };
     // Business é o mais barato por crédito; Essencial não pode ser o melhor
     // negócio, senão ninguém sobe de degrau.
@@ -148,5 +169,150 @@ describe('billing.config — hierarquia de planos', () => {
   it('deixa o free abaixo do degrau que libera pacote avulso', () => {
     // assertSubscriber compara contra PLAN_RANK.starter.
     expect(PLAN_RANK.free).toBeLessThan(PLAN_RANK.starter);
+  });
+});
+
+/**
+ * A carteira de live é uma moeda separada, e a separação só vale enquanto
+ * ninguém a converte de volta em crédito por engano. Estes testes travam as
+ * três coisas que fariam a conta furar: o copiloto voltar a custar crédito, o
+ * add-on ser vendido abaixo do custo, e a cortesia crescer sem querer.
+ */
+describe('billing.config — horas de live', () => {
+  it('não cobra o copiloto ao vivo em créditos de IA', () => {
+    // Se alguém recriar uma ação de live na tabela de créditos, as duas moedas
+    // viram uma só e o saldo de horas deixa de significar o que promete.
+    const acoesDeLiveAoVivo = Object.keys(ACTION_PRICES).filter(
+      (a) => a.startsWith('live_') && a !== 'live_extract',
+    );
+    expect(acoesDeLiveAoVivo).toEqual([]);
+  });
+
+  it('vende toda hora de live acima do custo, com a margem mínima', () => {
+    for (const pack of LIVE_HOUR_PACKS) {
+      const custo = livePackMinutes(pack) * LIVE_COST_PER_MINUTE_BRL;
+      expect(pack.priceBrl).toBeGreaterThanOrEqual(custo * MIN_MARGIN);
+    }
+  });
+
+  it('dá desconto por volume sem inverter a escada de preço', () => {
+    const porHora = [...LIVE_HOUR_PACKS]
+      .sort((a, b) => a.hours - b.hours)
+      .map((p) => p.priceBrl / p.hours);
+    // Pacote maior nunca pode sair mais caro por hora que um menor.
+    expect([...porHora].sort((a, b) => b - a)).toEqual(porHora);
+  });
+
+  it('mantém a cortesia em dez minutos e uma vez por conta', () => {
+    expect(LIVE_TRIAL_MINUTES).toBe(10);
+    // Barato o bastante para não doer: menos de um real de custo por conta.
+    expect(LIVE_TRIAL_MINUTES * LIVE_COST_PER_MINUTE_BRL).toBeLessThan(1);
+  });
+
+  it('reprova pacote de live vendido abaixo do custo', () => {
+    const original = LIVE_HOUR_PACKS[0].priceBrl;
+    LIVE_HOUR_PACKS[0].priceBrl = 0.5;
+    try {
+      expect(assertProfitability().join(' ')).toContain(LIVE_HOUR_PACKS[0].id);
+    } finally {
+      LIVE_HOUR_PACKS[0].priceBrl = original;
+    }
+  });
+
+  it('não expõe o Live Copilot enquanto as fases não fecharem', () => {
+    // A entrega é por fases: a base de conhecimento já roda, o copiloto ao vivo
+    // não. Um recurso pela metade num plano de R$ 249,90 não é preview.
+    const anterior = process.env.LAUNCH_LIVE_COPILOT;
+    try {
+      delete process.env.LAUNCH_LIVE_COPILOT;
+      expect(featureLancada('live_copilot')).toBe(false);
+      // O resto do produto não pode ser afetado pela trava.
+      expect(featureLancada('discovery')).toBe(true);
+      expect(featureLancada('multiplier')).toBe(true);
+
+      process.env.LAUNCH_LIVE_COPILOT = 'true';
+      expect(featureLancada('live_copilot')).toBe(true);
+    } finally {
+      if (anterior === undefined) delete process.env.LAUNCH_LIVE_COPILOT;
+      else process.env.LAUNCH_LIVE_COPILOT = anterior;
+    }
+  });
+
+  it('abre o copiloto no Pro, e não abaixo dele', () => {
+    /*
+     * O Pro alcança o copiloto no modo PAINEL — a resposta na tela, sem tocar
+     * no chat e sem risco de ToS. O que continua no Business é o ENVIO
+     * automático, e a trava dele vive em `trocarModo`, não aqui: é lá que
+     * escrevemos em nome do vendedor dentro da plataforma dele.
+     *
+     * Prender o painel junto do envio cobrava o degrau mais caro pela metade
+     * que não tem risco nenhum — e um recurso que ninguém experimenta não vende
+     * o degrau de cima.
+     */
+    expect(FEATURE_MIN_PLAN.live_copilot).toBe('pro');
+    expect(planAllows('essencial', 'live_copilot')).toBe(false);
+    expect(planAllows('pro', 'live_copilot')).toBe(true);
+    expect(planAllows('business', 'live_copilot')).toBe(true);
+  });
+
+  it('inclui horas de live só no Business', () => {
+    // O Pro EXPERIMENTA (cortesia de estreia, uma vez); o Business OPERA (horas
+    // todo mês). Incluir horas no Pro apagaria a diferença entre os dois.
+    const comHoras = PLANS.filter((p) => (p.monthlyLiveMinutes ?? 0) > 0).map(
+      (p) => p.id,
+    );
+    expect(comHoras).toEqual(['business']);
+  });
+
+  it('entrega no anual doze vezes o mensal de horas', () => {
+    // Minuto de live não expira, então adiantar o ano não cria pressão de uso —
+    // e não existe cron de renovação: entregar mês a mês deixaria o assinante
+    // anual sem hora nenhuma a partir do segundo mês.
+    const business = PLANS.find((p) => p.id === 'business')!;
+    expect(planLiveMinutes(business, 'month')).toBe(300);
+    expect(planLiveMinutes(business, 'year')).toBe(3600);
+  });
+});
+
+describe('catálogo de planos', () => {
+  it('oferece anual em TODOS os planos do catálogo', () => {
+    /*
+     * O Business ficou sem anual por esquecimento, e a falta era pior do que
+     * parece: é o plano mais caro, e quem chega nele é justamente quem pagaria
+     * um ano adiantado. Dar desconto anual nos dois baratos e não no caro
+     * inverte a escada — e some com a única compra do catálogo que traz doze
+     * meses de caixa de uma vez.
+     */
+    const semAnual = PLANS.filter((p) => !p.annual).map((p) => p.id);
+    expect(semAnual).toEqual([]);
+  });
+
+  it('mantém o anual mais barato por crédito que o mensal', () => {
+    // Se o anual sair mais caro por crédito, ele deixa de ser desconto e vira
+    // pegadinha — e o cliente que paga adiantado é o que menos merece isso.
+    for (const plano of PLANS) {
+      if (!plano.annual) continue;
+      const mensal = plano.priceBrl / plano.monthlyCredits;
+      const anual = plano.annual.priceBrl / plano.annual.credits;
+      expect(anual).toBeLessThan(mensal);
+    }
+  });
+
+  it('anuncia o copiloto no Pro e no Business, e o ENVIO só no Business', () => {
+    /*
+     * A redação separa as duas coisas de propósito. O Pro ganha o painel; o
+     * envio automático fica no Business. Um perk do Pro dizendo só "Live
+     * Copilot" prometeria o produto inteiro e transformaria o upgrade numa
+     * reclamação de quem já pagou.
+     */
+    const comCopiloto = PLANS.filter((p) =>
+      p.perks.some((perk) => /copilot/i.test(perk)),
+    ).map((p) => p.id);
+    expect(comCopiloto).toEqual(['pro', 'business']);
+
+    const comEnvioAutomatico = PLANS.filter((p) =>
+      p.perks.some((perk) => /envio autom/i.test(perk)),
+    ).map((p) => p.id);
+    expect(comEnvioAutomatico).toEqual(['business']);
   });
 });

@@ -87,6 +87,19 @@ export class AdminController {
     return this.admin.overview();
   }
 
+  /**
+   * A margem que realmente aconteceu, contra a que a tabela de preços promete.
+   *
+   * Fica no admin e não no painel do cliente por motivo óbvio: é o nosso custo.
+   */
+  @Get('margem')
+  @ApiOperation({
+    summary: 'Margem realizada por recurso e ações cujo custo passou do estimado',
+  })
+  margem(@Query('dias') dias?: string) {
+    return this.admin.margemRealizada(Number(dias) || 30);
+  }
+
   @Get('users')
   @ApiOperation({ summary: 'Lista contas com busca e filtro por plano' })
   users(@Query() query: ListUsersDto) {

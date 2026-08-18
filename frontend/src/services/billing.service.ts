@@ -19,11 +19,33 @@ export interface ActionPrice {
 export interface Wallet {
   credits: number;
   plan: string;
+  /**
+   * Conta interna: nada é debitado dela.
+   *
+   * Sem isto o cabeçalho mostraria um saldo parado para sempre — e um número
+   * que nunca muda lê como bug, não como cortesia.
+   */
+  unlimited?: boolean;
   prices: Record<string, ActionPrice>;
   /** recurso → liberado no plano atual (ex.: ai_videos, ingestion). */
   features?: Record<string, boolean>;
   /** recurso → plano mínimo. */
   featureMinPlan?: Record<string, string>;
+  /**
+   * A segunda carteira: tempo de copiloto ao vivo.
+   *
+   * Vem junto do saldo de créditos, mas separada dentro dele — as duas moedas
+   * não se convertem uma na outra, e a interface não pode dar a entender que
+   * convertem.
+   */
+  liveCopilot?: {
+    /** Saldo em minutos. A venda é por hora; o consumo, por minuto. */
+    minutes: number;
+    trialMinutes: number;
+    /** Esta conta ainda tem a cortesia de estreia por gastar? */
+    trialAvailable: boolean;
+    packs: Array<{ id: string; name: string; hours: number; priceBrl: number }>;
+  };
   history: CreditTransaction[];
 }
 
@@ -58,7 +80,13 @@ export const billingService = {
   subscribe: (planId: string, cycle: BillingCycle = 'month') =>
     api.post<Wallet>('/billing/subscribe', { planId, cycle }).then((r) => r.data),
   // Stripe: cria a sessão e devolve a URL de pagamento.
-  checkout: (item: { packId?: string; planId?: string; cycle?: BillingCycle }) =>
+  checkout: (item: {
+    packId?: string;
+    /** Pacote de HORAS de live. Moeda separada — nunca vira crédito de IA. */
+    livePackId?: string;
+    planId?: string;
+    cycle?: BillingCycle;
+  }) =>
     api.post<{ url: string }>('/billing/checkout', item).then((r) => r.data),
   // Billing Portal do Stripe: cancelar, trocar cartão, baixar faturas.
   portal: () => api.post<{ url: string }>('/billing/portal').then((r) => r.data),

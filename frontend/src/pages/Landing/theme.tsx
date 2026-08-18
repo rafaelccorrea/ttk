@@ -206,7 +206,7 @@ export function BrowserFrame({
             overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
           }}
         >
-          {caption ?? 'app.pikpok.com.br'}
+          {caption ?? 'pikpokviral.com.br'}
         </Box>
       </Box>
       <Box

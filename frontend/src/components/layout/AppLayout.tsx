@@ -5,6 +5,7 @@ import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
 import SchoolRoundedIcon from '@mui/icons-material/SchoolRounded';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
+import HeadsetMicRoundedIcon from '@mui/icons-material/HeadsetMicRounded';
 import LocalFireDepartmentRoundedIcon from '@mui/icons-material/LocalFireDepartmentRounded';
 import OndemandVideoRoundedIcon from '@mui/icons-material/OndemandVideoRounded';
 import LockRoundedIcon from '@mui/icons-material/LockRounded';
@@ -86,6 +87,12 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/estudio', label: 'Roteirizar com IA', icon: <AutoFixHighRoundedIcon /> },
       { to: '/analisar', label: 'Analisar Vídeo', icon: <TroubleshootRoundedIcon /> },
       { to: '/multiplicador', label: 'Multiplicador', icon: <DynamicFeedRoundedIcon /> },
+      {
+        to: '/copiloto',
+        label: 'Copiloto de Live',
+        icon: <HeadsetMicRoundedIcon />,
+        feature: 'live_copilot',
+      },
       { to: '/prompts', label: 'Cofre de Prompts', icon: <StyleRoundedIcon /> },
       { to: '/geracoes', label: 'Minhas Gerações', icon: <MovieFilterRoundedIcon /> },
     ],
@@ -119,11 +126,54 @@ const NAV = [...NAV_SECTIONS, ADMIN_SECTION].flatMap(
   (section) => section.items,
 );
 
+/**
+ * O saldo de live em linguagem de vendedor.
+ *
+ * A venda é por HORA e o consumo é por minuto, então o selo fala em hora quando
+ * há hora e em minuto quando o que resta é curto — "0h de live" para quarenta
+ * minutos restantes seria a leitura mais desanimadora possível de um saldo que
+ * ainda dá para uma transmissão inteira. Abaixo de uma hora o número exato
+ * importa mais que a unidade redonda, porque é justamente quando o vendedor
+ * decide se começa a live agora ou compra mais antes.
+ */
+export function formatarTempoDeLive(minutos: number): string {
+  if (minutos <= 0) return 'sem horas de live';
+  if (minutos < 60) return `${minutos} min de live`;
+  const horas = Math.floor(minutos / 60);
+  const resto = minutos % 60;
+  return resto === 0
+    ? `${horas}h de live`
+    : `${horas}h${String(resto).padStart(2, '0')} de live`;
+}
+
 export function AppLayout() {
   const { email, signOut } = useAuth();
   const location = useLocation();
   const current = NAV.find((n) => location.pathname.startsWith(n.to));
   const [credits, setCredits] = useState<number | null>(null);
+  /*
+   * O saldo de live é uma MOEDA À PARTE, e por isso um estado à parte.
+   *
+   * Crédito paga o que se pede item a item (roteiro, imagem, transcrição); hora
+   * de live paga o tempo com o copiloto ligado. Somar os dois num número só, ou
+   * mostrar apenas um deles, faz o vendedor abrir a live achando que tem saldo
+   * — e descobrir que não tem no meio da transmissão, que é o pior momento
+   * possível para essa notícia.
+   */
+  const [minutosDeLive, setMinutosDeLive] = useState<number | null>(null);
+  /*
+   * A cortesia de estreia é creditada só quando a primeira transmissão começa
+   * (ver `grantLiveTrial`), e não no cadastro — então quem nunca abriu o
+   * copiloto tem saldo zero no banco, de verdade.
+   *
+   * Sem este estado o cabeçalho anunciava "sem horas de live", em laranja, para
+   * um assinante Business que na prática tem dez minutos esperando por ele. Era
+   * a nossa cortesia sendo apresentada como uma dívida — e o motivo mais barato
+   * possível para alguém desistir de experimentar o produto.
+   */
+  const [cortesiaDeLive, setCortesiaDeLive] = useState<number | null>(null);
+  /** Conta interna: os dois selos viram "ilimitado" em vez de um número morto. */
+  const [ilimitado, setIlimitado] = useState(false);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [plan, setPlan] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -204,6 +254,13 @@ export function AppLayout() {
           setCredits(w.credits);
           setFeatures(w.features ?? {});
           setPlan(w.plan);
+          setMinutosDeLive(w.liveCopilot?.minutes ?? null);
+          setCortesiaDeLive(
+            w.liveCopilot?.trialAvailable
+              ? (w.liveCopilot?.trialMinutes ?? 0)
+              : null,
+          );
+          setIlimitado(Boolean(w.unlimited));
         })
         .catch(() => setCredits(null));
     load();
@@ -482,23 +539,100 @@ export function AppLayout() {
             }}
           />
           <Box flexGrow={1} />
+          {/*
+           * Duas moedas, dois selos, lado a lado — e o de live só aparece para
+           * quem tem o recurso liberado. Mostrá-lo a quem não usa o copiloto
+           * seria ocupar o cabeçalho com um saldo que nunca muda.
+           *
+           * O de live vem PRIMEIRO de propósito: quem está prestes a entrar ao
+           * vivo precisa dessa informação antes de qualquer outra, e é a que
+           * some enquanto a transmissão corre.
+           */}
+          {features.live_copilot &&
+            minutosDeLive !== null &&
+            (() => {
+              /*
+               * Três estados, não dois — e a diferença entre eles é a diferença
+               * entre um convite e uma cobrança:
+               *
+               *  · cortesia à espera → verde, "N min grátis". É presente.
+               *  · saldo comprado    → ciano, o tempo restante.
+               *  · zerado de vez     → laranja, aviso.
+               *
+               * O caso que não pode existir é o laranja em cima de quem ainda
+               * não gastou a cortesia: seria alarme sobre saldo que a conta tem.
+               */
+              const temCortesia =
+                !ilimitado && minutosDeLive <= 0 && cortesiaDeLive !== null;
+              const positivo = ilimitado || minutosDeLive > 0 || temCortesia;
+              const cor = temCortesia
+                ? { fundo: 'rgba(76,175,80,0.14)', tinta: '#1b6e21' }
+                : positivo
+                  ? { fundo: 'rgba(37,244,238,0.12)', tinta: '#0a8a85' }
+                  : { fundo: 'rgba(255,152,0,0.16)', tinta: '#8a5200' };
+              return (
+                <Tooltip
+                  title={
+                    ilimitado
+                      ? 'Conta interna: o copiloto ao vivo não consome minutos.'
+                      : temCortesia
+                        ? `Cortesia de estreia: ${cortesiaDeLive} minutos de copiloto ao vivo, por nossa conta. Só começam a contar quando você abrir a primeira transmissão.`
+                        : minutosDeLive > 0
+                          ? 'Tempo de copiloto respondendo o chat da sua live. É separado dos créditos de IA.'
+                          : 'Suas horas de live acabaram. O copiloto não responde o chat sem elas.'
+                  }
+                >
+                  <Chip
+                    component={Link}
+                    to="/planos"
+                    clickable
+                    size="small"
+                    icon={<HeadsetMicRoundedIcon sx={{ fontSize: 16 }} />}
+                    label={
+                      ilimitado
+                        ? 'live ilimitada'
+                        : temCortesia
+                          ? `${cortesiaDeLive} min grátis`
+                          : formatarTempoDeLive(minutosDeLive)
+                    }
+                    sx={{
+                      flexShrink: 0,
+                      mr: 1,
+                      bgcolor: cor.fundo,
+                      color: cor.tinta,
+                      fontWeight: 700,
+                      height: 26,
+                      '& .MuiChip-icon': { color: cor.tinta },
+                    }}
+                  />
+                </Tooltip>
+              );
+            })()}
           {credits !== null && (
-            <Chip
-              component={Link}
-              to="/planos"
-              clickable
-              size="small"
-              icon={<BoltRoundedIcon sx={{ fontSize: 16 }} />}
-              label={`${credits} créditos`}
-              sx={{
-                flexShrink: 0,
-                bgcolor: 'rgba(254,44,85,0.10)',
-                color: red,
-                fontWeight: 700,
-                height: 26,
-                '& .MuiChip-icon': { color: red },
-              }}
-            />
+            <Tooltip
+              title={
+                ilimitado
+                  ? 'Conta interna: os recursos de IA não consomem créditos.'
+                  : 'Créditos de IA: roteiro, imagem, vídeo, transcrição e a base de conhecimento da live.'
+              }
+            >
+              <Chip
+                component={Link}
+                to="/planos"
+                clickable
+                size="small"
+                icon={<BoltRoundedIcon sx={{ fontSize: 16 }} />}
+                label={ilimitado ? 'créditos ilimitados' : `${credits} créditos`}
+                sx={{
+                  flexShrink: 0,
+                  bgcolor: 'rgba(254,44,85,0.10)',
+                  color: red,
+                  fontWeight: 700,
+                  height: 26,
+                  '& .MuiChip-icon': { color: red },
+                }}
+              />
+            </Tooltip>
           )}
         </Box>
 

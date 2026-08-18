@@ -8,10 +8,12 @@ import { typeOrmConfig } from './config/typeorm.config';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { CombinationsModule } from './modules/combinations/combinations.module';
 import { CreatorsModule } from './modules/creators/creators.module';
 import { IngestionModule } from './modules/ingestion/ingestion.module';
+import { LiveModule } from './modules/live/live.module';
 import { MediaModule } from './modules/media/media.module';
 import { ProductsModule } from './modules/products/products.module';
 import { AdminModule } from './modules/admin/admin.module';
@@ -40,11 +42,13 @@ import { VideogenModule } from './modules/videogen/videogen.module';
       useFactory: typeOrmConfig,
     }),
     AuthModule,
+    TelemetryModule,
     BillingModule,
     CampaignsModule,
     CombinationsModule,
     CreatorsModule,
     IngestionModule,
+    LiveModule,
     MediaModule,
     UsersModule,
     ProductsModule,

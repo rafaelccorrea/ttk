@@ -29,7 +29,7 @@ import {
 import { CombinationsService } from './combinations.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { FolderDto, MoveVideosDto } from './dto/folder.dto';
-import { VideoResultDto } from './dto/video-result.dto';
+import { BulkVideoResultDto, VideoResultDto } from './dto/video-result.dto';
 
 /**
  * O multiplicador é recurso de plano pago, e o gate precisa estar AQUI.
@@ -154,6 +154,16 @@ export class CombinationsController {
     );
   }
 
+  // Antes de `videos/:id/result` por clareza de leitura — "results" é rota
+  // fixa e não disputa com o parâmetro, que está um segmento mais fundo.
+  @Patch('videos/results')
+  @ApiOperation({
+    summary: 'Lança o desempenho de vários vídeos de uma vez',
+  })
+  setResults(@CurrentUser() user: AuthUser, @Body() dto: BulkVideoResultDto) {
+    return this.combinationsService.setResultsBulk(user.id, dto.itens);
+  }
+
   @Patch('videos/:id/result')
   @ApiOperation({
     summary: 'Lança o desempenho de um vídeo publicado (tudo opcional)',
@@ -205,6 +215,17 @@ export class CombinationsController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.combinationsService.insights(user.id, id);
+  }
+
+  @Post(':id/derive')
+  @ApiOperation({
+    summary: 'Cria um plano novo só com as peças vencedoras deste',
+  })
+  derive(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.combinationsService.derive(user.id, id);
   }
 
   @Get(':id/videos')

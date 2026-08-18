@@ -1,12 +1,18 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   IsUrl,
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 
 /**
@@ -41,4 +47,27 @@ export class VideoResultDto {
   @IsUrl({ require_protocol: true })
   @MaxLength(500)
   postUrl?: string | null;
+}
+
+/** Uma linha do lançamento em massa: o mesmo conteúdo, mais o id do vídeo. */
+export class VideoResultItemDto extends VideoResultDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  id: string;
+}
+
+/**
+ * Lançamento de vários vídeos numa requisição.
+ *
+ * O teto de 150 é a matriz cheia (10 × 5 × 3) — a tela de lançamento mostra o
+ * plano inteiro, então o corpo precisa caber o plano inteiro, e nem um a mais.
+ */
+export class BulkVideoResultDto {
+  @ApiProperty({ type: [VideoResultItemDto] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(150)
+  @ValidateNested({ each: true })
+  @Type(() => VideoResultItemDto)
+  itens: VideoResultItemDto[];
 }

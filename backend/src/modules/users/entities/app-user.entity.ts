@@ -87,6 +87,58 @@ export class AppUser {
   @Column({ type: 'timestamptz', nullable: true })
   waitlistReleasedAt: Date;
 
+  /*
+   * Saldo de minutos de copiloto AO VIVO — a segunda moeda da conta.
+   *
+   * Separado de `credits` de propósito: crédito é unidade de trabalho da
+   * plataforma (um roteiro, uma imagem), comprada e comparada item a item;
+   * hora de live é tempo de transmissão, e o vendedor precisa saber quanto
+   * ainda tem antes de ligar o copiloto, não quanto vai queimar por minuto.
+   * Também protege a cota do mês: uma live longa não pode comer os créditos
+   * reservados para produzir criativos.
+   *
+   * Guardado em minutos, e não em horas, porque é a menor unidade que a gente
+   * cobra — e inteiro evita saldo fracionado que nunca fecha na conta do
+   * cliente. A venda continua sendo por hora (ver `LIVE_HOUR_PACKS`).
+   */
+  @Column('int', { default: 0 })
+  liveMinutes: number;
+
+  /*
+   * Quando a cortesia de estreia do Live Copilot foi concedida.
+   *
+   * É a trava de "uma vez por conta": os dez minutos entram no `liveMinutes`
+   * como qualquer hora comprada, então esta data é a única coisa que distingue
+   * quem ainda não ganhou de quem já ganhou e gastou.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  liveTrialGrantedAt: Date | null;
+
+  /*
+   * Quando o vendedor aceitou o termo de risco do envio automático no chat da
+   * live.
+   *
+   * Não é formalidade de jurídico: automatizar comentário viola os Termos do
+   * TikTok, e o que está em jogo é a conta de onde ele vende — não a nossa. O
+   * modo automático é recusado enquanto esta data for nula, e a data fica
+   * guardada porque "ele foi avisado" precisa ter hora, não ser uma lembrança
+   * de suporte. Nula significa que a conta só pode operar em modo painel.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  liveAutoAcceptedAt: Date | null;
+
+  /*
+   * A VERSÃO do termo que ele leu quando aceitou.
+   *
+   * A data sozinha diria que alguém clicou em algum aviso, algum dia. Quando o
+   * texto mudar — porque o risco mudou, ou porque o TikTok mudou de postura —,
+   * quem aceitou a redação anterior consentiu com outra coisa, e é esta coluna
+   * que impede o aceite antigo de autorizar em silêncio a prática nova. O modo
+   * automático só é liberado para quem aceitou a versão VIGENTE.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  liveAutoAcceptedVersion: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
