@@ -1,10 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BillingService } from '../billing/billing.service';
 import { GenerateMediaDto } from './dto/generate-media.dto';
 import { GeneratedMedia } from './entities/generated-media.entity';
-import { HiggsfieldService } from './higgsfield.service';
+import { GERADOR_DE_MIDIA, type GeradorDeMidia } from './gerador-de-midia';
 
 const TERMINAL = ['completed', 'failed', 'nsfw', 'canceled'];
 
@@ -13,7 +13,8 @@ export class VideogenService {
   constructor(
     @InjectRepository(GeneratedMedia)
     private readonly media: Repository<GeneratedMedia>,
-    private readonly higgsfield: HiggsfieldService,
+    @Inject(GERADOR_DE_MIDIA)
+    private readonly higgsfield: GeradorDeMidia,
     private readonly billing: BillingService,
   ) {}
 

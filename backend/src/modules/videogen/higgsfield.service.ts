@@ -6,24 +6,17 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type {
+  GeradorDeMidia,
+  StatusResult,
+  SubmitResult,
+} from './gerador-de-midia';
 
 const BASE_URL = 'https://platform.higgsfield.ai';
 
-export interface SubmitResult {
-  requestId: string;
-  status: string;
-}
-
-export interface StatusResult {
-  status: string;
-  imageUrl?: string;
-  videoUrl?: string;
-  error?: string;
-}
-
 /** Cliente da API da Higgsfield (Soul texto→imagem, DoP imagem→vídeo). */
 @Injectable()
-export class HiggsfieldService {
+export class HiggsfieldService implements GeradorDeMidia {
   private readonly logger = new Logger(HiggsfieldService.name);
 
   constructor(private readonly config: ConfigService) {}
