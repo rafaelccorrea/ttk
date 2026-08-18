@@ -708,14 +708,39 @@ export class ApiClient {
       throw new Error('Dispositivo não pareado.');
     }
 
-    const resposta = await fetch(`${this.baseUrl}${caminho}`, {
-      method: metodo,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(autenticado ? { Authorization: `Bearer ${this.tokenAtual}` } : {}),
-      },
-      body: corpo === undefined ? undefined : JSON.stringify(corpo),
-    });
+    let resposta: Response;
+    try {
+      resposta = await fetch(`${this.baseUrl}${caminho}`, {
+        method: metodo,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(autenticado ? { Authorization: `Bearer ${this.tokenAtual}` } : {}),
+        },
+        body: corpo === undefined ? undefined : JSON.stringify(corpo),
+      });
+    } catch (erro) {
+      /*
+       * A rede falhando não é um status HTTP, e por isso escapava de todo o
+       * cuidado que existe logo abaixo: `fetch` REJEITA quando o DNS não
+       * resolve, a máquina está offline ou o servidor recusa a conexão. Sem
+       * este catch, o que chegava à tela era `TypeError: fetch failed` — e,
+       * atravessando o IPC, com o prefixo `Error invoking remote method
+       * 'ativacao:iniciar'`. Nenhuma das duas metades dessa frase é sobre o
+       * problema do vendedor, e nenhuma diz o que fazer.
+       *
+       * O endereço vai junto na mensagem de propósito. Foi exatamente assim
+       * que um instalador antigo, apontando para um domínio que nunca foi
+       * registrado, ficou dias parecendo "app quebrado": a tela dizia
+       * "não consegui gerar o código" e não havia como saber, olhando para
+       * ela, que o app estava batendo num endereço morto.
+       */
+      throw new Error(
+        `Não consegui falar com o servidor do PikPok (${this.baseUrl}). ` +
+          'Confira sua conexão com a internet; se ela estiver boa, o app pode ' +
+          'estar desatualizado — baixe a versão mais recente.',
+        { cause: erro },
+      );
+    }
 
     if (resposta.status === 401 && autenticado) {
       // O token de 30 dias venceu ou foi revogado na web. Esquecer aqui é o que

@@ -79,6 +79,7 @@ async function main(): Promise<void> {
   );
   const produtos = app.get<Repository<Product>>(getRepositoryToken(Product));
 
+  // `settings` é só de LEITURA aqui: o dono do contador é o ApiQuotaService.
   const config = await settings.findOne({ where: {} });
   if (!config) {
     log.error('Sem linha em ingestion_settings — nada a fazer.');
@@ -118,21 +119,18 @@ async function main(): Promise<void> {
     const r = await ingestion.descobrirNovos(PAGINAS, tamanho);
 
     /*
-     * O contador do mês é atualizado AQUI porque o `descobrirNovos` não fecha a
-     * janela de cota — ele foi feito para a rota administrativa, que informa o
-     * custo na resposta e deixa a contabilidade para quem chamou. Sem esta
-     * escrita, o `atualizar.ts` continuaria calculando o rateio como se as
-     * requisições deste script não tivessem existido, e o mês estouraria sem
-     * ninguém ver.
+     * O contador do mês NÃO é atualizado aqui, e isso é deliberado.
+     *
+     * Quem contabiliza é o `ApiQuotaService`, que registra cada requisição no
+     * momento em que ela sai e descarrega em `apiRequestsUsed` a cada dez. Uma
+     * versão anterior deste script somava `r.requisicoes` por conta própria
+     * "para não perder o registro", e o efeito foi o oposto: 33 requisições
+     * viraram 63 no banco, o rateio do `atualizar.ts` passou a enxergar menos
+     * cota do que existia, e a ingestão automática seria estrangulada por um
+     * número inventado.
+     *
+     * Contador de cota tem UM dono. Aqui só se lê.
      */
-    if (!semTeto && r.requisicoes > 0) {
-      const atual = await settings.findOne({ where: { id: config.id } });
-      if (atual) {
-        atual.apiRequestsUsed += r.requisicoes;
-        await settings.save(atual);
-      }
-    }
-
     gastas += r.requisicoes;
     novosTotal += r.novos;
     restante -= r.requisicoes;
