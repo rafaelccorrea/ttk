@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiCostService } from '../telemetry/ai-cost.service';
@@ -394,27 +393,75 @@ Uma frase por peça, linguagem falada, português do Brasil, sem texto na tela.
 No fim de cada peça, entre parênteses, a indicação de imagem em poucas palavras.`;
 };
 
+/**
+ * O modelo de JULGAMENTO: roteiro, campanha, análise, consolidação da live.
+ *
+ * Substitui o `claude-opus-5` e custa metade dele (USD 2,50/15 por milhão
+ * contra 5/25). Onde o texto é o produto entregue ao cliente, é aqui.
+ */
+export const MODELO_FORTE = 'gpt-5.4';
+
+/**
+ * O modelo de VOLUME: extração por bloco de live e resposta ao chat.
+ *
+ * Substitui `claude-sonnet-5` e `claude-haiku-4-5` de uma vez, e é mais barato
+ * que os dois (USD 0,75/4,50 contra 3/15 e 1/5). São tarefas de muito input e
+ * pouco julgamento, chamadas dezenas de vezes por live — exatamente o perfil em
+ * que o modelo pequeno entrega o mesmo resultado por uma fração do custo.
+ */
+export const MODELO_RAPIDO = 'gpt-5.4-mini';
+
+/** Um bloco do conteúdo do usuário: texto, ou a foto real do produto. */
+type BlocoDeConteudo =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
+/** O pedido, no vocabulário deste serviço — não no do fornecedor. */
+interface ChamadaParams {
+  model: string;
+  maxTokens: number;
+  /** Partes do system, da MAIS estável para a menos: é a ordem do cache. */
+  system: string | string[];
+  conteudo: string | BlocoDeConteudo[];
+  /** Presente quando a forma da resposta precisa ser garantida, não pedida. */
+  jsonSchema?: { nome: string; schema: unknown };
+  /** Desliga o raciocínio onde a latência importa mais que a qualidade. */
+  semRaciocinio?: boolean;
+}
+
+/** A resposta, já reduzida ao que os chamadores realmente usam. */
+interface RespostaDaIa {
+  texto: string;
+  model: string;
+  recusado: boolean;
+  cacheReadTokens: number;
+}
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
-  private readonly client: Anthropic | null;
+  private readonly apiKey: string | null;
 
   constructor(
     config: ConfigService,
     private readonly custos: AiCostService,
   ) {
-    const apiKey = config.get<string>('ANTHROPIC_API_KEY');
-    this.client = apiKey ? new Anthropic({ apiKey }) : null;
+    this.apiKey = config.get<string>('OPENAI_API_KEY') || null;
   }
 
   /**
-   * Toda chamada ao Claude passa por aqui, para que nenhuma escape da medição.
+   * Toda chamada à OpenAI passa por aqui, para que nenhuma escape da medição.
    *
    * Envolver em vez de anotar caso a caso é o que impede a telemetria de
    * envelhecer: o próximo método que alguém escrever neste arquivo já nasce
-   * medido, porque `this.client.messages.create` não é chamado de mais lugar
-   * nenhum. O que se mede é o `usage` que a própria API devolve — token
-   * contado por quem cobra, não estimado por nós.
+   * medido, porque o `fetch` da API não é chamado de mais lugar nenhum. O que
+   * se mede é o `usage` que a própria API devolve — token contado por quem
+   * cobra, não estimado por nós.
+   *
+   * O tipo de retorno é NOSSO, não o da OpenAI, e é o que mantém os sete
+   * chamadores livres do formato do fornecedor: eles pedem texto e recebem
+   * texto. Trocar de provedor de novo é reescrever este método, como esta
+   * própria migração provou ao não precisar tocar em nenhum prompt.
    *
    * O registro é best-effort e não pode derrubar a geração: perder uma linha
    * de telemetria custa um relatório levemente subestimado; perder o roteiro
@@ -422,83 +469,140 @@ export class AiService {
    */
   private async chamar(
     feature: CostFeature,
-    params: Anthropic.MessageCreateParamsNonStreaming,
+    params: ChamadaParams,
     meta: { userId?: string | null; chargedUnit?: 'credit' | 'live_minute'; chargedAmount?: number } = {},
-  ): Promise<Anthropic.Message> {
-    const response = await (this.client as Anthropic).messages.create(params);
-    const usage = response.usage as unknown as {
-      input_tokens?: number;
-      output_tokens?: number;
-      cache_read_input_tokens?: number;
-      cache_creation_input_tokens?: number;
+  ): Promise<RespostaDaIa> {
+    /*
+     * As partes do system viram UMA mensagem, na ordem recebida, e a ordem é
+     * a regra de cache: a OpenAI cacheia o PREFIXO comum entre chamadas, então
+     * o que é estável (as instruções, a base da live) tem que vir antes do que
+     * varia. É a mesma disciplina que o `cache_control` da Anthropic exigia,
+     * só que aqui o corte é implícito — não há marcador para errar, há ordem.
+     */
+    const system = (Array.isArray(params.system) ? params.system : [params.system]).join('\n\n');
+
+    const body: Record<string, unknown> = {
+      model: params.model,
+      // `max_tokens` é recusado pelos modelos gpt-5: o nome mudou porque a
+      // conta agora inclui os tokens de raciocínio, não só os de resposta.
+      max_completion_tokens: params.maxTokens,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: params.conteudo },
+      ],
     };
+    if (params.semRaciocinio) {
+      // O equivalente ao `thinking: disabled` da Anthropic. Vale só onde a
+      // latência é o produto (o chat ao vivo); no resto, raciocinar melhora o
+      // roteiro e ninguém está esperando na frente da tela.
+      body.reasoning_effort = 'none';
+    }
+    if (params.jsonSchema) {
+      body.response_format = {
+        type: 'json_schema',
+        json_schema: {
+          name: params.jsonSchema.nome,
+          // `strict` é o que transforma o schema em garantia em vez de pedido.
+          // Os schemas deste arquivo já nasceram compatíveis: todo campo em
+          // `required`, `additionalProperties: false`, opcional expresso como
+          // `type: ['number', 'null']`.
+          strict: true,
+          schema: params.jsonSchema.schema,
+        },
+      };
+    }
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    const dados = (await response.json().catch(() => ({}))) as any;
+    if (!response.ok) {
+      throw new Error(
+        `OpenAI ${response.status}: ${dados?.error?.message ?? response.statusText}`,
+      );
+    }
+
+    const escolha = dados?.choices?.[0];
+    const usage = dados?.usage ?? {};
+    /*
+     * A entrada cacheada vem DENTRO de `prompt_tokens`, não somada a ele — ao
+     * contrário da Anthropic, onde os campos de cache são disjuntos do
+     * `input_tokens`. Subtrair aqui é o que impede o token cacheado de ser
+     * cobrado duas vezes no relatório: uma pelo preço cheio e outra pelo preço
+     * de cache.
+     */
+    const cacheReadTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
     void this.custos.registrar(
       feature,
-      response.model,
+      dados?.model ?? params.model,
       {
-        inputTokens: usage?.input_tokens,
-        outputTokens: usage?.output_tokens,
-        cacheReadTokens: usage?.cache_read_input_tokens,
-        cacheWriteTokens: usage?.cache_creation_input_tokens,
+        inputTokens: Math.max(0, (usage?.prompt_tokens ?? 0) - cacheReadTokens),
+        outputTokens: usage?.completion_tokens,
+        cacheReadTokens,
+        // A OpenAI não cobra pela gravação do cache nem a reporta; ver a nota
+        // em `model-pricing.ts`.
+        cacheWriteTokens: 0,
       },
       meta,
     );
-    return response;
+
+    return {
+      texto: escolha?.message?.content ?? '',
+      model: dados?.model ?? params.model,
+      // A recusa é um campo próprio, não um `stop_reason`: quando o modelo se
+      // nega, `content` vem null e o motivo vem aqui.
+      recusado: Boolean(escolha?.message?.refusal),
+      cacheReadTokens,
+    };
   }
 
   /** true quando a API real está configurada (senão, gerador local gratuito). */
   get enabled(): boolean {
-    return this.client !== null;
+    return this.apiKey !== null;
   }
 
   async generateScript(request: ScriptRequest): Promise<ScriptResult> {
-    if (!this.client) {
+    if (!this.apiKey) {
       return this.templateFallback(request);
     }
     try {
       const response = await this.chamar('script', {
-        model: 'claude-opus-5',
-        max_tokens: 16000,
+        model: MODELO_FORTE,
+        maxTokens: 16000,
         system:
           request.formato === 'pecas'
             ? pecasSystem(normalizarPecas(request.pecas))
             : request.type === 'live'
               ? LIVE_SYSTEM
               : VIDEO_SYSTEM,
-        messages: [
-          {
-            role: 'user',
-            // A foto vem ANTES do texto: é a ordem que a própria Anthropic
-            // recomenda quando a instrução se refere à imagem.
-            content: request.productImage
-              ? [
-                  {
-                    type: 'image' as const,
-                    source: {
-                      type: 'base64' as const,
-                      media_type: request.productImage
-                        .mediaType as 'image/webp',
-                      data: request.productImage.base64,
-                    },
-                  },
-                  {
-                    type: 'text' as const,
-                    text: `${this.buildUserPrompt(request)}\n\nA imagem acima é a foto real do produto: use o que dá para VER nela (formato, cor, uso) nas indicações de cena.`,
-                  },
-                ]
-              : this.buildUserPrompt(request),
-          },
-        ],
+        // A foto vem ANTES do texto: é a ordem recomendada quando a instrução
+        // se refere à imagem. A imagem viaja como data URI, que é como esta
+        // API recebe base64 — não há campo separado de `source`.
+        conteudo: request.productImage
+          ? [
+              {
+                type: 'image_url' as const,
+                image_url: {
+                  url: `data:${request.productImage.mediaType};base64,${request.productImage.base64}`,
+                },
+              },
+              {
+                type: 'text' as const,
+                text: `${this.buildUserPrompt(request)}\n\nA imagem acima é a foto real do produto: use o que dá para VER nela (formato, cor, uso) nas indicações de cena.`,
+              },
+            ]
+          : this.buildUserPrompt(request),
       });
-      if (response.stop_reason === 'refusal') {
+      if (response.recusado) {
         this.logger.warn('Geração recusada pelo modelo; usando template.');
         return this.templateFallback(request);
       }
-      const content = response.content
-        .filter((b) => b.type === 'text')
-        .map((b: any) => b.text)
-        .join('\n');
-      return { content, model: response.model };
+      return { content: response.texto, model: response.model };
     } catch (error) {
       this.logger.error(`Falha na API de IA: ${error}. Usando template.`);
       return this.templateFallback(request);
@@ -513,24 +617,21 @@ export class AiService {
    * entre si.
    */
   async generateCampaign(request: CampanhaRequest): Promise<CampanhaResult> {
-    if (!this.client) {
+    if (!this.apiKey) {
       return this.campanhaFallback(request);
     }
     try {
       const response = await this.chamar('campaign', {
-        model: 'claude-opus-5',
-        max_tokens: 8000,
+        model: MODELO_FORTE,
+        maxTokens: 8000,
         system: CAMPAIGN_SYSTEM,
-        messages: [{ role: 'user', content: this.buildCampanhaPrompt(request) }],
+        conteudo: this.buildCampanhaPrompt(request),
       });
-      if (response.stop_reason === 'refusal') {
+      if (response.recusado) {
         this.logger.warn('Campanha recusada pelo modelo; usando template.');
         return this.campanhaFallback(request);
       }
-      const texto = response.content
-        .filter((b) => b.type === 'text')
-        .map((b: any) => b.text)
-        .join('\n');
+      const texto = response.texto;
       const cenas = this.extrairCenas(
         texto,
         request.cenas,
@@ -701,21 +802,16 @@ export class AiService {
     categoria: string,
     referencias: ReferenciaDeCofre[],
   ): Promise<PromptDestilado[]> {
-    if (!this.client || referencias.length === 0) return [];
+    if (!this.apiKey || referencias.length === 0) return [];
     try {
       const response = await this.chamar('script', {
-        model: 'claude-opus-5',
-        max_tokens: 4000,
+        model: MODELO_FORTE,
+        maxTokens: 4000,
         system: COFRE_SYSTEM,
-        messages: [
-          { role: 'user', content: this.buildCofrePrompt(categoria, referencias) },
-        ],
+        conteudo: this.buildCofrePrompt(categoria, referencias),
       });
-      if (response.stop_reason === 'refusal') return [];
-      const texto = response.content
-        .map((bloco) => (bloco.type === 'text' ? bloco.text : ''))
-        .join('');
-      return this.extrairPrompts(texto);
+      if (response.recusado) return [];
+      return this.extrairPrompts(response.texto);
     } catch (error) {
       this.logger.warn(`Falha ao destilar prompts de "${categoria}": ${error}`);
       return [];
@@ -805,7 +901,7 @@ export class AiService {
     productName?: string,
     price?: number,
   ): Promise<ScriptResult> {
-    if (!this.client) {
+    if (!this.apiKey) {
       return this.analyzeFallback(transcript, productName);
     }
     try {
@@ -816,19 +912,15 @@ export class AiService {
         );
       }
       const response = await this.chamar('analyze', {
-        model: 'claude-opus-5',
-        max_tokens: 16000,
+        model: MODELO_FORTE,
+        maxTokens: 16000,
         system: ANALYZE_SYSTEM,
-        messages: [{ role: 'user', content: parts.join('\n\n') }],
+        conteudo: parts.join('\n\n'),
       });
-      if (response.stop_reason === 'refusal') {
+      if (response.recusado) {
         return this.analyzeFallback(transcript, productName);
       }
-      const content = response.content
-        .filter((b) => b.type === 'text')
-        .map((b: any) => b.text)
-        .join('\n');
-      return { content, model: response.model };
+      return { content: response.texto, model: response.model };
     } catch (error) {
       this.logger.error(`Falha na análise: ${error}. Usando template.`);
       return this.analyzeFallback(transcript, productName);
@@ -875,7 +967,7 @@ export class AiService {
     return parts.join('\n');
   }
 
-  // Sem ANTHROPIC_API_KEY, gera um roteiro estrutural preenchido com o produto.
+  // Sem OPENAI_API_KEY, gera um roteiro estrutural preenchido com o produto.
   private templateFallback(r: ScriptRequest): ScriptResult {
     const name = r.productName;
     const price = r.price ? `R$ ${r.price.toFixed(2)}` : 'preço promocional';
@@ -921,7 +1013,7 @@ export class AiService {
   }
 
   /**
-   * Peças sem ANTHROPIC_API_KEY.
+   * Peças sem OPENAI_API_KEY.
    *
    * O formato importa mais que o texto: a tela do Multiplicador lê os três
    * títulos e a numeração para separar os blocos, então o fallback precisa
@@ -981,11 +1073,11 @@ export class AiService {
   /**
    * Passo MAP: extrai os produtos de UM bloco da transcrição da live.
    *
-   * Roda em `claude-sonnet-5`, e não no Opus usado no resto do arquivo, porque
+   * Roda no MODELO_RAPIDO, e não no forte usado no resto do arquivo, porque
    * é este método que multiplica: uma live de 4h vira dezenas de blocos e este
    * método é chamado uma vez por bloco. A tarefa aqui é leitura e transcrição
    * estruturada do que foi dito — muito input, pouco julgamento —, exatamente o
-   * perfil em que o Sonnet entrega o mesmo resultado por uma fração do custo.
+   * perfil em que o modelo pequeno entrega o mesmo resultado por uma fração do custo.
    * O julgamento fica todo no REDUCE, que roda uma vez só. É essa divisão que
    * faz a extração de uma live inteira caber nos 17 créditos cobrados.
    */
@@ -993,34 +1085,27 @@ export class AiService {
     texto: string;
     inicioSec: number;
   }): Promise<ProdutoExtraido[]> {
-    if (!this.client || !bloco.texto.trim()) {
-      if (!this.client) {
+    if (!this.apiKey || !bloco.texto.trim()) {
+      if (!this.apiKey) {
         this.logger.warn(
-          'Sem ANTHROPIC_API_KEY: extração de conhecimento devolvendo vazio.',
+          'Sem OPENAI_API_KEY: extração de conhecimento devolvendo vazio.',
         );
       }
       return [];
     }
     try {
       const response = await this.chamar('live_extract', {
-        model: 'claude-sonnet-5',
-        max_tokens: 8000,
+        model: MODELO_RAPIDO,
+        maxTokens: 8000,
         system: LIVE_MAP_SYSTEM,
-        output_config: {
-          format: { type: 'json_schema', schema: SCHEMA_MAP },
-        },
-        messages: [
-          {
-            role: 'user',
-            content: this.buildBlocoPrompt(bloco),
-          },
-        ],
-      } as any);
-      if (response.stop_reason === 'refusal') {
+        jsonSchema: { nome: 'produtos_do_bloco', schema: SCHEMA_MAP },
+        conteudo: this.buildBlocoPrompt(bloco),
+      });
+      if (response.recusado) {
         this.logger.warn('Extração do bloco recusada pelo modelo; ignorando.');
         return [];
       }
-      const dados = this.lerJson<{ produtos?: unknown }>(response);
+      const dados = this.lerJson<{ produtos?: unknown }>(response.texto);
       return this.normalizarProdutos(dados?.produtos, bloco.inicioSec);
     } catch (error) {
       this.logger.error(
@@ -1033,7 +1118,7 @@ export class AiService {
   /**
    * Passo REDUCE: transforma os candidatos de todos os blocos numa base única.
    *
-   * Este roda em `claude-opus-5` e roda UMA VEZ POR LIVE. Deduplicar produto de
+   * Este roda no MODELO_FORTE e roda UMA VEZ POR LIVE. Deduplicar produto de
    * live é julgamento puro: decidir se "a canequinha" e "Caneca Térmica 500ml"
    * são o mesmo item, e qual dos três preços ditos ao longo de quatro horas é o
    * que vale agora. Errar aqui não custa um bloco, custa a base inteira — então
@@ -1042,40 +1127,33 @@ export class AiService {
   async consolidarConhecimento(
     candidatos: ProdutoExtraido[],
   ): Promise<BaseDeConhecimento> {
-    if (!this.client || candidatos.length === 0) {
-      if (!this.client) {
+    if (!this.apiKey || candidatos.length === 0) {
+      if (!this.apiKey) {
         this.logger.warn(
-          'Sem ANTHROPIC_API_KEY: base de conhecimento devolvida vazia.',
+          'Sem OPENAI_API_KEY: base de conhecimento devolvida vazia.',
         );
       }
       return { produtos: [], faq: [] };
     }
     try {
       const response = await this.chamar('live_extract', {
-        model: 'claude-opus-5',
-        max_tokens: 16000,
+        model: MODELO_FORTE,
+        maxTokens: 16000,
         system: LIVE_REDUCE_SYSTEM,
-        output_config: {
-          format: { type: 'json_schema', schema: SCHEMA_REDUCE },
-        },
-        messages: [
-          {
-            role: 'user',
-            content: [
-              'Candidatos extraídos dos trechos desta live, em ordem de tempo:',
-              JSON.stringify(candidatos),
-              '',
-              'Consolide agora: funda os duplicados, una os aliases e devolva a base.',
-            ].join('\n'),
-          },
-        ],
-      } as any);
-      if (response.stop_reason === 'refusal') {
+        jsonSchema: { nome: 'base_da_live', schema: SCHEMA_REDUCE },
+        conteudo: [
+          'Candidatos extraídos dos trechos desta live, em ordem de tempo:',
+          JSON.stringify(candidatos),
+          '',
+          'Consolide agora: funda os duplicados, una os aliases e devolva a base.',
+        ].join('\n'),
+      });
+      if (response.recusado) {
         this.logger.warn('Consolidação recusada pelo modelo; base vazia.');
         return { produtos: [], faq: [] };
       }
       const dados = this.lerJson<{ produtos?: unknown; faq?: unknown }>(
-        response,
+        response.texto,
       );
       return {
         produtos: this.normalizarProdutos(dados?.produtos, null),
@@ -1096,27 +1174,36 @@ export class AiService {
    * chamada para várias perguntas divide o custo fixo do prompt — que é a base
    * inteira — por todas elas.
    *
-   * A base vai no `system` com `cache_control` de 1h e as perguntas vão em
-   * `messages`, DEPOIS do ponto de corte. Essa ordem é o produto inteiro: a
-   * base é o prefixo estável que se paga uma vez por live, e o lote é a parte
-   * volátil. Qualquer coisa que varie por lote (hora, contador, id do lote)
-   * dentro do `system` invalidaria o cache a cada 800ms e é justamente o erro
-   * clássico — por isso nada aqui monta o system a partir de estado.
+   * A base e as instruções vão no `system`, as perguntas vão DEPOIS. Essa
+   * ordem é o produto inteiro: a base é o prefixo estável que se paga uma vez
+   * por live, e o lote é a parte volátil. Qualquer coisa que varie por lote
+   * (hora, contador, id do lote) dentro do `system` invalidaria o cache a cada
+   * 800ms e é justamente o erro clássico — por isso nada aqui monta o system a
+   * partir de estado.
    *
-   * O modelo é parâmetro porque o motor reprocessa a pergunta cara no Opus
-   * quando o Haiku fica em cima do muro (ver `live-reply.service.ts`).
+   * O cache aqui é IMPLÍCITO: a OpenAI cacheia sozinha o prefixo comum entre
+   * chamadas e não há marcador de corte para posicionar, ao contrário do
+   * `cache_control` de 1h que esta chamada usava na Anthropic. Na prática o
+   * desconto continua vindo (a base é literalmente o mesmo texto a cada 800ms),
+   * mas ele é mais frágil: a janela é de minutos e não de uma hora, então uma
+   * live com pausas longas volta a pagar o prefixo cheio. É a única perda real
+   * da migração, e é medida — `cacheReadTokens` sai daqui exatamente para que o
+   * motor consiga gritar quando vier zero.
+   *
+   * O modelo é parâmetro porque o motor reprocessa a pergunta cara no modelo
+   * forte quando o rápido fica em cima do muro (ver `live-reply.service.ts`).
    */
   async responderChatDaLive(entrada: {
     baseSerializada: string;
     perguntas: Array<{ messageId: string; texto: string; repeticoes: number }>;
-    modelo: 'claude-haiku-4-5' | 'claude-opus-5';
+    modelo: typeof MODELO_RAPIDO | typeof MODELO_FORTE;
     userId?: string | null;
     minutosCobrados?: number;
   }): Promise<LoteDeRespostas> {
-    if (!this.client || !entrada.perguntas.length) {
-      if (!this.client) {
+    if (!this.apiKey || !entrada.perguntas.length) {
+      if (!this.apiKey) {
         this.logger.warn(
-          'Sem ANTHROPIC_API_KEY: copiloto ao vivo devolvendo lote vazio.',
+          'Sem OPENAI_API_KEY: copiloto ao vivo devolvendo lote vazio.',
         );
       }
       return { respostas: [], model: entrada.modelo, cacheReadTokens: 0 };
@@ -1126,42 +1213,25 @@ export class AiService {
       'live_reply',
       {
         model: entrada.modelo,
-        max_tokens: 1024,
-        // Sem thinking: são ~120 tokens de resposta lidos num painel enquanto a
-        // live corre, e pensar antes custaria mais latência do que a resposta
+        maxTokens: 1024,
+        // Sem raciocínio: são ~120 tokens de resposta lidos num painel enquanto
+        // a live corre, e pensar antes custaria mais latência do que a resposta
         // vale. Sem streaming pelo mesmo motivo — não há para quem transmitir
         // token a token, o painel só mostra a frase pronta.
-        thinking: { type: 'disabled' },
-        system: [
-          {
-            type: 'text',
-            text: LIVE_REPLY_SYSTEM,
-          },
-          {
-            type: 'text',
-            text: `<base>\n${entrada.baseSerializada}\n</base>`,
-            cache_control: { type: 'ephemeral', ttl: '1h' },
-          },
-        ],
-        output_config: {
-          format: { type: 'json_schema', schema: SCHEMA_REPLY },
-        },
-        messages: [
-          {
-            role: 'user',
-            content: [
-              'Perguntas do chat agora (responda todas):',
-              JSON.stringify(
-                entrada.perguntas.map((p) => ({
-                  messageId: p.messageId,
-                  texto: p.texto.replace(/[<>]/g, ' '),
-                  pessoasPerguntando: p.repeticoes,
-                })),
-              ),
-            ].join('\n'),
-          },
-        ],
-      } as any,
+        semRaciocinio: true,
+        system: [LIVE_REPLY_SYSTEM, `<base>\n${entrada.baseSerializada}\n</base>`],
+        jsonSchema: { nome: 'respostas_do_chat', schema: SCHEMA_REPLY },
+        conteudo: [
+          'Perguntas do chat agora (responda todas):',
+          JSON.stringify(
+            entrada.perguntas.map((p) => ({
+              messageId: p.messageId,
+              texto: p.texto.replace(/[<>]/g, ' '),
+              pessoasPerguntando: p.repeticoes,
+            })),
+          ),
+        ].join('\n'),
+      },
       {
         userId: entrada.userId ?? null,
         chargedUnit: 'live_minute',
@@ -1169,15 +1239,12 @@ export class AiService {
       },
     );
 
-    if (response.stop_reason === 'refusal') {
+    if (response.recusado) {
       this.logger.warn('Lote do chat ao vivo recusado pelo modelo; ignorando.');
       return { respostas: [], model: response.model, cacheReadTokens: 0 };
     }
 
-    const dados = this.lerJson<{ replies?: unknown }>(response);
-    const usage = response.usage as unknown as {
-      cache_read_input_tokens?: number;
-    };
+    const dados = this.lerJson<{ replies?: unknown }>(response.texto);
     return {
       respostas: Array.isArray(dados?.replies)
         ? (dados.replies as RespostaAoVivo[]).filter(
@@ -1185,7 +1252,7 @@ export class AiService {
           )
         : [],
       model: response.model,
-      cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
+      cacheReadTokens: response.cacheReadTokens,
     };
   }
 
@@ -1206,12 +1273,8 @@ export class AiService {
     ].join('\n');
   }
 
-  /** Com structured outputs o primeiro bloco de texto já é o JSON válido. */
-  private lerJson<T>(response: { content: unknown[] }): T | null {
-    const texto = (response.content as Array<{ type: string; text?: string }>)
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text ?? '')
-      .join('');
+  /** Com structured outputs o texto da resposta já é o JSON válido. */
+  private lerJson<T>(texto: string): T | null {
     try {
       return JSON.parse(texto) as T;
     } catch {

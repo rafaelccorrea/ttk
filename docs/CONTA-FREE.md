@@ -83,6 +83,8 @@ promessa que o restart quebra não é promessa.
 | Produtos na amostra | 20 | `FREE_SAMPLE.products` |
 | Vídeos na amostra | 10 | `FREE_SAMPLE.videos` |
 | Validade do snapshot | 7 dias | `FREE_SAMPLE.refreshDays` |
+| Tamanho do pool de rodízio | 6x a amostra | `FREE_SAMPLE.poolFactor` |
+| Quando a janela vira | segunda, 00:00 (Brasília) | `FREE_SAMPLE.rotationAnchorUtcMs` |
 
 Os três números moram em `billing.config.ts`, junto do resto da política comercial, e não
 no módulo `free`: são decisão de negócio, e ficam onde as outras decisões de negócio já
@@ -92,22 +94,36 @@ estão sendo lidas quando alguém for mexer no funil.
 itens do mesmo nicho, e aí a amostra prova que a base é grande em um assunto só — que é o
 contrário do que ela precisa provar.
 
-**A troca é por expiração, não por cron.** Existe um job, mas ele é só aquecimento: quem
-decide é o `slot` calculado na requisição. Se o cron cair, a amostra ainda gira. Um produto
-que depende do agendador para funcionar quebra silenciosamente no primeiro domingo em que
-o agendador não rodar.
+**O rodízio é real, não é o mesmo topo toda semana.** A escolha lê um pool de
+`poolFactor` vezes o tamanho da amostra (120 produtos, 60 vídeos, 30 criadores) e cada
+janela recorta dele uma fatia diferente, dando a volta quando acaba. Sem isso a rotação
+seria decorativa: as queries ordenam por ranking de 30 dias, que muda pouco em sete dias —
+o usuário voltaria na segunda e veria a mesma vitrine. Com o pool, são ~6 semanas até a
+primeira repetição, e nenhuma consulta a fornecedor: tudo sai do que a ingestão já gravou.
 
-O job roda **diário** (`0 4 * * *`), e não semanal, pelo mesmo raciocínio: um job semanal
-que falha perde a única chance da semana; este perde uma tentativa e refaz em 24h.
-`currentSample()` é idempotente dentro da janela, então rodar todo dia não gera trabalho
-extra.
+**A troca é por expiração, não por cron.** Existem dois jobs, mas os dois são só
+aquecimento: quem decide é o `slot` calculado na requisição, e a fatia é função do `slot`
+— então rodar o job atrasado, ou não rodar, dá exatamente a mesma amostra. Um produto que
+depende do agendador para funcionar quebra silenciosamente no primeiro domingo em que o
+agendador não rodar.
 
-**Como a janela é calculada.** `slot = floor(agora / 7 dias)` desde a época Unix — não a
-partir da primeira geração. Alinhar à época faz a troca acontecer no mesmo instante para
-todo mundo; alinhar à primeira geração faria a data de rotação depender de qual visitante
-acordou o snapshot primeiro. O `slot` é também o `UNIQUE` da tabela, e é ele que garante
-que duas requisições simultâneas numa janela vazia não criem dois snapshots concorrentes:
-a segunda perde a corrida no banco e lê o que a primeira gravou.
+| Job | Quando | Para quê |
+|---|---|---|
+| `rotacaoSemanal()` | `0 0 * * 1` (America/Sao_Paulo) | grava o rodízio da semana no minuto da virada, para o primeiro usuário da segunda não esperar pelas queries de ranking |
+| `warmUp()` | `0 4 * * *` | rede de segurança: um job semanal que falha perde a única chance da semana; este refaz em 24h |
+
+`currentSample()` é idempotente dentro da janela, então os dois rodando não geram trabalho
+extra — o segundo a rodar só lê o que já está gravado.
+
+**Como a janela é calculada.** `slot = floor((agora − âncora) / 7 dias)`, com a âncora numa
+segunda-feira 00:00 de Brasília (`Date.UTC(2024, 0, 1, 3, 0, 0)`; o Brasil não tem mais
+horário de verão, então o `-03:00` fixo vale o ano inteiro). Ancorar num instante fixo faz
+a troca acontecer no mesmo momento para todo mundo; alinhar à primeira geração faria a data
+de rotação depender de qual visitante acordou o snapshot primeiro. A âncora não é mais a
+época Unix porque a época cai numa **quinta**, e a amostra virava na madrugada de quinta —
+num horário que ninguém escolheu. O `slot` é também o `UNIQUE` da tabela, e é ele que
+garante que duas requisições simultâneas numa janela vazia não criem dois snapshots
+concorrentes: a segunda perde a corrida no banco e lê o que a primeira gravou.
 
 ---
 

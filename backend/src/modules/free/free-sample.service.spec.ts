@@ -62,7 +62,10 @@ describe('FreeSampleService', () => {
   const productsRepo = {
     query: jest.fn(() =>
       Promise.resolve(
-        Array.from({ length: FREE_SAMPLE.products }, (_, i) => ({ id: `p${i}` })),
+        Array.from(
+          { length: FREE_SAMPLE.products * FREE_SAMPLE.poolFactor },
+          (_, i) => ({ id: `p${i}` }),
+        ),
       ),
     ),
     find: jest.fn(({ where }: any) =>
@@ -77,7 +80,10 @@ describe('FreeSampleService', () => {
   const videosRepo = {
     query: jest.fn(() =>
       Promise.resolve(
-        Array.from({ length: FREE_SAMPLE.videos }, (_, i) => ({ id: `v${i}` })),
+        Array.from(
+          { length: FREE_SAMPLE.videos * FREE_SAMPLE.poolFactor },
+          (_, i) => ({ id: `v${i}` }),
+        ),
       ),
     ),
     find: jest.fn(({ where }: any) =>
@@ -90,7 +96,10 @@ describe('FreeSampleService', () => {
   const creatorsRepo = {
     query: jest.fn(() =>
       Promise.resolve(
-        Array.from({ length: FREE_SAMPLE.creators }, (_, i) => ({ id: `c${i}` })),
+        Array.from(
+          { length: FREE_SAMPLE.creators * FREE_SAMPLE.poolFactor },
+          (_, i) => ({ id: `c${i}` }),
+        ),
       ),
     ),
     find: jest.fn(({ where }: any) =>
@@ -263,6 +272,40 @@ describe('FreeSampleService', () => {
       anterior.expiresAt.getTime(),
     );
     jest.spyOn(Date, 'now').mockRestore();
+  });
+
+  // Contra o rodízio decorativo: a janela virava, mas a query devolvia o mesmo
+  // topo de ranking e o usuário via a mesma vitrine na segunda seguinte.
+  it('troca os itens de uma janela para a outra', async () => {
+    const semana1 = await service.currentSample();
+    const real = Date.now;
+    jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(real() + FREE_SAMPLE.refreshDays * 24 * 60 * 60 * 1000);
+    const semana2 = await service.currentSample();
+    jest.spyOn(Date, 'now').mockRestore();
+
+    expect(semana2.productIds).not.toEqual(semana1.productIds);
+    expect(semana2.videoIds).not.toEqual(semana1.videoIds);
+    expect(semana2.productIds).toHaveLength(FREE_SAMPLE.products);
+    // Sem sobreposição enquanto o pool não dá a volta: uma semana inteira de
+    // itens novos, não dois cards trocados.
+    const repetidos = semana2.productIds.filter((id) =>
+      semana1.productIds.includes(id),
+    );
+    expect(repetidos).toHaveLength(0);
+  });
+
+  // Contra a amostra voltar a virar na madrugada de quinta (época Unix).
+  it('a janela vira na segunda-feira 00:00 de Brasília', async () => {
+    const sample = await service.currentSample();
+    const vence = sample.expiresAt;
+    // 00:00 de Brasília é 03:00 UTC.
+    expect(vence.getUTCHours()).toBe(3);
+    expect(vence.getUTCMinutes()).toBe(0);
+    // Segunda-feira no fuso local do vencimento: 03:00 UTC ainda é segunda.
+    expect(vence.getUTCDay()).toBe(1);
+    expect(vence.getTime()).toBeGreaterThan(Date.now());
   });
 
   // Contra o custo por visitante voltando pela porta dos fundos.

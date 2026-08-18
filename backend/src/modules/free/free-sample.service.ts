@@ -112,19 +112,54 @@ export class FreeSampleService {
   ) {}
 
   /**
-   * Janela atual, alinhada à época Unix.
+   * Janela atual, ancorada numa segunda-feira 00:00 de Brasília.
    *
-   * Alinhar à época (e não à primeira geração) é o que faz a troca acontecer no
-   * mesmo instante para todo mundo: sem isso, a data de rotação passaria a
-   * depender de qual visitante acordou o snapshot primeiro — e uma promessa de
-   * "atualiza em N dias" que varia por servidor não é uma promessa.
+   * Ancorar num instante fixo (e não na primeira geração) é o que faz a troca
+   * acontecer no mesmo momento para todo mundo: sem isso, a data de rotação
+   * dependeria de qual visitante acordou o snapshot primeiro — e uma promessa
+   * de "atualiza em N dias" que varia por servidor não é uma promessa.
+   *
+   * A âncora é `rotationAnchorUtcMs` e não a época Unix porque a época cai numa
+   * quinta: o alinhamento antigo virava a amostra na madrugada de quinta, num
+   * horário que ninguém escolheu.
    */
   private slotAtual(now = Date.now()): number {
-    return Math.floor(now / (DIA_MS * FREE_SAMPLE.refreshDays));
+    return Math.floor(
+      (now - FREE_SAMPLE.rotationAnchorUtcMs) / (DIA_MS * FREE_SAMPLE.refreshDays),
+    );
   }
 
   private expiraEm(slot: number): Date {
-    return new Date((slot + 1) * DIA_MS * FREE_SAMPLE.refreshDays);
+    return new Date(
+      FREE_SAMPLE.rotationAnchorUtcMs +
+        (slot + 1) * DIA_MS * FREE_SAMPLE.refreshDays,
+    );
+  }
+
+  /**
+   * A fatia desta janela dentro de um pool maior que a amostra.
+   *
+   * É aqui que o rodízio deixa de ser decorativo. As queries de escolha ordenam
+   * por ranking, e ranking de 30 dias muda pouco em sete dias — pegar sempre os
+   * N primeiros devolveria a mesma vitrine semana após semana. O pool tem
+   * `poolFactor` vezes o tamanho da amostra e cada janela consome uma fatia
+   * diferente dele, dando a volta quando acaba.
+   *
+   * O deslocamento vem do `slot`, então continua sendo função da janela: duas
+   * requisições da mesma semana calculam a mesma fatia, e regerar o snapshot de
+   * uma janela devolve exatamente o que ela mostrou.
+   */
+  private fatiaDaJanela<T>(pool: T[], quantidade: number, slot: number): T[] {
+    if (pool.length <= quantidade) return pool.slice(0, quantidade);
+    const inicio =
+      (((slot * quantidade) % pool.length) + pool.length) % pool.length;
+    const fatia = pool.slice(inicio, inicio + quantidade);
+    // Deu a volta no fim do pool: completa com o começo, em vez de entregar uma
+    // amostra curta só porque o corte caiu perto da borda.
+    if (fatia.length < quantidade) {
+      fatia.push(...pool.slice(0, quantidade - fatia.length));
+    }
+    return fatia;
   }
 
   /**
@@ -141,9 +176,9 @@ export class FreeSampleService {
     if (existente) return existente;
 
     const [productIds, videoIds, creatorIds] = await Promise.all([
-      this.escolherProdutos(),
-      this.escolherVideos(),
-      this.escolherCriadores(),
+      this.escolherProdutos(slot),
+      this.escolherVideos(slot),
+      this.escolherCriadores(slot),
     ]);
 
     try {
@@ -275,7 +310,7 @@ export class FreeSampleService {
    * do mesmo nicho. `imageUrl IS NOT NULL` porque a amostra é, antes de tudo,
    * uma vitrine: um card sem foto prova menos que card nenhum.
    */
-  private async escolherProdutos(): Promise<string[]> {
+  private async escolherProdutos(slot: number): Promise<string[]> {
     const rows = await this.products.query(
       `
       WITH ranked AS (
@@ -293,16 +328,23 @@ export class FreeSampleService {
        ORDER BY sales DESC, id ASC
        LIMIT $2
       `,
-      [FREE_SAMPLE.maxPorCategoria, FREE_SAMPLE.products],
+      [
+        FREE_SAMPLE.maxPorCategoria,
+        FREE_SAMPLE.products * FREE_SAMPLE.poolFactor,
+      ],
     );
-    return rows.map((r: { id: string }) => r.id);
+    return this.fatiaDaJanela(
+      rows.map((r: { id: string }) => r.id),
+      FREE_SAMPLE.products,
+      slot,
+    );
   }
 
   /**
    * Os vídeos da janela. Só `kind = 'product'`: 'pending' é anúncio que ainda
    * não sabemos se vende produto, e a amostra não é lugar de aposta.
    */
-  private async escolherVideos(): Promise<string[]> {
+  private async escolherVideos(slot: number): Promise<string[]> {
     const rows = await this.videos.query(
       `
       WITH ranked AS (
@@ -319,9 +361,13 @@ export class FreeSampleService {
        ORDER BY views DESC, id ASC
        LIMIT $2
       `,
-      [FREE_SAMPLE.maxPorCategoria, FREE_SAMPLE.videos],
+      [FREE_SAMPLE.maxPorCategoria, FREE_SAMPLE.videos * FREE_SAMPLE.poolFactor],
     );
-    return rows.map((r: { id: string }) => r.id);
+    return this.fatiaDaJanela(
+      rows.map((r: { id: string }) => r.id),
+      FREE_SAMPLE.videos,
+      slot,
+    );
   }
 
   /**
@@ -339,7 +385,7 @@ export class FreeSampleService {
    * as fontes boas quebra em silêncio a cada fonte nova; filtro que exclui as
    * ruins só deixa de valer quando alguém cria uma fonte ruim nova.
    */
-  private async escolherCriadores(): Promise<string[]> {
+  private async escolherCriadores(slot: number): Promise<string[]> {
     const rows = await this.creators.query(
       `
       SELECT id FROM creators
@@ -347,9 +393,13 @@ export class FreeSampleService {
        ORDER BY "gmvPeriod" ASC, id ASC
        LIMIT $1
       `,
-      [FREE_SAMPLE.creators],
+      [FREE_SAMPLE.creators * FREE_SAMPLE.poolFactor],
     );
-    return rows.map((r: { id: string }) => r.id);
+    return this.fatiaDaJanela(
+      rows.map((r: { id: string }) => r.id),
+      FREE_SAMPLE.creators,
+      slot,
+    );
   }
 
   private async hidratarCriadores(ids: string[]): Promise<FreeCreator[]> {
@@ -448,26 +498,44 @@ export class FreeSampleService {
   }
 
   /**
-   * Aquecimento da janela.
+   * A virada da semana: segunda-feira, 00:00 de Brasília.
    *
-   * Roda todo dia, mas só trabalha quando a janela virou — `currentSample()` é
-   * idempotente dentro do slot. Diário e não semanal porque um job semanal que
-   * cai é um job que perde a única chance da semana; este perde uma tentativa e
-   * tenta de novo em 24h.
+   * Roda o mesmo `currentSample()` do aquecimento diário, e de propósito — quem
+   * decide qual é a amostra continua sendo o slot lido na requisição, não o
+   * agendador. Este job só garante que o rodízio da segunda já esteja gravado
+   * quando o primeiro usuário da semana abrir a tela, em vez de fazê-lo esperar
+   * pelas queries de ranking. Se o processo estiver fora do ar nesse minuto,
+   * nada se perde: o próximo acesso gera a MESMA amostra, porque a fatia é
+   * função do slot e não de quando o job rodou.
    *
-   * Não decide nada: só paga o custo da geração antes do primeiro visitante,
-   * para que ele não espere pela query de ranking. Se falhar, o pior caso é o
-   * que já era o comportamento normal — o primeiro acesso gera.
+   * Nada aqui chama fornecedor: a rotação inteira sai do que já está no banco,
+   * então virar a semana custa três queries e um INSERT.
+   */
+  @Cron('0 0 * * 1', { timeZone: 'America/Sao_Paulo' })
+  async rotacaoSemanal(): Promise<void> {
+    await this.aquecer('rotação semanal');
+  }
+
+  /**
+   * Rede de segurança diária.
+   *
+   * Só trabalha quando a janela virou — `currentSample()` é idempotente dentro
+   * do slot. Existe porque um job semanal que cai é um job que perde a única
+   * chance da semana; este perde uma tentativa e tenta de novo em 24h.
    */
   @Cron('0 4 * * *')
   async warmUp(): Promise<void> {
+    await this.aquecer('aquecimento diário');
+  }
+
+  private async aquecer(origem: string): Promise<void> {
     try {
       const sample = await this.currentSample();
       this.logger.log(
-        `Amostra gratuita da janela ${sample.slot}: ${sample.productIds.length} produtos, ${sample.videoIds.length} vídeos, ${(sample.creatorIds ?? []).length} criadores.`,
+        `[${origem}] Amostra gratuita da janela ${sample.slot} (vence ${sample.expiresAt.toISOString()}): ${sample.productIds.length} produtos, ${sample.videoIds.length} vídeos, ${(sample.creatorIds ?? []).length} criadores.`,
       );
     } catch (e) {
-      this.logger.warn(`Falha ao aquecer a amostra gratuita: ${e}`);
+      this.logger.warn(`[${origem}] Falha ao aquecer a amostra gratuita: ${e}`);
     }
   }
 }

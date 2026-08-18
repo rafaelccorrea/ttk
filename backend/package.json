@@ -38,7 +38,6 @@
     "simular:processamento-live": "ts-node src/scripts/simular-processamento-live.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.116.0",
     "@aws-sdk/client-s3": "^3.1111.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.2.0",

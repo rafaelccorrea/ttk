@@ -7,7 +7,12 @@ import { PLAN_RANK } from '../billing/billing.config';
 import { BillingService } from '../billing/billing.service';
 import { AiCostService } from '../telemetry/ai-cost.service';
 import { killSwitchLigado } from './live-config.service';
-import { AiService, RespostaAoVivo } from '../studio/ai.service';
+import {
+  AiService,
+  MODELO_FORTE,
+  MODELO_RAPIDO,
+  RespostaAoVivo,
+} from '../studio/ai.service';
 import { LiveChatMessage } from './entities/live-chat-message.entity';
 import { LiveFaq } from './entities/live-faq.entity';
 import { LiveProduct } from './entities/live-product.entity';
@@ -47,7 +52,7 @@ const LIMIAR_FAQ_PARECIDA = 0.8;
  * O chat tem retenção de 30 dias (`expurgarChatAntigo` apaga o texto). A base de
  * conhecimento não tem — ela é do vendedor e vive enquanto ele quiser. Promover
  * a pergunta de um espectador para dentro dela é tirar um dado de terceiro do
- * regime de retenção e torná-lo permanente, e ainda mandá-lo à Anthropic no
+ * regime de retenção e torná-lo permanente, e ainda mandá-lo à OpenAI no
  * `system` de TODA live seguinte, para sempre. É pouco provável e é caro: basta
  * um "meu CEP é 01310-100, chega?" ou "sou a Maria do pedido 4432" para um dado
  * pessoal entrar na base e não sair mais.
@@ -147,17 +152,20 @@ const REPROCESSO_MAX = 0.7;
 const MAX_CARACTERES = 140;
 
 /**
- * Prefixo mínimo para o cache pegar, em tokens, no Haiku 4.5.
+ * Prefixo mínimo para o cache pegar, em tokens.
  *
- * O Haiku só cacheia a partir de 4096 tokens de prefixo — o Opus 5 cacheia a
- * partir de 512. Uma live pequena (três produtos, cinco FAQs) fica abaixo disso
- * e o `cache_control` simplesmente não produz entrada nenhuma: sem erro, sem
- * aviso, só `cache_read_input_tokens` zerado para sempre. Não há o que fazer no
- * código além de saber que é assim e não sair caçando bug de cache numa base
- * que nunca teve tamanho para cachear — daí este número existir aqui, com nome,
- * e ser usado só para calibrar o alerta abaixo.
+ * A OpenAI só cacheia prompts a partir de 1024 tokens de prefixo. Uma live
+ * pequena (três produtos, cinco FAQs) fica abaixo disso e o cache simplesmente
+ * não produz entrada nenhuma: sem erro, sem aviso, só `cached_tokens` zerado
+ * para sempre. Não há o que fazer no código além de saber que é assim e não
+ * sair caçando bug de cache numa base que nunca teve tamanho para cachear —
+ * daí este número existir aqui, com nome, e ser usado só para calibrar o
+ * alerta abaixo.
+ *
+ * Era 4096 na Anthropic, que é o piso do Haiku 4.5. O piso menor significa que
+ * bases pequenas que NUNCA cacheavam agora passam a cachear.
  */
-const MIN_TOKENS_DE_CACHE_HAIKU = 4096;
+const MIN_TOKENS_DE_CACHE = 1024;
 
 /** Estimativa grosseira de tokens: ~4 caracteres por token em português. */
 const CHARS_POR_TOKEN = 4;
@@ -734,7 +742,7 @@ export class LiveReplyService {
    *
    * Em memória do processo, sem Redis, com a consequência assumida: um restart
    * perde as bases e a próxima chamada remonta a partir do banco. O que se
-   * perde é o cache quente da Anthropic, não dado.
+   * perde é o cache quente da OpenAI, não dado.
    */
   private readonly bases = new Map<string, BaseEmMemoria>();
 
@@ -1483,7 +1491,7 @@ export class LiveReplyService {
     const lote = await this.ai.responderChatDaLive({
       baseSerializada: base.serializada,
       perguntas,
-      modelo: 'claude-haiku-4-5',
+      modelo: MODELO_RAPIDO,
       userId: run.userId,
     });
     base.chamadas += 1;
@@ -1515,7 +1523,7 @@ export class LiveReplyService {
           texto: m.text,
           repeticoes: m.repeatCount,
         })),
-        modelo: 'claude-opus-5',
+        modelo: MODELO_FORTE,
         userId: run.userId,
       });
       base.chamadas += 1;
@@ -1526,7 +1534,7 @@ export class LiveReplyService {
     }
 
     const modeloDe = (id: string) =>
-      reprocessar.some((m) => m.id === id) ? 'claude-opus-5' : lote.model;
+      reprocessar.some((m) => m.id === id) ? MODELO_FORTE : lote.model;
 
     const respostas: LiveReply[] = [];
     const escaladas: LiveChatMessage[] = [];
@@ -1839,7 +1847,7 @@ export class LiveReplyService {
   /**
    * Serializa a base de forma DETERMINÍSTICA e guarda em memória.
    *
-   * A ordenação por id não é estética: o cache da Anthropic é casamento de
+   * A ordenação por id não é estética: o cache da OpenAI é casamento de
    * prefixo byte a byte, e a ordem que o Postgres devolve sem `ORDER BY` não é
    * estável. Uma linha trocando de lugar entre dois lotes invalida a base
    * inteira e a live passa a pagar prefixo cheio a cada 800ms.
@@ -1921,9 +1929,9 @@ export class LiveReplyService {
   private conferirCache(run: LiveRun, base: BaseEmMemoria, lidos: number): void {
     if (base.chamadas > 3 || lidos > 0) return;
     const tokensAprox = Math.round(base.serializada.length / CHARS_POR_TOKEN);
-    if (tokensAprox < MIN_TOKENS_DE_CACHE_HAIKU) {
+    if (tokensAprox < MIN_TOKENS_DE_CACHE) {
       this.logger.log(
-        `Run ${run.id}: base com ~${tokensAprox} tokens, abaixo do mínimo de ${MIN_TOKENS_DE_CACHE_HAIKU} do Haiku 4.5 — sem cache, por tamanho. Esperado.`,
+        `Run ${run.id}: base com ~${tokensAprox} tokens, abaixo do mínimo de ${MIN_TOKENS_DE_CACHE} da OpenAI — sem cache, por tamanho. Esperado.`,
       );
       return;
     }
@@ -2054,7 +2062,7 @@ export class LiveReplyService {
    * processo para sempre. O processo cresceria a cada transmissão até o OOM.
    *
    * Expulsar não perde dado: a base é cache. A próxima chamada de uma run viva
-   * remonta do banco; o que se paga é um prefixo frio na Anthropic, uma vez.
+   * remonta do banco; o que se paga é um prefixo frio na OpenAI, uma vez.
    */
   @Cron('*/5 * * * *')
   limparBasesOciosas(): number {

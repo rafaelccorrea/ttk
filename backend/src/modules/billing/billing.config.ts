@@ -31,9 +31,18 @@ export interface ActionPrice {
 }
 
 export const ACTION_PRICES: Record<BillableAction, ActionPrice> = {
-  // Claude Opus (~3k in / 2k out): ~US$ 0,065 ≈ R$ 0,39
+  /*
+   * Os tetos abaixo foram calculados no claude-opus-5 (US$ 5/25 por milhão) e
+   * continuam aqui INTACTOS depois da migração para o gpt-5.4 (US$ 2,50/15),
+   * que custa cerca de metade. Um teto folgado é seguro por construção: ele só
+   * erra na direção de cobrar margem demais, e é o que `assertProfitability`
+   * precisa. Baixá-los é decisão de preço — mexe na tabela de créditos e nos
+   * planos via `worstCostPerCredit()` —, não consequência automática da troca
+   * de fornecedor.
+   */
+  // gpt-5.4 (~3k in / 2k out): ~US$ 0,038 ≈ R$ 0,23. Teto mantido em R$ 0,39.
   script: { credits: 8, worstCaseCostBrl: 0.39, label: 'Roteiro com IA' },
-  // Claude Opus (transcrição longa no prompt): ~US$ 0,12 ≈ R$ 0,72
+  // gpt-5.4 (transcrição longa no prompt): ~US$ 0,07 ≈ R$ 0,42. Teto em R$ 0,72.
   analyze: { credits: 12, worstCaseCostBrl: 0.72, label: 'Análise de vídeo viral' },
   /*
    * Transcrição, por BLOCO de 10 minutos começado.
@@ -72,8 +81,10 @@ export const ACTION_PRICES: Record<BillableAction, ActionPrice> = {
   /*
    * Extração da base de conhecimento de uma live gravada, cobrada uma vez por
    * live. O pipeline é map/reduce sobre ~40k tokens de transcrição: o map roda
-   * em claude-sonnet-5 (barato, por fatia) e o reduce em claude-opus-5 (junta
-   * tudo num único passo). Dá ~R$ 1,00 no pior caso.
+   * em gpt-5.4-mini (barato, por fatia) e o reduce em gpt-5.4 (junta tudo num
+   * único passo). O teto de R$ 1,00 foi calculado no par sonnet-5/opus-5 e
+   * ficou folgado com os modelos atuais, que custam ~1/4 e ~1/2 daqueles; ver
+   * a nota sobre tetos no topo de ACTION_PRICES.
    *
    * Os 17 créditos NÃO são arredondamento — 16 já passariam no teste de margem
    * da própria ação (1,60 >= 1,00 × 1,4 = 1,40), mas dariam R$ 0,0625 de custo
@@ -117,12 +128,18 @@ export const ACTION_PRICES: Record<BillableAction, ActionPrice> = {
  * Custo real de um minuto de copiloto ao vivo, no pior caso, em BRL.
  *
  * Por minuto, com o teto de 4 respostas/min que o motor aplica:
- *   4 respostas × (1,5k de entrada em cache + 120 de saída, claude-haiku-4-5)
- *     ≈ 4 × US$ 0,00075 ≈ US$ 0,003 ≈ R$ 0,018
- *   reprocessamento em claude-opus-5 da faixa cinzenta (~10% das respostas,
- *     e é onde o custo de verdade mora)                        ≈ R$ 0,024
- *   fatia da escrita do cache da base (TTL de 1h)              ≈ R$ 0,001
- *   total ≈ R$ 0,043 por minuto, ou R$ 2,58 por hora cheia.
+ *   4 respostas × (1,5k de entrada em cache + 120 de saída, gpt-5.4-mini)
+ *     ≈ 4 × US$ 0,00065 ≈ US$ 0,0026 ≈ R$ 0,016
+ *   reprocessamento em gpt-5.4 da faixa cinzenta (~10% das respostas,
+ *     e é onde o custo de verdade mora)                        ≈ R$ 0,015
+ *   total ≈ R$ 0,031 por minuto — abaixo dos R$ 0,043 mantidos aqui.
+ *
+ * A parcela da ESCRITA do cache (R$ 0,001/min na conta antiga) desapareceu: a
+ * OpenAI não cobra para gravar prefixo. Em compensação a janela de cache é de
+ * minutos e não de uma hora, então uma live com pausas longas relê o prefixo
+ * frio mais vezes — e é justamente para esse caso que o teto segue em 0,043 em
+ * vez de acompanhar a queda. Folga aqui é o que impede uma live atípica de
+ * virar prejuízo silencioso.
  */
 export const LIVE_COST_PER_MINUTE_BRL = 0.043;
 
@@ -518,6 +535,30 @@ export const FREE_SAMPLE = {
    * precisa provar.
    */
   maxPorCategoria: 2,
+  /**
+   * Quantas amostras distintas o rodízio consegue montar antes de repetir.
+   *
+   * A escolha lê um POOL desse tamanho (`products * poolFactor`) e recorta
+   * dele uma fatia diferente a cada janela. Sem isso a rotação era
+   * decorativa: a query sempre devolvia o topo do ranking, então a amostra da
+   * semana seguinte era a mesma da anterior enquanto o ranking não mudasse —
+   * e um ranking de 30 dias quase não muda em sete dias.
+   *
+   * Seis é o equilíbrio: um trimestre e meio sem repetir a mesma vitrine, e
+   * ainda dentro dos itens bons o bastante para servirem de prova.
+   */
+  poolFactor: 6,
+  /**
+   * Instante em que a contagem de janelas começa: segunda-feira, 00:00 de
+   * Brasília (o Brasil não tem mais horário de verão, então o -03:00 fixo vale
+   * o ano inteiro).
+   *
+   * Antes o slot era alinhado à época Unix, que cai numa quinta — a amostra
+   * trocava na madrugada de quinta, num horário que ninguém escolheu. Ancorar
+   * aqui é o que faz a troca cair na segunda 00:00 para todo mundo, sem
+   * depender de o agendador ter rodado.
+   */
+  rotationAnchorUtcMs: Date.UTC(2024, 0, 1, 3, 0, 0),
 } as const;
 
 /**

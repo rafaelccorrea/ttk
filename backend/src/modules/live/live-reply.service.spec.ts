@@ -641,7 +641,7 @@ describe('sanitização da pergunta que vira base', () => {
   /*
    * O chat some em 30 dias; a base não. Promover a pergunta de um espectador
    * tira o dado dele do regime de retenção, torna-o permanente e ainda o manda
-   * à Anthropic no `system` de toda live seguinte. O que é identificável por
+   * à OpenAI no `system` de toda live seguinte. O que é identificável por
    * FORMA precisa sair antes de atravessar essa porta.
    */
   it('remove e-mail, telefone, CPF, CEP, @ e link', () => {

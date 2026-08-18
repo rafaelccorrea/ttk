@@ -111,7 +111,7 @@ export class PromptRefreshService implements OnModuleInit {
     // Sem chave de IA não há o que destilar. Sair aqui evita varrer o banco
     // para depois descobrir que não dava.
     if (!this.ai.enabled) {
-      this.lastResult = 'sem ANTHROPIC_API_KEY — nada a fazer';
+      this.lastResult = 'sem OPENAI_API_KEY — nada a fazer';
       this.logger.warn(this.lastResult);
       return { criados: 0, atualizados: 0 };
     }

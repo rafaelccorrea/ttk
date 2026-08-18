@@ -89,7 +89,7 @@ por visitante e entregava justamente aquilo que se vende. Então:
 ## Funcionalidades
 
 - **Descoberta**: ranking de produtos por 7/30/90 dias com crescimento %, filtros por categoria/busca, detalhe com série diária de vendas e favoritos por usuário.
-- **Estúdio IA**: roteiros de live (ciclos Apresentação→Oferta→Garantia→CTA) e de vídeo (Gancho→Corpo→CTA) via API da Anthropic (`ANTHROPIC_API_KEY`; sem a chave, gerador de template local). Roteiros salvos por usuário.
+- **Estúdio IA**: roteiros de live (ciclos Apresentação→Oferta→Garantia→CTA) e de vídeo (Gancho→Corpo→CTA) via API da OpenAI (`OPENAI_API_KEY`; sem a chave, gerador de template local). Roteiros salvos por usuário.
 - **Cofre de Prompts**: prompts de vídeo/imagem IA com campos a preencher e copiar.
 - **Dashboard**: números agregados do catálogo + top produtos da semana.
 
