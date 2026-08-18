@@ -6,6 +6,7 @@ import { Logo } from '../components/Logo';
 import { mensagemDeErro } from '../erros';
 import { cores } from '../theme/theme';
 import { SEM_PONTE, obterPonte } from '../ponte';
+import { useTikTokLogado } from '../hooks/useTikTokLogado';
 
 /**
  * Tela 1 — ativação do aparelho.
@@ -38,6 +39,16 @@ export function Ativacao({
   readonly aposSair?: boolean;
 }): JSX.Element {
   const ponte = obterPonte();
+  /**
+   * O passo 1 do onboarding: entrar no TikTok, à esquerda.
+   *
+   * Ele vem PRIMEIRO porque é o único que a pessoa faz no lugar onde ela já
+   * sabe estar — o site que ela usa todo dia. Pedir o código do PikPok antes
+   * colocava dois convites de login na mesma tela, um em cada metade, sem dizer
+   * qual era qual; e o do PikPok ainda vence em poucos minutos enquanto ela
+   * resolve o outro.
+   */
+  const tiktokLogado = useTikTokLogado();
   const [estado, setEstado] = useState<EstadoAtivacao | null>(null);
   const [pedindo, setPedindo] = useState(false);
   /**
@@ -75,12 +86,15 @@ export function Ativacao({
     // O desfecho da autorização chega pelo processo principal, que é quem faz o
     // polling do token: o painel não fica perguntando nada, só escuta.
     const cancelar = ponte.aoMudarAtivacao(setEstado);
-    if (!jaPediu.current && !aposSair) {
+    // O código só é pedido no passo 2, e nunca antes de o TikTok estar logado:
+    // ele expira em minutos, e gerá-lo enquanto a pessoa ainda está digitando a
+    // senha do TikTok ao lado é queimá-lo antes de alguém poder usá-lo.
+    if (!jaPediu.current && !aposSair && tiktokLogado === true) {
       jaPediu.current = true;
       void pedirCodigo();
     }
     return cancelar;
-  }, [ponte, pedirCodigo, aposSair]);
+  }, [ponte, pedirCodigo, aposSair, tiktokLogado]);
 
   if (!ponte) {
     return (
@@ -90,21 +104,75 @@ export function Ativacao({
     );
   }
 
-  // A saída da conta, antes de qualquer código. O texto conta o que já
-  // aconteceu (as DUAS sessões caíram) para o login do TikTok à esquerda não
-  // parecer um problema — ele é o resultado esperado de ter saído.
+  // A primeira leitura do login do TikTok ainda não voltou. É rápido, mas sem
+  // este ramo a tela cairia no aviso de erro lá embaixo, que existe para
+  // "não consegui gerar o código" — e ninguém pediu código nenhum ainda.
+  if (tiktokLogado === null && !estado && !pedindo) {
+    return (
+      <Moldura>
+        <Carregando texto="Conferindo o login do TikTok…" />
+      </Moldura>
+    );
+  }
+
+  /*
+   * PASSO 1 — o login do TikTok, que é do lado de lá da tela.
+   *
+   * Enquanto ele não existe não há código nenhum aqui, e a tela diz uma coisa
+   * só: entre ali. Era isto que faltava — o app abria pedindo um código de
+   * ativação com o TikTok pedindo senha ao lado, dois logins simultâneos sem
+   * ordem declarada, e nada explicando que são contas diferentes com funções
+   * diferentes.
+   */
+  if (tiktokLogado === false) {
+    return (
+      <Moldura>
+        <Stack spacing={2.5}>
+          {aposSair ? (
+            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+              Você saiu da conta do PikPok, e o login do TikTok foi apagado deste
+              computador junto — por isso o site ao lado está pedindo para entrar
+              de novo.
+            </Typography>
+          ) : null}
+          <Passo numero={1} titulo="Entre na sua conta do TikTok" ativo>
+            Use a tela do TikTok aqui ao lado, à esquerda. É essa conta que vai
+            transmitir, e é dela que o copiloto lê as perguntas do chat.
+          </Passo>
+          <Passo numero={2} titulo="Ative este computador no PikPok">
+            Depois do TikTok, aparece aqui um código para você aprovar na sua
+            conta do PikPok. São contas diferentes: uma transmite, a outra
+            responde.
+          </Passo>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Box
+              sx={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                bgcolor: cores.atencao,
+                animation: 'espera 1.6s ease-in-out infinite',
+                '@keyframes espera': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.25 } },
+              }}
+            />
+            <Typography variant="caption" color="text.secondary">
+              Assim que você entrar no TikTok, esta tela passa sozinha.
+            </Typography>
+          </Stack>
+        </Stack>
+      </Moldura>
+    );
+  }
+
+  // O TikTok já está logado, mas a saída anterior segurou o código: ele custa
+  // uma validade curta, e quem acabou de sair pode não ir usar o app agora.
   if (aposSair && !estado && !pedindo) {
     return (
       <Moldura>
         <Stack spacing={2.5}>
           <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-            Você saiu da conta do PikPok, e o login do TikTok também foi apagado
-            deste computador — por isso o site à esquerda está pedindo para
-            entrar de novo.
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-            Quando for usar o copiloto, gere o código e aprove no site do PikPok
-            com a conta que vai transmitir.
+            Você saiu da conta do PikPok. O TikTok ao lado continua logado — se
+            for outra pessoa que vai transmitir, troque a conta por lá também.
           </Typography>
           <Button
             fullWidth
@@ -252,6 +320,66 @@ export function Ativacao({
         </Stack>
       </Stack>
     </Moldura>
+  );
+}
+
+/**
+ * Um passo do onboarding, numerado.
+ *
+ * A numeração é o conteúdo, não enfeite: o problema desta tela nunca foi a
+ * falta de explicação, foi a falta de ORDEM. Dois logins apareciam juntos e nada
+ * dizia qual vinha antes. O passo inativo continua visível, e apagado, porque
+ * saber o que vem depois é o que impede a pessoa de achar que o app travou.
+ */
+function Passo({
+  numero,
+  titulo,
+  ativo = false,
+  children,
+}: {
+  readonly numero: number;
+  readonly titulo: string;
+  readonly ativo?: boolean;
+  readonly children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <Stack
+      direction="row"
+      spacing={1.5}
+      sx={{
+        p: 2,
+        borderRadius: 3,
+        opacity: ativo ? 1 : 0.55,
+        bgcolor: ativo ? cores.superficieAlta : 'transparent',
+        border: '1px solid',
+        borderColor: ativo ? alpha(cores.vermelho, 0.28) : cores.borda,
+      }}
+    >
+      <Box
+        sx={{
+          flexShrink: 0,
+          width: 26,
+          height: 26,
+          borderRadius: '50%',
+          display: 'grid',
+          placeItems: 'center',
+          fontSize: 13,
+          fontWeight: 800,
+          color: ativo ? '#fff' : 'text.secondary',
+          background: ativo ? cores.gradiente : alpha('#ffffff', 0.06),
+        }}
+      >
+        {numero}
+      </Box>
+      <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+        <Typography variant="subtitle2" fontWeight={800}>
+          {titulo}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>
+          {children}
+        </Typography>
+      </Stack>
+    </Stack>
   );
 }
 
