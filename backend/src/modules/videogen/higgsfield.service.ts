@@ -60,9 +60,30 @@ export class HiggsfieldService {
       const detail = String(body?.detail ?? response.statusText);
       this.logger.warn(`Higgsfield ${path} → ${response.status}: ${detail}`);
       if (detail.includes('not_enough_credits')) {
+        /*
+         * Quem está sem crédito somos NÓS, não quem pediu a geração.
+         *
+         * A mensagem antiga dizia "adicione créditos em cloud.higgsfield.ai" e
+         * ia inteira para a tela do cliente — que não tem conta na Higgsfield,
+         * não pode adicionar crédito nenhum e acabava de descobrir o nome do
+         * nosso fornecedor por causa de uma fatura nossa. Instrução impossível
+         * de cumprir lê como erro do próprio usuário e vira ticket de suporte.
+         *
+         * O cliente precisa saber duas coisas, e só elas: que não foi culpa
+         * dele e que não pagou por isso — o estorno é real, `withCharge` devolve
+         * o crédito quando esta exceção sobe. O que fazer a respeito é recado
+         * para o operador, e por isso vai no log em nível de erro, com o
+         * endereço da carteira que realmente existe hoje.
+         */
+        this.logger.error(
+          'Higgsfield sem créditos: geração recusada. Recarregue em ' +
+            'higgsfield.ai/me/settings (botão Top-up). Atenção: o saldo do site ' +
+            'pode não ser o mesmo da API — confirme com o suporte antes de comprar.',
+        );
         throw new HttpException(
-          'Créditos insuficientes na Higgsfield — adicione créditos em cloud.higgsfield.ai e tente de novo.',
-          402,
+          'A geração de mídia está temporariamente indisponível. Seus créditos ' +
+            'não foram cobrados — tente de novo em alguns minutos.',
+          503,
         );
       }
       throw new BadGatewayException(`Falha na Higgsfield: ${detail}`);
