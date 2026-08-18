@@ -6,6 +6,7 @@ import {
   globalShortcut,
   ipcMain,
   nativeTheme,
+  session,
   shell,
 } from 'electron';
 import type { ConfiguracoesCopiloto } from '../shared/desktop-api';
@@ -76,6 +77,23 @@ const LARGURA_INICIAL = 1440;
 const ALTURA_INICIAL = 900;
 
 /**
+ * A altura da barra de título própria.
+ *
+ * `themeSource = 'dark'` acima escurece menus e barra de rolagem, mas NÃO manda
+ * na moldura: quem tem "mostrar cor de destaque na barra de título" ligado no
+ * Windows recebe a barra pintada de verde, roxo, o que ele tiver escolhido, em
+ * cima de uma janela preta do TikTok à esquerda e preta do painel à direita. Não
+ * há API para colorir o frame nativo — a única saída é não usar frame: com
+ * `titleBarStyle: 'hidden'` os botões de minimizar/maximizar/fechar viram um
+ * overlay que NÓS pintamos, e continuam sendo os nativos do sistema.
+ *
+ * O preço é esta faixa: o conteúdo passa a começar no topo absoluto da janela, e
+ * estes 32px precisam ser descontados de tudo que se posiciona — a BrowserView
+ * aqui embaixo e o painel no renderer, que desenha a faixa de arrastar.
+ */
+const ALTURA_BARRA = 32;
+
+/**
  * A partição da sessão do TikTok.
  *
  * O prefixo `persist:` é o que grava cookies e localStorage em disco. Sem ele o
@@ -105,6 +123,14 @@ function criarJanela(): BrowserWindow {
      * produto, que é copiar a resposta e colar no chat.
      */
     autoHideMenuBar: true,
+    // A moldura sai, os botões do Windows ficam — pintados com o preto do app.
+    // Ver ALTURA_BARRA.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#0b0c10',
+      symbolColor: '#e6e8ee',
+      height: ALTURA_BARRA,
+    },
     // Só aparece quando o conteúdo já pintou: abrir a janela em branco e
     // preenchê-la depois lê como travamento.
     show: false,
@@ -188,11 +214,14 @@ function anexarTikTok(janela: BrowserWindow): void {
 
   const posicionar = (): void => {
     const { width, height } = janela.getContentBounds();
+    // O `y` desce a altura da barra própria: sem frame, a origem da janela é o
+    // topo absoluto, e uma view em `y: 0` passaria por baixo dos botões de
+    // fechar e maximizar.
     view.setBounds({
       x: 0,
-      y: 0,
+      y: ALTURA_BARRA,
       width: Math.round(width * FRACAO_TIKTOK),
-      height,
+      height: Math.max(0, height - ALTURA_BARRA),
     });
   };
 
@@ -217,6 +246,36 @@ function anexarTikTok(janela: BrowserWindow): void {
    * de nós; se algum dia sobrar, é uma chamada idempotente a mais.
    */
   janela.once('ready-to-show', posicionar);
+}
+
+/**
+ * Apaga o login do TikTok junto com o do PikPok.
+ *
+ * Sair da conta e continuar logado no TikTok é o pior desfecho possível no
+ * cenário que este produto assume: o COMPUTADOR DA LOJA, onde o próximo
+ * vendedor senta e ativa o aparelho com a conta dele. Se a partição sobrevive,
+ * a pessoa que sai deixa a própria conta do TikTok — cookies de sessão, e a
+ * capacidade de postar no chat em nome dela — na mão de quem chegar. O botão
+ * diz "sair e trocar de conta"; ele precisa entregar as DUAS.
+ *
+ * Limpa TUDO (`storages` omitido = todos) e não só cookies: o tiktok.com guarda
+ * identificadores de sessão também em localStorage e IndexedDB, e apagar meia
+ * sessão devolveria uma tela logada pela metade — pior que nenhuma limpeza,
+ * porque parece resolvida.
+ *
+ * O reload no fim é o que o vendedor VÊ: sem ele a view continuaria pintando a
+ * página logada em memória, e a única prova de que o logout funcionou só
+ * apareceria na próxima abertura do app.
+ */
+async function limparSessaoTikTok(): Promise<void> {
+  const particao = session.fromPartition(PARTICAO_TIKTOK);
+  await particao.clearStorageData();
+  await particao.clearCache();
+
+  const view = viewTikTok;
+  if (view && !view.webContents.isDestroyed()) {
+    await view.webContents.loadURL(URL_TIKTOK_LIVE).catch(() => undefined);
+  }
 }
 
 /**
@@ -258,7 +317,13 @@ function registrarIpc(): void {
 
   ipcMain.handle('ativacao:iniciar', () => copiloto.iniciarAtivacao());
   ipcMain.handle('sessao:obter', () => copiloto.obterSessao());
-  ipcMain.handle('sessao:sair', () => copiloto.sair());
+  // A ordem importa: o copiloto encerra a run com o token ainda válido, e só
+  // depois a partição do TikTok cai. Limpar o TikTok primeiro não quebraria o
+  // encerramento, mas deixaria a view recarregando no meio da despedida.
+  ipcMain.handle('sessao:sair', async () => {
+    await copiloto.sair();
+    await limparSessaoTikTok();
+  });
 
   ipcMain.handle('atualizacao:obter', () => estadoDaAtualizacao());
   ipcMain.handle('atualizacao:instalar', () => instalarAgora());

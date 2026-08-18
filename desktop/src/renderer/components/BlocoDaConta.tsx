@@ -97,8 +97,10 @@ export function BlocoDaConta({
       */}
       <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>
         Este computador se desconecta da conta e volta para a tela de ativação.
-        Para <strong>entrar com outra conta</strong>, é só aprovar o código novo
-        com ela. Seus minutos e suas bases não são afetados.
+        O <strong>login do TikTok também é apagado</strong> daqui, para ninguém
+        entrar na sua conta depois de você. Para{' '}
+        <strong>entrar com outra conta</strong>, é só aprovar o código novo com
+        ela. Seus minutos e suas bases não são afetados.
       </Typography>
       {emLive ? (
         <Typography variant="body2" sx={{ lineHeight: 1.55, color: cores.erro }}>

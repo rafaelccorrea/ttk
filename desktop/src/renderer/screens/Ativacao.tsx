@@ -20,7 +20,23 @@ import { SEM_PONTE, obterPonte } from '../ponte';
  *
  * A tela é o código, grande, e um botão. Todo o resto é consequência.
  */
-export function Ativacao(): JSX.Element {
+export function Ativacao({
+  aposSair = false,
+}: {
+  /**
+   * Se esta tela veio de um logout, e não da abertura do app.
+   *
+   * Faz diferença porque logo à esquerda o TikTok também acabou de ser
+   * deslogado e está pedindo login. Nascer já com um código de ativação ali
+   * coloca DOIS pedidos de entrar na tela ao mesmo tempo, e quem acabou de sair
+   * não tem como saber qual dos dois é o da vez — ainda por cima queimando um
+   * código de validade curta que talvez ninguém vá usar agora.
+   *
+   * Então depois de sair a tela é só a confirmação do que aconteceu, com o
+   * código a um clique de distância.
+   */
+  readonly aposSair?: boolean;
+}): JSX.Element {
   const ponte = obterPonte();
   const [estado, setEstado] = useState<EstadoAtivacao | null>(null);
   const [pedindo, setPedindo] = useState(false);
@@ -59,17 +75,46 @@ export function Ativacao(): JSX.Element {
     // O desfecho da autorização chega pelo processo principal, que é quem faz o
     // polling do token: o painel não fica perguntando nada, só escuta.
     const cancelar = ponte.aoMudarAtivacao(setEstado);
-    if (!jaPediu.current) {
+    if (!jaPediu.current && !aposSair) {
       jaPediu.current = true;
       void pedirCodigo();
     }
     return cancelar;
-  }, [ponte, pedirCodigo]);
+  }, [ponte, pedirCodigo, aposSair]);
 
   if (!ponte) {
     return (
       <Moldura>
         <Aviso tom="erro" titulo="Não consegui iniciar a ativação" descricao={SEM_PONTE} />
+      </Moldura>
+    );
+  }
+
+  // A saída da conta, antes de qualquer código. O texto conta o que já
+  // aconteceu (as DUAS sessões caíram) para o login do TikTok à esquerda não
+  // parecer um problema — ele é o resultado esperado de ter saído.
+  if (aposSair && !estado && !pedindo) {
+    return (
+      <Moldura>
+        <Stack spacing={2.5}>
+          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+            Você saiu da conta do PikPok, e o login do TikTok também foi apagado
+            deste computador — por isso o site à esquerda está pedindo para
+            entrar de novo.
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+            Quando for usar o copiloto, gere o código e aprove no site do PikPok
+            com a conta que vai transmitir.
+          </Typography>
+          <Button
+            fullWidth
+            size="large"
+            variant="contained"
+            onClick={() => void pedirCodigo()}
+          >
+            Gerar código de ativação
+          </Button>
+        </Stack>
       </Moldura>
     );
   }

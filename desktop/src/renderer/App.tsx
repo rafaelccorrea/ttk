@@ -28,10 +28,28 @@ import { Configuracoes } from './screens/Configuracoes';
  */
 type Tela = 'carregando' | 'ativacao' | 'conectar' | 'cockpit';
 
+/**
+ * A altura da barra de título própria, em espelho ao `ALTURA_BARRA` do processo
+ * principal — que é quem realmente a reserva, descendo a BrowserView.
+ *
+ * A duplicação é a mesma dos 60% da divisão logo abaixo: main e renderer são
+ * dois bundles, e uma constante compartilhada só para dois números que só mudam
+ * juntos custaria mais do que o comentário que os amarra. Se um mudar, muda o
+ * outro.
+ */
+const ALTURA_BARRA = 32;
+
 export function App(): JSX.Element {
   const ponte = obterPonte();
   const [tela, setTela] = useState<Tela>('carregando');
   const [nosAjustes, setNosAjustes] = useState(false);
+  /**
+   * Se a ativação na tela veio de um logout, e não da abertura do app.
+   *
+   * Mora aqui e não na tela de ativação porque quem sabe COMO se chegou nela é
+   * o shell: a tela em si só recebe o veredito. Ver o `aposSair` em Ativacao.
+   */
+  const [saiuDaConta, setSaiuDaConta] = useState(false);
   const [versao, setVersao] = useState<string>('');
 
   const decidirTela = useCallback(async (): Promise<void> => {
@@ -48,6 +66,9 @@ export function App(): JSX.Element {
         return;
       }
       const conexao = await ponte.obterConexao();
+      // Há conta de novo: a saída anterior deixa de ser o contexto da tela, e
+      // um logout futuro precisa reencontrar a ativação em estado limpo.
+      setSaiuDaConta(false);
       setTela(emLive(conexao) ? 'cockpit' : 'conectar');
     } catch {
       setTela('ativacao');
@@ -86,11 +107,17 @@ export function App(): JSX.Element {
   }, [ponte]);
 
   return (
-    <Box
+    <>
+      <BarraDeTitulo />
+      <Box
       sx={{
         // 40% da direita: o restante é a BrowserView.
         marginLeft: '60%',
-        height: '100vh',
+        // A barra de título é nossa (ver ALTURA_BARRA no processo principal): o
+        // documento começa no topo absoluto da janela, e sem este desconto o
+        // cabeçalho do painel nasceria debaixo dos botões de fechar.
+        marginTop: `${ALTURA_BARRA}px`,
+        height: `calc(100vh - ${ALTURA_BARRA}px)`,
         display: 'flex',
         flexDirection: 'column',
         color: 'text.primary',
@@ -185,18 +212,22 @@ export function App(): JSX.Element {
             // tem mais conta por trás.
             aoSair={() => {
               setNosAjustes(false);
+              setSaiuDaConta(true);
               setTela('ativacao');
             }}
           />
         ) : tela === 'carregando' ? (
           <Carregando texto="Abrindo o copiloto…" />
         ) : tela === 'ativacao' ? (
-          <Ativacao />
+          <Ativacao aposSair={saiuDaConta} />
         ) : tela === 'conectar' ? (
           <ConectarLive
             aoConectar={() => setTela('cockpit')}
             aoAbrirConfiguracoes={() => setNosAjustes(true)}
-            aoSair={() => setTela('ativacao')}
+            aoSair={() => {
+              setSaiuDaConta(true);
+              setTela('ativacao');
+            }}
           />
         ) : (
           <Cockpit
@@ -222,6 +253,44 @@ export function App(): JSX.Element {
         }}
       >
         Nada é publicado no chat do TikTok sem a sua permissão.
+      </Typography>
+      </Box>
+    </>
+  );
+}
+
+/**
+ * A faixa preta no topo, no lugar da moldura do Windows.
+ *
+ * Ela atravessa a janela INTEIRA e não só os 40% do painel: a BrowserView do
+ * TikTok começa 32px abaixo, e esta faixa é o que pinta a sobra que ficaria à
+ * esquerda — sem ela, o vendedor veria uma tira do fundo da janela cortando o
+ * topo do site.
+ *
+ * `-webkit-app-region: drag` é o que devolve o gesto de arrastar a janela, que
+ * some junto com a moldura. Fica no `style` e não no `sx` porque a propriedade
+ * não existe no CSS dos navegadores — é do Electron, e a tipagem do React não a
+ * conhece.
+ */
+function BarraDeTitulo(): JSX.Element {
+  return (
+    <Box
+      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      sx={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: `${ALTURA_BARRA}px`,
+        zIndex: 10,
+        display: 'flex',
+        alignItems: 'center',
+        px: 1.5,
+        bgcolor: cores.fundo,
+      }}
+    >
+      <Typography variant="caption" color="text.secondary" sx={{ opacity: 0.7 }}>
+        PikPok Copiloto
       </Typography>
     </Box>
   );
