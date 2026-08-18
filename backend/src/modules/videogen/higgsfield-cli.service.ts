@@ -418,9 +418,45 @@ export class HiggsfieldCliService implements GeradorDeMidia {
     // O caminho do binário também é citado: em servidor Windows ele mora sob
     // "Program Files", e um espaço não citado transformaria o executável em dois
     // argumentos.
-    const comando = [this.binario, ...args].join(' ');
+    /*
+     * A saída vai para ARQUIVO, não para o cano do `exec`.
+     *
+     * Este binário não entrega nada quando o destino do stdout é um pipe: sai
+     * com código zero, stdout vazio, stderr vazio. Redirecionado para um
+     * arquivo, o mesmo comando escreve normalmente — provado com `version`, que
+     * devolveu string vazia pelo cano e 88 caracteres pelo arquivo, na mesma
+     * máquina e no mesmo instante.
+     *
+     * Foi o sintoma mais caro desta integração justamente por não deixar
+     * rastro: um processo que termina bem e não fala parece sucesso para
+     * qualquer tratamento de erro.
+     *
+     * `stderr` vai para um arquivo SEPARADO de propósito: juntar os dois
+     * contaminaria o JSON com qualquer aviso que a ferramenta resolvesse
+     * imprimir, e o parse quebraria por um motivo que nada tem a ver com a
+     * resposta.
+     */
+    const base = join(tmpdir(), `hf-${randomUUID()}`);
+    const arquivoSaida = `${base}.out`;
+    const arquivoErro = `${base}.err`;
+    const comando =
+      [this.binario, ...args].join(' ') +
+      ` > ${HiggsfieldCliService.citar(arquivoSaida)}` +
+      ` 2> ${HiggsfieldCliService.citar(arquivoErro)}`;
+
+    const lerEApagar = (caminho: string): string => {
+      try {
+        if (!existsSync(caminho)) return '';
+        const texto = readFileSync(caminho, 'utf8');
+        unlinkSync(caminho);
+        return texto;
+      } catch {
+        return '';
+      }
+    };
+
     try {
-      const { stdout, stderr } = await execAsync(comando, {
+      await execAsync(comando, {
         maxBuffer: 16 * 1024 * 1024,
         env: {
           ...process.env,
@@ -431,21 +467,28 @@ export class HiggsfieldCliService implements GeradorDeMidia {
           ...(workspace ? { HIGGSFIELD_WORKSPACE_ID: workspace } : {}),
         },
       });
+      const saida = lerEApagar(arquivoSaida);
+      const erroDaCli = lerEApagar(arquivoErro);
       /*
-       * Saída vazia com código de saída ZERO é o caso que não estava previsto.
+       * Saída vazia com código de saída ZERO continua sendo caso de log.
        *
-       * A CLI repassa os argumentos para um binário nativo, e um processo que
-       * termina bem sem imprimir nada não cai no `catch` — sobe como sucesso e
-       * quebra o `JSON.parse` lá na frente. Registrar o `stderr` aqui é o que
-       * transforma "não sei o que houve" em uma linha de log com a resposta.
+       * Não deveria mais acontecer agora que a escrita é em arquivo, mas um
+       * processo que termina bem e não fala é justamente o que não cai em
+       * nenhum tratamento — e foi o que custou mais tempo aqui. A linha fica
+       * como rede de segurança, não como expectativa.
        */
-      if (!stdout || !stdout.trim()) {
+      if (!saida.trim()) {
         this.logger.error(
-          `CLI terminou sem saída. stderr: ${(stderr || '(vazio)').slice(0, 500)}`,
+          `CLI terminou sem saída. stderr: ${(erroDaCli || '(vazio)').slice(0, 500)}`,
         );
       }
-      return stdout ?? '';
+      return saida;
     } catch (erro) {
+      const erroDaCli = lerEApagar(arquivoErro);
+      lerEApagar(arquivoSaida);
+      if (erroDaCli.trim()) {
+        this.logger.error(`CLI reclamou: ${erroDaCli.slice(0, 500)}`);
+      }
       /*
        * Traduzir a falha do processo é o que separa um 500 de um 503.
        *
