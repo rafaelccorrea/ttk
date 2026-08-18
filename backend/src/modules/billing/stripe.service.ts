@@ -51,12 +51,33 @@ export class StripeService implements OnModuleInit {
   }
 
   /**
+   * Dispara a conferência de preços SEM segurar o boot.
+   *
+   * O `onModuleInit` do Nest é aguardado antes de o `app.listen()` acontecer, e
+   * a conferência abaixo faz uma chamada de rede por price cadastrado — treze
+   * hoje. Aguardá-las empurrava o `listen()` para além de três segundos, e o
+   * host reclamava disso no log a cada deploy ("App did not call listen()
+   * within 3 seconds"); pior que o aviso, a porta só abria depois das treze
+   * idas ao Stripe, então o primeiro request após cada deploy morria sem
+   * resposta.
+   *
+   * Soltar a promessa é seguro porque este código não decide nada: ele só
+   * observa e loga. O que ele protege — a vitrine anunciar um preço e o Stripe
+   * cobrar outro — continua igualmente protegido dois segundos mais tarde.
+   */
+  onModuleInit(): void {
+    void this.auditarPrecos().catch((erro: Error) => {
+      this.logger.warn(`Conferência de preços do Stripe falhou: ${erro.message}`);
+    });
+  }
+
+  /**
    * O valor cobrado vem do Price cadastrado no Stripe, mas a vitrine (landing
    * e /planos) lê o billing.config — se os dois divergirem, a página mente
    * sobre o preço. Este check roda no boot e grita quando isso acontece.
    * Não derruba o servidor: é falha de configuração externa, não de código.
    */
-  async onModuleInit(): Promise<void> {
+  private async auditarPrecos(): Promise<void> {
     if (!this.stripe) return;
     const expected: Array<[string, string | undefined, number]> = [
       ...PLANS.flatMap((plan) => {
@@ -86,27 +107,46 @@ export class StripeService implements OnModuleInit {
       ),
     ];
 
-    let checked = 0;
-    for (const [label, priceId, priceBrl] of expected) {
-      if (!priceId) continue; // sem cadastro → cai no price_data inline
-      checked += 1;
-      try {
-        const price = await this.stripe.prices.retrieve(priceId);
-        const cents = Math.round(priceBrl * 100);
-        if (price.unit_amount !== cents) {
-          this.logger.error(
-            `Preço divergente em "${label}": Stripe cobra ${price.unit_amount} centavos, ` +
-              `o billing.config anuncia ${cents}. Alinhe os dois antes de vender.`,
+    // Sem cadastro → cai no price_data inline; não há o que conferir.
+    const cadastrados = expected.filter(([, priceId]) => priceId);
+    const stripe = this.stripe;
+
+    /*
+     * Em paralelo, e não em fila: são treze consultas independentes, e uma de
+     * cada vez transformava meio segundo de latência em sete segundos de
+     * conferência. Nada aqui depende do resultado do anterior.
+     */
+    await Promise.all(
+      cadastrados.map(async ([label, priceId, priceBrl]) => {
+        try {
+          const price = await stripe.prices.retrieve(priceId as string);
+          const cents = Math.round(priceBrl * 100);
+          /*
+           * Os dois problemas são reportados separadamente, e não em `else if`.
+           * Encadeados, um price com valor errado E arquivado só mostrava o
+           * valor — foi assim que o `business/mensal` passou dias parecendo
+           * "só" desalinhado quando na verdade estava inutilizável: o Stripe
+           * recusa checkout com price inativo.
+           */
+          if (price.unit_amount !== cents) {
+            this.logger.error(
+              `Preço divergente em "${label}": Stripe cobra ${price.unit_amount} centavos, ` +
+                `o billing.config anuncia ${cents}. Alinhe os dois antes de vender.`,
+            );
+          }
+          if (!price.active) {
+            this.logger.error(
+              `Price ${priceId} ("${label}") está arquivado no Stripe — o checkout deste item vai falhar.`,
+            );
+          }
+        } catch (err) {
+          this.logger.warn(
+            `Não consegui conferir o price de "${label}" (${priceId}): ${(err as Error).message}`,
           );
-        } else if (!price.active) {
-          this.logger.error(`Price ${priceId} ("${label}") está arquivado no Stripe.`);
         }
-      } catch (err) {
-        this.logger.warn(
-          `Não consegui conferir o price de "${label}" (${priceId}): ${(err as Error).message}`,
-        );
-      }
-    }
+      }),
+    );
+    const checked = cadastrados.length;
     this.logger.log(
       `Stripe: ${checked} de ${expected.length} preços conferidos contra o billing.config.`,
     );
