@@ -106,13 +106,19 @@ export class HiggsfieldCliService implements GeradorDeMidia {
   }
 
   /**
-   * Como invocar a CLI: `node <entrada.js>`, e não o atalho de `.bin`.
+   * Como invocar a CLI: o Node em execução rodando o JS de entrada.
    *
    * O atalho parece o caminho óbvio e não funciona em produção. A Hostinger
    * publica os arquivos sem o bit de execução, então `.bin/higgsfield` responde
    * `Permission denied` — o processo nem começa. Chamar o JS de entrada pelo
-   * `node` contorna isso inteiro: quem precisa ser executável é o `node`, que
-   * obviamente é.
+   * interpretador contorna isso inteiro: quem precisa ser executável passa a
+   * ser o Node, que obviamente é.
+   *
+   * E o interpretador é `process.execPath`, não a palavra `node`. O shell que o
+   * `exec` abre não herda o PATH que a hospedagem monta para a aplicação, e o
+   * erro seguinte foi `/bin/sh: node: command not found` — com o processo Node
+   * rodando, tentando chamar a si mesmo. O caminho absoluto de quem já está em
+   * execução é a única referência que não depende de ambiente.
    *
    * `require.resolve` em vez de montar o caminho na mão porque o pacote pode
    * estar içado para um `node_modules` acima (workspaces) ou aninhado; quem
@@ -127,7 +133,10 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       const entrada = join(dirname(pacote), 'bin', 'higgsfield.js');
       if (existsSync(entrada)) {
         HiggsfieldCliService.liberarVendor(dirname(pacote));
-        return `node ${HiggsfieldCliService.citar(entrada)}`;
+        return [
+          HiggsfieldCliService.citar(process.execPath),
+          HiggsfieldCliService.citar(entrada),
+        ].join(' ');
       }
     } catch {
       // Pacote ausente: cai no PATH, que é o caso da máquina de desenvolvimento.
