@@ -562,10 +562,7 @@ function Storyboard({
                 startIcon={<MovieFilterRoundedIcon />}
                 disabled={ocupado}
                 onClick={() =>
-                  acao(() => campaignsService.assemble(detalhe.id), {
-                    acao: 'script',
-                    titulo: 'Gerar roteiro da campanha',
-                  })
+                  acao(() => campaignsService.assemble(detalhe.id))
                 }
               >
                 {ocupado ? 'Montando...' : 'Montar vídeo final'}
@@ -588,7 +585,10 @@ function Storyboard({
                 variant="contained"
                 startIcon={<AutoAwesomeRoundedIcon />}
                 disabled={ocupado}
-                onClick={() => acao(() => campaignsService.generateScript(detalhe.id))}
+                onClick={() => acao(() => campaignsService.generateScript(detalhe.id), {
+                    acao: 'script',
+                    titulo: 'Gerar roteiro e storyboard',
+                  })}
               >
                 {ocupado
                   ? 'Escrevendo...'
@@ -610,7 +610,10 @@ function Storyboard({
           sx={{ alignSelf: 'flex-start' }}
           startIcon={<AutoAwesomeRoundedIcon />}
           disabled={ocupado}
-          onClick={() => acao(() => campaignsService.generateScript(detalhe.id))}
+          onClick={() => acao(() => campaignsService.generateScript(detalhe.id), {
+                    acao: 'script',
+                    titulo: 'Gerar roteiro e storyboard',
+                  })}
         >
           Não gostou? Escrever outra versão
           {precos ? ` · ${precos.roteiro} créditos` : ''}
@@ -700,14 +703,19 @@ function Storyboard({
             variant="contained"
             disabled={ocupado || semSaldo}
             startIcon={<RocketLaunchRoundedIcon />}
+            /*
+             * SEM `gasto` aqui: este botão já está DENTRO da confirmação.
+             *
+             * O diálogo acima é feito sob medida para este gasto — diz quantas
+             * cenas faltam, o preço de cada uma, o total, o saldo, que a
+             * montagem final é de graça e que cena falhada é estornada. A
+             * confirmação genérica não sabe nada disso, e encadeá-la aqui só
+             * produzia duas telas seguidas perguntando a mesma coisa, sendo a
+             * segunda pior que a primeira.
+             */
             onClick={() => {
               setConfirmarTudo(false);
-              void acao(() => campaignsService.renderAll(detalhe.id), {
-                acao: 'video',
-                titulo: 'Gerar vídeo completo',
-                quantidade: detalhe.cenas.length,
-                detalhe: `${detalhe.cenas.length} cenas serão renderizadas.`,
-              });
+              void acao(() => campaignsService.renderAll(detalhe.id));
             }}
           >
             Gerar agora
