@@ -68,10 +68,22 @@ estão sendo lidas quando alguém for mexer no funil.
 itens do mesmo nicho, e aí a amostra prova que a base é grande em um assunto só — que é o
 contrário do que ela precisa provar.
 
-**A troca é por expiração, não por cron.** Existe um job semanal, mas ele é só aquecimento:
-quem decide é o `expiresAt` lido na requisição. Se o cron cair, a amostra ainda gira. Um
-produto que depende do agendador para funcionar quebra silenciosamente no primeiro
-domingo em que o agendador não rodar.
+**A troca é por expiração, não por cron.** Existe um job, mas ele é só aquecimento: quem
+decide é o `slot` calculado na requisição. Se o cron cair, a amostra ainda gira. Um produto
+que depende do agendador para funcionar quebra silenciosamente no primeiro domingo em que
+o agendador não rodar.
+
+O job roda **diário** (`0 4 * * *`), e não semanal, pelo mesmo raciocínio: um job semanal
+que falha perde a única chance da semana; este perde uma tentativa e refaz em 24h.
+`currentSample()` é idempotente dentro da janela, então rodar todo dia não gera trabalho
+extra.
+
+**Como a janela é calculada.** `slot = floor(agora / 7 dias)` desde a época Unix — não a
+partir da primeira geração. Alinhar à época faz a troca acontecer no mesmo instante para
+todo mundo; alinhar à primeira geração faria a data de rotação depender de qual visitante
+acordou o snapshot primeiro. O `slot` é também o `UNIQUE` da tabela, e é ele que garante
+que duas requisições simultâneas numa janela vazia não criem dois snapshots concorrentes:
+a segunda perde a corrida no banco e lê o que a primeira gravou.
 
 ---
 
@@ -195,8 +207,20 @@ Uma conta gratuita que não sabe que é gratuita não faz upgrade — ela conclu
 `refreshAt`) porque o front precisa distinguir **"sem acesso"** de **"acesso em amostra"** —
 são duas telas diferentes, e hoje ele só sabe responder a primeira.
 
-`RequireSubscription` deixa de ser tudo-ou-nada: libera as telas de descoberta em modo
-amostra e continua mandando **todas** as outras rotas para `/assinatura`.
+`RequireSubscription` deixa de ser tudo-ou-nada. As três telas de descoberta (`/produtos`,
+`/produtos/:id`, `/videos`) saíram de dentro dele e passaram a ser decididas pelo
+`FreeSampleGate`, que escolhe entre a versão paga e a amostra. Todo o resto continua atrás
+do paywall.
+
+**Mudou também para onde a conta gratuita é mandada.** Antes, toda rota paga jogava para
+`/assinatura`. Agora joga para `/produtos` quando a conta tem amostra: é a única porta que
+ela pode abrir, e mandá-la ao checkout a cada clique transformaria o app inteiro num pedido
+de dinheiro. A tela de assinatura fica a um clique, em todo CTA da amostra. Sem amostra
+(backend antigo, estado desconhecido), o destino continua sendo `/assinatura`.
+
+O detalhe de um produto fora da amostra vira **tela de upgrade, não erro**: quem chegou por
+um link antigo bateu no limite do plano, não num bug, e a tela nomeia o que falta (loja,
+números exatos, série diária, criadores, IA) em vez de dizer "assine para ver mais".
 
 ---
 
@@ -209,7 +233,14 @@ amostra e continua mandando **todas** as outras rotas para `/assinatura`.
 | Conta free em qualquer rota de IA → 403 | o vazamento pelo `FEATURE_MIN_PLAN` |
 | Quantidades = 20 e 10 | o limite que cresce sem decisão |
 | Snapshot expirado gera um novo | a amostra que congela para sempre |
-| Conta free não dispara consulta ao fornecedor | o custo por visitante voltando pela porta dos fundos |
+| Duas gerações concorrentes convergem | contas vendo amostras diferentes na mesma semana |
+| O card não tem `storeName`, `tiktokUrl`, `revenue`, `playbackUrl`, `transcript` | o campo novo que vaza por omissão |
+| `FreeSampleService` recebe só repositórios | o dia em que alguém injetar o fornecedor aqui e a conta gratuita voltar a custar por visita |
+| Plano pago é barrado em `/free/*` | a rota reduzida degradando em silêncio o produto de quem pagou |
+
+Onde: `backend/src/modules/free/free-sample.service.spec.ts` e `free-plan.guard.spec.ts`.
+A trava contra rota de IA já é coberta pelos testes de `PlanFeatureGuard`/`assertFeature`,
+que não mudaram — o modo amostra é aditivo e não tocou em `FEATURE_MIN_PLAN`.
 
 ---
 

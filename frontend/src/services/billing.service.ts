@@ -32,6 +32,20 @@ export interface Wallet {
   /** recurso → plano mínimo. */
   featureMinPlan?: Record<string, string>;
   /**
+   * Conta gratuita em modo amostra (`docs/CONTA-FREE.md`).
+   *
+   * Existe porque a tela tinha duas respostas possíveis — "tem acesso" e "não
+   * tem" — e agora existe uma terceira. Quem decide é `active`, e não
+   * `plan === 'free'`: a regra de quem entra na amostra é do servidor, e as
+   * duas pontas precisam ser a mesma regra.
+   */
+  freeSample?: {
+    active: boolean;
+    products: number;
+    videos: number;
+    refreshDays: number;
+  };
+  /**
    * A segunda carteira: tempo de copiloto ao vivo.
    *
    * Vem junto do saldo de créditos, mas separada dentro dele — as duas moedas

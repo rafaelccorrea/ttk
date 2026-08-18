@@ -1,0 +1,189 @@
+import { ForbiddenException } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { FREE_SAMPLE } from '../billing/billing.config';
+import { Product } from '../products/entities/product.entity';
+import { Video } from '../videos/entities/video.entity';
+import { FreeSample } from './entities/free-sample.entity';
+import { FreeSampleService } from './free-sample.service';
+
+/**
+ * Estes testes travam as invariantes do modo amostra (`docs/CONTA-FREE.md`).
+ * Cada um existe contra um regresso específico — está anotado em cada `it`.
+ */
+describe('FreeSampleService', () => {
+  let service: FreeSampleService;
+
+  /** Banco de amostras em memória, com o UNIQUE de `slot` de verdade. */
+  let salvos: FreeSample[];
+
+  const produtoFalso = (i: number): Partial<Product> => ({
+    id: `p${i}`,
+    title: `Produto ${i}`,
+    category: 'casa',
+    imageUrl: 'http://img',
+    price: '99.90' as any,
+    sales30d: 25_317,
+    sales60d: 40_000,
+  });
+
+  const videoFalso = (i: number): Partial<Video> => ({
+    id: `v${i}`,
+    caption: `Vídeo ${i}`,
+    creatorHandle: '@alguem',
+    category: 'casa',
+    thumbnailUrl: null as any,
+    views: 1_500_000,
+    likes: 90_450,
+    postedAt: '2026-08-01',
+    videoUrl: 'http://tiktok/v',
+    playbackUrl: 'http://cdn/should-never-leak.mp4',
+    revenueEstimate: '12345.00',
+    transcript: 'texto que não pode vazar',
+  });
+
+  const samplesRepo = {
+    findOneBy: jest.fn(({ slot }: { slot: number }) =>
+      Promise.resolve(salvos.find((s) => s.slot === slot) ?? null),
+    ),
+    create: jest.fn((dto) => dto),
+    save: jest.fn((dto: FreeSample) => {
+      if (salvos.some((s) => s.slot === dto.slot)) {
+        return Promise.reject(new Error('duplicate key value: IDX_free_samples_slot'));
+      }
+      const gravado = { ...dto, id: `sample-${dto.slot}` } as FreeSample;
+      salvos.push(gravado);
+      return Promise.resolve(gravado);
+    }),
+  };
+
+  const productsRepo = {
+    query: jest.fn(() =>
+      Promise.resolve(
+        Array.from({ length: FREE_SAMPLE.products }, (_, i) => ({ id: `p${i}` })),
+      ),
+    ),
+    find: jest.fn(({ where }: any) =>
+      Promise.resolve(
+        (where.id._value as string[]).map((id) =>
+          produtoFalso(Number(id.slice(1))),
+        ),
+      ),
+    ),
+  };
+
+  const videosRepo = {
+    query: jest.fn(() =>
+      Promise.resolve(
+        Array.from({ length: FREE_SAMPLE.videos }, (_, i) => ({ id: `v${i}` })),
+      ),
+    ),
+    find: jest.fn(({ where }: any) =>
+      Promise.resolve(
+        (where.id._value as string[]).map((id) => videoFalso(Number(id.slice(1)))),
+      ),
+    ),
+  };
+
+  beforeEach(async () => {
+    salvos = [];
+    const module = await Test.createTestingModule({
+      providers: [
+        FreeSampleService,
+        { provide: getRepositoryToken(FreeSample), useValue: samplesRepo },
+        { provide: getRepositoryToken(Product), useValue: productsRepo },
+        { provide: getRepositoryToken(Video), useValue: videosRepo },
+      ],
+    }).compile();
+    service = module.get(FreeSampleService);
+    jest.clearAllMocks();
+  });
+
+  // Contra o F5 que revela item novo — a razão de a amostra ser congelada.
+  it('devolve exatamente o mesmo conjunto em chamadas seguidas', async () => {
+    const primeira = await service.snapshot();
+    const segunda = await service.snapshot();
+    expect(segunda.products.map((p) => p.id)).toEqual(
+      primeira.products.map((p) => p.id),
+    );
+    expect(segunda.videos.map((v) => v.id)).toEqual(
+      primeira.videos.map((v) => v.id),
+    );
+    // A segunda chamada leu o snapshot gravado em vez de escolher de novo.
+    expect(productsRepo.query).toHaveBeenCalledTimes(1);
+  });
+
+  // Contra amostras diferentes na mesma semana (duas requisições simultâneas).
+  it('duas gerações concorrentes convergem para o mesmo snapshot', async () => {
+    const [a, b] = await Promise.all([
+      service.currentSample(),
+      service.currentSample(),
+    ]);
+    expect(a.productIds).toEqual(b.productIds);
+    expect(salvos).toHaveLength(1);
+  });
+
+  // Contra o limite decorativo: sem isto, um id qualquer abre o detalhe.
+  it('nega o detalhe de um id fora da amostra', async () => {
+    await expect(service.produto('p999')).rejects.toThrow(ForbiddenException);
+    await expect(service.video('v999')).rejects.toThrow(ForbiddenException);
+  });
+
+  it('entrega o detalhe de um id que está na amostra', async () => {
+    const { products } = await service.snapshot();
+    await expect(service.produto(products[0].id)).resolves.toMatchObject({
+      id: products[0].id,
+    });
+  });
+
+  // Contra o limite que cresce sem ninguém decidir.
+  it('respeita as quantidades da configuração', async () => {
+    const snap = await service.snapshot();
+    expect(snap.products).toHaveLength(FREE_SAMPLE.products);
+    expect(snap.videos).toHaveLength(FREE_SAMPLE.videos);
+    expect(snap.limits).toEqual({
+      products: FREE_SAMPLE.products,
+      videos: FREE_SAMPLE.videos,
+      refreshDays: FREE_SAMPLE.refreshDays,
+    });
+  });
+
+  // Contra o vazamento por omissão: o que se vende não pode sair daqui.
+  it('não expõe dado acionável nem playback', async () => {
+    const snap = await service.snapshot();
+    const produto = snap.products[0] as unknown as Record<string, unknown>;
+    for (const campo of ['storeName', 'tiktokUrl', 'revenuePeriod', 'sales30d']) {
+      expect(produto).not.toHaveProperty(campo);
+    }
+    expect(produto.salesRange).toBe('25 mil+'); // faixa, nunca o exato
+
+    const video = snap.videos[0] as unknown as Record<string, unknown>;
+    for (const campo of ['playbackUrl', 'revenueEstimate', 'transcript']) {
+      expect(video).not.toHaveProperty(campo);
+    }
+    expect(video.viewsRange).toBe('1.500 mil+');
+  });
+
+  // Contra a amostra que congela para sempre.
+  it('gera um snapshot novo quando a janela vira', async () => {
+    const anterior = await service.currentSample();
+    const real = Date.now;
+    jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(real() + FREE_SAMPLE.refreshDays * 24 * 60 * 60 * 1000);
+    const novo = await service.currentSample();
+    expect(novo.slot).toBe(anterior.slot + 1);
+    expect(novo.expiresAt.getTime()).toBeGreaterThan(
+      anterior.expiresAt.getTime(),
+    );
+    jest.spyOn(Date, 'now').mockRestore();
+  });
+
+  // Contra o custo por visitante voltando pela porta dos fundos.
+  it('não depende de fornecedor externo: só lê o que já está no banco', () => {
+    // O serviço recebe repositórios e nada mais — se um dia alguém injetar o
+    // ExternalDataProvider aqui, a conta gratuita volta a custar por visita.
+    const deps = Reflect.getMetadata('design:paramtypes', FreeSampleService);
+    expect(deps).toHaveLength(3);
+  });
+});

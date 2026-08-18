@@ -428,6 +428,40 @@ export function findPlan(id: string): Plan | undefined {
 export const SIGNUP_BONUS_CREDITS = 0;
 
 /**
+ * Conta gratuita: o modo amostra (ver `docs/CONTA-FREE.md`).
+ *
+ * O paywall na entrada continua de pé — nada em `FEATURE_MIN_PLAN` foi
+ * afrouxado. O que a conta `free` ganha é um conjunto FIXO de itens, servido
+ * por uma API própria (`modules/free`), e é o "fixo" que faz o desenho
+ * funcionar: a amostra é global e igual para todo mundo, então dar F5 não
+ * revela item novo e criar uma segunda conta não revela absolutamente nada.
+ * É por isso que este modo não precisa de defesa contra multi-conta — não há o
+ * que ganhar burlando.
+ *
+ * Os números moram aqui, e não dentro do módulo `free`, porque são decisão de
+ * negócio: quem for mexer no funil já está lendo este arquivo.
+ */
+export const FREE_SAMPLE = {
+  /** Produtos na amostra. */
+  products: 20,
+  /** Vídeos na amostra. */
+  videos: 10,
+  /**
+   * Validade do snapshot. É também a defasagem anunciada na tela: a amostra
+   * não é o ranking de hoje, e isso é dito em vez de escondido.
+   */
+  refreshDays: 7,
+  /**
+   * Teto de itens da mesma categoria dentro da amostra.
+   *
+   * O topo puro do ranking devolve vinte itens do mesmo nicho, e aí a amostra
+   * prova que a base é grande em um assunto só — o contrário do que ela
+   * precisa provar.
+   */
+  maxPorCategoria: 2,
+} as const;
+
+/**
  * Hierarquia dos planos (maior = mais acesso). `free` não é um plano vendável:
  * é o estado "conta criada, pagamento pendente" — rank 0, nenhum recurso.
  * `starter` continua aqui como degrau legado: quem assinou antes mantém

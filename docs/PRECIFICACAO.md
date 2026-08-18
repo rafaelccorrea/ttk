@@ -418,3 +418,25 @@ Quem mexer no teto tem de mexer nessa constante na mesma alteração.
 Um quarto risco menor, mas real: três ações empatam no teto de R$ 0,06/crédito e dois planos anuais
 rodam a 1,44–1,45×. **A tabela tem pouca folga por construção** — o desconto de volume já foi todo
 gasto. Não há espaço para absorver aumento de custo sem mexer em preço.
+
+---
+
+## 8. A conta gratuita não entra nesta conta
+
+Desde o modo amostra ([Conta gratuita](CONTA-FREE.md)), existe de novo uma conta sem
+assinatura — e ela **não aparece em lugar nenhum deste documento**, de propósito.
+
+O motivo é que ela não consome nada do que aqui se precifica. Não há crédito de IA (o
+`SIGNUP_BONUS_CREDITS` segue em 0), não há minuto de live, e o dado que ela vê sai do que já
+está ingerido no banco: nenhuma consulta nova ao fornecedor, nenhuma chamada de modelo. O
+custo marginal de uma conta gratuita adicional é **zero**, e é isso que a mantém fora de
+`assertProfitability()` — não há margem a validar onde não há custo.
+
+Isso é uma propriedade do desenho, não uma sorte: a amostra é um conjunto FIXO, global, o
+mesmo para todas as contas. No dia em que ela passar a ser calculada por usuário, por
+consulta, ou a aceitar qualquer parâmetro de busca, esta seção deixa de valer e a conta
+gratuita passa a ter um custo que precisa entrar na tabela. Quem for fazer essa mudança
+precisa voltar aqui antes.
+
+`FREE_SAMPLE` mora em `billing.config.ts` justamente para que essa decisão seja tomada
+lendo este arquivo.

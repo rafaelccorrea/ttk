@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { FreeSampleGate } from '@/components/ui/FreeSampleGate';
 import { PlanGate } from '@/components/ui/PlanGate';
 import { RequireSubscription } from '@/components/ui/RequireSubscription';
 import { AcademyPage } from '@/pages/Academy';
@@ -12,6 +13,9 @@ import { ConfirmEmailPage } from '@/pages/ConfirmEmail';
 import { CreatorsPage } from '@/pages/Creators';
 import { DashboardPage } from '@/pages/Dashboard';
 import { FavoritesPage } from '@/pages/Favorites';
+import { FreeProdutoDetalhePage } from '@/pages/Free/ProdutoDetalhe';
+import { FreeProdutosPage } from '@/pages/Free/Produtos';
+import { FreeVideosPage } from '@/pages/Free/Videos';
 import { ForgotPasswordPage } from '@/pages/ForgotPassword';
 import { ResetPasswordPage } from '@/pages/ResetPassword';
 import { GenerationsPage } from '@/pages/Generations';
@@ -57,12 +61,39 @@ export function AppRoutes() {
             vencida — inclusive para recusar um pedido que não foi seu. */}
         <Route path="/ativar" element={<AtivarDispositivoPage />} />
         <Route element={<AppLayout />}>
+          {/* As três telas de descoberta ficam FORA do RequireSubscription:
+              são as únicas que a conta gratuita abre, em modo amostra (ver
+              docs/CONTA-FREE.md). O FreeSampleGate escolhe qual versão
+              renderizar e manda para /assinatura quem não se encaixa em
+              nenhuma das duas. Todo o resto do app continua com o paywall na
+              entrada, logo abaixo. */}
+          <Route
+            path="/produtos"
+            element={
+              <FreeSampleGate
+                pago={<ProductsPage />}
+                amostra={<FreeProdutosPage />}
+              />
+            }
+          />
+          <Route
+            path="/produtos/:id"
+            element={
+              <FreeSampleGate
+                pago={<ProductDetailPage />}
+                amostra={<FreeProdutoDetalhePage />}
+              />
+            }
+          />
+          <Route
+            path="/videos"
+            element={
+              <FreeSampleGate pago={<VideosPage />} amostra={<FreeVideosPage />} />
+            }
+          />
           {/* Estar logado não basta: conta sem assinatura vai para /planos. */}
           <Route element={<RequireSubscription />}>
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/produtos" element={<ProductsPage />} />
-            <Route path="/produtos/:id" element={<ProductDetailPage />} />
-            <Route path="/videos" element={<VideosPage />} />
             <Route path="/tendencias" element={<TrendsPage />} />
             <Route path="/criadores" element={<CreatorsPage />} />
             <Route path="/favoritos" element={<FavoritesPage />} />

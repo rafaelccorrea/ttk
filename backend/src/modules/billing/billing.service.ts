@@ -19,6 +19,7 @@ import {
   devCheckoutEnabled,
   FEATURE_MIN_PLAN,
   featureLancada,
+  FREE_SAMPLE,
   isCompAccount,
   LIVE_HOUR_PACKS,
   LIVE_TRIAL_MINUTES,
@@ -94,6 +95,24 @@ export class BillingService implements OnModuleInit {
       prices: ACTION_PRICES,
       features,
       featureMinPlan: FEATURE_MIN_PLAN,
+      /*
+       * O modo amostra da conta gratuita (`docs/CONTA-FREE.md`).
+       *
+       * Vem daqui porque o front tinha só duas respostas possíveis — "tem
+       * acesso" e "não tem" — e agora existe uma terceira. Sem este bloco, a
+       * conta sem assinatura continuaria sendo expulsa do app inteiro, que é
+       * exatamente o comportamento que o modo amostra veio substituir.
+       *
+       * `active` é o interruptor: o front não deve inferir o modo a partir de
+       * `plan === 'free'`, porque quem decide quem entra na amostra é o
+       * servidor (ver FreePlanGuard) e as duas regras precisam ser a mesma.
+       */
+      freeSample: {
+        active: user.plan === 'free',
+        products: FREE_SAMPLE.products,
+        videos: FREE_SAMPLE.videos,
+        refreshDays: FREE_SAMPLE.refreshDays,
+      },
       /*
        * A carteira de live vai junto da de créditos, mas separada dentro dela —
        * é a mesma tela e são saldos que não se convertem um no outro.

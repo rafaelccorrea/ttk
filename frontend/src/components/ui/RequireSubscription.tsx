@@ -6,8 +6,17 @@ import { billingService } from '@/services/billing.service';
 /**
  * Paywall na entrada: conta no plano `free` é "cadastro feito, pagamento
  * pendente" — ou assinatura encerrada, que volta ao mesmo estado. Nos dois
- * casos a pessoa sai do app inteiro e vai para `/assinatura`, que fica fora do
- * AppLayout: sem menu, sem telas de fundo estourando 403.
+ * casos a pessoa não entra nas telas pagas.
+ *
+ * Para onde ela vai mudou com o modo amostra (`docs/CONTA-FREE.md`). Antes era
+ * sempre `/assinatura`, fora do AppLayout — sem menu, sem telas de fundo
+ * estourando 403. Agora, se a conta tem amostra, ela vai para `/produtos`: é a
+ * única porta que ela pode abrir, e mandá-la para o checkout toda vez que
+ * clicasse numa tela paga transformaria o app inteiro num pedido de dinheiro.
+ * A tela de assinatura continua a um clique, em todo CTA da amostra.
+ *
+ * Sem amostra (backend antigo, ou conta em estado que este front não conhece),
+ * o comportamento é o de antes: `/assinatura`.
  *
  * Isto é só a UX — a autoridade é o backend, que barra todas as rotas de dado e
  * de IA pelo PlanFeatureGuard.
@@ -17,20 +26,28 @@ import { billingService } from '@/services/billing.service';
  * pior do que deixá-lo bater no 403.
  */
 export function RequireSubscription() {
-  const [plan, setPlan] = useState<string | null>(null);
+  const [destino, setDestino] = useState<'carregando' | 'entra' | '/produtos' | '/assinatura'>(
+    'carregando',
+  );
 
   useEffect(() => {
     let active = true;
     billingService
       .wallet()
-      .then((w) => active && setPlan(w.plan))
-      .catch(() => active && setPlan('unknown'));
+      .then((w) => {
+        if (!active) return;
+        if (w.plan !== 'free') return setDestino('entra');
+        setDestino(w.freeSample?.active ? '/produtos' : '/assinatura');
+      })
+      .catch(() => active && setDestino('entra'));
     return () => {
       active = false;
     };
   }, []);
 
-  if (plan === null) return <BrandLoader label="Verificando sua assinatura..." />;
-  if (plan === 'free') return <Navigate to="/assinatura" replace />;
-  return <Outlet />;
+  if (destino === 'carregando') {
+    return <BrandLoader label="Verificando sua assinatura..." />;
+  }
+  if (destino === 'entra') return <Outlet />;
+  return <Navigate to={destino} replace />;
 }

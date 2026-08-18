@@ -12,6 +12,7 @@ import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { CombinationsModule } from './modules/combinations/combinations.module';
 import { CreatorsModule } from './modules/creators/creators.module';
+import { FreeModule } from './modules/free/free.module';
 import { IngestionModule } from './modules/ingestion/ingestion.module';
 import { LiveModule } from './modules/live/live.module';
 import { MediaModule } from './modules/media/media.module';
@@ -53,6 +54,7 @@ import { VideogenModule } from './modules/videogen/videogen.module';
     UsersModule,
     ProductsModule,
     ShowcaseModule,
+    FreeModule,
     AdminModule,
     StudioModule,
     SupportModule,
