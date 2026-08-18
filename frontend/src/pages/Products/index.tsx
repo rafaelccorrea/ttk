@@ -23,6 +23,8 @@ import {
   Grid,
   IconButton,
   Skeleton,
+  Tab,
+  Tabs,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
@@ -35,6 +37,7 @@ import { ImagePlaceholder } from '@/components/ui/ImagePlaceholder';
 import { FilterBar, SearchField, SelectField } from '@/components/ui/Filters';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { HotBadge } from '@/components/ui/HotBadge';
+import { MeusProdutos } from '@/components/produtos/MeusProdutos';
 import {
   ProductFilterOptions,
   ProductSection,
@@ -42,6 +45,7 @@ import {
   productsService,
   RankedProduct,
 } from '@/services/products.service';
+import { UserProduct, campaignsService } from '@/services/campaigns.service';
 import { formatCurrency, formatNumber } from '@/utils/format';
 import { proxyImage } from '@/utils/tiktok';
 
@@ -486,6 +490,37 @@ export function ProductsPage() {
   const [topSellers, setTopSellers] = useState<RankedProduct[]>([]);
   const [loadingTop, setLoadingTop] = useState(true);
 
+  /*
+   * A aba do próprio vendedor, e por que ela mora AQUI.
+   *
+   * O catálogo dele já existia, mas só dentro da Fábrica de Criativos — onde
+   * faz sentido para quem já sabe que vai montar uma campanha, e onde ninguém
+   * procura quando a pergunta é "quais produtos eu cadastrei?". Produtos é o
+   * lugar óbvio dessa pergunta, então é onde a resposta passa a estar.
+   */
+  const [aba, setAba] = useState<'alta' | 'meus'>('alta');
+  const [meusProdutos, setMeusProdutos] = useState<UserProduct[] | null>(null);
+
+  /*
+   * Carrega só quando a aba é aberta, e não junto da página.
+   *
+   * A vitrine é o que a maioria vem ver; buscar o catálogo pessoal no boot
+   * gastaria uma requisição em toda visita para uma lista que muita gente nunca
+   * abre. O `null` distingue "ainda não busquei" de "busquei e está vazio" —
+   * sem isso, a tela pisca um "cadastre seu primeiro produto" antes de saber
+   * se existe algum.
+   */
+  const carregarMeusProdutos = useCallback(() => {
+    campaignsService
+      .listProducts()
+      .then(setMeusProdutos)
+      .catch(() => setMeusProdutos([]));
+  }, []);
+
+  useEffect(() => {
+    if (aba === 'meus' && meusProdutos === null) carregarMeusProdutos();
+  }, [aba, meusProdutos, carregarMeusProdutos]);
+
   const categories = options?.categories ?? [];
 
   // Qualquer mudança de filtro volta para a primeira página, senão o usuário
@@ -639,6 +674,34 @@ export function ProductsPage() {
     );
   }
 
+  if (aba === 'meus') {
+    return (
+      <>
+        <Typography variant="h5">Meus produtos</Typography>
+        <Typography color="text.secondary" mb={3}>
+          O que você vende. É daqui que saem os roteiros, as fotos das cenas de
+          demonstração e as campanhas.
+        </Typography>
+
+        <Tabs value={aba} onChange={(_e: unknown, v: 'alta' | 'meus') => setAba(v)} sx={{ mb: 3 }}>
+          <Tab value="alta" label="Em alta" />
+          <Tab
+            value="meus"
+            label={
+              meusProdutos ? `Meus produtos (${meusProdutos.length})` : 'Meus produtos'
+            }
+          />
+        </Tabs>
+
+        {meusProdutos === null ? (
+          <BrandLoader label="Carregando seus produtos..." />
+        ) : (
+          <MeusProdutos produtos={meusProdutos} onChange={carregarMeusProdutos} />
+        )}
+      </>
+    );
+  }
+
   return (
     <>
       <Typography variant="h5">Produtos em alta</Typography>
@@ -646,6 +709,16 @@ export function ProductsPage() {
         Os produtos que mais venderam no período — ranqueados pelo volume real
         de vendas.
       </Typography>
+
+      <Tabs value={aba} onChange={(_e: unknown, v: 'alta' | 'meus') => setAba(v)} sx={{ mb: 3 }}>
+        <Tab value="alta" label="Em alta" />
+        <Tab
+          value="meus"
+          label={
+            meusProdutos ? `Meus produtos (${meusProdutos.length})` : 'Meus produtos'
+          }
+        />
+      </Tabs>
 
       <FilterBar>
         <ToggleButtonGroup

@@ -42,6 +42,16 @@ const MAX_REFERENCIAS = 8;
 /** Teto de fotos por produto — mais que isso ninguém usa no storyboard. */
 const MAX_FOTOS = 5;
 
+/**
+ * Piso de fotos para abrir campanha.
+ *
+ * Cada cena de produto parte de uma foto (`produto.images[i % length]`): com
+ * uma só, todas as cenas animam a MESMA imagem e o anúncio fica visivelmente
+ * repetido. Barrar na criação — e não na renderização — evita que o vendedor
+ * gaste o crédito do roteiro para só então descobrir o problema.
+ */
+const MIN_FOTOS = 3;
+
 @Injectable()
 export class CampaignsService {
   private readonly logger = new Logger(CampaignsService.name);
@@ -272,6 +282,11 @@ export class CampaignsService {
   async criarCampanha(userId: string, dto: CreateCampaignDto): Promise<Campaign> {
     const produto = await this.produtos.findOneBy({ id: dto.userProductId, userId });
     if (!produto) throw new NotFoundException('Produto não encontrado.');
+    if (produto.images.length < MIN_FOTOS) {
+      throw new BadRequestException(
+        `Envie ao menos ${MIN_FOTOS} fotos do produto para criar a campanha (há ${produto.images.length}).`,
+      );
+    }
     const persona = await this.personas.findOneBy({ id: dto.personaId, userId });
     if (!persona) throw new NotFoundException('Persona não encontrada.');
 

@@ -31,6 +31,7 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { CurrencyField } from '@/components/ui/CurrencyField';
+import { MeusProdutos } from '@/components/produtos/MeusProdutos';
 import { resolveApiUrl } from '@/services/api';
 import { formatMoney } from '@/utils/format';
 import {
@@ -45,7 +46,7 @@ import {
   validarPreco,
   validarRotuloPersona,
   validarTextoLongo,
-} from './validacao';
+} from '@/utils/validacao-criativos';
 import {
   AttributeGroup,
   Campaign,
@@ -64,435 +65,6 @@ function mensagemDeErro(error: unknown): string {
   return resposta?.data?.message ?? 'Não foi possível concluir. Tente de novo.';
 }
 
-// ---------------------------------------------------------------- produtos
-/**
- * Card do produto com a galeria.
- *
- * A foto não é enfeite de cadastro: as cenas de demonstração são animadas a
- * partir dela. Sem foto, a IA inventa um objeto parecido e o anúncio mostra um
- * produto que não é o que o vendedor vende — por isso o aviso fica no card, e
- * não escondido numa ajuda.
- */
-function ProdutoCard({
-  produto,
-  onChange,
-}: {
-  produto: UserProduct;
-  onChange: () => void;
-}) {
-  const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const [ampliada, setAmpliada] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  async function enviar(arquivos: FileList | null) {
-    if (!arquivos?.length) return;
-    const lista = Array.from(arquivos);
-    setErro(null);
-
-    // Valida ANTES de subir: 30MB gastos para receber um 413, ou um PDF
-    // renomeado para .jpg recusado só depois de atravessar a rede, é tempo do
-    // usuário jogado fora.
-    const invalida = lista.map(validarFoto).find(Boolean);
-    if (invalida) {
-      setErro(invalida);
-      if (inputRef.current) inputRef.current.value = '';
-      return;
-    }
-
-    const cabem = LIMITES.fotosPorProduto - produto.images.length;
-    if (lista.length > cabem) {
-      setErro(
-        `Cabem mais ${cabem} foto(s) neste produto (limite de ${LIMITES.fotosPorProduto}).`,
-      );
-      if (inputRef.current) inputRef.current.value = '';
-      return;
-    }
-
-    setEnviando(true);
-    try {
-      for (const arquivo of lista) {
-        await campaignsService.addPhoto(produto.id, arquivo);
-      }
-      onChange();
-    } catch (error) {
-      setErro(mensagemDeErro(error));
-    } finally {
-      setEnviando(false);
-      if (inputRef.current) inputRef.current.value = '';
-    }
-  }
-
-  return (
-    <Card>
-      <CardContent>
-        <Box display="flex" alignItems="center" gap={2}>
-          <Box flexGrow={1}>
-            <Typography fontWeight={700}>{produto.name}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {/* `toFixed` devolvia "R$ 99.00", com ponto — errado em pt-BR. */}
-              {produto.priceBrl ? formatMoney(Number(produto.priceBrl)) : 'sem preço'}
-              {produto.benefit ? ` · ${produto.benefit}` : ''}
-            </Typography>
-          </Box>
-          <IconButton
-            onClick={async () => {
-              await campaignsService.deleteProduct(produto.id);
-              onChange();
-            }}
-          >
-            <DeleteOutlineRoundedIcon />
-          </IconButton>
-        </Box>
-
-        <Divider sx={{ my: 1.5 }} />
-
-        {/* As regras ficam à vista ANTES de escolher o arquivo. Descobrir o
-            limite pelo erro depois do upload é o caminho mais caro. */}
-        <Box display="flex" alignItems="baseline" gap={1} mb={1} flexWrap="wrap">
-          <Typography variant="body2" fontWeight={700}>
-            Fotos do produto
-          </Typography>
-          <Typography
-            variant="caption"
-            color={
-              produto.images.length >= LIMITES.fotosPorProduto
-                ? 'warning.main'
-                : 'text.secondary'
-            }
-            fontWeight={700}
-          >
-            {produto.images.length}/{LIMITES.fotosPorProduto}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            · JPG, PNG ou WebP até {LIMITES.fotoBytes / 1024 / 1024}MB cada
-          </Typography>
-        </Box>
-
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          {produto.images.map((foto) => (
-            <Box
-              key={foto}
-              sx={{
-                position: 'relative',
-                // Miniatura no MESMO formato do arquivo (9:16). Num quadrado,
-                // a foto vertical aparecia como uma fatia central e não dava
-                // para reconhecer o produto.
-                width: 96,
-                aspectRatio: '9 / 16',
-                borderRadius: 1.5,
-                overflow: 'hidden',
-                border: '1px solid',
-                borderColor: 'divider',
-                bgcolor: '#fff',
-              }}
-            >
-              {/* A miniatura é pequena demais para conferir enquadramento, e é
-                  dela que sai o frame da cena — vale poder ver de perto. */}
-              <Box
-                component="button"
-                type="button"
-                onClick={() => setAmpliada(foto)}
-                aria-label={`Ver ${produto.name} em tamanho maior`}
-                sx={{
-                  all: 'unset',
-                  cursor: 'zoom-in',
-                  display: 'block',
-                  width: '100%',
-                  height: '100%',
-                }}
-              >
-                {/* `contain`: o arquivo já vem em 9:16 com o produto inteiro —
-                    recortar de novo aqui desfaria o trabalho. */}
-                <SmartImage src={foto} alt={produto.name} objectFit="contain" />
-              </Box>
-              <IconButton
-                size="small"
-                onClick={async () => {
-                  await campaignsService.removePhoto(produto.id, foto);
-                  onChange();
-                }}
-                sx={{
-                  position: 'absolute',
-                  top: 2,
-                  right: 2,
-                  bgcolor: 'rgba(0,0,0,0.55)',
-                  color: '#fff',
-                  '&:hover': { bgcolor: 'rgba(0,0,0,0.75)' },
-                }}
-              >
-                <DeleteOutlineRoundedIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-            </Box>
-          ))}
-
-          {/* Vaga fantasma durante o upload. O `addPhoto` faz normalização no
-              sharp e envio ao S3 — segundos em que a fileira ficava parada e
-              parecia que o clique não pegou. */}
-          {enviando && (
-            <Box
-              sx={{
-                width: 96,
-                aspectRatio: '9 / 16',
-                borderRadius: 1.5,
-                overflow: 'hidden',
-                border: '1px solid',
-                borderColor: 'divider',
-                position: 'relative',
-              }}
-            >
-              <Skeleton variant="rectangular" width="100%" height="100%" />
-              <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
-                <CircularProgress size={20} />
-              </Box>
-            </Box>
-          )}
-
-          {produto.images.length < LIMITES.fotosPorProduto && (
-            <Button
-              component="label"
-              variant="outlined"
-              disabled={enviando}
-              // Mesmo formato das miniaturas, para a fileira não ficar torta.
-              // O ícone vira filho: com `startIcon` a margem lateral do MUI
-              // desalinha tudo quando o botão é uma coluna.
-              sx={{
-                width: 96,
-                aspectRatio: '9 / 16',
-                borderStyle: 'dashed',
-                flexDirection: 'column',
-                gap: 0.5,
-                fontSize: 12,
-                lineHeight: 1.2,
-                px: 1,
-              }}
-            >
-              {enviando ? <CircularProgress size={18} /> : <AddPhotoAlternateRoundedIcon />}
-              {enviando ? 'Enviando...' : 'Adicionar foto'}
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                hidden
-                onChange={(e) => void enviar(e.target.files)}
-              />
-            </Button>
-          )}
-        </Stack>
-
-        {erro && (
-          <Alert severity="error" sx={{ mt: 1.5 }}>
-            {erro}
-          </Alert>
-        )}
-        {!produto.images.length && (
-          <Alert severity="warning" sx={{ mt: 1.5 }}>
-            Sem foto, o vídeo não mostra o seu produto — a IA desenha um objeto
-            parecido. Envie ao menos uma foto para ter cenas de demonstração reais.
-          </Alert>
-        )}
-
-        <Dialog
-          open={Boolean(ampliada)}
-          onClose={() => setAmpliada(null)}
-          maxWidth="sm"
-          fullWidth
-        >
-          <DialogContent sx={{ p: 0, bgcolor: '#000', position: 'relative' }}>
-            {ampliada && (
-              <Box
-                component="img"
-                src={resolveApiUrl(ampliada)}
-                alt={produto.name}
-                sx={{
-                  display: 'block',
-                  width: '100%',
-                  // `contain`: aqui a foto é conferida, então não pode cortar —
-                  // é justamente o corte que se quer avaliar.
-                  maxHeight: '80vh',
-                  objectFit: 'contain',
-                }}
-              />
-            )}
-            <IconButton
-              onClick={() => setAmpliada(null)}
-              sx={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                bgcolor: 'rgba(0,0,0,0.55)',
-                color: '#fff',
-                '&:hover': { bgcolor: 'rgba(0,0,0,0.75)' },
-              }}
-            >
-              <CloseRoundedIcon />
-            </IconButton>
-          </DialogContent>
-        </Dialog>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ProdutosTab({
-  produtos,
-  onChange,
-}: {
-  produtos: UserProduct[];
-  onChange: () => void;
-}) {
-  const [name, setName] = useState('');
-  const [priceBrl, setPriceBrl] = useState<number | null>(null);
-  const [benefit, setBenefit] = useState('');
-  const [problemSolved, setProblemSolved] = useState('');
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  // Erro só aparece depois que o campo perdeu o foco: acusar "obrigatório" na
-  // primeira letra digitada é ruído, não ajuda.
-  const [tocado, setTocado] = useState<Record<string, boolean>>({});
-
-  const erros = {
-    name: validarNomeProduto(name),
-    priceBrl: validarPreco(priceBrl),
-    benefit: validarTextoLongo(benefit, LIMITES.beneficio, 'Benefício'),
-    problemSolved: validarTextoLongo(problemSolved, LIMITES.problema, 'Problema'),
-  };
-  const invalido = Object.values(erros).some(Boolean);
-
-  function mostrar(campo: keyof typeof erros): string | undefined {
-    return tocado[campo] ? (erros[campo] ?? undefined) : undefined;
-  }
-
-  async function salvar() {
-    // Ao enviar, tudo passa a ser "tocado": senão o botão fica desabilitado
-    // sem o usuário saber qual campo está errado.
-    setTocado({ name: true, priceBrl: true, benefit: true, problemSolved: true });
-    if (invalido) return;
-
-    setSalvando(true);
-    setErro(null);
-    try {
-      await campaignsService.createProduct({
-        name: name.trim(),
-        priceBrl: priceBrl ?? undefined,
-        benefit: benefit.trim() || undefined,
-        problemSolved: problemSolved.trim() || undefined,
-      });
-      setName('');
-      setPriceBrl(null);
-      setBenefit('');
-      setProblemSolved('');
-      setTocado({});
-      onChange();
-    } catch (error) {
-      setErro(mensagemDeErro(error));
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  return (
-    <Grid container spacing={3}>
-      <Grid item xs={12} md={5}>
-        <Card>
-          <CardContent>
-            <Stack spacing={2}>
-              <Typography variant="h6" fontWeight={800}>
-                Novo produto
-              </Typography>
-              <TextField
-                required
-                label="Nome do produto"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onBlur={() => setTocado((t) => ({ ...t, name: true }))}
-                error={Boolean(mostrar('name'))}
-                helperText={mostrar('name') ?? contador(name, LIMITES.nomeProduto)}
-                inputProps={{ maxLength: LIMITES.nomeProduto }}
-                fullWidth
-              />
-              <CurrencyField
-                label="Preço"
-                value={priceBrl}
-                onChange={setPriceBrl}
-                onBlur={() => setTocado((t) => ({ ...t, priceBrl: true }))}
-                error={Boolean(mostrar('priceBrl'))}
-                helperText={mostrar('priceBrl') ?? 'Opcional — entra no CTA do roteiro.'}
-                fullWidth
-              />
-              <TextField
-                label="Principal benefício"
-                placeholder="Corta tudo em segundos, sem sujeira."
-                value={benefit}
-                onChange={(e) => setBenefit(e.target.value)}
-                onBlur={() => setTocado((t) => ({ ...t, benefit: true }))}
-                error={Boolean(mostrar('benefit'))}
-                multiline
-                minRows={2}
-                fullWidth
-                inputProps={{ maxLength: LIMITES.beneficio }}
-                FormHelperTextProps={{
-                  sx: perigoNoContador(benefit, LIMITES.beneficio)
-                    ? { color: 'warning.main' }
-                    : undefined,
-                }}
-                helperText={
-                  mostrar('benefit') ??
-                  `Vira a promessa do gancho. ${contador(benefit, LIMITES.beneficio)}`
-                }
-              />
-              <TextField
-                label="Problema que resolve"
-                placeholder="Perder 20 minutos picando cebola."
-                value={problemSolved}
-                onChange={(e) => setProblemSolved(e.target.value)}
-                onBlur={() => setTocado((t) => ({ ...t, problemSolved: true }))}
-                error={Boolean(mostrar('problemSolved'))}
-                multiline
-                minRows={2}
-                fullWidth
-                inputProps={{ maxLength: LIMITES.problema }}
-                FormHelperTextProps={{
-                  sx: perigoNoContador(problemSolved, LIMITES.problema)
-                    ? { color: 'warning.main' }
-                    : undefined,
-                }}
-                helperText={
-                  mostrar('problemSolved') ??
-                  `Vira a primeira frase do vídeo. ${contador(problemSolved, LIMITES.problema)}`
-                }
-              />
-              {erro && <Alert severity="error">{erro}</Alert>}
-              <Button
-                variant="contained"
-                onClick={salvar}
-                // Não desabilita por campo inválido: botão morto sem explicação
-                // é o pior dos dois mundos. Clicar revela o que falta.
-                disabled={salvando}
-              >
-                {salvando ? 'Salvando...' : 'Salvar produto'}
-              </Button>
-            </Stack>
-          </CardContent>
-        </Card>
-      </Grid>
-
-      <Grid item xs={12} md={7}>
-        <Stack spacing={1.5}>
-          {!produtos.length && (
-            <Alert severity="info">
-              Cadastre o produto que você vende para começar uma campanha.
-            </Alert>
-          )}
-          {produtos.map((produto) => (
-            <ProdutoCard key={produto.id} produto={produto} onChange={onChange} />
-          ))}
-        </Stack>
-      </Grid>
-    </Grid>
-  );
-}
 
 // ---------------------------------------------------------------- personas
 function PersonasTab({
@@ -1046,7 +618,13 @@ function CampanhasTab({
     );
   }
 
-  const podeCriar = Boolean(userProductId && personaId);
+  const produtoEscolhido = produtos.find((p) => p.id === userProductId) ?? null;
+  // O mesmo piso do backend: sem `fotosMinimasPorProduto` fotos, a campanha é
+  // recusada na API. Barrar aqui poupa a ida e o 400.
+  const fotosFaltando = produtoEscolhido
+    ? Math.max(0, LIMITES.fotosMinimasPorProduto - produtoEscolhido.images.length)
+    : 0;
+  const podeCriar = Boolean(userProductId && personaId) && !fotosFaltando;
 
   return (
     <Grid container spacing={3}>
@@ -1068,7 +646,13 @@ function CampanhasTab({
                   value: p.id,
                   label: p.name,
                   imageUrl: p.images[0] ?? null,
-                  caption: p.benefit ?? undefined,
+                  // A contagem de fotos entra na legenda da lista: é o que
+                  // decide se o produto pode virar campanha, então precisa
+                  // aparecer ANTES da escolha, não depois do botão travado.
+                  caption:
+                    p.images.length < LIMITES.fotosMinimasPorProduto
+                      ? `${p.images.length}/${LIMITES.fotosMinimasPorProduto} fotos — faltam fotos`
+                      : (p.benefit ?? undefined),
                 }))}
               />
               <SearchableSelect
@@ -1103,6 +687,15 @@ function CampanhasTab({
                     {precos.roteiro + precos.cena * Math.round(durationSeconds / 5)} créditos
                   </strong>
                   . Você só paga cada cena ao renderizá-la.
+                </Alert>
+              )}
+              {Boolean(fotosFaltando) && (
+                <Alert severity="warning">
+                  <strong>{produtoEscolhido?.name}</strong> tem{' '}
+                  {produtoEscolhido?.images.length} de {LIMITES.fotosMinimasPorProduto}{' '}
+                  fotos. Cada cena de demonstração parte de uma foto diferente — envie
+                  mais {fotosFaltando} na aba <strong>Produtos</strong> para criar a
+                  campanha.
                 </Alert>
               )}
               {erro && <Alert severity="error">{erro}</Alert>}
@@ -1218,7 +811,7 @@ export function CampaignsPage() {
       </Tabs>
       <Divider sx={{ mb: 3 }} />
 
-      {aba === 0 && <ProdutosTab produtos={produtos} onChange={recarregar} />}
+      {aba === 0 && <MeusProdutos produtos={produtos} onChange={recarregar} />}
       {aba === 1 && (
         <PersonasTab
           grupos={grupos}

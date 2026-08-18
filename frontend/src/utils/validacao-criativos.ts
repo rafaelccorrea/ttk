@@ -22,6 +22,12 @@ export const LIMITES = {
   precoMaximo: 1_000_000,
   fotoBytes: 8 * 1024 * 1024,
   fotosPorProduto: 5,
+  /**
+   * Piso de fotos para virar campanha. Cada cena de produto parte de uma foto
+   * diferente: com uma só, as três cenas animam a MESMA imagem e o anúncio
+   * denuncia a repetição. O backend cobra o mesmo piso em `criarCampanha`.
+   */
+  fotosMinimasPorProduto: 3,
 } as const;
 
 /** Quantas palavras cabem nos ~5 segundos de uma cena. */
