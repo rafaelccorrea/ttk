@@ -224,9 +224,31 @@ export class HiggsfieldCliService implements GeradorDeMidia {
   private static acharBinario(): string {
     try {
       const pacote = require.resolve('@higgsfield/cli/package.json');
-      const entrada = join(dirname(pacote), 'bin', 'higgsfield.js');
+      const raiz = dirname(pacote);
+
+      /*
+       * O binário NATIVO primeiro, não o `bin/higgsfield.js`.
+       *
+       * Aquele arquivo não faz o trabalho: ele repassa os argumentos para
+       * `vendor/hf` com `stdio: 'inherit'`, que manda a saída direto para a
+       * saída do processo pai em vez de devolvê-la pelo cano que o `exec`
+       * escuta. Neste servidor essa indireção engole tudo — a CLI terminava com
+       * código ZERO, stdout vazio e stderr vazio, o que é o pior tipo de falha:
+       * a que não deixa rastro. Chamando o executável direto, a saída volta
+       * pelo caminho normal.
+       *
+       * O `liberarVendor` continua sendo o que torna isso possível, já que o
+       * arquivo chega do deploy sem permissão de execução.
+       */
+      const nativo = join(raiz, 'vendor', process.platform === 'win32' ? 'hf.exe' : 'hf');
+      if (existsSync(nativo)) {
+        HiggsfieldCliService.liberarVendor(raiz);
+        return HiggsfieldCliService.citar(nativo);
+      }
+
+      // Sem o nativo, o embrulho ainda é melhor que nada.
+      const entrada = join(raiz, 'bin', 'higgsfield.js');
       if (existsSync(entrada)) {
-        HiggsfieldCliService.liberarVendor(dirname(pacote));
         return [
           HiggsfieldCliService.citar(process.execPath),
           HiggsfieldCliService.citar(entrada),
