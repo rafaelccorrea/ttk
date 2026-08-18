@@ -51,13 +51,22 @@ export class HiggsfieldSentinelaService {
   ) {}
 
   /**
-   * A cada dez minutos.
+   * A cada minuto, e configurável por ambiente.
    *
    * O access token vale 24h, então o intervalo não é sobre pegar a expiração em
-   * cima da hora — é sobre o tempo entre a queda e você saber dela. Dez minutos
-   * é curto para o vendedor esbarrar nisso e longo para não pesar em nada.
+   * cima da hora — é sobre o tempo entre a queda e você saber dela. Começou em
+   * dez minutos por economia, e dez minutos são uma eternidade quando se está
+   * caçando um problema: cada hipótese esperava o próximo tique para responder.
+   *
+   * Um minuto pesa quase nada porque a sonda é `account status`, que só lê
+   * saldo: sem geração, sem crédito. E o log continua enxuto porque só a
+   * MUDANÇA de estado vira linha — cem tiques seguidos com tudo bem não
+   * imprimem nada.
+   *
+   * `HIGGSFIELD_SENTINELA_CRON` permite afrouxar depois que a poeira baixar,
+   * sem passar por um deploy para mexer num número.
    */
-  @Cron('*/10 * * * *')
+  @Cron(process.env.HIGGSFIELD_SENTINELA_CRON ?? '*/1 * * * *')
   async vigiar(): Promise<void> {
     // Sem CLI ativa não há o que vigiar: com HIGGSFIELD_DRIVER=api quem gera é
     // a chave de servidor, que não expira e não tem sessão para cair.
