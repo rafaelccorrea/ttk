@@ -26,6 +26,73 @@ import { VitrineAuditService } from './vitrine-audit.service';
 
 const JOB_NAME = 'ingestion-cron';
 
+/** As oito colunas de janela que ordenam a vitrine. */
+export interface MetricasPorPeriodo {
+  sales7d: number;
+  sales30d: number;
+  sales60d: number;
+  sales90d: number;
+  revenue7d: number;
+  revenue30d: number;
+  revenue60d: number;
+  revenue90d: number;
+}
+
+/**
+ * Copia as métricas de janela para o produto — **só o que veio com valor**.
+ *
+ * O zero aqui é ambíguo, e a prova está no arquivo bruto: para o MESMO tipo de
+ * produto, o `product/list` devolve as seis janelas preenchidas, enquanto o
+ * `product/detail` devolve 1d/7d/15d zerados e só 30d/60d/90d com número. Ou
+ * seja, nesse endpoint o zero significa "não calculei", não "não vendeu".
+ *
+ * Gravar esse zero apagaria um dado bom toda vez que o refresh passasse por um
+ * produto — o ranking cairia sozinho entre uma execução e outra, sem ninguém
+ * entender por quê. Preservar o valor anterior erra no máximo por deixar um
+ * número velho; sobrescrever com zero erra tirando o produto da vitrine.
+ *
+ * O preço disso: um produto que REALMENTE zerou as vendas mantém o último
+ * número conhecido. É aceitável porque a janela de 30 dias se renova sozinha na
+ * próxima coleta com dado bom, e porque some da vitrine por comparação com os
+ * outros, não por queda absoluta.
+ */
+export function aplicarPeriodo(
+  produto: {
+    sales7d: number;
+    sales30d: number;
+    sales60d: number;
+    sales90d: number;
+    revenue7d: string;
+    revenue30d: string;
+    revenue60d: string;
+    revenue90d: string;
+  },
+  p: MetricasPorPeriodo,
+): void {
+  if (p.sales7d > 0) produto.sales7d = p.sales7d;
+  if (p.sales30d > 0) produto.sales30d = p.sales30d;
+  if (p.sales60d > 0) produto.sales60d = p.sales60d;
+  if (p.sales90d > 0) produto.sales90d = p.sales90d;
+  if (p.revenue7d > 0) produto.revenue7d = p.revenue7d.toFixed(2);
+  if (p.revenue30d > 0) produto.revenue30d = p.revenue30d.toFixed(2);
+  if (p.revenue60d > 0) produto.revenue60d = p.revenue60d.toFixed(2);
+  if (p.revenue90d > 0) produto.revenue90d = p.revenue90d.toFixed(2);
+}
+
+/** Extrai as oito janelas de um `ExternalProduct`. */
+export function periodoDe(ext: ExternalProduct): MetricasPorPeriodo {
+  return {
+    sales7d: ext.sales7d,
+    sales30d: ext.sales30d,
+    sales60d: ext.sales60d,
+    sales90d: ext.sales90d,
+    revenue7d: ext.revenue7d,
+    revenue30d: ext.revenue30d,
+    revenue60d: ext.revenue60d,
+    revenue90d: ext.revenue90d,
+  };
+}
+
 /** Host das imagens assinadas do fornecedor — o link expira em ~3 dias. */
 const SIGNABLE_IMAGE_HOST = 'echosell-images.tos-ap-southeast-1.volces.com';
 
@@ -469,6 +536,7 @@ export class IngestionService implements OnModuleInit {
         storeName: ext.storeName,
         tiktokUrl: ext.tiktokUrl,
         rating: ext.rating,
+        periodo: periodoDe(ext),
         radarScore: null,
       });
       await this.upsertDailyMetric(product.id, today, ext.salesDaily, ext.revenueDaily);
@@ -512,6 +580,9 @@ export class IngestionService implements OnModuleInit {
       if (ext.rating != null && ext.rating > 0) {
         product.rating = ext.rating.toFixed(1);
       }
+      // O refresh é o caminho por onde passa o catálogo INTEIRO, dez produtos
+      // por requisição: é aqui que as janelas se mantêm vivas ao longo do mês.
+      aplicarPeriodo(product, periodoDe(ext));
       product.lastRefreshedAt = now;
       await this.products.save(product);
       await this.upsertDailyMetric(product.id, today, ext.salesDaily, ext.revenueDaily);
@@ -609,6 +680,7 @@ export class IngestionService implements OnModuleInit {
           storeName: ext.storeName,
           tiktokUrl: ext.tiktokUrl,
           rating: ext.rating,
+          periodo: periodoDe(ext),
           radarScore: null,
         });
         await this.upsertDailyMetric(product.id, today, ext.salesDaily, ext.revenueDaily);
@@ -726,6 +798,10 @@ export class IngestionService implements OnModuleInit {
       if (this.externalData.budgetExhausted) break;
       const ext = detalhes.get(product.tiktokProductId!);
       if (!ext) continue;
+      // O detalhe já foi pago para achar os vídeos; as janelas vêm na mesma
+      // linha. Deixar de gravá-las seria descartar dado que já custou.
+      aplicarPeriodo(product, periodoDe(ext));
+      await this.products.save(product);
       const salvos = await this.ingestProductVideos(product, ext);
       if (salvos > 0) preenchidos += 1;
     }
@@ -1177,6 +1253,16 @@ export class IngestionService implements OnModuleInit {
     tiktokUrl: string | null;
     /** Nota do produto (0–5). Alimenta o filtro "Nota mínima". */
     rating?: number | null;
+    /**
+     * Métricas por janela, quando a fonte as trouxer.
+     *
+     * São as colunas que ORDENAM a vitrine. Ficaram órfãs desde que foram
+     * criadas: a migration adicionou os oito campos e nenhum código passou a
+     * escrevê-los, então o ranking congelou nos produtos que já tinham valor e
+     * todo produto ingerido depois nascia com zero — invisível por construção,
+     * por mais que vendesse.
+     */
+    periodo?: MetricasPorPeriodo;
     radarScore: number | null;
   }): Promise<Product> {
     const product =
@@ -1197,6 +1283,7 @@ export class IngestionService implements OnModuleInit {
       product.rating = data.rating.toFixed(1);
     }
     if (data.radarScore !== null) product.radarScore = data.radarScore;
+    if (data.periodo) aplicarPeriodo(product, data.periodo);
     return this.products.save(product);
   }
 

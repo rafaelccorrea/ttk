@@ -45,8 +45,27 @@ export interface ExternalProduct {
   salesTotal: number;
   /** Receita acumulada em BRL. */
   revenueTotal: number;
+  /*
+   * Vendas e receita por JANELA, como o fornecedor entrega.
+   *
+   * São eles que alimentam as colunas de mesmo nome em `products`, e é dessas
+   * colunas que sai a ordenação da vitrine e o cálculo de crescimento
+   * (30d contra 60d−30d). Reconstruir isso somando `product_metrics_daily` não
+   * funciona: a ingestão só grava o dia corrente, então todo produto teria um
+   * único dia de série e qualquer filtro de período devolveria o mesmo número.
+   *
+   * A receita vem em USD no payload e é convertida com o câmbio derivado do
+   * próprio produto (ver `toBrl`), igual ao resto do parse.
+   */
   /** Vendas nos últimos 7 dias. */
   sales7d: number;
+  sales30d: number;
+  sales60d: number;
+  sales90d: number;
+  revenue7d: number;
+  revenue30d: number;
+  revenue60d: number;
+  revenue90d: number;
   /** Nº de vídeos que venderam este produto. */
   videoCount: number;
   /** Nº de criadores que venderam este produto. */
@@ -717,6 +736,13 @@ export class ExternalDataProvider {
       salesTotal: this.num(row.total_sale_cnt),
       revenueTotal: toBrl(this.num(row.total_sale_gmv_amt)),
       sales7d: this.num(row.total_sale_7d_cnt),
+      sales30d: this.num(row.total_sale_30d_cnt),
+      sales60d: this.num(row.total_sale_60d_cnt),
+      sales90d: this.num(row.total_sale_90d_cnt),
+      revenue7d: toBrl(this.num(row.total_sale_gmv_7d_amt)),
+      revenue30d: toBrl(this.num(row.total_sale_gmv_30d_amt)),
+      revenue60d: toBrl(this.num(row.total_sale_gmv_60d_amt)),
+      revenue90d: toBrl(this.num(row.total_sale_gmv_90d_amt)),
       videoCount: this.num(row.total_video_cnt),
       creatorCount: this.num(row.total_ifl_cnt),
       rating: row.product_rating == null ? null : this.num(row.product_rating),

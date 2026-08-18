@@ -6,6 +6,13 @@ import { Repository } from 'typeorm';
 import { AppModule } from '../app.module';
 import { Creator } from '../modules/creators/entities/creator.entity';
 import { IngestionService } from '../modules/ingestion/ingestion.service';
+import { ExternalDataProvider } from '../modules/ingestion/external-data.provider';
+import { backfillPeriodos } from '../modules/ingestion/periodo-backfill';
+import {
+  compararTopo,
+  fotografarTopo,
+  relatarTopo,
+} from '../modules/ingestion/top-diff';
 import { TikTokOembedSource } from '../modules/ingestion/tiktok-oembed.source';
 import { dedupKey, escolherDuplicados } from '../modules/ingestion/product-dedup';
 import { MediaMirrorService } from '../modules/media/media-mirror.service';
@@ -24,13 +31,21 @@ import { Video } from '../modules/videos/entities/video.entity';
  *
  *   1. INGESTÃO (usa cota)   — produtos, vídeos e criadores novos.
  *   2. TOP DE VENDAS (cota)  — o topo global por GMV de 30 dias, ~10 requests.
- *   3. OEMBED (grátis)       — completa @handle e capa que a cota não alcançou.
- *   4. LIMPEZA (grátis)      — remove mídia quebrada para o fallback funcionar.
- *   5. ESPELHAMENTO (grátis) — leva tudo para o S3 antes das URLs expirarem.
- *   6. DEDUPLICAÇÃO (grátis) — esconde o mesmo produto repetido.
+ *   3. JANELAS (cota)        — preenche sales30d de quem nasceu zerado.
+ *   4. OEMBED (grátis)       — completa @handle e capa que a cota não alcançou.
+ *   5. LIMPEZA (grátis)      — remove mídia quebrada para o fallback funcionar.
+ *   6. ESPELHAMENTO (grátis) — leva tudo para o S3 antes das URLs expirarem.
+ *   7. DEDUPLICAÇÃO (grátis) — esconde o mesmo produto repetido.
  *
- * As etapas 3 a 6 rodam SEMPRE, mesmo sem cota — é o que garante que a tela
+ * As etapas 4 a 7 rodam SEMPRE, mesmo sem cota — é o que garante que a tela
  * fique consistente mesmo quando a API do fornecedor está esgotada.
+ *
+ * E no fim de TODA execução, com ou sem `--completo`, vem o COMPARATIVO DO TOPO:
+ * o que entrou, o que saiu, o que trocou de lugar. Ele responde a única pergunta
+ * que o relatório antigo não respondia — "isso mudou alguma coisa na tela do
+ * cliente?" — e nasceu de uma execução que trouxe 24 produtos, gastou cota e
+ * Whisper, e deixou o topo intacto por causa de um defeito que passou dias sem
+ * ser notado.
  *
  * ANTES DE RODAR: leia docs/COMANDOS.md. Este script escreve no banco e as
  * etapas 1 e 2 gastam cota paga (e a 1 ainda transcreve áudio com Whisper).
@@ -85,6 +100,12 @@ async function main() {
   const produtos = app.get<Repository<Product>>(getRepositoryToken(Product));
   const videos = app.get<Repository<Video>>(getRepositoryToken(Video));
   const criadores = app.get<Repository<Creator>>(getRepositoryToken(Creator));
+  const provider = app.get(ExternalDataProvider);
+
+  // A foto do topo ANTES de tudo. É contra ela que o fim da execução compara —
+  // inclusive numa execução de manutenção, porque a dedup da etapa 7 também
+  // mexe no ranking.
+  const topoAntes = await fotografarTopo(produtos);
 
   // Ensaio: só o top, e sai. Nenhuma etapa de manutenção roda, então o que
   // aparecer no log veio deste passo e de mais nada.
@@ -104,7 +125,7 @@ async function main() {
 
   // ---------------------------------------------------------------- 1) ingestão
   if (COM_INGESTAO) {
-    log.log('1/6 Ingestão (consome cota da API)...');
+    log.log('1/7 Ingestão (consome cota da API)...');
     try {
       const run = await ingestion.run('manual');
       log.log(`     produtos ${run.productsIngested} · vídeos ${run.videosUpserted}`);
@@ -126,7 +147,7 @@ async function main() {
      * Depois da ingestão, e não antes, para que a cota grande vá primeiro para
      * o refresh do catálogo: se acabar, o que se perde aqui volta na próxima.
      */
-    log.log(`2/6 Top ${TOP_VENDIDOS} mais vendidos (global, por GMV de 30 dias)...`);
+    log.log(`2/7 Top ${TOP_VENDIDOS} mais vendidos (global, por GMV de 30 dias)...`);
     try {
       const top = await ingestion.atualizarTopVendidos(TOP_VENDIDOS, MAX_REQ);
       log.log(
@@ -135,15 +156,47 @@ async function main() {
     } catch (error) {
       log.warn(`     top de vendas falhou (${error}) — seguindo com a manutenção`);
     }
+
+    /*
+     * As janelas de venda de quem nasceu zerado.
+     *
+     * Roda em toda execução completa porque o passivo se REFORMA: as etapas 1 e
+     * 2 acabaram de trazer produto novo, e produto novo entra sem `sales30d`
+     * sempre que a fonte não devolve a janela. Sem esta varredura, todo item
+     * descoberto ficaria no fim da vitrine para sempre — o defeito que manteve
+     * o topo congelado desde 15/08.
+     *
+     * É a etapa mais barata que gasta cota: dez produtos por requisição.
+     */
+    log.log('3/7 Preenchendo janelas de venda (sales30d) dos zerados...');
+    try {
+      const r = await backfillPeriodos({
+        provider,
+        produtos,
+        aoProgredir: (m) => log.log(`     ${m}`),
+      });
+      log.log(
+        `     ${r.preenchidos} preenchidos de ${r.alvos} · ${r.restantes} ainda zerados · ` +
+          `${r.requisicoes} requests`,
+      );
+      if (r.restantes > 0 && r.requisicoes === 0) {
+        log.warn(
+          '     nada preenchido por falta de cota — rode "npm run backfill:periodos" quando virar o mês.',
+        );
+      }
+    } catch (error) {
+      log.warn(`     backfill de janelas falhou (${error}) — seguindo`);
+    }
   } else {
-    log.log('1/6 Ingestão pulada (use --completo para incluir)');
-    log.log('2/6 Top de vendas pulado (use --completo para incluir)');
+    log.log('1/7 Ingestão pulada (use --completo para incluir)');
+    log.log('2/7 Top de vendas pulado (use --completo para incluir)');
+    log.log('3/7 Janelas de venda puladas (use --completo para incluir)');
   }
 
-  // ------------------------------------------------------------------ 3) oEmbed
+  // ------------------------------------------------------------------ 4) oEmbed
   // O fornecedor devolve só o `user_id` do autor; sem o @handle o card fica sem
   // link e, às vezes, sem capa. O oEmbed do TikTok completa de graça.
-  log.log('3/6 Completando @handle e capa pelo oEmbed...');
+  log.log('4/7 Completando @handle e capa pelo oEmbed...');
   const semHandle = await videos
     .createQueryBuilder('v')
     .where(`v."creatorHandle" ~ '^[0-9]+$' OR v."videoUrl" IS NULL`)
@@ -163,17 +216,17 @@ async function main() {
   }
   log.log(`     ${completados} de ${semHandle.length} completados`);
 
-  // ----------------------------------------------------------------- 4) limpeza
+  // ----------------------------------------------------------------- 5) limpeza
   // URL que responde 403 (assinatura vencida) ou que aponta para um objeto que
   // não é imagem é PIOR que nula: impede o card de cair na foto do produto.
-  log.log('4/6 Removendo mídia quebrada...');
+  log.log('5/7 Removendo mídia quebrada...');
   const limpos = await limparMidiaQuebrada(videos, criadores);
   log.log(`     ${limpos.videos} thumbnails e ${limpos.avatares} avatares anulados`);
 
-  // ------------------------------------------------------------ 5) espelhamento
+  // ------------------------------------------------------------ 6) espelhamento
   // As URLs do fornecedor expiram (~72h) e renová-las custa cota. No S3 a URL
   // é nossa e não expira. As imagens ainda são padronizadas em 9:16 WebP.
-  log.log('5/6 Espelhando mídia no S3...');
+  log.log('6/7 Espelhando mídia no S3...');
   if (!mirror.enabled) {
     log.warn('     S3 não configurado (AWS_S3_BUCKET) — etapa pulada');
   } else {
@@ -183,13 +236,23 @@ async function main() {
     );
   }
 
-  // ------------------------------------------------------------ 6) deduplicação
+  // ------------------------------------------------------------ 7) deduplicação
   // O `product_id` é único por ANÚNCIO, não por produto: o mesmo item aparece
   // várias vezes por vendedor e por variação. Marcamos e escondemos — sem
   // apagar, para não perder histórico de métricas nem favoritos.
-  log.log('6/6 Marcando produtos duplicados...');
+  log.log('7/7 Marcando produtos duplicados...');
   const dup = await marcarDuplicados(produtos);
   log.log(`     ${dup.marcados} ocultados · ${dup.visiveis} visíveis`);
+
+  /*
+   * O comparativo do topo, sempre, e DEPOIS da dedup — que é a última etapa
+   * capaz de mexer no ranking. Comparar antes dela mostraria um topo que não é
+   * o que o cliente vai abrir.
+   */
+  const topo = compararTopo(topoAntes, await fotografarTopo(produtos));
+  for (const linha of relatarTopo(topo)) {
+    topo.identico ? log.warn(linha) : log.log(linha);
+  }
 
   await relatorioFinal(produtos, videos, criadores);
   log.log(`Concluído em ${Math.round((Date.now() - inicio) / 1000)}s`);
