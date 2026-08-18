@@ -9,6 +9,7 @@ import {
 } from '@mui/material';
 import { useCallback, useEffect, useState } from 'react';
 import type { BaseDeConhecimento, CarteiraLive } from '@shared/desktop-api';
+import { MINIMO_SEGUIDORES_LIVE } from '@shared/desktop-api';
 import { BlocoDaConta } from '../components/BlocoDaConta';
 import { Aviso, Carregando } from '../components/Estados';
 import { mensagemDeErro } from '../erros';
@@ -47,6 +48,44 @@ export function ConectarLive({
   const [usuario, setUsuario] = useState('');
   const [conectando, setConectando] = useState(false);
   const [erroConexao, setErroConexao] = useState<string | null>(null);
+  /**
+   * Seguidores da conta digitada. `null` = não sei, e não sei é silêncio.
+   *
+   * A leitura sai da página pública do perfil, com a sessão do próprio app, e
+   * falha calada em qualquer tropeço. É indicação, não veredito: o TikTok não
+   * publica elegibilidade de live, e idade, região e restrição de conta também
+   * contam. Por isso este número NÃO entra no `disabled` do botão.
+   */
+  const [seguidores, setSeguidores] = useState<number | null>(null);
+
+  /*
+   * A consulta espera a digitação parar. Sem a folga, cada tecla do @ viraria
+   * uma visita ao tiktok.com — dezenas de requisições para um dado que só
+   * interessa quando o nome está inteiro.
+   */
+  useEffect(() => {
+    if (!ponte) return undefined;
+    const alvo = usuario.trim();
+    setSeguidores(null);
+    if (alvo.length < 2) return undefined;
+    // A resposta de um @ antigo não pode pintar a tela do @ novo: a limpeza
+    // deste efeito derruba a anterior antes de a próxima começar.
+    let valendo = true;
+    const id = setTimeout(() => {
+      void ponte
+        .seguidoresDoTikTok(alvo)
+        .then((n) => {
+          if (valendo) setSeguidores(n);
+        })
+        .catch(() => {
+          if (valendo) setSeguidores(null);
+        });
+    }, 700);
+    return () => {
+      valendo = false;
+      clearTimeout(id);
+    };
+  }, [ponte, usuario]);
 
   const carregar = useCallback(async (): Promise<void> => {
     if (!ponte) return;
@@ -253,6 +292,19 @@ export function ConectarLive({
               rotulo: 'Comprar horas',
               aoClicar: () => void ponte.abrirNoNavegador(LINKS.planos),
             }}
+          />
+        ) : null}
+
+        {/*
+          Aviso, e não bloqueio: o botão continua clicável de propósito. A
+          leitura é uma inferência sobre a regra pública do TikTok, e travar a
+          live com base nela impediria quem já pode transmitir toda vez que a
+          regra mudasse ou o número viesse errado.
+        */}
+        {seguidores !== null && seguidores < MINIMO_SEGUIDORES_LIVE ? (
+          <Aviso
+            titulo="Essa conta talvez ainda não possa fazer live"
+            descricao={`O @${usuario.trim().replace(/^@/, '')} tem ${seguidores.toLocaleString('pt-BR')} seguidores, e o TikTok costuma pedir ${MINIMO_SEGUIDORES_LIVE.toLocaleString('pt-BR')} para liberar a transmissão. Se a sua live já está no ar, pode seguir — este aviso é só uma conferência, e quem decide é o TikTok.`}
           />
         ) : null}
 
