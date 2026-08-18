@@ -1,3 +1,4 @@
+import TrendingDownRoundedIcon from '@mui/icons-material/TrendingDownRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import {
   Alert,
@@ -109,10 +110,20 @@ export function FreeProdutosPage() {
                       {p.salesRange} vendas
                     </Typography>
                   </Stack>
+                  {/* Queda em verde e com seta para cima lia como alta — o
+                      sinal do número dizia uma coisa e a cor, outra. */}
                   {p.growthPct !== null && (
                     <Stack direction="row" spacing={0.5} alignItems="center" mt={0.5}>
-                      <TrendingUpRoundedIcon fontSize="small" color="success" />
-                      <Typography variant="body2" color="success.main" fontWeight={700}>
+                      {p.growthPct >= 0 ? (
+                        <TrendingUpRoundedIcon fontSize="small" color="success" />
+                      ) : (
+                        <TrendingDownRoundedIcon fontSize="small" color="error" />
+                      )}
+                      <Typography
+                        variant="body2"
+                        color={p.growthPct >= 0 ? 'success.main' : 'error.main'}
+                        fontWeight={700}
+                      >
                         {p.growthPct > 0 ? '+' : ''}
                         {p.growthPct}% em 30 dias
                       </Typography>
@@ -125,7 +136,7 @@ export function FreeProdutosPage() {
         ))}
       </Grid>
 
-      <RodapeBloqueado tipo="produtos" />
+      <RodapeBloqueado tipo="produtos" exibidos={snapshot.products.length} />
     </Box>
   );
 }

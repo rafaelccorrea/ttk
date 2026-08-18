@@ -161,7 +161,9 @@ describe('FreeSampleService', () => {
     for (const campo of ['playbackUrl', 'revenueEstimate', 'transcript']) {
       expect(video).not.toHaveProperty(campo);
     }
-    expect(video.viewsRange).toBe('1.500 mil+');
+    // Milhão vira "mi+", não "1.500 mil+": a régua nasceu para vendas e
+    // também serve visualizações, que são uma ordem de grandeza acima.
+    expect(video.viewsRange).toBe('1 mi+');
   });
 
   // Contra a amostra que congela para sempre.

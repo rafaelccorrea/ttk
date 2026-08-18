@@ -86,9 +86,15 @@ export function FreeBanner({
  * produto incompleto, o cadeado lê como plano. O que se quer é que a pessoa veja
  * o que ela ganharia, não que ela conclua que aquilo não existe.
  */
-export function ControlesTravados() {
+export function ControlesTravados({
+  /** O texto do campo muda com a tela; o cadeado, não. */
+  placeholder = 'Buscar por produto ou loja',
+}: {
+  placeholder?: string;
+}) {
   return (
     <Tooltip title="Busca e filtros fazem parte dos planos pagos">
+
       <Stack
         direction="row"
         spacing={1.5}
@@ -97,7 +103,7 @@ export function ControlesTravados() {
         <TextField
           size="small"
           disabled
-          placeholder="Buscar por produto ou loja"
+          placeholder={placeholder}
           InputProps={{ startAdornment: <SearchRoundedIcon sx={{ mr: 1 }} /> }}
           sx={{ minWidth: 260 }}
         />
@@ -120,7 +126,14 @@ export function ControlesTravados() {
  * números diferentes para a mesma coisa. Se a chamada falhar, o bloco continua
  * de pé sem o número: o CTA é o que importa aqui, não a estatística.
  */
-export function RodapeBloqueado({ tipo }: { tipo: 'produtos' | 'vídeos' }) {
+export function RodapeBloqueado({
+  tipo,
+  /** Quantos itens a amostra já mostrou — o "+N" é o que SOBRA, não o total. */
+  exibidos,
+}: {
+  tipo: 'produtos' | 'vídeos';
+  exibidos: number;
+}) {
   const [total, setTotal] = useState<number | null>(null);
 
   useEffect(() => {
@@ -133,6 +146,21 @@ export function RodapeBloqueado({ tipo }: { tipo: 'produtos' | 'vídeos' }) {
       ativo = false;
     };
   }, []);
+
+  /*
+   * "+689 produtos" com 20 já na tela e 689 no catálogo é uma promessa que a
+   * assinatura não cumpre — o que falta são 669. O número exagerado não vende
+   * mais; ele só garante que a primeira impressão de quem pagar seja a de ter
+   * recebido menos do que foi oferecido.
+   */
+  const restantes =
+    /*
+     * `stats` conta PRODUTOS. Usar esse número na tela de vídeos daria um "+669
+     * vídeos" inventado — e uma estatística errada aqui é pior do que nenhuma,
+     * porque é exatamente a prova que o bloco existe para dar. Sem o número, o
+     * texto genérico assume e o CTA continua igual.
+     */
+    total === null || tipo !== 'produtos' ? null : Math.max(0, total - exibidos);
 
   return (
     <Paper
@@ -147,8 +175,8 @@ export function RodapeBloqueado({ tipo }: { tipo: 'produtos' | 'vídeos' }) {
     >
       <LockRoundedIcon sx={{ fontSize: 40, color: '#fe2c55', mb: 1 }} />
       <Typography variant="h6" fontWeight={800} mb={0.5}>
-        {total
-          ? `+${total.toLocaleString('pt-BR')} ${tipo} no plano Essencial`
+        {restantes
+          ? `+${restantes.toLocaleString('pt-BR')} ${tipo} no plano Essencial`
           : `O catálogo completo de ${tipo} está nos planos pagos`}
       </Typography>
       <Typography color="text.secondary" mb={2.5}>

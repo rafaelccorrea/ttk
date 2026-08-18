@@ -14,9 +14,18 @@
  * milhar mantém o número exato escondido (que é o que se vende) e devolve a
  * diferença entre um produto de 25 mil e um de 90 mil, que é justamente o que
  * faz o visitante querer ver a lista inteira.
+ *
+ * A faixa de milhão existe porque a régua nasceu para VENDAS e passou a ser
+ * usada também para VISUALIZAÇÕES de vídeo, que são uma ordem de grandeza
+ * acima: um vídeo com 38 milhões de views virava "38.385 mil+" na tela — um
+ * número que o leitor tem de converter de cabeça, no lugar exato onde a
+ * amostra deveria impressionar.
  */
 export function toRange(value: number): string {
   if (!value || value < 100) return '<100';
   if (value < 1000) return `${Math.floor(value / 100) * 100}+`;
-  return `${Math.floor(value / 1000).toLocaleString('pt-BR')} mil+`;
+  if (value < 1_000_000) {
+    return `${Math.floor(value / 1000).toLocaleString('pt-BR')} mil+`;
+  }
+  return `${Math.floor(value / 1_000_000).toLocaleString('pt-BR')} mi+`;
 }

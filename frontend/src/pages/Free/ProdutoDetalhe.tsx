@@ -1,5 +1,6 @@
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import LockRoundedIcon from '@mui/icons-material/LockRounded';
+import TrendingDownRoundedIcon from '@mui/icons-material/TrendingDownRounded';
 import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded';
 import {
   Box,
@@ -144,8 +145,15 @@ export function FreeProdutoDetalhePage() {
                   Crescimento
                 </Typography>
                 <Stack direction="row" spacing={0.5} alignItems="center">
-                  <TrendingUpRoundedIcon fontSize="small" color="success" />
-                  <Typography fontWeight={800} color="success.main">
+                  {produto.growthPct >= 0 ? (
+                    <TrendingUpRoundedIcon fontSize="small" color="success" />
+                  ) : (
+                    <TrendingDownRoundedIcon fontSize="small" color="error" />
+                  )}
+                  <Typography
+                    fontWeight={800}
+                    color={produto.growthPct >= 0 ? 'success.main' : 'error.main'}
+                  >
                     {produto.growthPct > 0 ? '+' : ''}
                     {produto.growthPct}%
                   </Typography>

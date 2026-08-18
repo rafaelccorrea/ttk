@@ -60,7 +60,7 @@ export function FreeVideosPage() {
         refreshAt={snapshot.refreshAt}
         descricao={`Você está vendo ${snapshot.videos.length} de ${snapshot.limits.videos} vídeos da amostra gratuita.`}
       />
-      <ControlesTravados />
+      <ControlesTravados placeholder="Buscar por criador ou legenda" />
 
       <Grid container spacing={2}>
         {snapshot.videos.map((v) => (
@@ -121,7 +121,7 @@ export function FreeVideosPage() {
         ))}
       </Grid>
 
-      <RodapeBloqueado tipo="vídeos" />
+      <RodapeBloqueado tipo="vídeos" exibidos={snapshot.videos.length} />
     </Box>
   );
 }
