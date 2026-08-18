@@ -54,6 +54,7 @@
       "target": "nsis",
       "icon": "build/icon.ico"
     },
+    "artifactName": "PikPok-Copiloto-Setup-${version}.${ext}",
     "nsis": {
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
@@ -65,9 +66,9 @@
     "npmRebuild": false,
     "publish": [
       {
-        "provider": "github",
-        "owner": "rafaelccorrea",
-        "repo": "ttk"
+        "provider": "generic",
+        "url": "https://pikpokviral.com.br/app",
+        "channel": "latest"
       }
     ]
   },

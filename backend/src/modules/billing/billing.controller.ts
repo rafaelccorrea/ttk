@@ -57,6 +57,12 @@ export class BillingController {
     private readonly stripeService: StripeService,
   ) {}
 
+  @Get('referrals')
+  @ApiOperation({ summary: 'Painel de indicações do usuário autenticado' })
+  referrals(@CurrentUser() user: AuthUser) {
+    return this.billing.referralStats(user.id);
+  }
+
   @Post('checkout')
   @ApiOperation({
     summary: 'Cria uma sessão de pagamento no Stripe (pack, horas de live ou plano)',

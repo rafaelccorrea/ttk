@@ -139,6 +139,29 @@ export class AppUser {
   @Column({ type: 'varchar', nullable: true })
   liveAutoAcceptedVersion: string | null;
 
+  /*
+   * Quem indicou esta conta (id do indicador). Gravado no CADASTRO, a partir
+   * do `?ref=` do link — o vínculo precisa nascer junto com a conta, porque
+   * depois do pagamento não há mais como saber de onde a pessoa veio.
+   *
+   * Só é preenchido uma vez: reindicar uma conta que já tem dono seria a
+   * fraude óbvia (o próprio indicado trocando o link antes de pagar).
+   */
+  @Column({ type: 'uuid', nullable: true })
+  @Index('IDX_app_users_referredBy')
+  referredBy: string | null;
+
+  /*
+   * Quando a recompensa da indicação foi paga (créditos para quem indicou e
+   * para quem foi indicado).
+   *
+   * É a trava de "uma vez por indicado": o pagamento acontece na PRIMEIRA
+   * assinatura confirmada, e sem esta data a renovação mensal — que passa
+   * pelo mesmo caminho de crédito — pagaria o bônus todo mês, para sempre.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  referralRewardedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

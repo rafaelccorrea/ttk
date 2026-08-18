@@ -682,6 +682,21 @@ export class ExternalDataProvider {
           this.logger.warn(
             `Cota do EchoTik esgotada — chamadas suspensas por ${QUOTA_COOLDOWN_MS / 60000} min.`,
           );
+          /*
+           * A recusa é a única medição confiável do teto do plano.
+           *
+           * O `apiMonthlyBudget` é configurado por nós e pode estar em qualquer
+           * número: enquanto ele disser 500 e o fornecedor cortar em 326, todo
+           * rateio promete cota que não existe e cada execução gasta tempo para
+           * colher erro. Aprender aqui é o que faz o sistema parar de planejar
+           * com ficção. Não bloqueia o fluxo — se a gravação falhar, a coleta
+           * segue com o disjuntor armado, que é o comportamento de antes.
+           */
+          void this.quota
+            .aprenderTetoReal()
+            .catch((erro) =>
+              this.logger.warn(`Não consegui gravar o teto aprendido: ${erro}`),
+            );
         } else {
           this.logger.warn(
             `EchoTik ${path} retornou code=${body.code} (${body.message ?? 'sem mensagem'})`,

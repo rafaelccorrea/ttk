@@ -173,6 +173,42 @@ export class ApiQuotaService {
     };
   }
 
+  /**
+   * O fornecedor recusou por cota: aprende o teto REAL a partir da recusa.
+   *
+   * O `apiMonthlyBudget` é um número que NÓS configuramos, e ele pode não ter
+   * nada a ver com o plano contratado — foi o que aconteceu: o banco dizia 500,
+   * o rateio distribuía as sobras desse 500 pelas execuções do mês, e o EchoTik
+   * cortou muito antes, com "Usage Limit Exceeded". O sistema seguiu planejando
+   * com um número que não existia, e cada execução gastava tempo para colher
+   * recusa.
+   *
+   * Quando o fornecedor diz não, o total já gasto É o teto — não há
+   * demonstração melhor. Gravá-lo faz o rateio parar de prometer o que não
+   * existe e, no mês seguinte, começar de um número medido em vez de chutado.
+   *
+   * Só ENCOLHE, nunca aumenta: se alguém subir o plano no painel e configurar o
+   * teto novo, uma recusa antiga não pode desfazer isso. E o mês que virar zera
+   * o consumo, então o teto aprendido volta a ser testado naturalmente.
+   */
+  async aprenderTetoReal(): Promise<void> {
+    await this.carregar();
+    // O que o fornecedor cobra é a soma: ele não sabe da nossa divisão interna
+    // entre coleta e player.
+    const gastoReal = this.usadoColeta + this.usadoPlayer;
+    if (gastoReal <= 0) return;
+    if (this.tetoMensal > 0 && this.tetoMensal <= gastoReal) return;
+
+    const anterior = this.tetoMensal;
+    this.tetoMensal = gastoReal;
+    await this.settings.update({ id: 1 }, { apiMonthlyBudget: gastoReal });
+    this.logger.warn(
+      `Teto mensal corrigido de ${anterior || 'sem teto'} para ${gastoReal}: ` +
+        `foi onde o fornecedor recusou. Para subir, aumente o plano no painel ` +
+        `do EchoTik e ajuste apiMonthlyBudget.`,
+    );
+  }
+
   /** Quanto a coleta ainda pode gastar neste mês. */
   async restanteDeColeta(): Promise<number> {
     await this.carregar();

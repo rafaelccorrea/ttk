@@ -85,8 +85,21 @@ export interface CreditPack {
   priceBrl: number;
 }
 
+/** Painel do programa de indicação (`/indique`). */
+export interface ReferralStats {
+  /** Contas criadas pelo link. */
+  indicados: number;
+  /** Quantas dessas já assinaram — só elas pagam recompensa. */
+  pagos: number;
+  /** Créditos que as indicações já renderam, somados do extrato. */
+  creditosGanhos: number;
+  recompensa: { indicador: number; indicado: number };
+}
+
 export const billingService = {
   wallet: () => api.get<Wallet>('/billing/wallet').then((r) => r.data),
+  referrals: () =>
+    api.get<ReferralStats>('/billing/referrals').then((r) => r.data),
   plans: () => api.get<Plan[]>('/billing/plans').then((r) => r.data),
   packs: () => api.get<CreditPack[]>('/billing/packs').then((r) => r.data),
   purchasePack: (packId: string) =>

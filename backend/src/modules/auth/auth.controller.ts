@@ -33,7 +33,7 @@ export class AuthController {
     summary: 'Cadastro com confirmação de e-mail (Nodemailer)',
   })
   register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto.email, dto.password);
+    return this.authService.register(dto.email, dto.password, dto.ref);
   }
 
   @Throttle({ default: { ttl: 300000, limit: 10 } })

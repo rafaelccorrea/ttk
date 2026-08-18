@@ -119,7 +119,7 @@ export class AuthService {
    * confirmação fica guardado, mas o e-mail NÃO sai agora — ele é enviado
    * quando a vez do usuário chegar (npm run waitlist:release).
    */
-  async register(email: string, password: string) {
+  async register(email: string, password: string, ref?: string) {
     const normalized = email.toLowerCase().trim();
     const existing = await this.users.findOneBy({ email: normalized });
     if (existing?.emailConfirmedAt && existing.passwordHash) {
@@ -133,6 +133,21 @@ export class AuthService {
       this.users.create({ id: randomUUID(), email: normalized });
     user.passwordHash = passwordHash;
     user.confirmationToken = confirmationToken;
+
+    /*
+     * Vínculo de indicação. Só grava quando ainda não há um: recadastro do
+     * mesmo e-mail com outro `?ref=` não troca o dono da indicação — senão o
+     * próprio indicado escolheria a dedo quem leva os créditos, e um
+     * concorrente roubaria indicações alheias mandando o link certo na hora
+     * certa.
+     *
+     * Indicar a si mesmo é recusado, e um ref que não existe é ignorado em
+     * silêncio: link velho não pode impedir alguém de criar a conta.
+     */
+    if (ref && !user.referredBy && ref !== user.id) {
+      const indicador = await this.users.findOneBy({ id: ref });
+      if (indicador) user.referredBy = indicador.id;
+    }
 
     if (this.waitlistMode) {
       // Recadastro do mesmo e-mail não reinicia a fila: quem já esperava

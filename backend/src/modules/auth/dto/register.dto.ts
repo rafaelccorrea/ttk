@@ -1,5 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ example: 'voce@email.com' })
@@ -13,6 +20,18 @@ export class RegisterDto {
   @MinLength(10)
   @MaxLength(128)
   password: string;
+
+  /*
+   * Id de quem indicou, vindo do `?ref=` do link de indicação.
+   *
+   * Opcional e validado como UUID: o valor chega do navegador, então tem de
+   * ser recusado como formato antes de virar consulta. Um ref inexistente não
+   * derruba o cadastro — a conta é criada sem vínculo (ver AuthService).
+   */
+  @ApiProperty({ required: false, description: 'Id de quem indicou (?ref=)' })
+  @IsOptional()
+  @IsUUID()
+  ref?: string;
 }
 
 export class LoginDto {

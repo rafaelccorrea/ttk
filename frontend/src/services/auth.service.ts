@@ -25,10 +25,17 @@ export const authService = {
     return data;
   },
 
-  async register(email: string, password: string): Promise<RegisterResult> {
+  async register(
+    email: string,
+    password: string,
+    ref?: string,
+  ): Promise<RegisterResult> {
     const { data } = await api.post<RegisterResult>('/auth/register', {
       email,
       password,
+      // Só vai quando existe: mandar `ref: undefined` explícito não muda nada,
+      // mas mandar string vazia quebraria a validação de UUID do backend.
+      ...(ref ? { ref } : {}),
     });
     return data;
   },

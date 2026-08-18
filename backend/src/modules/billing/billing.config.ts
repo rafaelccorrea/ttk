@@ -458,6 +458,26 @@ export function findPlan(id: string): Plan | undefined {
 export const SIGNUP_BONUS_CREDITS = 25;
 
 /**
+ * Programa de indicação (`/indique`): a recompensa é em CRÉDITOS, não em
+ * dinheiro.
+ *
+ * Crédito é o que a plataforma produz, então o prêmio custa o custo de uso —
+ * não a margem inteira, como custaria uma comissão em reais. E ele volta para
+ * dentro do produto: quem ganha precisa entrar para gastar.
+ *
+ * Os dois lados são pagos UMA vez, na primeira assinatura confirmada do
+ * indicado — nunca no cadastro. Pagar no cadastro é pagar por e-mail
+ * descartável; o pagamento é o único sinal que custa caro de falsificar.
+ */
+export const REFERRAL_REWARD = {
+  /** Créditos para quem indicou. */
+  indicador: 100,
+  /** Créditos de boas-vindas para quem foi indicado, além do plano assinado. */
+  indicado: 50,
+} as const;
+
+
+/**
  * Conta gratuita: o modo amostra (ver `docs/CONTA-FREE.md`).
  *
  * O paywall na entrada continua de pé — nada em `FEATURE_MIN_PLAN` foi

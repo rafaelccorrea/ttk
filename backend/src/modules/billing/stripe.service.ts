@@ -580,5 +580,27 @@ export class StripeService implements OnModuleInit {
       }
       this.logger.log(`Plano ${itemId} ativado para ${userId} (${stripeRef})`);
     }
+
+    /*
+     * A indicação é paga aqui, DEPOIS de qualquer item entregue — plano,
+     * pacote de créditos ou pacote de horas de live —, e nunca no cadastro:
+     * dinheiro confirmado é o único sinal que um e-mail descartável não
+     * consegue forjar.
+     *
+     * Fica fora dos ramos de propósito. Só no ramo do plano deixaria de fora o
+     * indicado cuja primeira compra é um pacote; repetida em cada ramo seria a
+     * mesma regra escrita três vezes — três lugares para esquecer de mexer
+     * quando aparecer o quarto produto.
+     *
+     * Os `return` de item desconhecido, acima, passam por fora daqui, e é o
+     * que se quer: nada foi entregue, então não há compra que justifique o
+     * prêmio.
+     *
+     * `payReferral` é idempotente (marca `referralRewardedAt` antes de
+     * creditar), então renovação mensal e segundo pacote do mesmo cliente —
+     * que chegam por este mesmo caminho — não repagam nada. A recompensa é uma
+     * só por indicado, na primeira compra que ele fizer.
+     */
+    await this.billing.payReferral(userId, stripeRef);
   }
 }

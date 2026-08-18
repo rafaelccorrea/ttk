@@ -11,7 +11,10 @@ export type TransactionKind =
   | 'plan_grant'
   | 'purchase'
   | 'spend'
-  | 'refund';
+  | 'refund'
+  // Indicação: bônus de quem indicou e boas-vindas de quem foi indicado.
+  | 'referral_bonus'
+  | 'referral_welcome';
 
 // Extrato imutável de créditos — todo débito/crédito passa por aqui.
 @Entity('credit_transactions')

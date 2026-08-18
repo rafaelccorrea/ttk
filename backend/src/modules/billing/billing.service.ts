@@ -7,7 +7,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, IsNull, Not, Repository } from 'typeorm';
 import { AppUser } from '../users/entities/app-user.entity';
 import {
   ACTION_MIN_PLAN,
@@ -29,6 +29,7 @@ import {
   planLiveMinutes,
   PlanFeature,
   PLANS,
+  REFERRAL_REWARD,
   SIGNUP_BONUS_CREDITS,
 } from './billing.config';
 import { CreditTransaction, TransactionKind } from './entities/credit-transaction.entity';
@@ -689,6 +690,81 @@ export class BillingService implements OnModuleInit {
     this.logger.log(
       `Assinatura encerrada: ${user.email} saiu de "${user.plan}" para "free" (${reason}).`,
     );
+  }
+
+  /**
+   * Paga a indicação: créditos para quem indicou e boas-vindas para quem foi
+   * indicado. Chamado quando o Stripe confirma a PRIMEIRA assinatura do
+   * indicado — nunca no cadastro.
+   *
+   * A trava é o UPDATE condicional em `referralRewardedAt`, e não um `if` em
+   * cima do SELECT: o webhook do Stripe é reentregue, e o redirect de sucesso
+   * (`confirmSession`) chega pelo mesmo caminho quase no mesmo instante. Duas
+   * leituras concorrentes veriam a data nula e pagariam o bônus duas vezes.
+   * Só quem consegue MARCAR credita.
+   */
+  async payReferral(userId: string, stripeRef: string): Promise<void> {
+    const indicado = await this.users.findOneBy({ id: userId });
+    if (!indicado?.referredBy || indicado.referralRewardedAt) return;
+
+    const marcado = await this.users
+      .createQueryBuilder()
+      .update(AppUser)
+      .set({ referralRewardedAt: () => 'now()' })
+      .where('id = :userId', { userId })
+      .andWhere('"referredBy" IS NOT NULL')
+      .andWhere('"referralRewardedAt" IS NULL')
+      .execute();
+    if (!marcado.affected) return;
+
+    const indicador = indicado.referredBy;
+    await this.addCredits(
+      indicador,
+      REFERRAL_REWARD.indicador,
+      'referral_bonus',
+      `referral:${userId}`,
+      `Indicação confirmada: ${indicado.email} assinou`,
+    );
+    await this.addCredits(
+      userId,
+      REFERRAL_REWARD.indicado,
+      'referral_welcome',
+      `referral:${stripeRef}`,
+      'Bônus de boas-vindas por indicação',
+    );
+    this.logger.log(
+      `Indicação paga: ${REFERRAL_REWARD.indicador} créditos para ${indicador} ` +
+        `e ${REFERRAL_REWARD.indicado} para ${userId}.`,
+    );
+  }
+
+  /**
+   * Painel do `/indique`: quantas contas vieram do link, quantas já pagaram e
+   * quantos créditos a indicação já rendeu.
+   *
+   * Os créditos saem do EXTRATO, e não de `pagos * 100`: o extrato é o que de
+   * fato entrou na conta, então um ajuste manual de suporte ou uma regra que
+   * mude de valor no futuro continuam batendo com o saldo.
+   */
+  async referralStats(userId: string) {
+    const [indicados, pagos, ganhos] = await Promise.all([
+      this.users.count({ where: { referredBy: userId } }),
+      this.users.count({
+        where: { referredBy: userId, referralRewardedAt: Not(IsNull()) },
+      }),
+      this.transactions
+        .createQueryBuilder('t')
+        .select('COALESCE(SUM(t.amount), 0)', 'total')
+        .where('t."userId" = :userId', { userId })
+        .andWhere("t.kind = 'referral_bonus'")
+        .getRawOne<{ total: string }>(),
+    ]);
+    return {
+      indicados,
+      pagos,
+      creditosGanhos: Number(ganhos?.total ?? 0),
+      recompensa: REFERRAL_REWARD,
+    };
   }
 
   private async addCredits(

@@ -2,6 +2,7 @@ import { HttpException } from '@nestjs/common';
 import { BillingService } from './billing.service';
 import {
   ACTION_PRICES,
+  REFERRAL_REWARD,
   LIVE_TRIAL_MINUTES,
   SIGNUP_BONUS_CREDITS,
 } from './billing.config';
@@ -35,6 +36,7 @@ function repositorioDeUsuarios(estado: {
     update: jest.fn().mockReturnThis(),
     set: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
     execute,
   };
   return {
@@ -500,5 +502,64 @@ describe('cortesia de cadastro (SIGNUP_BONUS_CREDITS)', () => {
         (t) => t.kind === 'signup_bonus',
       ),
     ).toHaveLength(0);
+  });
+});
+
+
+/**
+ * Indicação. O que estes testes protegem: o bônus sai do PAGAMENTO (não do
+ * cadastro), sai UMA vez por indicado, e a corrida entre o webhook do Stripe
+ * e o redirect de sucesso é resolvida pelo banco — não por um `if`.
+ */
+describe('indicação', () => {
+  const INDICADO = {
+    id: 'u2',
+    email: 'novo@loja.com',
+    plan: 'essencial',
+    referredBy: 'u1',
+    referralRewardedAt: null,
+  };
+
+  it('credita os dois lados quando o indicado assina', async () => {
+    const { servico, creditos } = montar({ usuario: { ...INDICADO } });
+    await servico.payReferral('u2', 'cs_test_1');
+    const lancamentos = creditos.salvos as Array<{
+      userId: string;
+      kind: string;
+      amount: number;
+    }>;
+    expect(lancamentos.find((t) => t.kind === 'referral_bonus')).toMatchObject({
+      userId: 'u1',
+      amount: REFERRAL_REWARD.indicador,
+    });
+    expect(
+      lancamentos.find((t) => t.kind === 'referral_welcome'),
+    ).toMatchObject({ userId: 'u2', amount: REFERRAL_REWARD.indicado });
+  });
+
+  it('não paga de novo quando a recompensa já saiu', async () => {
+    const { servico, creditos } = montar({
+      usuario: { ...INDICADO, referralRewardedAt: new Date() },
+    });
+    await servico.payReferral('u2', 'cs_test_2');
+    expect(gastos(creditos.salvos)).toHaveLength(0);
+  });
+
+  it('não paga quem chegou sem indicação', async () => {
+    const { servico, creditos } = montar({
+      usuario: { ...INDICADO, referredBy: null },
+    });
+    await servico.payReferral('u2', 'cs_test_3');
+    expect(gastos(creditos.salvos)).toHaveLength(0);
+  });
+
+  it('perde a corrida do webhook reentregue sem creditar', async () => {
+    // `affected: 0` é o banco dizendo que outra entrega já marcou a data.
+    const { servico, creditos } = montar({
+      usuario: { ...INDICADO },
+      afetadas: [0],
+    });
+    await servico.payReferral('u2', 'cs_test_4');
+    expect(gastos(creditos.salvos)).toHaveLength(0);
   });
 });

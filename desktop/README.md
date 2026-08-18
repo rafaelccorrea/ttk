@@ -17,6 +17,33 @@ npm run build   # tsc --noEmit + build dos três alvos em out/
 npm run dist    # build + instalador via electron-builder (release/)
 ```
 
+## Publicar uma versão
+
+A distribuição **não passa pelo GitHub**. O `publish` do electron-builder é
+`generic`, apontando para `https://pikpokviral.com.br/app` — o mesmo domínio
+estático do frontend. É de lá que o `electron-updater` lê o `latest.yml` para
+descobrir se há versão nova, e é de lá que o botão de download baixa o
+instalador. Um provider a menos, um token a menos, e a atualização deixa de
+depender de permissão de repositório.
+
+Para publicar:
+
+1. `npm run dist` — gera `release/PikPok-Copiloto-Setup-<versão>.exe` e o
+   `release/latest.yml`. O `artifactName` tira os espaços do nome de propósito:
+   o `latest.yml` referencia o arquivo por nome e o updater baixa por essa URL,
+   e espaço em URL de hospedagem estática é fonte de 404 silencioso.
+2. `cd ../frontend && npm run build` — o build do site copia o instalador e o
+   `latest.yml` para `dist/app/`. É de propósito: o deploy do frontend já é
+   subir o `dist` inteiro para o `public_html`, então o app vai junto e não
+   existe uma segunda subida para alguém esquecer. Sem instalador em
+   `desktop/release`, o build avisa e segue — o site não fica refém do app.
+3. Suba o `dist` para o `public_html` do `pikpokviral.com.br`.
+4. Em produção, aponte `DESKTOP_DOWNLOAD_WINDOWS` para a URL do `.exe` e
+   `DESKTOP_VERSION` para a versão publicada.
+
+Subir a versão em `package.json` é o que faz o updater enxergar a novidade —
+sem isso, o `latest.yml` novo descreve a mesma versão e ninguém atualiza.
+
 ## Estrutura
 
 | Caminho            | O que é                                                |

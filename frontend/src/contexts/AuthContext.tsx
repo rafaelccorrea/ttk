@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { api, TOKEN_STORAGE_KEY } from '@/services/api';
 import { authService, RegisterResult } from '@/services/auth.service';
+import { clearReferral, getReferral } from '@/utils/referral';
 
 const EMAIL_STORAGE_KEY = 'pikpok.email';
 
@@ -71,7 +72,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = useCallback(
     async (mail: string, password: string): Promise<SignUpResult> => {
-      const result: RegisterResult = await authService.register(mail, password);
+      // O ref foi guardado quando a pessoa chegou pelo link de indicação; é
+      // aqui, no único momento em que a conta nasce, que ele vira vínculo.
+      const result: RegisterResult = await authService.register(
+        mail,
+        password,
+        getReferral(),
+      );
+      // Vínculo gravado (ou ref inválido, que o backend ignorou): o valor não
+      // serve mais e ficaria colado numa próxima conta criada no mesmo navegador.
+      clearReferral();
       return {
         needsConfirmation: true,
         message: result.message,
