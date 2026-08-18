@@ -1,6 +1,6 @@
 import { exec } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -106,25 +106,62 @@ export class HiggsfieldCliService implements GeradorDeMidia {
   }
 
   /**
-   * Onde está o executável da CLI.
+   * Como invocar a CLI: `node <entrada.js>`, e não o atalho de `.bin`.
    *
-   * A preferência é o binário do próprio projeto, porque `@higgsfield/cli` é
-   * dependência daqui e portanto sobe junto no deploy. Depender de um
-   * `npm install -g` no servidor seria depender de um passo manual que ninguém
-   * lembra de repetir quando a máquina é recriada — e a falha apareceria como
-   * geração desligada, sem dizer por quê.
+   * O atalho parece o caminho óbvio e não funciona em produção. A Hostinger
+   * publica os arquivos sem o bit de execução, então `.bin/higgsfield` responde
+   * `Permission denied` — o processo nem começa. Chamar o JS de entrada pelo
+   * `node` contorna isso inteiro: quem precisa ser executável é o `node`, que
+   * obviamente é.
+   *
+   * `require.resolve` em vez de montar o caminho na mão porque o pacote pode
+   * estar içado para um `node_modules` acima (workspaces) ou aninhado; quem
+   * sabe onde ele foi parar é o resolvedor do próprio Node.
    *
    * O `higgsfield` solto no PATH continua como reserva: é o que existe na
    * máquina de quem roda o `seed:personas` no próprio computador.
    */
   private static acharBinario(): string {
-    const local = join(
-      process.cwd(),
-      'node_modules',
-      '.bin',
-      process.platform === 'win32' ? 'higgsfield.cmd' : 'higgsfield',
+    try {
+      const pacote = require.resolve('@higgsfield/cli/package.json');
+      const entrada = join(dirname(pacote), 'bin', 'higgsfield.js');
+      if (existsSync(entrada)) {
+        HiggsfieldCliService.liberarVendor(dirname(pacote));
+        return `node ${HiggsfieldCliService.citar(entrada)}`;
+      }
+    } catch {
+      // Pacote ausente: cai no PATH, que é o caso da máquina de desenvolvimento.
+    }
+    return 'higgsfield';
+  }
+
+  /**
+   * Devolve o bit de execução ao binário nativo que a CLI dispara.
+   *
+   * Rodar a entrada com `node` resolve o atalho, mas não o passo seguinte: o
+   * `bin/higgsfield.js` só repassa os argumentos para `vendor/hf`, um
+   * executável de verdade — que chega do deploy sem permissão pelo mesmo
+   * motivo e falharia com o mesmo `Permission denied`, agora um nível mais
+   * fundo e mais difícil de ler.
+   *
+   * Corrigir no boot em vez de exigir um `chmod` manual é o que mantém a
+   * máquina reconstruível sem ninguém lembrar de um passo. Falhar aqui não é
+   * fatal: registra e segue, porque no Windows a operação é inócua e num
+   * sistema onde já esteja correta não há o que fazer.
+   */
+  private static liberarVendor(raizDoPacote: string): void {
+    const hf = join(
+      raizDoPacote,
+      'vendor',
+      process.platform === 'win32' ? 'hf.exe' : 'hf',
     );
-    return existsSync(local) ? local : 'higgsfield';
+    if (!existsSync(hf)) return;
+    try {
+      chmodSync(hf, 0o755);
+    } catch {
+      // Sem permissão para corrigir a permissão: a chamada vai falhar adiante
+      // com uma mensagem clara, e não há o que fazer de melhor aqui.
+    }
   }
 
   /**
@@ -156,21 +193,44 @@ export class HiggsfieldCliService implements GeradorDeMidia {
     // O caminho do binário também é citado: em servidor Windows ele mora sob
     // "Program Files", e um espaço não citado transformaria o executável em dois
     // argumentos.
-    const comando = [this.citar(this.binario), ...args].join(' ');
-    const { stdout } = await execAsync(comando, {
-      maxBuffer: 16 * 1024 * 1024,
-      env: {
-        ...process.env,
-        // É o que faz a CLI ler a credencial do servidor em vez do HOME do
-        // usuário que por acaso está executando o processo do Node.
-        ...(this.credenciais ? { HIGGSFIELD_CREDENTIALS_PATH: this.credenciais } : {}),
-      },
-    });
-    return stdout;
+    const comando = [this.binario, ...args].join(' ');
+    try {
+      const { stdout } = await execAsync(comando, {
+        maxBuffer: 16 * 1024 * 1024,
+        env: {
+          ...process.env,
+          // É o que faz a CLI ler a credencial do servidor em vez do HOME do
+          // usuário que por acaso está executando o processo do Node.
+          ...(this.credenciais ? { HIGGSFIELD_CREDENTIALS_PATH: this.credenciais } : {}),
+        },
+      });
+      return stdout;
+    } catch (erro) {
+      /*
+       * Traduzir a falha do processo é o que separa um 500 de um 503.
+       *
+       * Sem isto, o erro do `exec` sobe cru: o Nest o trata como erro interno,
+       * o cliente vê "Internal server error" e o texto do comando inteiro —
+       * caminhos do servidor inclusive — vai parar no log de exceção como se
+       * fosse um bug nosso. Aconteceu de verdade, com o binário sem permissão
+       * de execução.
+       *
+       * O que é verdade para quem pediu a geração é sempre a mesma coisa: o
+       * fornecedor não atendeu, e ninguém foi cobrado — `withCharge` estorna
+       * quando esta exceção sobe. O detalhe técnico fica no log, que é de quem
+       * conserta.
+       */
+      const detalhe = erro instanceof Error ? erro.message : String(erro);
+      this.logger.error(`Falha ao executar a CLI da Higgsfield: ${detalhe}`);
+      throw new ServiceUnavailableException(
+        'A geração de mídia está temporariamente indisponível. Seus créditos ' +
+          'não foram cobrados — tente de novo em alguns minutos.',
+      );
+    }
   }
 
   /** Envolve um valor para o shell da plataforma. Ver o comentário de `cli`. */
-  private citar(valor: string): string {
+  private static citar(valor: string): string {
     return process.platform === 'win32'
       ? `"${valor.replace(/"/g, '""')}"`
       : `'${valor.replace(/'/g, `'\\''`)}'`;
@@ -212,9 +272,9 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       'create',
       this.modeloImagem,
       '--prompt',
-      this.citar(prompt),
+      HiggsfieldCliService.citar(prompt),
       '--aspect_ratio',
-      this.citar(aspectRatio),
+      HiggsfieldCliService.citar(aspectRatio),
     ]);
   }
 
@@ -236,7 +296,7 @@ export class HiggsfieldCliService implements GeradorDeMidia {
         'create',
         this.modeloVideo,
         '--prompt',
-        this.citar(prompt),
+        HiggsfieldCliService.citar(prompt),
         '--start-image',
         imageUrl,
       ]);
@@ -257,9 +317,9 @@ export class HiggsfieldCliService implements GeradorDeMidia {
         'create',
         this.modeloVideo,
         '--prompt',
-        this.citar(prompt),
+        HiggsfieldCliService.citar(prompt),
         '--start-image',
-        this.citar(arquivo),
+        HiggsfieldCliService.citar(arquivo),
       ]);
     } finally {
       await rm(pasta, { recursive: true, force: true }).catch(() => undefined);
