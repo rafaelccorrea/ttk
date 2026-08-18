@@ -506,9 +506,9 @@ function Storyboard({
           entregar um vídeo mudo é a pior surpresa possível depois do gasto. */}
       {detalhe.cenas.length > 0 && !detalhe.finalVideoUrl && (
         <Alert severity="info" variant="outlined">
-          A <strong>fala</strong> de cada cena é o seu guia de narração e legenda:
-          o vídeo gerado mostra a ação, e você grava a voz por cima ou usa o texto
-          como legenda ao publicar.
+          A <strong>fala</strong> de cada cena é dita pelo apresentador em
+          português e vira legenda no vídeo final — revise o texto antes de
+          renderizar, porque é exatamente isso que sai no áudio.
         </Alert>
       )}
 

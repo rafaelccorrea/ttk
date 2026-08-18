@@ -689,7 +689,18 @@ export class CampaignsService {
             'Envie uma foto e gere o roteiro de novo.',
         );
       }
-      promptFinal = `Product demo shot. Camera motion: ${cena.acaoVisual}. No people in frame.`;
+      /*
+       * O idioma vai NO PROMPT porque o modelo de vídeo gera áudio sozinho:
+       * sem instrução, ele improvisa narração em inglês — saiu exatamente
+       * assim em produção. A fala da cena entra como o texto a narrar, e o
+       * pt-BR vira ordem, não esperança.
+       */
+      promptFinal =
+        `Product demo shot. Camera motion: ${cena.acaoVisual}. No people in frame. ` +
+        (cena.fala
+          ? `Voiceover in BRAZILIAN PORTUGUESE (pt-BR) saying exactly: "${cena.fala}". ` +
+            'All speech must be in Brazilian Portuguese — never English.'
+          : 'No speech, no narration.');
     } else {
       const persona = await this.personas.findOneBy({ id: campanha.personaId });
       if (!persona?.seedImageUrl || persona.status !== 'pronta') {
@@ -698,7 +709,12 @@ export class CampaignsService {
         );
       }
       imagemBase = persona.seedImageUrl;
-      promptFinal = `${persona.promptFragment}. Action: ${cena.acaoVisual}`;
+      promptFinal =
+        `${persona.promptFragment}. Action: ${cena.acaoVisual}. ` +
+        (cena.fala
+          ? `The person speaks in BRAZILIAN PORTUGUESE (pt-BR), lip-synced, saying exactly: "${cena.fala}". ` +
+            'All speech must be in Brazilian Portuguese — never English.'
+          : 'No speech.');
     }
 
     /**
