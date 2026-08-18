@@ -140,6 +140,12 @@ export function PlansPage() {
   // pedir página ao servidor só adicionaria latência a uma lista pequena.
   const [extratoPage, setExtratoPage] = useState(0);
   const [extratoPorPagina, setExtratoPorPagina] = useState(10);
+  /*
+   * Conta sem assinatura. Desde o modo amostra (docs/CONTA-FREE.md) ela CHEGA
+   * nesta tela — antes era redirecionada antes de vê-la —, então o que é
+   * exclusivo de assinante precisa se apresentar como tal aqui.
+   */
+  const semPlano = wallet?.plan === 'free';
 
   useEffect(() => {
     Promise.all([
@@ -694,7 +700,19 @@ export function PlansPage() {
       <SectionHeader
         icon={<BoltRoundedIcon />}
         title="Pacotes avulsos de créditos"
-        subtitle="Compra única, sem assinatura — os créditos entram na hora."
+        subtitle={
+          /*
+           * "sem assinatura" é verdade sobre a COBRANÇA (é compra única, não
+           * recorrência) e mentira sobre o ACESSO: `assertSubscriber` recusa
+           * pacote de quem não assina, e as ações de IA exigem plano de
+           * qualquer forma. Com a conta gratuita passando a ver esta tela, a
+           * frase antiga levava direto a um botão que só devolve erro — ou,
+           * pior, venderia crédito que ela não teria como gastar.
+           */
+          semPlano
+            ? 'Compra única para quem já tem plano — os pacotes reforçam a cota do mês.'
+            : 'Compra única, sem recorrência — os créditos entram na hora.'
+        }
       />
       <Grid container spacing={2} mb={4} alignItems="stretch">
         {packs.map((pack) => (
@@ -717,13 +735,26 @@ export function PlansPage() {
                     {brl(pack.priceBrl / pack.credits)} por crédito
                   </Typography>
                 </Box>
-                <Button
-                  variant="outlined"
-                  disabled={busy === pack.id}
-                  onClick={() => buyPack(pack.id)}
+                <Tooltip
+                  title={
+                    semPlano
+                      ? 'Assine um plano para comprar pacotes — crédito avulso não destrava os recursos.'
+                      : ''
+                  }
                 >
-                  {busy === pack.id ? 'Comprando...' : 'Comprar'}
-                </Button>
+                  {/* <span> porque botão desabilitado não emite os eventos que
+                      o Tooltip escuta — sem ele, a explicação não aparece
+                      justamente para quem precisa dela. */}
+                  <span>
+                    <Button
+                      variant="outlined"
+                      disabled={busy === pack.id || semPlano}
+                      onClick={() => buyPack(pack.id)}
+                    >
+                      {busy === pack.id ? 'Comprando...' : 'Comprar'}
+                    </Button>
+                  </span>
+                </Tooltip>
               </CardContent>
             </Card>
           </Grid>

@@ -91,13 +91,21 @@ export function AppRoutes() {
               <FreeSampleGate pago={<VideosPage />} amostra={<FreeVideosPage />} />
             }
           />
-          {/* Estar logado não basta: conta sem assinatura vai para /planos. */}
+          {/* Planos e Perfil também ficam fora do paywall, e por motivos
+              diferentes. Planos é a TELA DE COMPRA: com ela bloqueada, todo CTA
+              da amostra levava à tela de bloqueio — que por sua vez oferece
+              "Ver planos". O caminho de conversão inteiro se fechava num
+              círculo. Perfil é a própria conta (nome, e-mail, senha), não é
+              dado de mercado: trancar alguém fora dos próprios dados por não
+              ter assinatura não protege nada. */}
+          <Route path="/planos" element={<PlansPage />} />
+          <Route path="/perfil" element={<ProfilePage />} />
+          {/* Estar logado não basta: conta sem assinatura não entra no resto. */}
           <Route element={<RequireSubscription />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/tendencias" element={<TrendsPage />} />
             <Route path="/criadores" element={<CreatorsPage />} />
             <Route path="/favoritos" element={<FavoritesPage />} />
-            <Route path="/perfil" element={<ProfilePage />} />
             <Route path="/estudio" element={<StudioPage />} />
             {/* Campanhas e Multiplicador são Pro no backend; sem o gate aqui,
                 quem assina o Essencial abria a tela e só descobria no 403. */}
@@ -148,7 +156,6 @@ export function AppRoutes() {
               }
             />
             <Route path="/analisar" element={<AnalyzePage />} />
-            <Route path="/planos" element={<PlansPage />} />
             {/* A rota existe para qualquer logado; quem barra é o AdminGuard
                 do backend, que responde 403 em todas as chamadas /admin. */}
             <Route path="/admin" element={<AdminPage />} />

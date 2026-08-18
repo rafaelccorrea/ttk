@@ -435,12 +435,27 @@ export function findPlan(id: string): Plan | undefined {
 }
 
 /**
- * Créditos de boas-vindas do cadastro. Zerado desde o paywall na entrada: quem
- * cria a conta ainda não pagou, e crédito de IA é dinheiro nosso saindo. Ficou
- * como constante (em vez de sumir) porque é a alavanca de uma campanha futura —
- * basta subir o número para religar o bônus, sem tocar em mais nada.
+ * Créditos de boas-vindas do cadastro — a cortesia da conta gratuita.
+ *
+ * Ficou em zero durante o paywall na entrada e voltou com o modo amostra: uma
+ * conta que só olha não vira cliente. O vendedor precisa ver o roteiro sair, a
+ * análise ficar pronta, a imagem aparecer — com o produto DELE. Vinte e cinco
+ * créditos compram exatamente isso: três roteiros, ou uma análise mais um
+ * roteiro, ou duas imagens. Dá para conhecer; não dá para operar.
+ *
+ * **Isto é dinheiro nosso saindo, e o número é o teto do prejuízo por conta.**
+ * No pior caso (R$ 0,06 por crédito, ver `worstCostPerCredit`), 25 créditos
+ * custam até R$ 1,50. É o preço de aquisição que estamos dispostos a pagar por
+ * cadastro confirmado — e o que impede isso de virar torneira aberta é ser
+ * concedido UMA VEZ POR CONTA (`ensureSignupBonus` grava a transação
+ * `signup_bonus` e nunca repete) e não renovar no mês seguinte. Quem quiser
+ * mais, assina.
+ *
+ * Subir este número sem olhar o custo por crédito é subir o custo de aquisição
+ * de todo mundo que se cadastrar e nunca pagar, inclusive de quem se cadastrar
+ * duas vezes.
  */
-export const SIGNUP_BONUS_CREDITS = 0;
+export const SIGNUP_BONUS_CREDITS = 25;
 
 /**
  * Conta gratuita: o modo amostra (ver `docs/CONTA-FREE.md`).
@@ -478,7 +493,9 @@ export const FREE_SAMPLE = {
 
 /**
  * Hierarquia dos planos (maior = mais acesso). `free` não é um plano vendável:
- * é o estado "conta criada, pagamento pendente" — rank 0, nenhum recurso.
+ * é o estado "conta criada, ainda não pagou" — rank 0. Rank 0 deixou de
+ * significar "nenhum recurso": com o modo amostra, as features cujo mínimo é
+ * `free` abrem aqui (ver FEATURE_MIN_PLAN), limitadas pelo saldo de créditos.
  * `starter` continua aqui como degrau legado: quem assinou antes mantém
  * exatamente o acesso que pagou.
  */
@@ -560,22 +577,40 @@ export type PlanFeature =
 /**
  * Plano mínimo para cada recurso — a divisão oficial do produto.
  *
- * Nada começa no `free`: `discovery` é o dado que compramos do EchoTik (custo
- * por consulta) e as features de IA custam por chamada, então nenhuma delas
- * pode ficar aberta a quem não pagou.
+ * **A conta gratuita ganha as ferramentas de IA do Essencial, e não ganha o
+ * dado.** A assimetria é o desenho inteiro, então vale explicar por quê:
  *
- * A diferença entre os planos pagos é de recurso, não só de cota. Se o Pro
- * fosse "o Essencial com mais créditos", os três degraus não teriam sentido
- * próprio: o que separa é o que cada um destrava — o Pro abre a produção de
- * vídeo (o item mais caro da tabela) e o Business abre a coleta.
+ * - As features de IA (`ai_*`, `studio_templates`, `uploads`) custam POR
+ *   CHAMADA, e a chamada já é medida em crédito. Abrir a porta não abre a
+ *   torneira: o teto é o saldo, e o saldo da conta gratuita é
+ *   `SIGNUP_BONUS_CREDITS`, concedido uma vez e nunca renovado. Quem não paga
+ *   consegue gerar um roteiro com o próprio produto — que é a única
+ *   demonstração que converte — e para quando o saldo acaba.
+ * - `discovery` custa POR CONSULTA ao fornecedor e é o produto em si: liberá-la
+ *   não teria teto nenhum, e quem já viu o ranking inteiro não precisa assinar.
+ *   Continua no piso pago. A conta gratuita vê a AMOSTRA (`modules/free`), que
+ *   é fixa, congelada e não consulta fornecedor nenhum.
+ *
+ * Resumindo a régua: **o que é limitável por saldo abre no gratuito; o que é
+ * ilimitável fica atrás do plano.**
+ *
+ * A diferença entre os planos pagos continua sendo de recurso, não só de cota.
+ * Se o Pro fosse "o Essencial com mais créditos", os três degraus não teriam
+ * sentido próprio: o que separa é o que cada um destrava — o Pro abre a
+ * produção de vídeo (o item mais caro da tabela) e o Business abre a coleta.
  */
 export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
+  /*
+   * O dado de mercado. Único recurso do Essencial que NÃO desce para o
+   * gratuito, porque é o único sem teto: cada consulta é dinheiro no
+   * fornecedor e o valor está justamente em ver a lista inteira.
+   */
   discovery: 'essencial',
-  studio_templates: 'essencial',
-  ai_scripts: 'essencial',
-  ai_analyze: 'essencial',
-  ai_transcribe: 'essencial',
-  ai_images: 'essencial',
+  studio_templates: 'free',
+  ai_scripts: 'free',
+  ai_analyze: 'free',
+  ai_transcribe: 'free',
+  ai_images: 'free',
   ai_videos: 'pro',
   multiplier: 'pro',
   /*
@@ -605,11 +640,17 @@ export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
   /*
    * Guardar arquivo do usuário no nosso bucket.
    *
-   * Não passa por IA, mas é dinheiro saindo (storage + egress) e ficava aberto
-   * a conta `free` — ou seja, a quem ainda não pagou. É o piso pago porque o
-   * custo é pequeno, mas nunca zero.
+   * Desce para o gratuito junto com as ferramentas de IA, e não por
+   * generosidade: sem upload, a conta gratuita não consegue mandar a foto do
+   * PRÓPRIO produto — e aí o roteiro que ela gera é sobre um produto
+   * qualquer, que é exatamente a demonstração que não convence ninguém.
+   *
+   * O custo (storage + egress) é pequeno mas nunca zero, e aqui ele NÃO é
+   * limitado por crédito — é a única exceção à régra "o que abre no gratuito é
+   * limitável por saldo". Fica de olho: se virar problema, o teto natural é
+   * quantidade de arquivos por conta, não plano.
    */
-  uploads: 'essencial',
+  uploads: 'free',
   ingestion: 'business',
 };
 
