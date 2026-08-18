@@ -311,6 +311,10 @@ function Storyboard({
     detalhe.cenas.length > 0 && detalhe.cenas.every((c) => c.status === 'pronta');
 
   async function acao(fn: () => Promise<unknown>) {
+    // Guarda de reentrância. `disabled={ocupado}` só passa a valer depois do
+    // repinte do React, e dois cliques rápidos cabem nessa janela — em
+    // "Gerar roteiro" e "Renderizar cena" isso é crédito cobrado duas vezes.
+    if (ocupado) return;
     setOcupado(true);
     setErro(null);
     try {
