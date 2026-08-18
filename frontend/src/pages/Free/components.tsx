@@ -131,7 +131,7 @@ export function RodapeBloqueado({
   /** Quantos itens a amostra já mostrou — o "+N" é o que SOBRA, não o total. */
   exibidos,
 }: {
-  tipo: 'produtos' | 'vídeos';
+  tipo: 'produtos' | 'vídeos' | 'criadores';
   exibidos: number;
 }) {
   const [total, setTotal] = useState<number | null>(null);
@@ -177,12 +177,16 @@ export function RodapeBloqueado({
       <Typography variant="h6" fontWeight={800} mb={0.5}>
         {restantes
           ? `+${restantes.toLocaleString('pt-BR')} ${tipo} no plano Essencial`
-          : `O catálogo completo de ${tipo} está nos planos pagos`}
+          : tipo === 'criadores'
+            ? 'O ranking de criadores está nos planos pagos'
+            : `O catálogo completo de ${tipo} está nos planos pagos`}
       </Typography>
+      {/* Só o que o plano acrescenta: roteiro e análise a conta gratuita já
+          tem, e repeti-los aqui esvazia a oferta. */}
       <Typography color="text.secondary" mb={2.5}>
-        Com um plano você vê o ranking inteiro, com busca, filtros, a loja de
-        cada produto e a evolução dia a dia — além de roteiros, análises e
-        vídeos com IA.
+        {tipo === 'criadores'
+          ? 'Com um plano você vê o ranking completo: quem mais fatura em cada nicho, com GMV, vendas e os vídeos de cada criador.'
+          : 'Com um plano você vê o ranking inteiro, com busca, filtros, a loja de cada produto e a evolução dia a dia — além das tendências e do ranking de criadores.'}
       </Typography>
       <Button component={Link} to="/planos" variant="contained" size="large">
         Ver planos

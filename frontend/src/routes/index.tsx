@@ -13,6 +13,8 @@ import { ConfirmEmailPage } from '@/pages/ConfirmEmail';
 import { CreatorsPage } from '@/pages/Creators';
 import { DashboardPage } from '@/pages/Dashboard';
 import { FavoritesPage } from '@/pages/Favorites';
+import { FreeCriadoresPage } from '@/pages/Free/Criadores';
+import { FreeFavoritosPage } from '@/pages/Free/Favoritos';
 import { FreeProdutoDetalhePage } from '@/pages/Free/ProdutoDetalhe';
 import { FreeProdutosPage } from '@/pages/Free/Produtos';
 import { FreeVideosPage } from '@/pages/Free/Videos';
@@ -115,8 +117,6 @@ export function AppRoutes() {
           <Route element={<RequireSubscription />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/tendencias" element={<TrendsPage />} />
-            <Route path="/criadores" element={<CreatorsPage />} />
-            <Route path="/favoritos" element={<FavoritesPage />} />
             {/* Campanhas e Multiplicador são Pro no backend; sem o gate aqui,
                 quem assina o Essencial abria a tela e só descobria no 403. */}
             <Route

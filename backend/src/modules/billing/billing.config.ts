@@ -477,6 +477,15 @@ export const FREE_SAMPLE = {
   /** Vídeos na amostra. */
   videos: 10,
   /**
+   * Criadores na amostra — a CAUDA do ranking, não o topo.
+   *
+   * Cinco perfis, e de propósito os menos relevantes: o valor da tela de
+   * Criadores é descobrir QUEM está vendendo muito, e entregar os cinco
+   * primeiros seria entregar exatamente isso. A cauda prova que a base existe,
+   * mostra o formato da ficha e não substitui a lista paga.
+   */
+  creators: 5,
+  /**
    * Validade do snapshot. É também a defasagem anunciada na tela: a amostra
    * não é o ranking de hoje, e isso é dito em vez de escondido.
    */

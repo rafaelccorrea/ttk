@@ -17,13 +17,18 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { freeService, type FreeProduct } from '@/services/free.service';
 
-/** Cada linha travada nomeia o que falta — vago não vende upgrade. */
+/*
+ * Cada linha nomeia o que falta — vago não vende upgrade. E nenhuma delas pode
+ * citar roteiro, análise ou imagem: a conta gratuita já tem essas ferramentas
+ * (limitadas pelo saldo), e oferecer de volta o que ela usa hoje faz o plano
+ * parecer não acrescentar nada.
+ */
 const TRAVADOS = [
   'Loja e link de compra do produto',
   'Vendas e receita exatas no período',
   'Evolução dia a dia (7, 30 e 90 dias)',
   'Criadores e vídeos que anunciam este produto',
-  'Roteiro e análise com IA a partir dele',
+  'O catálogo inteiro, com busca e filtros',
 ];
 
 /**

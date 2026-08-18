@@ -2,6 +2,8 @@ import { ForbiddenException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { FREE_SAMPLE } from '../billing/billing.config';
+import { Creator } from '../creators/entities/creator.entity';
+import { ProductFavorite } from '../products/entities/product-favorite.entity';
 import { Product } from '../products/entities/product.entity';
 import { Video } from '../videos/entities/video.entity';
 import { FreeSample } from './entities/free-sample.entity';
@@ -85,14 +87,63 @@ describe('FreeSampleService', () => {
     ),
   };
 
+  const creatorsRepo = {
+    query: jest.fn(() =>
+      Promise.resolve(
+        Array.from({ length: FREE_SAMPLE.creators }, (_, i) => ({ id: `c${i}` })),
+      ),
+    ),
+    find: jest.fn(({ where }: any) =>
+      Promise.resolve(
+        (where.id._value as string[]).map((id) => ({
+          id,
+          handle: '@quem',
+          name: 'Quem Vende',
+          category: 'casa',
+          avatarUrl: null,
+          followers: 12_345,
+          // Campos que NÃO podem vazar para a resposta reduzida:
+          gmvPeriod: '99999.00',
+          salesPeriod: 4321,
+        })),
+      ),
+    ),
+  };
+
+  /** Favoritos em memória, com o mesmo comportamento de toggle do repositório. */
+  let favoritados: Array<{ id: string; userId: string; productId: string }>;
+  const favoritosRepo = {
+    find: jest.fn(({ where }: any) =>
+      Promise.resolve(favoritados.filter((f) => f.userId === where.userId)),
+    ),
+    findOneBy: jest.fn(({ userId, productId }: any) =>
+      Promise.resolve(
+        favoritados.find((f) => f.userId === userId && f.productId === productId) ??
+          null,
+      ),
+    ),
+    create: jest.fn((dto: any) => ({ ...dto, id: `fav-${dto.productId}` })),
+    save: jest.fn((dto: any) => {
+      favoritados.push(dto);
+      return Promise.resolve(dto);
+    }),
+    delete: jest.fn(({ id }: any) => {
+      favoritados = favoritados.filter((f) => f.id !== id);
+      return Promise.resolve({ affected: 1 });
+    }),
+  };
+
   beforeEach(async () => {
     salvos = [];
+    favoritados = [];
     const module = await Test.createTestingModule({
       providers: [
         FreeSampleService,
         { provide: getRepositoryToken(FreeSample), useValue: samplesRepo },
         { provide: getRepositoryToken(Product), useValue: productsRepo },
         { provide: getRepositoryToken(Video), useValue: videosRepo },
+        { provide: getRepositoryToken(Creator), useValue: creatorsRepo },
+        { provide: getRepositoryToken(ProductFavorite), useValue: favoritosRepo },
       ],
     }).compile();
     service = module.get(FreeSampleService);
@@ -141,9 +192,11 @@ describe('FreeSampleService', () => {
     const snap = await service.snapshot();
     expect(snap.products).toHaveLength(FREE_SAMPLE.products);
     expect(snap.videos).toHaveLength(FREE_SAMPLE.videos);
+    expect(snap.creators).toHaveLength(FREE_SAMPLE.creators);
     expect(snap.limits).toEqual({
       products: FREE_SAMPLE.products,
       videos: FREE_SAMPLE.videos,
+      creators: FREE_SAMPLE.creators,
       refreshDays: FREE_SAMPLE.refreshDays,
     });
   });
@@ -166,6 +219,37 @@ describe('FreeSampleService', () => {
     expect(video.viewsRange).toBe('1 mi+');
   });
 
+  // Contra o vazamento do que a tela de Criadores vende: quem fatura quanto.
+  it('não expõe GMV nem vendas do criador', async () => {
+    const { creators } = await service.snapshot();
+    const criador = creators[0] as unknown as Record<string, unknown>;
+    for (const campo of ['gmvPeriod', 'salesPeriod', 'followers']) {
+      expect(criador).not.toHaveProperty(campo);
+    }
+    expect(criador.followersRange).toBe('12 mil+');
+  });
+
+  // Contra a lista de favoritos virar um jeito de acumular catálogo.
+  it('favorita dentro da amostra e recusa fora dela', async () => {
+    const { products } = await service.snapshot('u1');
+    const alvo = products[0].id;
+
+    await expect(service.alternarFavorito('u1', alvo)).resolves.toEqual({
+      isFavorite: true,
+    });
+    await expect(service.listarFavoritos('u1')).resolves.toHaveLength(1);
+    await expect(service.alternarFavorito('u1', alvo)).resolves.toEqual({
+      isFavorite: false,
+    });
+    await expect(service.listarFavoritos('u1')).resolves.toHaveLength(0);
+
+    // Um id fora da amostra não pode nem ser favoritado: o toggle confirmaria
+    // que ele existe no catálogo.
+    await expect(service.alternarFavorito('u1', 'p999')).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
   // Contra a amostra que congela para sempre.
   it('gera um snapshot novo quando a janela vira', async () => {
     const anterior = await service.currentSample();
@@ -186,6 +270,6 @@ describe('FreeSampleService', () => {
     // O serviço recebe repositórios e nada mais — se um dia alguém injetar o
     // ExternalDataProvider aqui, a conta gratuita volta a custar por visita.
     const deps = Reflect.getMetadata('design:paramtypes', FreeSampleService);
-    expect(deps).toHaveLength(3);
+    expect(deps).toHaveLength(5);
   });
 });

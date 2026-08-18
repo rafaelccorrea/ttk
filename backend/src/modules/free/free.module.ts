@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { Creator } from '../creators/entities/creator.entity';
+import { ProductFavorite } from '../products/entities/product-favorite.entity';
 import { Product } from '../products/entities/product.entity';
 import { AppUser } from '../users/entities/app-user.entity';
 import { UsersModule } from '../users/users.module';
@@ -20,7 +22,14 @@ import { FreeSampleService } from './free-sample.service';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([FreeSample, Product, Video, AppUser]),
+    TypeOrmModule.forFeature([
+      FreeSample,
+      Product,
+      ProductFavorite,
+      Video,
+      Creator,
+      AppUser,
+    ]),
     // O SupabaseAuthGuard do controller depende do UsersService.
     UsersModule,
   ],
