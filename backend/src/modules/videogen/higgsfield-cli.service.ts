@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -638,6 +639,58 @@ export class HiggsfieldCliService implements GeradorDeMidia {
     } catch (erro) {
       return { ok: false, detalhe: erro instanceof Error ? erro.message : String(erro) };
     }
+  }
+
+  /**
+   * Fotografa o estado da instalação da CLI, de uma vez só.
+   *
+   * Cada hipótese testada com um deploy separado custou minutos e ainda assim
+   * respondeu uma pergunta por vez — enquanto o sintoma ("saída vazia, código
+   * zero") admite várias causas ao mesmo tempo: binário ausente, arquitetura
+   * errada, permissão, ou um executável que simplesmente não fala. Este método
+   * derruba todas as perguntas juntas, e o que ele imprime é o que decide o
+   * próximo passo sem mais adivinhação.
+   */
+  async diagnosticar(): Promise<void> {
+    const linhas: string[] = [`binário em uso: ${this.binario}`];
+    try {
+      const raiz = dirname(require.resolve('@higgsfield/cli/package.json'));
+      linhas.push(`pacote: ${raiz}`);
+      for (const rel of ['vendor/hf', 'vendor/hf.exe', 'vendor/install.json', 'bin/higgsfield.js']) {
+        const caminho = join(raiz, rel);
+        if (!existsSync(caminho)) {
+          linhas.push(`  ${rel}: AUSENTE`);
+          continue;
+        }
+        const s = statSync(caminho);
+        linhas.push(`  ${rel}: ${s.size} bytes, modo ${(s.mode & 0o777).toString(8)}`);
+      }
+      const meta = join(raiz, 'vendor', 'install.json');
+      if (existsSync(meta)) {
+        linhas.push(`  install.json: ${readFileSync(meta, 'utf8').slice(0, 200)}`);
+      }
+    } catch (erro) {
+      linhas.push(`  não foi possível inspecionar o pacote: ${String(erro)}`);
+    }
+
+    // `--version` é a pergunta mais barata que existe: não usa rede, não usa
+    // credencial e não gasta crédito. Se nem ela responde, o problema é o
+    // executável, e não nada do que vem depois dele.
+    try {
+      const { stdout, stderr } = await execAsync(`${this.binario} version`, {
+        maxBuffer: 1024 * 1024,
+      });
+      linhas.push(`  version -> stdout: ${JSON.stringify((stdout ?? '').slice(0, 200))}`);
+      linhas.push(`  version -> stderr: ${JSON.stringify((stderr ?? '').slice(0, 200))}`);
+    } catch (erro) {
+      const e = erro as { message?: string; code?: number; stdout?: string; stderr?: string };
+      linhas.push(
+        `  version -> FALHOU code=${e?.code} msg=${e?.message?.slice(0, 200)} ` +
+          `stderr=${JSON.stringify((e?.stderr ?? '').slice(0, 200))}`,
+      );
+    }
+
+    this.logger.error(`DIAGNÓSTICO DA CLI:\n${linhas.join('\n')}`);
   }
 
   /**

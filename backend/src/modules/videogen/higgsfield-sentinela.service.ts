@@ -87,6 +87,7 @@ export class HiggsfieldSentinelaService {
          * linha o log manda rodar `auth login`, que não conserta nem uma nem
          * outra. Errar esse diagnóstico já custou caro aqui.
          */
+        await this.cli.diagnosticar();
         const rede = await this.cli.verificarRede();
         this.logger.error(
           rede.ok
