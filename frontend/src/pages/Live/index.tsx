@@ -127,6 +127,19 @@ function NovaBaseDialog({
   async function escolher(file: File | undefined) {
     if (!file) return;
     setErro(null);
+    /*
+     * Áudio puro é recusado aqui na frente, e não depois de subir gigabytes: o
+     * `accept` do seletor já filtra, mas ele é dica e não trava — arrastar um
+     * MP3 ou escolher "todos os arquivos" passa por cima dele em qualquer
+     * navegador. O backend recusa de novo, pelo ffmpeg; esta é a recusa que
+     * chega ANTES do upload.
+     */
+    if (file.type.startsWith('audio/')) {
+      setErro(
+        'Este arquivo é só áudio. Envie o vídeo da live — é da gravação da transmissão, com imagem, que eu monto a base.',
+      );
+      return;
+    }
     if (file.size > MAX_UPLOAD_BYTES) {
       setErro(
         `A gravação tem ${tamanhoLegivel(file.size)} e o limite por envio é de ${tamanhoLegivel(MAX_UPLOAD_BYTES)}. Corte a live em partes e envie uma de cada vez.`,
@@ -210,14 +223,14 @@ function NovaBaseDialog({
               <input
                 hidden
                 type="file"
-                accept="video/*,audio/*"
+                accept="video/*"
                 onChange={(e) => escolher(e.target.files?.[0])}
               />
             </Button>
             <Typography variant="caption" color="text.secondary" display="block" mt={1}>
-              Vídeo ou áudio (mp4, mov, mkv, m4a, mp3...), até{' '}
-              {tamanhoLegivel(MAX_UPLOAD_BYTES)} e {TRANSCRIBE_MAX_MINUTES / 60} horas
-              por envio.
+              O vídeo da live (mp4, mov, mkv ou webm), de {LIVE_MIN_MINUTES} minutos a{' '}
+              {TRANSCRIBE_MAX_MINUTES / 60} horas e até {tamanhoLegivel(MAX_UPLOAD_BYTES)}{' '}
+              por envio. Arquivo só de áudio não serve.
             </Typography>
             {arquivo && (
               <Typography variant="body2" mt={1} fontWeight={700}>

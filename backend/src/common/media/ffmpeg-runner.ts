@@ -84,11 +84,27 @@ export class FfmpegRunner {
    * não tem stream nenhuma. As correções são diferentes (gravar de novo com o
    * microfone ligado vs. enviar outro arquivo), então a mensagem também é.
    */
-  async streamsDe(arquivo: string): Promise<{ legivel: boolean; audio: boolean }> {
+  async streamsDe(
+    arquivo: string,
+  ): Promise<{ legivel: boolean; audio: boolean; video: boolean }> {
     const saida = await this.inspecionar(arquivo);
     return {
       legivel: /Stream #\d+:\d+/.test(saida),
       audio: /Stream #\d+:\d+.*:\s*Audio:/i.test(saida),
+      /*
+       * `video: true` diz que há IMAGEM, e é por isso que a capa embutida num
+       * MP3 precisa ficar de fora: o ffmpeg a reporta como stream de vídeo
+       * (mjpeg/png) e um teste ingênuo aprovaria o áudio disfarçado. O
+       * `attached pic` é a marca que ele põe nesses casos.
+       */
+      video: saida
+        .split('\n')
+        .some(
+          (linha) =>
+            /Stream #\d+:\d+.*:\s*Video:/i.test(linha) &&
+            !/attached pic/i.test(linha) &&
+            !/Video:\s*(mjpeg|png|bmp|gif)\b/i.test(linha),
+        ),
     };
   }
 

@@ -98,6 +98,19 @@ export class AudioChunkerService {
         'Não consegui ler este arquivo de vídeo. Envie a gravação da live num formato comum (MP4, MOV ou MKV) e confira se o envio terminou por completo.',
       );
     }
+    /*
+     * Áudio puro é recusado por decisão de produto, e não por limitação: o
+     * pipeline extrairia a trilha de um MP3 sem reclamar. A regra e o porquê
+     * moram em PREFIXOS_ACEITOS, no controller — aqui é a trava que o
+     * `mimetype` não dá, já que ele é declarado por quem envia e um MP3 passa
+     * renomeado como "video/mp4". Quem sabe o que o arquivo é de verdade é o
+     * ffmpeg.
+     */
+    if (!streams.video) {
+      throw new Error(
+        'Este arquivo é só áudio. Envie o vídeo da live — é da gravação da transmissão, com imagem, que eu monto a base.',
+      );
+    }
     if (!streams.audio) {
       throw new Error(
         'Esta gravação não tem áudio. É da fala da live que eu monto a base de conhecimento, então preciso de um arquivo com som — confira se o microfone estava sendo gravado e envie de novo.',
