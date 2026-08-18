@@ -435,6 +435,12 @@ function Storyboard({
               <Grid item xs={12} sm={5}>
                 <Box
                   sx={{
+                    // `relative` é obrigatório: o SmartImage se posiciona com
+                    // `absolute; inset: 0`. Sem âncora aqui ele subia até o
+                    // primeiro ancestral posicionado e o frame da cena cobria
+                    // a página inteira — a tela do storyboard virava uma foto
+                    // gigante por cima de tudo.
+                    position: 'relative',
                     aspectRatio: '9 / 14',
                     maxHeight: 300,
                     borderRadius: 2,

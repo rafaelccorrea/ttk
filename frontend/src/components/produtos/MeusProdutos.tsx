@@ -251,7 +251,11 @@ function GaleriaDialog({
                 onClick={() => setAmpliada(foto)}
                 aria-label={`Ver ${produto.name} em tamanho maior`}
                 sx={{
+                  // `position` DEPOIS do `all: 'unset'`, que zera tudo — sem
+                  // isto o SmartImage se ancora no avô em vez do botão, e as
+                  // duas caixas só coincidem por acidente de geometria.
                   all: 'unset',
+                  position: 'relative',
                   cursor: 'zoom-in',
                   display: 'block',
                   width: '100%',
