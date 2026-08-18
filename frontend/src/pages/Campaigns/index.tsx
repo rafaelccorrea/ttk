@@ -786,6 +786,21 @@ function Storyboard({
                   )}
                 </Box>
 
+                {cena.status === 'pronta' && cena.outputUrl && (
+                  <Button
+                    size="small"
+                    fullWidth
+                    startIcon={<DownloadRoundedIcon />}
+                    component="a"
+                    href={resolveApiUrl(cena.outputUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ mt: 1 }}
+                  >
+                    Baixar cena {cena.ordem}
+                  </Button>
+                )}
+
                 {/* Trocar a foto é grátis e só faz sentido antes de renderizar
                     — depois de pronta, o vídeo já existe. */}
                 {cena.tipo === 'produto' && cena.status !== 'pronta' && (

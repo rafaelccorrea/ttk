@@ -711,6 +711,9 @@ export class CampaignsService {
       imagemBase = persona.seedImageUrl;
       promptFinal =
         `${persona.promptFragment}. Action: ${cena.acaoVisual}. ` +
+        // Sem isto o retrato-semente congela a pose: toda cena saía com o
+        // apresentador na MESMA posição, de busto parado — parecia foto.
+        'Natural expressive hand gestures, dynamic body language, subtle camera movement. ' +
         (cena.fala
           ? `The person speaks in BRAZILIAN PORTUGUESE (pt-BR), lip-synced, saying exactly: "${cena.fala}". ` +
             'All speech must be in Brazilian Portuguese — never English.'
@@ -773,6 +776,16 @@ export class CampaignsService {
         cena.outputUrl =
           (await this.mirror.mirror(media.outputUrl, 'campaign-scenes', cena.id)) ??
           media.outputUrl;
+        /**
+         * Dublagem em pt-BR por TTS, trocando a trilha do clipe.
+         *
+         * O modelo de vídeo fala — mas mastiga o português a ponto de não se
+         * entender (aconteceu em produção). A voz passa a vir de um TTS de
+         * verdade; o áudio original é o defeito, não um fundo a preservar.
+         * Best-effort: se o TTS ou o remux falhar, a cena fica com o áudio
+         * original — pior áudio é melhor que cena travada em "renderizando".
+         */
+        cena.outputUrl = await this.dublarCena(cena) ?? cena.outputUrl;
         cena.status = 'pronta';
       } else if (['failed', 'nsfw', 'canceled'].includes(media.status)) {
         // O estorno já aconteceu dentro do refresh do videogen.
@@ -851,13 +864,25 @@ export class CampaignsService {
       arquivos.push(buffer);
     }
 
-    // As falas viram legenda queimada: o clipe gerado é mudo (a fala não
-    // entra no prompt de vídeo), e legenda é como a fala chega ao espectador.
-    const final = await this.assembly.juntar(
-      arquivos,
-      undefined,
-      cenas.map((c) => c.fala ?? null),
-    );
+    // As falas viram legenda queimada na montagem — é como a fala chega a
+    // quem assiste sem som, que é a maioria.
+    let final: Buffer;
+    try {
+      final = await this.assembly.juntar(
+        arquivos,
+        undefined,
+        cenas.map((c) => c.fala ?? null),
+      );
+    } catch (error) {
+      // Sem isto o erro do ffmpeg subia como 500 "Internal server error" — a
+      // montagem automática falhava em silêncio no log e o clique manual não
+      // dizia nada de útil.
+      this.logger.error(`Montagem da campanha ${campaignId} falhou: ${error}`);
+      throw new ConflictException(
+        `A montagem falhou no servidor: ${(error as Error).message ?? error}. ` +
+          'As cenas continuam prontas — tente de novo em instantes.',
+      );
+    }
     const url = await this.mirror.putVideo(final, 'campaign-final', campanha.id);
     if (!url) {
       throw new ConflictException('O vídeo montado não pôde ser guardado.');
@@ -871,6 +896,28 @@ export class CampaignsService {
     );
 
     return this.detalharCampanha(userId, campaignId);
+  }
+
+  /**
+   * Gera a narração da fala e devolve a URL do clipe dublado — ou null para
+   * manter o original. Só toca no S3 quando TODA a cadeia deu certo.
+   */
+  private async dublarCena(cena: CampaignScene): Promise<string | null> {
+    if (!cena.fala?.trim() || !this.assembly.enabled) return null;
+    try {
+      const [video, narracao] = await Promise.all([
+        this.lerCena(cena.outputUrl),
+        this.ai.narrar(cena.fala),
+      ]);
+      if (!video || !narracao) return null;
+      const dublado = await this.assembly.dublar(video, narracao);
+      // Sufixo no id: o espelho é content-addressed por origem, e regravar na
+      // mesma chave do original serviria o vídeo antigo do cache.
+      return await this.mirror.putVideo(dublado, 'campaign-scenes', `${cena.id}-ptbr`);
+    } catch (error) {
+      this.logger.warn(`Dublagem da cena ${cena.id} falhou: ${error}`);
+      return null;
+    }
   }
 
   /** Lê o MP4 da cena — do bucket quando é nosso, da URL quando ainda não é. */
