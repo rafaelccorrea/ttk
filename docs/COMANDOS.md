@@ -60,6 +60,21 @@ O orçamento de cota por execução sai de `apiMonthlyBudget` dividido pelas
 execuções restantes do mês — ver `openApiAllowance()`. Cota estourada não aborta
 nada: as etapas 3 a 6 rodam mesmo assim.
 
+### `npm run atualiza -- --so-top [--top=N] [--max-req=N]` 💾💰
+
+Roda **somente** a etapa 2 e sai — nenhuma manutenção, nenhum Playwright,
+nenhum Whisper. É o caminho barato de validar o passo do top ou de puxar o
+ranking sem pagar o resto.
+
+- `--top=N` quantos produtos buscar (padrão 50)
+- `--max-req=N` teto duro de requisições **desta** execução, mais apertado que o
+  orçamento do mês
+
+Escreve em produção, e isso é intencional: requisição paga não se joga fora
+(ver `docs/ECHOTIK.md`, seção 10). O ensaio se limita pelo volume, nunca pelo
+destino. Medido em 17/08/2026: `--top=10 --max-req=5` gastou **2 requisições** e
+gravou 10 produtos com a métrica do dia.
+
 ### `npx ts-node src/scripts/sondar-echotik.ts [--teto=12]` ✅
 
 Prova que a credencial do EchoTik funciona e mede os limites, gastando o mínimo
@@ -74,6 +89,14 @@ O `:completo` liga a IA de verdade. O outro roda sem.
 
 Simula uma live para exercitar o motor de respostas. Consome IA conforme o
 volume simulado.
+
+### `npm run simular:processamento-live` ✅
+
+Atravessa o pipeline de processamento inteiro — ffmpeg, chunker, cobrança e
+banco — com um MP4 sintético de duração quebrada (879,57s). Whisper e Claude são
+dublados: **não consome IA**. Existe por causa do
+`invalid input syntax for type integer`, que só aparecia no último passo, depois
+da live inteira transcrita. Cria e apaga a própria conta descartável.
 
 ---
 

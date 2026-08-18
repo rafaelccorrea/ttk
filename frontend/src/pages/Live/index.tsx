@@ -25,6 +25,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { useConfirmacao } from '@/components/ui/ConfirmDialog';
 import { CREDITS_CHANGED_EVENT } from '@/services/api';
 import { billingService } from '@/services/billing.service';
 import {
@@ -367,6 +368,7 @@ function NovaBaseDialog({
 export function LivePage() {
   const navigate = useNavigate();
   const [sessoes, setSessoes] = useState<LiveSession[] | null>(null);
+  const { confirmar, dialogoDeConfirmacao } = useConfirmacao();
   const [erro, setErro] = useState<string | null>(null);
   const [dialogo, setDialogo] = useState(false);
   const processandoAntes = useRef(false);
@@ -414,13 +416,13 @@ export function LivePage() {
   }, [sessoes, carregar]);
 
   async function apagar(sessao: LiveSession) {
-    if (
-      !window.confirm(
-        `Apagar "${sessao.title}"? A base de conhecimento dela vai junto e não dá para desfazer.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirmar({
+      titulo: `Apagar "${sessao.title}"?`,
+      mensagem:
+        'A base de conhecimento desta live vai junto — produtos, apelidos e respostas. Não dá para desfazer, e reconstruí-la exige enviar a gravação de novo.',
+      textoConfirmar: 'Apagar live',
+    });
+    if (!ok) return;
     try {
       await liveService.deleteSession(sessao.id);
       await carregar();
@@ -672,6 +674,7 @@ export function LivePage() {
           navigate(`/copiloto/${id}`);
         }}
       />
+      {dialogoDeConfirmacao}
     </>
   );
 }

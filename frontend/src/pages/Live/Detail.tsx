@@ -34,6 +34,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { useConfirmacao } from '@/components/ui/ConfirmDialog';
 import { CurrencyField } from '@/components/ui/CurrencyField';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { CREDITS_CHANGED_EVENT } from '@/services/api';
@@ -327,6 +328,7 @@ export function LiveDetailPage() {
   const [importando, setImportando] = useState(false);
   const [resultadoImport, setResultadoImport] =
     useState<ResultadoDaImportacao | null>(null);
+  const { confirmar, dialogoDeConfirmacao } = useConfirmacao();
   const processandoAntes = useRef(false);
 
   const carregar = useCallback(async () => {
@@ -429,7 +431,13 @@ export function LiveDetailPage() {
   }
 
   async function apagarProduto(produto: LiveProduct) {
-    if (!window.confirm(`Tirar "${produto.name}" da base?`)) return;
+    const ok = await confirmar({
+      titulo: `Tirar "${produto.name}" da base?`,
+      mensagem:
+        'O copiloto deixa de responder perguntas sobre este produto durante a live. Você pode cadastrá-lo de novo depois, à mão.',
+      textoConfirmar: 'Tirar da base',
+    });
+    if (!ok) return;
     try {
       await liveService.deleteProduct(produto.id);
       await carregar();
@@ -439,7 +447,13 @@ export function LiveDetailPage() {
   }
 
   async function apagarFaq(faq: LiveFaq) {
-    if (!window.confirm('Tirar esta resposta da base?')) return;
+    const ok = await confirmar({
+      titulo: 'Tirar esta resposta da base?',
+      mensagem:
+        'Quando alguém perguntar isso no chat, o copiloto não vai ter o que responder — a pergunta passa a ser escalada para você.',
+      textoConfirmar: 'Tirar da base',
+    });
+    if (!ok) return;
     try {
       await liveService.deleteFaq(faq.id);
       await carregar();
@@ -821,6 +835,7 @@ export function LiveDetailPage() {
         onFechar={() => setFaqDialogo(false)}
         onSalvar={salvarFaq}
       />
+      {dialogoDeConfirmacao}
     </>
   );
 }

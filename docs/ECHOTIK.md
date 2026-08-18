@@ -380,7 +380,35 @@ que ele não tem criativo nenhum.
 
 ---
 
-## 10. O arquivo bruto: toda resposta fica no banco
+## 10. Requisição paga não se joga fora — nem em teste
+
+**Toda chamada à EchoTik custa cota que não volta no mês.** Então vale para
+ensaio, para depuração e para execução de verdade a mesma regra: o que voltar do
+fornecedor é **aproveitado e persistido em produção**.
+
+Na prática, três consequências que não são negociáveis:
+
+1. **Teste roda contra o banco de produção.** Não existe "banco de teste" para
+   ingestão: apontar o ensaio para outro lugar significaria pagar a requisição e
+   jogar o dado fora, e depois pagar de novo em produção pelo mesmo dado. Se o
+   produto voltou na resposta, ele entra no catálogo — foi pago.
+2. **O ensaio se limita pelo VOLUME, nunca pelo destino.** É para isso que existe
+   o `--max-req=N` do `atualiza --so-top`: gasta-se pouco, mas o pouco que se
+   gastou vira produto e métrica no banco real. Quem quiser testar sem gravar
+   nada usa a sonda (`sondar-echotik.ts`), que é explicitamente uma prova de
+   credencial e não uma coleta.
+3. **O bruto fica arquivado mesmo quando o parse falha** (seção 11). Se o
+   fornecedor respondeu, a resposta é nossa: um erro de leitura no nosso lado
+   não pode obrigar a pagar de novo só para ver o JSON.
+
+Corolário para quem for escrever coleta nova: nunca descarte linha da resposta
+porque "era só um teste", e nunca chame um endpoint sem gravar o que ele
+devolveu. O caminho padrão — `upsertProduct` + `upsertDailyMetric` + arquivo
+bruto — já garante isso; use-o em vez de fazer `fetch` solto.
+
+---
+
+## 11. O arquivo bruto: toda resposta fica no banco
 
 **Nenhuma requisição ao EchoTik se perde.** Cada chamada que sai do
 `external-data.provider.ts` é gravada na tabela `api_raw_responses` pelo
