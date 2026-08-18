@@ -313,24 +313,75 @@ export class HiggsfieldCliService implements GeradorDeMidia {
   private async resolverWorkspace(): Promise<string | null> {
     const configurado = this.config.get<string>('HIGGSFIELD_WORKSPACE_ID');
     if (configurado) return configurado;
-    if (this.workspace !== undefined) return this.workspace;
+    // Só o SUCESSO entra em cache. Guardar o fracasso foi um erro que se pagou
+    // caro: uma falha momentânea na primeira tentativa condenava o processo
+    // inteiro a nunca mais ter workspace, e todas as gerações seguintes
+    // morriam em "No workspace selected" sem sequer tentar de novo.
+    if (this.workspace) return this.workspace;
+
+    /*
+     * A lista vem por HTTP, não pela CLI.
+     *
+     * A sonda provou que o servidor alcança `fnf-api-gw` e recebe 200 — é o
+     * caminho que sabidamente funciona daqui. Perguntar pela CLI acrescentaria
+     * a única peça que ainda não é confiável neste ambiente, e para uma
+     * pergunta que o `fetch` responde melhor.
+     */
+    const porHttp = await this.workspacesPorHttp();
+    if (porHttp) {
+      this.workspace = porHttp;
+      this.logger.log(`Workspace da Higgsfield resolvido por HTTP: ${porHttp}`);
+      return porHttp;
+    }
 
     try {
       const stdout = await this.executar(['workspace', 'list', '--json'], null);
       const lista = JSON.parse(stdout) as Array<{ id?: string; is_selected?: boolean }>;
       // O já selecionado ganha do primeiro: se alguém escolheu, a escolha vale.
       const escolhido = lista?.find((w) => w.is_selected) ?? lista?.[0];
-      this.workspace = escolhido?.id ?? null;
-      if (this.workspace) {
-        this.logger.log(`Workspace da Higgsfield resolvido: ${this.workspace}`);
+      if (escolhido?.id) {
+        this.workspace = escolhido.id;
+        this.logger.log(`Workspace da Higgsfield resolvido pela CLI: ${this.workspace}`);
+        return this.workspace;
       }
     } catch {
       // Sem lista, segue sem workspace: o comando seguinte falha com a
       // mensagem da própria CLI, que é mais informativa do que qualquer
       // suposição feita aqui.
-      this.workspace = null;
     }
-    return this.workspace;
+    return null;
+  }
+
+  /** A lista de workspaces pelo `fetch` do Node. Ver `verificarRede`. */
+  private async workspacesPorHttp(): Promise<string | null> {
+    const token = this.lerToken();
+    if (!token) return null;
+    try {
+      const resposta = await fetch('https://fnf-api-gw.higgsfield.ai/fnf/workspaces', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'User-Agent': 'PikPok/1.0 (+https://pikpokviral.com.br)',
+        },
+      });
+      if (!resposta.ok) return null;
+      const lista = (await resposta.json()) as Array<{ id?: string }>;
+      return lista?.[0]?.id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** O access token do arquivo de credencial, ou null se não der para ler. */
+  private lerToken(): string | null {
+    if (!this.credenciais || !existsSync(this.credenciais)) return null;
+    try {
+      const { access_token: token } = JSON.parse(
+        readFileSync(this.credenciais, 'utf8'),
+      ) as { access_token?: string };
+      return token ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /** A execução crua. Separada de `cli` para o resolvedor não chamar a si mesmo. */
@@ -521,13 +572,9 @@ export class HiggsfieldCliService implements GeradorDeMidia {
    * suposição custou caro aqui.
    */
   async verificarRede(): Promise<{ ok: boolean; status?: number; detalhe?: string }> {
-    if (!this.credenciais || !existsSync(this.credenciais)) {
-      return { ok: false, detalhe: 'sem credencial' };
-    }
+    const token = this.lerToken();
+    if (!token) return { ok: false, detalhe: 'sem credencial legível' };
     try {
-      const { access_token: token } = JSON.parse(
-        readFileSync(this.credenciais, 'utf8'),
-      ) as { access_token?: string };
       const resposta = await fetch('https://fnf-api-gw.higgsfield.ai/fnf/workspaces', {
         headers: {
           Authorization: `Bearer ${token}`,
