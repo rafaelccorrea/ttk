@@ -128,18 +128,23 @@ export const ACTION_PRICES: Record<BillableAction, ActionPrice> = {
  * Custo real de um minuto de copiloto ao vivo, no pior caso, em BRL.
  *
  * Por minuto, com o teto de 4 respostas/min que o motor aplica:
- *   4 respostas × (1,5k de entrada em cache + 120 de saída, gpt-5.4-mini)
- *     ≈ 4 × US$ 0,00065 ≈ US$ 0,0026 ≈ R$ 0,016
+ *   4 respostas × (2,8k de entrada em cache + ~60 de saída, gpt-5.4-mini)
+ *     ≈ 4 × US$ 0,00059 ≈ US$ 0,0024 ≈ R$ 0,014
  *   reprocessamento em gpt-5.4 da faixa cinzenta (~10% das respostas,
- *     e é onde o custo de verdade mora)                        ≈ R$ 0,015
- *   total ≈ R$ 0,031 por minuto — abaixo dos R$ 0,043 mantidos aqui.
+ *     e é onde o custo de verdade mora)                        ≈ R$ 0,005
+ *   total ≈ R$ 0,019 por minuto — menos da metade dos R$ 0,043 mantidos aqui.
+ *
+ * Os 2,8k em cache não são estimativa: são o `cached_tokens` MEDIDO contra a
+ * API com uma base de 15 produtos e 12 FAQs (~1,9k tokens). A primeira chamada
+ * volta com zero e da segunda em diante o prefixo inteiro vem cacheado, com a
+ * latência caindo de ~1,6s para ~0,86s.
  *
  * A parcela da ESCRITA do cache (R$ 0,001/min na conta antiga) desapareceu: a
  * OpenAI não cobra para gravar prefixo. Em compensação a janela de cache é de
  * minutos e não de uma hora, então uma live com pausas longas relê o prefixo
- * frio mais vezes — e é justamente para esse caso que o teto segue em 0,043 em
- * vez de acompanhar a queda. Folga aqui é o que impede uma live atípica de
- * virar prejuízo silencioso.
+ * frio mais vezes — e é justamente esse caso, que a medição acima NÃO cobre,
+ * que mantém o teto em 0,043 em vez de acompanhar a queda. Folga aqui é o que
+ * impede uma live atípica de virar prejuízo silencioso.
  */
 export const LIVE_COST_PER_MINUTE_BRL = 0.043;
 
