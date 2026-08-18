@@ -32,6 +32,7 @@ import {
   LiveSession,
   MAX_UPLOAD_BYTES,
   PRECO_PADRAO,
+  TRANSCRIBE_BLOCK_MINUTES,
   TRANSCRIBE_MAX_MINUTES,
   estimarCreditos,
   lerDuracaoLocal,
@@ -287,13 +288,31 @@ function NovaBaseDialog({
                 {orcamento.exato ? 'Vai consumir' : 'Vai consumir a partir de'}{' '}
                 {orcamento.creditos} créditos
               </Typography>
-              <Typography variant="body2">
-                {precos.transcribe} créditos por cada 10 minutos de gravação (
-                {orcamento.blocos}{' '}
-                {orcamento.blocos === 1 ? 'bloco' : 'blocos'}) mais{' '}
-                {precos.live_extract} créditos para montar a base.
+              {/*
+                A conta aparece SOMADA, com o subtotal da transcrição escrito.
+                A versão anterior dizia "6 créditos por cada 10 minutos (2
+                blocos) mais 17" e estampava 29: os três números estavam certos
+                e mesmo assim a frase não fechava, porque o 12 — o único que
+                explica o salto — nunca era dito. Preço que parece errado é
+                tratado como erro, e aí o vendedor não envia.
+              */}
+              <Typography variant="body2" component="div">
+                <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                  <li>
+                    Transcrição: {orcamento.blocos} ×{' '}
+                    {precos.transcribe} = <strong>
+                      {precos.transcribe * orcamento.blocos}
+                    </strong>{' '}
+                    créditos ({TRANSCRIBE_BLOCK_MINUTES} minutos por bloco, sempre
+                    arredondando o bloco começado para cima)
+                  </li>
+                  <li>
+                    Montagem da base: <strong>{precos.live_extract}</strong>{' '}
+                    créditos, uma vez por live
+                  </li>
+                </Box>
                 {!orcamento.exato &&
-                  ' Não conseguimos ler a duração deste arquivo aqui no navegador — o valor final sai da duração real e pode ser maior.'}
+                  'Não conseguimos ler a duração deste arquivo aqui no navegador — o valor final sai da duração real e pode ser maior.'}
               </Typography>
             </Alert>
           )}
