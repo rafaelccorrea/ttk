@@ -701,10 +701,33 @@ export class CampaignsService {
       promptFinal = `${persona.promptFragment}. Action: ${cena.acaoVisual}`;
     }
 
+    /**
+     * O frame base espelhado pode estar numa rota RELATIVA (sem
+     * AWS_S3_PUBLIC_BASE o espelho devolve `/api/v1/media/s3/...`), que o
+     * driver não alcança por fetch. Nesse caso o objeto é lido do bucket aqui
+     * e segue como buffer — era a causa de nenhuma cena renderizar enquanto o
+     * retrato (texto → imagem) funcionava.
+     */
+    let frame: Buffer | undefined;
+    const prefixoEspelho = `${MEDIA_ROUTE}/`;
+    if (imagemBase.startsWith(prefixoEspelho)) {
+      const objeto = await this.mirror.readObject(
+        imagemBase.slice(prefixoEspelho.length),
+      );
+      if (!objeto?.body?.length) {
+        throw new ConflictException(
+          'O frame base desta cena não pôde ser lido do armazenamento. ' +
+            'Reenvie a foto do produto (ou aguarde o retrato) e tente de novo.',
+        );
+      }
+      frame = objeto.body;
+    }
+
     const media = await this.videogen.generateFromImage(
       userId,
       imagemBase,
       promptFinal,
+      frame,
     );
 
     cena.promptFinal = promptFinal;

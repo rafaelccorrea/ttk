@@ -95,9 +95,10 @@ export class VideogenService {
     userId: string,
     imageUrl: string,
     prompt: string,
+    imagem?: Buffer,
   ): Promise<GeneratedMedia> {
     const submitted = await this.billing.withCharge(userId, 'video', () =>
-      this.higgsfield.submitVideo(imageUrl, prompt),
+      this.higgsfield.submitVideo(imageUrl, prompt, imagem),
     );
     this.registrarCusto(userId, 'video');
     return this.media.save(

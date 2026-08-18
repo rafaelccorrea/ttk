@@ -33,8 +33,17 @@ export interface GeradorDeMidia {
   /** Texto → imagem. É o frame base de tudo, inclusive dos vídeos. */
   submitImage(prompt: string, aspectRatio: string): Promise<SubmitResult>;
 
-  /** Imagem → vídeo. Recebe o que `submitImage` produziu, já pronto. */
-  submitVideo(imageUrl: string, prompt: string): Promise<SubmitResult>;
+  /**
+   * Imagem → vídeo. Recebe o que `submitImage` produziu, já pronto.
+   *
+   * `imagem` é o frame base JÁ LIDO, para quando a URL não é alcançável de
+   * fora (espelho servido em rota relativa `/api/v1/media/...`). Foi um bug
+   * real: o retrato da persona era espelhado com caminho relativo, o
+   * `fetch()` do driver estourava TypeError, e NENHUMA cena renderizava —
+   * enquanto a persona (texto → imagem, sem fetch) funcionava, escondendo a
+   * causa.
+   */
+  submitVideo(imageUrl: string, prompt: string, imagem?: Buffer): Promise<SubmitResult>;
 
   /** Consulta um job submetido. O polling é de quem chama. */
   getStatus(requestId: string): Promise<StatusResult>;

@@ -586,8 +586,33 @@ export class HiggsfieldCliService implements GeradorDeMidia {
    * CLI subir. O `finally` apaga: são arquivos de megabytes num diretório que
    * ninguém varre, e vazar isso enche o disco do servidor em semanas.
    */
-  async submitVideo(imageUrl: string, prompt: string): Promise<SubmitResult> {
+  async submitVideo(
+    imageUrl: string,
+    prompt: string,
+    imagem?: Buffer,
+  ): Promise<SubmitResult> {
     const ehIdDeJob = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Frame já em mãos: grava no tmp e entrega o caminho — sem rede no meio.
+    if (imagem?.length) {
+      const pasta = await mkdtemp(join(tmpdir(), 'pikpok-hf-'));
+      try {
+        const arquivo = join(pasta, `${randomUUID()}.png`);
+        await writeFile(arquivo, imagem);
+        return await this.submeter([
+          'generate',
+          'create',
+          this.modeloVideo,
+          '--prompt',
+          HiggsfieldCliService.citar(prompt),
+          '--start-image',
+          HiggsfieldCliService.citar(arquivo),
+        ]);
+      } finally {
+        await rm(pasta, { recursive: true, force: true }).catch(() => undefined);
+      }
+    }
+
     if (ehIdDeJob.test(imageUrl)) {
       return this.submeter([
         'generate',

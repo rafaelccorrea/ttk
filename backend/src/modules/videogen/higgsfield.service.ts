@@ -98,7 +98,20 @@ export class HiggsfieldService implements GeradorDeMidia {
   }
 
   /** DoP: imagem → vídeo animado. */
-  async submitVideo(imageUrl: string, prompt: string): Promise<SubmitResult> {
+  async submitVideo(
+    imageUrl: string,
+    prompt: string,
+    imagem?: Buffer,
+  ): Promise<SubmitResult> {
+    // A API só aceita URL pública. Se o frame veio como buffer é porque a URL
+    // espelhada é relativa — a correção é configurar AWS_S3_PUBLIC_BASE, e a
+    // mensagem tem que dizer isso em vez de deixar um TypeError subir.
+    if (imagem?.length && !/^https?:\/\//i.test(imageUrl)) {
+      throw new ServiceUnavailableException(
+        'O driver de API da Higgsfield precisa de URL pública para o frame base. ' +
+          'Configure AWS_S3_PUBLIC_BASE ou use o driver de CLI.',
+      );
+    }
     const body = await this.request('/higgsfield-ai/dop/standard', {
       method: 'POST',
       body: JSON.stringify({ image_url: imageUrl, prompt }),
