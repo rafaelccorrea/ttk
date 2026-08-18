@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -27,6 +27,30 @@ const TIMEOUT_PADRAO_MS = 10 * 60_000;
 export class FfmpegRunner {
   private readonly logger = new Logger(FfmpegRunner.name);
 
+  /**
+   * Garante o +x no binário UMA vez por processo.
+   *
+   * O deploy da Hostinger extrai cada versão numa pasta nova e o bit de
+   * execução do `ffmpeg-static` não sobrevive à extração — o spawn morria
+   * com EACCES e derrubava a montagem do vídeo final em produção. O chmod é
+   * idempotente e custa um stat; falhar aqui não derruba nada, porque o erro
+   * real (e legível) aparece no spawn logo em seguida.
+   */
+  private permissaoGarantida = false;
+
+  private async garantirExecutavel(): Promise<void> {
+    if (this.permissaoGarantida || !ffmpegPath || process.platform === 'win32') {
+      this.permissaoGarantida = true;
+      return;
+    }
+    try {
+      await chmod(ffmpegPath as string, 0o755);
+    } catch (error) {
+      this.logger.warn(`chmod no ffmpeg falhou: ${error}`);
+    }
+    this.permissaoGarantida = true;
+  }
+
   get enabled(): boolean {
     return Boolean(ffmpegPath);
   }
@@ -39,6 +63,7 @@ export class FfmpegRunner {
     if (!ffmpegPath) {
       throw new Error('ffmpeg não está disponível neste ambiente.');
     }
+    await this.garantirExecutavel();
     try {
       await execFileAsync(ffmpegPath as string, args, {
         timeout: timeoutMs,
@@ -61,6 +86,7 @@ export class FfmpegRunner {
    */
   async inspecionar(arquivo: string): Promise<string> {
     if (!ffmpegPath) return '';
+    await this.garantirExecutavel();
     try {
       const { stderr } = await execFileAsync(ffmpegPath as string, [
         '-i', arquivo, '-hide_banner',
