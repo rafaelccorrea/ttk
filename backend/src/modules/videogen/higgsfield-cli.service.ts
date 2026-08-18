@@ -1,9 +1,9 @@
 import { exec } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import {
   Injectable,
@@ -45,7 +45,12 @@ export class HiggsfieldCliService implements GeradorDeMidia {
   constructor(private readonly config: ConfigService) {
     this.binario =
       this.config.get<string>('HIGGSFIELD_CLI_BIN') ?? HiggsfieldCliService.acharBinario();
-    this.credenciais = this.config.get<string>('HIGGSFIELD_CREDENTIALS_PATH') ?? null;
+    this.credenciais =
+      this.config.get<string>('HIGGSFIELD_CREDENTIALS_PATH') ??
+      (this.config.get<string>('HIGGSFIELD_CREDENTIALS_JSON')
+        ? join(tmpdir(), 'pikpok-higgsfield', 'credentials.json')
+        : null);
+    this.semear();
     /*
      * Modelos por ambiente, com padrão conservador.
      *
@@ -58,6 +63,46 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       this.config.get<string>('HIGGSFIELD_CLI_IMAGE_MODEL') ?? 'nano_banana_2';
     this.modeloVideo =
       this.config.get<string>('HIGGSFIELD_CLI_VIDEO_MODEL') ?? 'kling3_0_turbo';
+  }
+
+  /**
+   * Escreve a credencial no disco a partir da variável de ambiente, se faltar.
+   *
+   * Hospedagem que recria o container a cada deploy leva junto qualquer arquivo
+   * solto — e a credencial some sem aviso, no meio de um deploy comum, deixando
+   * a geração desligada por um motivo que ninguém liga ao que acabou de ser
+   * publicado. Guardar o conteúdo numa variável e reescrever o arquivo no boot é
+   * o que faz a credencial sobreviver ao ciclo de vida da máquina.
+   *
+   * A escrita é condicional, e a condição é o ponto: só semeia quando o arquivo
+   * NÃO existe. A CLI reescreve esse arquivo a cada renovação, e se o refresh
+   * token rotacionar — o que é prática comum em OAuth —, sobrescrever a cada
+   * boot restauraria um token velho por cima do válido e quebraria a
+   * autenticação justamente em quem reinicia com frequência. Semear é para
+   * máquina nova; máquina que já tem credencial fica com a dela.
+   *
+   * Preferir um caminho PERSISTENTE em `HIGGSFIELD_CREDENTIALS_PATH` continua
+   * sendo melhor que semear, e por essa mesma razão: sem reescrita, não há
+   * conflito possível com a rotação.
+   */
+  private semear(): void {
+    const conteudo = this.config.get<string>('HIGGSFIELD_CREDENTIALS_JSON');
+    if (!conteudo || !this.credenciais || existsSync(this.credenciais)) return;
+    try {
+      mkdirSync(dirname(this.credenciais), { recursive: true });
+      // 0600: o arquivo carrega um refresh token, e num servidor compartilhado
+      // a permissão padrão o deixaria legível para qualquer processo.
+      writeFileSync(this.credenciais, conteudo, { mode: 0o600 });
+      this.logger.log(
+        `Credencial da Higgsfield semeada em ${this.credenciais} a partir do ambiente.`,
+      );
+    } catch (erro) {
+      this.logger.error(
+        `Não foi possível semear a credencial da Higgsfield: ${
+          erro instanceof Error ? erro.message : erro
+        }`,
+      );
+    }
   }
 
   /**
