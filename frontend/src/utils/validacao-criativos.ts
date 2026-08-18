@@ -78,6 +78,45 @@ export function validarFala(valor: string): Erro {
  * segundos e o final é cortado. Bloquear seria pior — às vezes o vendedor sabe
  * o que está fazendo.
  */
+/**
+ * Menor lado aceitável de uma foto de produto, em pixels.
+ *
+ * A cena é renderizada em 1080×1920 A PARTIR desta foto: uma miniatura de
+ * 200px vira um borrão em tela cheia, e o vendedor só descobre depois de
+ * gastar os créditos da cena. 500px no menor lado é o piso em que a ampliação
+ * ainda segura.
+ */
+export const FOTO_LADO_MINIMO = 500;
+
+/**
+ * Valida as DIMENSÕES da foto — assíncrona porque precisa decodificar.
+ *
+ * Complementa `validarFoto` (tipo/tamanho, síncrona): esta aqui pega o erro
+ * que só aparece renderizando — a foto pequena demais para virar frame.
+ * Arquivo que nem decodifica não é rejeitado aqui: o backend já recusa com
+ * mensagem própria, e duplicar essa recusa criaria duas mensagens diferentes
+ * para o mesmo problema.
+ */
+export async function validarDimensoesDaFoto(arquivo: File): Promise<Erro> {
+  const url = URL.createObjectURL(arquivo);
+  try {
+    const img = await new Promise<HTMLImageElement | null>((resolve) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => resolve(null);
+      el.src = url;
+    });
+    if (!img) return null; // decodificação é problema do backend
+    const menor = Math.min(img.naturalWidth, img.naturalHeight);
+    if (menor < FOTO_LADO_MINIMO) {
+      return `Foto muito pequena (${img.naturalWidth}×${img.naturalHeight}). Use ao menos ${FOTO_LADO_MINIMO}px no menor lado — é dela que sai o frame do vídeo.`;
+    }
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export function avisoFalaLonga(valor: string): Erro {
   const palavras = valor.trim().split(/\s+/).filter(Boolean).length;
   if (palavras > PALAVRAS_POR_CENA)

@@ -40,6 +40,17 @@ const SEGUNDOS_POR_CENA = 5;
 /** Quantos ganchos da categoria entram como referência no roteiro. */
 const MAX_REFERENCIAS = 8;
 
+/**
+ * Quantas legendas candidatas o ranking semântico compara por roteiro.
+ *
+ * É o equilíbrio entre cobertura e custo: 200 legendas são ~6k tokens de
+ * embedding (décimos de centavo) e uma chamada só. Mais que isso melhora
+ * pouco — as candidatas já chegam ordenadas por views, então o que o ranking
+ * faz é escolher as 8 mais PARECIDAS com o produto dentro das 200 que mais
+ * venderam.
+ */
+const CANDIDATAS_SEMANTICAS = 200;
+
 /** Teto de fotos por produto — mais que isso ninguém usa no storyboard. */
 const MAX_FOTOS = 5;
 
@@ -420,6 +431,12 @@ export class CampaignsService {
    * recebendo uma lista de frases.
    */
   private async ganchosDaCategoria(produto: UserProduct): Promise<string[]> {
+    // Ranking semântico primeiro: entende que "não sai com nada" e "à prova
+    // d'água" falam do mesmo produto, coisa que ILIKE nunca vai ver. Quando
+    // não dá (sem chave, API fora), cai no caminho textual logo abaixo.
+    const semanticos = await this.ganchosSemanticos(produto);
+    if (semanticos) return semanticos;
+
     const categoria = produto.sourceProductId
       ? (await this.catalogo.findOneBy({ id: produto.sourceProductId }))?.category
       : null;
@@ -461,6 +478,67 @@ export class CampaignsService {
 
     const linhas = await consulta.getRawMany<{ caption: string }>();
     return linhas.map((l) => l.caption);
+  }
+
+  /**
+   * As ${MAX_REFERENCIAS} legendas mais parecidas com o produto, por cosseno.
+   *
+   * O universo de busca são as `CANDIDATAS_SEMANTICAS` legendas de maior
+   * view — restringir por categoria quando ela existe, e o catálogo inteiro
+   * quando não (produto digitado à mão). A consulta é o produto como o
+   * vendedor o descreveu: nome, benefício e problema — que é exatamente o que
+   * o roteiro precisa ecoar.
+   *
+   * Devolve `null` quando o ranking não pôde rodar (sem chave, sem legendas,
+   * API fora) — null significa "use o fallback", enquanto `[]` significaria
+   * "não há ganchos", que é informação diferente.
+   */
+  private async ganchosSemanticos(produto: UserProduct): Promise<string[] | null> {
+    if (!this.ai.enabled) return null;
+
+    const categoria = produto.sourceProductId
+      ? (await this.catalogo.findOneBy({ id: produto.sourceProductId }))?.category
+      : null;
+
+    const consulta = this.videos
+      .createQueryBuilder('v')
+      .select('v.caption', 'caption')
+      .innerJoin(Product, 'p', 'p.id = v."productId"')
+      .andWhere("v.caption IS NOT NULL AND length(v.caption) > 20")
+      .orderBy('v.views', 'DESC')
+      .limit(CANDIDATAS_SEMANTICAS);
+    if (categoria) consulta.where('p.category = :categoria', { categoria });
+
+    const linhas = await consulta.getRawMany<{ caption: string }>();
+    const legendas = [...new Set(linhas.map((l) => l.caption))];
+    if (legendas.length < MAX_REFERENCIAS) return null; // pouco material: fallback decide
+
+    const pergunta = [produto.name, produto.benefit, produto.problemSolved]
+      .filter(Boolean)
+      .join('. ');
+
+    // Um batch só: consulta na posição 0, candidatas em seguida.
+    const vetores = await this.ai.embed([pergunta, ...legendas]);
+    if (!vetores) return null;
+
+    const [alvo, ...docs] = vetores;
+    const cosseno = (a: number[], b: number[]) => {
+      let dot = 0;
+      let na = 0;
+      let nb = 0;
+      for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
+      }
+      return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
+    };
+
+    return docs
+      .map((v, i) => ({ legenda: legendas[i], score: cosseno(alvo, v) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_REFERENCIAS)
+      .map((d) => d.legenda);
   }
 
   /** O vendedor ajusta fala e ação antes de gastar crédito de vídeo. */

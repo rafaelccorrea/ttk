@@ -584,6 +584,47 @@ export class AiService {
     return this.apiKey !== null;
   }
 
+  /**
+   * Vetores de similaridade para o ranking semântico dos ganchos.
+   *
+   * text-embedding-3-small: US$ 0,02 por MILHÃO de tokens — embutir 200
+   * legendas custa décimos de centavo, o que dispensa cache persistente por
+   * enquanto. Devolve `null` (nunca lança) quando não há chave ou a API
+   * falha: quem chama tem o fallback por palavra-chave, e ranking pior é
+   * melhor que roteiro nenhum.
+   */
+  async embed(textos: string[]): Promise<number[][] | null> {
+    if (!this.apiKey || !textos.length) return null;
+    try {
+      const response = await fetch('https://api.openai.com/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'text-embedding-3-small',
+          // Legenda de TikTok cabe folgada em 500 chars; cortar protege o
+          // batch de uma legenda-artigo estourar o limite de tokens.
+          input: textos.map((t) => t.slice(0, 500)),
+        }),
+      });
+      if (!response.ok) {
+        this.logger.warn(`Embeddings falharam: HTTP ${response.status}`);
+        return null;
+      }
+      const dados = (await response.json()) as {
+        data?: Array<{ index: number; embedding: number[] }>;
+      };
+      if (!dados.data?.length || dados.data.length !== textos.length) return null;
+      const porIndice = [...dados.data].sort((a, b) => a.index - b.index);
+      return porIndice.map((d) => d.embedding);
+    } catch (error) {
+      this.logger.warn(`Embeddings falharam: ${error}`);
+      return null;
+    }
+  }
+
   async generateScript(request: ScriptRequest): Promise<ScriptResult> {
     if (!this.apiKey) {
       return this.templateFallback(request);

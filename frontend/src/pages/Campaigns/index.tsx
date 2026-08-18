@@ -457,6 +457,9 @@ function Storyboard({
   const semSaldo =
     !ilimitado && saldo !== null && custoTotal !== null && saldo < custoTotal;
   const renderizando = detalhe.cenas.some((c) => c.status === 'renderizando');
+  // O backend bloqueia regerar depois da primeira cena pronta (seria jogar o
+  // crédito dela fora) — o botão segue a mesma regra para nem oferecer o erro.
+  const algumaPronta = detalhe.cenas.some((c) => c.status === 'pronta');
 
   /**
    * @param gasto quando informado, pede confirmação antes de executar.
@@ -594,6 +597,24 @@ function Storyboard({
             </Stack>
           </CardContent>
         </Card>
+      )}
+
+      {/* O roteiro não precisa ser aceito de primeira: outra versão custa o
+          mesmo que a primeira e sai em segundos. Escondê-lo atrás de "apague a
+          campanha e crie outra" fazia o vendedor conviver com um roteiro que
+          ele não gostou. */}
+      {detalhe.cenas.length > 0 && !algumaPronta && !renderizando && (
+        <Button
+          variant="text"
+          size="small"
+          sx={{ alignSelf: 'flex-start' }}
+          startIcon={<AutoAwesomeRoundedIcon />}
+          disabled={ocupado}
+          onClick={() => acao(() => campaignsService.generateScript(detalhe.id))}
+        >
+          Não gostou? Escrever outra versão
+          {precos ? ` · ${precos.roteiro} créditos` : ''}
+        </Button>
       )}
 
       {/* A ação que o vendedor quer é UMA: sair daqui com o vídeo. Renderizar

@@ -38,6 +38,7 @@ import {
   LIMITES,
   contador,
   perigoNoContador,
+  validarDimensoesDaFoto,
   validarFoto,
   validarNomeProduto,
   validarPreco,
@@ -96,6 +97,17 @@ function GaleriaDialog({
     const invalida = lista.map(validarFoto).find(Boolean);
     if (invalida) {
       setErro(invalida);
+      if (inputRef.current) inputRef.current.value = '';
+      return;
+    }
+
+    // Dimensões ANTES de subir: a foto pequena renderiza — borrada. Esse erro
+    // não volta do servidor; volta 60 créditos depois, na cena pronta.
+    const pequena = (
+      await Promise.all(lista.map(validarDimensoesDaFoto))
+    ).find(Boolean);
+    if (pequena) {
+      setErro(pequena);
       if (inputRef.current) inputRef.current.value = '';
       return;
     }
