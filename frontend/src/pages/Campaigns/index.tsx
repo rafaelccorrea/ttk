@@ -38,6 +38,7 @@ import {
 } from '@mui/material';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSaldo } from '@/hooks/useSaldo';
+import { useConfirmacao } from '@/components/ui/ConfirmDialog';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { SmartImage } from '@/components/ui/SmartImage';
@@ -189,6 +190,7 @@ function PersonasTab({
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const { confirmar, dialogo } = useConfirmarGasto();
+  const saldoImagem = useSaldo('image');
 
   // Pré-seleciona a primeira opção de cada grupo: campo vazio é erro garantido.
   useEffect(() => {
@@ -263,16 +265,30 @@ function PersonasTab({
                 </TextField>
               ))}
               {erro && <Alert severity="error">{erro}</Alert>}
-              <Button
-                variant="contained"
-                startIcon={<AutoAwesomeRoundedIcon />}
-                onClick={criar}
-                disabled={!completo || gerando || Boolean(validarRotuloPersona(label))}
-              >
-                {gerando
-                  ? 'Gerando retrato...'
-                  : `Gerar retrato${precos ? ` · ${precos.persona} créditos` : ''}`}
-              </Button>
+              {/* Sem saldo o botão trava aqui, e não no 402 depois de a pessoa
+                  ter montado a persona inteira escolhendo oito atributos. */}
+              <Tooltip title={saldoImagem.motivo}>
+                <span>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    startIcon={<AutoAwesomeRoundedIcon />}
+                    onClick={criar}
+                    disabled={
+                      !completo ||
+                      gerando ||
+                      saldoImagem.insuficiente ||
+                      Boolean(validarRotuloPersona(label))
+                    }
+                  >
+                    {gerando
+                      ? 'Gerando retrato...'
+                      : saldoImagem.insuficiente
+                        ? 'Créditos insuficientes'
+                        : `Gerar retrato${precos ? ` · ${precos.persona} créditos` : ''}`}
+                  </Button>
+                </span>
+              </Tooltip>
             </Stack>
           </CardContent>
         </Card>
@@ -868,6 +884,9 @@ function CampanhasTab({
   const [userProductId, setUserProductId] = useState('');
   const [personaId, setPersonaId] = useState('');
   const [durationSeconds, setDuration] = useState(15);
+  // Excluir campanha descarta roteiro e cenas já PAGAS — clique acidental na
+  // lixeira da lista não pode custar créditos.
+  const { confirmar, dialogoDeConfirmacao } = useConfirmacao();
   // Trava de clique repetido. Sem ela, cada clique durante a espera da rede
   // criava uma campanha — e cada campanha é um roteiro a caminho, ou seja,
   // crédito queimado por impaciência. O estado sobe ANTES do await.
@@ -1068,6 +1087,7 @@ function CampanhasTab({
           {!campanhas.length && (
             <Alert severity="info">Nenhuma campanha ainda.</Alert>
           )}
+          {dialogoDeConfirmacao}
           {campanhas.map((campanha) => (
             <Card key={campanha.id}>
               <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1083,6 +1103,15 @@ function CampanhasTab({
                 </Button>
                 <IconButton
                   onClick={async () => {
+                    const ok = await confirmar({
+                      titulo: `Excluir "${campanha.title}"?`,
+                      mensagem: campanha.creditsSpent
+                        ? `Esta campanha já consumiu ${campanha.creditsSpent} créditos — o roteiro e as cenas vão junto e não há estorno.`
+                        : 'O roteiro e as cenas vão junto. Não dá para desfazer.',
+                      textoConfirmar: 'Excluir',
+                      destrutivo: true,
+                    });
+                    if (!ok) return;
                     await campaignsService.delete(campanha.id);
                     onChange();
                   }}

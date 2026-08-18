@@ -61,6 +61,7 @@ import {
 import { resolveApiUrl } from '@/services/api';
 import { mensagemDeErro } from '@/services/erros';
 import { useConfirmarGasto } from '@/hooks/useConfirmarGasto';
+import { useSaldo } from '@/hooks/useSaldo';
 import {
   ClipRole,
   Combination,
@@ -2014,6 +2015,21 @@ export function MultiplierPage() {
    */
   const custoEmCreditos = (result?.combinations.length ?? 0) * CREDITOS_POR_VIDEO;
 
+  /*
+   * Saldo contra o TOTAL da matriz, não contra o preço unitário.
+   *
+   * `useSaldo('assembly').insuficiente` compara com 1 crédito e nunca barraria
+   * nada — a conta que importa aqui é a do lote inteiro. Conta ilimitada não
+   * é barrada, e saldo ainda não carregado (`null`) também não: quem recusa de
+   * verdade é o backend, e travar por falha de rede seria pior que o 402.
+   */
+  const { saldo: saldoAtual, ilimitado } = useSaldo('assembly');
+  const saldoInsuficiente =
+    !ilimitado &&
+    saldoAtual !== null &&
+    custoEmCreditos > 0 &&
+    saldoAtual < custoEmCreditos;
+
   function etapaConcluida(indice: number): boolean {
     if (indice === 0) return Boolean(sigla.trim());
     if (indice === 1) return counts.hooks > 0;
@@ -2581,10 +2597,19 @@ export function MultiplierPage() {
                         // Um clipe acima do limite faz o servidor recusar a
                         // montagem inteira: deixar o botão ativo só gasta um
                         // clique para receber o mesmo "não" com mais espera.
-                        disabled={montando || clipesLongos.length > 0}
+                        // O saldo entra pela mesma lógica: uma matriz cheia são
+                        // 150 créditos, e esta era a única tela do produto onde
+                        // um gasto desse tamanho não era barrado antes do clique.
+                        disabled={
+                          montando || clipesLongos.length > 0 || saldoInsuficiente
+                        }
                         onClick={() => void handleRender(result.id)}
                       >
-                        {montando ? 'Montando...' : 'Montar vídeos'}
+                        {montando
+                          ? 'Montando...'
+                          : saldoInsuficiente
+                            ? 'Créditos insuficientes'
+                            : 'Montar vídeos'}
                       </Button>
                     </Stack>
                   </Stack>

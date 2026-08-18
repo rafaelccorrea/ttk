@@ -2,6 +2,7 @@ import { Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BillingModule } from '../billing/billing.module';
+import { TelemetryModule } from '../telemetry/telemetry.module';
 import { UsersModule } from '../users/users.module';
 import { GeneratedMedia } from './entities/generated-media.entity';
 import { GERADOR_DE_MIDIA, type GeradorDeMidia } from './gerador-de-midia';
@@ -62,7 +63,12 @@ function escolherGerador(config: ConfigService): GeradorDeMidia {
 }
 
 @Module({
-  imports: [TypeOrmModule.forFeature([GeneratedMedia]), UsersModule, BillingModule],
+  imports: [
+    TypeOrmModule.forFeature([GeneratedMedia]),
+    UsersModule,
+    BillingModule,
+    TelemetryModule,
+  ],
   controllers: [VideogenController],
   providers: [
     SingleFlightInterceptor,

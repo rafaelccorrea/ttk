@@ -19,7 +19,12 @@ export type CostFeature =
   | 'analyze'
   | 'transcribe'
   | 'live_extract'
-  | 'live_reply';
+  | 'live_reply'
+  // Geração de mídia na Higgsfield. Não há tokens: o custo entra por unidade,
+  // via `registrarMidia`, com o valor configurado por env — é o que permite
+  // comparar o teto de R$ 3,60 da tabela com o gasto real da fatura.
+  | 'videogen_image'
+  | 'videogen_video';
 
 /** Em que moeda o cliente pagou por esta chamada. */
 export type ChargedUnit = 'credit' | 'live_minute' | 'none';

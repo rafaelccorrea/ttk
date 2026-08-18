@@ -29,6 +29,7 @@ import {
   alpha,
 } from '@mui/material';
 import { useRef, useState } from 'react';
+import { useConfirmacao } from '@/components/ui/ConfirmDialog';
 import { CurrencyField } from '@/components/ui/CurrencyField';
 import { SmartImage } from '@/components/ui/SmartImage';
 import { resolveApiUrl } from '@/services/api';
@@ -496,6 +497,9 @@ function ProdutoCard({
   onChange: () => void;
 }) {
   const [galeria, setGaleria] = useState(false);
+  // Excluir leva junto fotos e o vínculo com campanhas — não pode ser um
+  // clique acidental na lixeira.
+  const { confirmar, dialogoDeConfirmacao } = useConfirmacao();
 
   const capa = produto.images[0];
   const total = produto.images.length;
@@ -612,6 +616,14 @@ function ProdutoCard({
           <IconButton
             size="small"
             onClick={async () => {
+              const ok = await confirmar({
+                titulo: `Excluir "${produto.name}"?`,
+                mensagem:
+                  'As fotos vão junto e as campanhas dele param de funcionar. Não dá para desfazer.',
+                textoConfirmar: 'Excluir',
+                destrutivo: true,
+              });
+              if (!ok) return;
               await campaignsService.deleteProduct(produto.id);
               onChange();
             }}
@@ -637,6 +649,7 @@ function ProdutoCard({
         onClose={() => setGaleria(false)}
         onChange={onChange}
       />
+      {dialogoDeConfirmacao}
     </Card>
   );
 }

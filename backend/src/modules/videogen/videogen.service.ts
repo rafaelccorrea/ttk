@@ -1,7 +1,10 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BillingService } from '../billing/billing.service';
+import { ACTION_PRICES } from '../billing/billing.config';
+import { AiCostService } from '../telemetry/ai-cost.service';
 import { GenerateMediaDto } from './dto/generate-media.dto';
 import { GeneratedMedia } from './entities/generated-media.entity';
 import { GERADOR_DE_MIDIA, type GeradorDeMidia } from './gerador-de-midia';
@@ -16,7 +19,42 @@ export class VideogenService {
     @Inject(GERADOR_DE_MIDIA)
     private readonly higgsfield: GeradorDeMidia,
     private readonly billing: BillingService,
+    private readonly custos: AiCostService,
+    private readonly config: ConfigService,
   ) {}
+
+  /**
+   * Custo unitário REAL de uma geração, para a telemetria de margem.
+   *
+   * Sem env configurado, entra o teto da tabela — o relatório fica no pior
+   * caso, que é conservador mas honesto. Quando o operador conferir a fatura
+   * da Higgsfield e setar VIDEOGEN_VIDEO_COST_BRL / VIDEOGEN_IMAGE_COST_BRL,
+   * o relatório passa a mostrar a margem de verdade — e é ESSE número que
+   * autoriza (ou não) baixar os 60 créditos da cena.
+   */
+  private custoUnitario(kind: 'image' | 'video'): number {
+    const env = this.config.get<string>(
+      kind === 'video' ? 'VIDEOGEN_VIDEO_COST_BRL' : 'VIDEOGEN_IMAGE_COST_BRL',
+    );
+    const valor = Number(env);
+    if (env && Number.isFinite(valor) && valor > 0) return valor;
+    return ACTION_PRICES[kind].worstCaseCostBrl;
+  }
+
+  private registrarCusto(userId: string, kind: 'image' | 'video'): void {
+    // Telemetria nunca no caminho crítico: registrar é fire-and-forget e o
+    // próprio serviço engole o erro.
+    void this.custos.registrarMidia(
+      kind === 'video' ? 'videogen_video' : 'videogen_image',
+      'higgsfield',
+      this.custoUnitario(kind),
+      {
+        userId,
+        chargedUnit: 'credit',
+        chargedAmount: ACTION_PRICES[kind].credits,
+      },
+    );
+  }
 
   /**
    * Inicia uma geração. Imagem: Soul direto. Vídeo: fase 1 (Soul cria o
@@ -28,6 +66,7 @@ export class VideogenService {
     const submitted = await this.billing.withCharge(userId, dto.kind, () =>
       this.higgsfield.submitImage(dto.prompt, dto.aspectRatio ?? '9:16'),
     );
+    this.registrarCusto(userId, dto.kind);
     return this.media.save(
       this.media.create({
         userId,
@@ -60,6 +99,7 @@ export class VideogenService {
     const submitted = await this.billing.withCharge(userId, 'video', () =>
       this.higgsfield.submitVideo(imageUrl, prompt),
     );
+    this.registrarCusto(userId, 'video');
     return this.media.save(
       this.media.create({
         userId,

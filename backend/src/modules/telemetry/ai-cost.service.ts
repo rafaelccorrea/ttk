@@ -42,6 +42,45 @@ export class AiCostService {
     private readonly eventos: Repository<AiCostEvent>,
   ) {}
 
+  /**
+   * Registra uma geração de mídia (imagem/vídeo) com custo POR UNIDADE.
+   *
+   * A Higgsfield não reporta custo por job pela CLI, então o valor unitário
+   * vem de env (`VIDEOGEN_VIDEO_COST_BRL` / `VIDEOGEN_IMAGE_COST_BRL`) — o
+   * operador confere a fatura, ajusta o env, e a partir daí o relatório de
+   * margem compara o teto da tabela (R$ 3,60) com o gasto de verdade. Era o
+   * dado que faltava para decidir baixar o preço da cena com segurança.
+   */
+  async registrarMidia(
+    feature: 'videogen_image' | 'videogen_video',
+    model: string,
+    custoUnitarioBrl: number,
+    opts: {
+      userId?: string | null;
+      chargedUnit?: ChargedUnit;
+      chargedAmount?: number;
+    } = {},
+  ): Promise<void> {
+    try {
+      await this.eventos.save(
+        this.eventos.create({
+          userId: opts.userId ?? null,
+          feature,
+          model,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          costBrl: custoUnitarioBrl.toFixed(6),
+          chargedUnit: opts.chargedUnit ?? 'none',
+          chargedAmount: opts.chargedAmount ?? 0,
+        }),
+      );
+    } catch (e) {
+      this.logger.warn(`Não foi possível registrar a mídia ${feature}: ${e}`);
+    }
+  }
+
   /** Registra uma chamada de modelo de linguagem. */
   async registrar(
     feature: CostFeature,

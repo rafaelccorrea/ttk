@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FfmpegRunner } from '../../common/media/ffmpeg-runner';
@@ -48,6 +48,8 @@ const RAMPA_SEGUNDOS = 0.03;
  */
 @Injectable()
 export class VideoAssemblyService {
+  private readonly logger = new Logger(VideoAssemblyService.name);
+
   constructor(private readonly ffmpeg: FfmpegRunner) {}
 
   get enabled(): boolean {
@@ -83,6 +85,64 @@ export class VideoAssemblyService {
       // de largura quando a origem tem pixel não-quadrado.
       '[fundo][nitido]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2,setsar=1,fps=30[v]',
     ].join(';');
+  }
+
+  /**
+   * A fala da cena queimada como legenda no terço de baixo do quadro.
+   *
+   * É o que fecha o buraco entre promessa e entrega: o vendedor revisa cada
+   * fala com cuidado, mas a geração de vídeo só recebe a ação visual — o clipe
+   * sai mudo. Até o TTS existir, a legenda é o que faz a fala aparecer no
+   * vídeo publicado (e no TikTok a maioria assiste sem som mesmo).
+   *
+   * O texto é quebrado aqui, não pelo ffmpeg: o drawtext não quebra linha
+   * sozinho, e uma fala de 15 palavras numa linha única sai do quadro.
+   */
+  private filtroDeLegenda(texto: string, largura: number): string | null {
+    const limpo = texto.trim().replace(/\s+/g, ' ');
+    if (!limpo) return null;
+
+    // ~26 colunas cabem em 1080px com a fonte em ~1/16 da largura.
+    const porLinha = 26;
+    const linhas: string[] = [];
+    let atual = '';
+    for (const palavra of limpo.split(' ')) {
+      if ((atual + ' ' + palavra).trim().length > porLinha && atual) {
+        linhas.push(atual);
+        atual = palavra;
+      } else {
+        atual = (atual + ' ' + palavra).trim();
+      }
+    }
+    if (atual) linhas.push(atual);
+
+    /*
+     * O texto vai entre aspas simples, e DENTRO delas o parser do
+     * filtergraph é literal: dois-pontos e vírgula não precisam (nem podem)
+     * ser escapados — um "\:" apareceria escrito na legenda. Só três coisas
+     * quebram: o apóstrofo cru (ENCERRA o argumento e o resto da fala vira
+     * opção de filtro — vira apóstrofo tipográfico), a contrabarra, e a
+     * sequência "%{" da expansão do drawtext.
+     */
+    const escapar = (l: string) =>
+      l
+        .replace(/\\/g, '')
+        .replace(/'/g, "\u2019")
+        .replace(/%\{/g, '% {');
+
+    const fontsize = Math.round(largura / 16);
+    const interlinha = Math.round(fontsize * 1.3);
+    // Uma chamada de drawtext por linha: o filtro não tem "multilinha" de
+    // verdade, e empilhar com y calculado é o caminho estável entre builds.
+    return linhas
+      .slice(0, 3)
+      .map(
+        (linha, i, todas) =>
+          `drawtext=text='${escapar(linha)}':fontcolor=white:fontsize=${fontsize}:` +
+          `borderw=${Math.max(2, Math.round(fontsize / 12))}:bordercolor=black@0.85:` +
+          `x=(w-text_w)/2:y=h-${Math.round(largura * 0.42) - (todas.length - 1 - i) * interlinha}`,
+      )
+      .join(',');
   }
 
   /**
@@ -125,6 +185,8 @@ export class VideoAssemblyService {
       largura: LARGURA,
       altura: ALTURA,
     },
+    /** Fala de cada cena, na mesma ordem — vira legenda queimada no quadro. */
+    legendas: Array<string | null> = [],
   ): Promise<Buffer> {
     if (!this.ffmpeg.enabled) {
       throw new Error('ffmpeg não está disponível neste ambiente.');
@@ -134,8 +196,8 @@ export class VideoAssemblyService {
     }
 
     const normalizadas: Buffer[] = [];
-    for (const cena of cenas) {
-      normalizadas.push(await this.normalizar(cena, dimensoes));
+    for (const [i, cena] of cenas.entries()) {
+      normalizadas.push(await this.normalizar(cena, dimensoes, legendas[i] ?? null));
     }
     return this.juntarNormalizadas(normalizadas);
   }
@@ -160,10 +222,32 @@ export class VideoAssemblyService {
       largura: LARGURA,
       altura: ALTURA,
     },
+    legenda: string | null = null,
   ): Promise<Buffer> {
     if (!this.ffmpeg.enabled) {
       throw new Error('ffmpeg não está disponível neste ambiente.');
     }
+    /*
+     * A legenda depende do drawtext, e drawtext depende de haver FONTE no
+     * servidor — coisa que muda de build para build do ffmpeg. Se a passada
+     * com legenda falhar, o vídeo sai sem ela: um final mudo porém montado é
+     * entregável; um erro na montagem inteira por causa de texto, não.
+     */
+    if (legenda) {
+      try {
+        return await this.normalizarInterno(cena, dimensoes, legenda);
+      } catch (error) {
+        this.logger.warn(`Legenda falhou, montando sem ela: ${error}`);
+      }
+    }
+    return this.normalizarInterno(cena, dimensoes, null);
+  }
+
+  private async normalizarInterno(
+    cena: Buffer,
+    dimensoes: { largura: number; altura: number },
+    legenda: string | null,
+  ): Promise<Buffer> {
     const { largura, altura } = dimensoes;
     return this.ffmpeg.comTmp('pikpok-norm-', async (pasta) => {
       const entrada = join(pasta, 'entrada.mp4');
@@ -190,7 +274,14 @@ export class VideoAssemblyService {
           ...(mudo
             ? ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100']
             : []),
-          '-filter_complex', this.filtroDeVideo(largura, altura),
+          '-filter_complex',
+          (() => {
+            const base = this.filtroDeVideo(largura, altura);
+            const texto = legenda ? this.filtroDeLegenda(legenda, largura) : null;
+            // A legenda entra no fim da cadeia do [v]: depois do overlay, o
+            // quadro já está no tamanho final e o texto não é reescalado.
+            return texto ? base.replace(',fps=30[v]', `,fps=30,${texto}[v]`) : base;
+          })(),
           ...(mudo ? [] : ['-af', this.filtroDeAudio(duracao)]),
           '-c:v', 'libx264',
           // `medium` em vez de `veryfast`: com a normalização acontecendo uma vez

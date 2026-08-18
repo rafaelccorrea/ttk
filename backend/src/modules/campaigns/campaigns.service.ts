@@ -531,8 +531,28 @@ export class CampaignsService {
 
     // Em série, de propósito: cada cena é uma cobrança, e disparar em paralelo
     // faria o saldo ser lido pelos dois lados antes de qualquer débito.
+    //
+    // Uma cena falhar NÃO derruba as seguintes: abortar no meio deixava a
+    // campanha metade disparada, metade nem tentada — e a metade não tentada
+    // parecia bug. A exceção só sobe se NENHUMA cena disparou (ex.: saldo
+    // acabou logo na primeira), porque aí ela é a única informação que existe.
+    const falhas: string[] = [];
+    let disparadas = 0;
     for (const cena of pendentes) {
-      await this.renderizarCena(userId, cena.id);
+      try {
+        await this.renderizarCena(userId, cena.id);
+        disparadas += 1;
+      } catch (error) {
+        this.logger.warn(
+          `render-all: cena ${cena.ordem} da campanha ${campaignId} falhou: ${error}`,
+        );
+        falhas.push(`cena ${cena.ordem}`);
+      }
+    }
+    if (!disparadas && falhas.length) {
+      throw new ConflictException(
+        'Nenhuma cena pôde ser disparada. Verifique o saldo e tente de novo.',
+      );
     }
 
     return this.detalharCampanha(userId, campaignId);
@@ -699,7 +719,13 @@ export class CampaignsService {
       arquivos.push(buffer);
     }
 
-    const final = await this.assembly.juntar(arquivos);
+    // As falas viram legenda queimada: o clipe gerado é mudo (a fala não
+    // entra no prompt de vídeo), e legenda é como a fala chega ao espectador.
+    const final = await this.assembly.juntar(
+      arquivos,
+      undefined,
+      cenas.map((c) => c.fala ?? null),
+    );
     const url = await this.mirror.putVideo(final, 'campaign-final', campanha.id);
     if (!url) {
       throw new ConflictException('O vídeo montado não pôde ser guardado.');

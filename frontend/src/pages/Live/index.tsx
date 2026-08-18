@@ -378,6 +378,7 @@ function NovaBaseDialog({
               : 'Enviar gravação'}
         </Button>
       </DialogActions>
+      {dialogo}
     </Dialog>
   );
 }
