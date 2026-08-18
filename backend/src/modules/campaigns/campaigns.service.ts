@@ -899,6 +899,46 @@ export class CampaignsService {
   }
 
   /**
+   * Redublagem manual de uma cena já pronta.
+   *
+   * Existe para as cenas que nasceram ANTES da dublagem automática — com a
+   * fala do modelo de vídeo em português mastigado — e para quando o vendedor
+   * edita a fala e quer o áudio acompanhando. Não custa crédito: refazer voz
+   * é TTS + remux (~R$ 0,01), não uma nova renderização.
+   *
+   * O vídeo final montado fica obsoleto na hora: ele carrega o áudio antigo
+   * da cena, então é descartado e a montagem automática refaz com a voz nova.
+   */
+  async redublarCena(userId: string, sceneId: string) {
+    const cena = await this.cenaDoUsuario(userId, sceneId);
+    if (cena.status !== 'pronta' || !cena.outputUrl) {
+      throw new ConflictException('Só uma cena já renderizada pode ser redublada.');
+    }
+    if (!cena.fala?.trim()) {
+      throw new ConflictException('Esta cena não tem fala para narrar.');
+    }
+    if (!this.assembly.enabled) {
+      throw new ConflictException('A dublagem não está disponível neste servidor (ffmpeg ausente).');
+    }
+
+    const dublada = await this.dublarCena(cena);
+    if (!dublada) {
+      throw new ConflictException(
+        'A narração não pôde ser gerada agora. Tente de novo em instantes.',
+      );
+    }
+    cena.outputUrl = dublada;
+    await this.cenas.save(cena);
+
+    const campanha = await this.campanhas.findOneByOrFail({ id: cena.campaignId });
+    if (campanha.finalVideoUrl) {
+      campanha.finalVideoUrl = null;
+      await this.campanhas.save(campanha);
+    }
+    return cena;
+  }
+
+  /**
    * Gera a narração da fala e devolve a URL do clipe dublado — ou null para
    * manter o original. Só toca no S3 quando TODA a cadeia deu certo.
    */

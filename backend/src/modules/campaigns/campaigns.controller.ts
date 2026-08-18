@@ -221,6 +221,16 @@ export class CampaignsController {
     return this.campaigns.editarCena(user.id, sceneId, dto);
   }
 
+  @Post('scenes/:sceneId/redub')
+  @UseInterceptors(SingleFlightInterceptor)
+  @ApiOperation({ summary: 'Regrava a narração pt-BR de uma cena pronta (não cobra créditos)' })
+  redubScene(
+    @CurrentUser() user: AuthUser,
+    @Param('sceneId', ParseUUIDPipe) sceneId: string,
+  ) {
+    return this.campaigns.redublarCena(user.id, sceneId);
+  }
+
   @Post('scenes/:sceneId/render')
   @UseInterceptors(SingleFlightInterceptor)
   @ApiOperation({ summary: 'Renderiza uma cena (cobra créditos)' })

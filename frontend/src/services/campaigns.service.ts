@@ -205,6 +205,14 @@ export const campaignsService = {
     return data;
   },
 
+  /** Refaz só a NARRAÇÃO da cena (TTS pt-BR + remux). Não custa créditos. */
+  async redubScene(sceneId: string): Promise<CampaignScene> {
+    const { data } = await api.post<CampaignScene>(
+      `/campaigns/scenes/${sceneId}/redub`,
+    );
+    return data;
+  },
+
   async renderScene(sceneId: string): Promise<CampaignScene> {
     const { data } = await api.post<CampaignScene>(
       `/campaigns/scenes/${sceneId}/render`,

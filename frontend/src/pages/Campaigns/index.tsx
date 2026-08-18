@@ -787,18 +787,34 @@ function Storyboard({
                 </Box>
 
                 {cena.status === 'pronta' && cena.outputUrl && (
-                  <Button
-                    size="small"
-                    fullWidth
-                    startIcon={<DownloadRoundedIcon />}
-                    component="a"
-                    href={resolveApiUrl(cena.outputUrl)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    sx={{ mt: 1 }}
-                  >
-                    Baixar cena {cena.ordem}
-                  </Button>
+                  <>
+                    <Button
+                      size="small"
+                      fullWidth
+                      startIcon={<DownloadRoundedIcon />}
+                      component="a"
+                      href={resolveApiUrl(cena.outputUrl)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      sx={{ mt: 1 }}
+                    >
+                      Baixar cena {cena.ordem}
+                    </Button>
+                    {Boolean(cena.fala?.trim()) && (
+                      <Tooltip title="Regrava só a voz em português (grátis) — o vídeo final é remontado com o novo áudio.">
+                        <Button
+                          size="small"
+                          fullWidth
+                          startIcon={<AutoAwesomeRoundedIcon />}
+                          disabled={ocupado}
+                          onClick={() => acao(() => campaignsService.redubScene(cena.id))}
+                          sx={{ mt: 0.5 }}
+                        >
+                          Redublar em pt-BR
+                        </Button>
+                      </Tooltip>
+                    )}
+                  </>
                 )}
 
                 {/* Trocar a foto é grátis e só faz sentido antes de renderizar
