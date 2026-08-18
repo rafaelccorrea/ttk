@@ -1,3 +1,5 @@
+import ArrowOutwardRoundedIcon from '@mui/icons-material/ArrowOutwardRounded';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded';
 import AutoFixHighRoundedIcon from '@mui/icons-material/AutoFixHighRounded';
 import CardGiftcardRoundedIcon from '@mui/icons-material/CardGiftcardRounded';
@@ -160,6 +162,22 @@ const ADMIN_SECTION: NavSection = {
     { to: '/admin', label: 'Administração', icon: <ShieldRoundedIcon /> },
   ],
 };
+
+/**
+ * Convite para o grupo de WhatsApp da comunidade.
+ *
+ * Vem de variável de ambiente porque link de convite do WhatsApp EXPIRA e é
+ * revogado quando o grupo é reciclado — trocar isso não pode exigir mexer no
+ * código de quem só administra a comunidade.
+ *
+ * O item aparece no menu MESMO SEM a variável: enquanto o convite não está
+ * configurado ele fica marcado como "em breve" e não clica. É o desenho certo
+ * para um espaço que já está reservado — quem vê sabe que a comunidade existe
+ * e não bate numa página de convite expirado, que é o que um link vazio daria.
+ */
+const GRUPO_WHATSAPP = (
+  import.meta.env.VITE_WHATSAPP_GROUP_URL as string | undefined
+)?.trim();
 
 const NAV = [...NAV_SECTIONS, ADMIN_SECTION].flatMap(
   (section) => section.items,
@@ -489,6 +507,183 @@ export function AppLayout() {
             </List>
             ),
           )}
+
+          {/*
+            * Fica FORA do mapa de seções de propósito: não é uma rota do app,
+            * é uma saída para fora dele. Tratá-lo como item de navegação o
+            * deixaria elegível a estado "selecionado" e a cadeado de plano, que
+            * é justamente o que ele não tem — a comunidade é de todo mundo.
+            */}
+          <Box
+            sx={{
+              px: collapsed ? 0.5 : 0.5,
+              pt: 0.5,
+              pb: 0.25,
+              /*
+               * As animações são declaradas aqui, uma vez, e usadas pelos filhos.
+               *
+               * `brilho` é o reflexo que atravessa o cartão; `respiro` é o halo
+               * verde que pulsa devagar. São duas coisas separadas de propósito:
+               * o reflexo chama o olho, o halo mantém o item vivo depois que a
+               * novidade passa — juntos num keyframe só, o cartão piscaria.
+               */
+              '@keyframes brilhoWhats': {
+                '0%': { transform: 'translateX(-120%) skewX(-18deg)' },
+                '100%': { transform: 'translateX(320%) skewX(-18deg)' },
+              },
+              '@keyframes respiroWhats': {
+                '0%, 100%': { boxShadow: '0 0 0 0 rgba(37,211,102,0.28)' },
+                '50%': { boxShadow: '0 0 12px 1px rgba(37,211,102,0.18)' },
+              },
+              '@keyframes flutuaWhats': {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-2px)' },
+              },
+              /*
+               * Quem pediu menos movimento no sistema recebe o cartão parado.
+               * O brilho é enfeite; enjoo de movimento não é — e um item que
+               * pulsa para sempre no canto da tela é exatamente o tipo de coisa
+               * que essa preferência existe para desligar.
+               */
+              '@media (prefers-reduced-motion: reduce)': {
+                '& *': { animation: 'none !important' },
+              },
+            }}
+          >
+            {!collapsed && (
+              <Typography
+                variant="overline"
+                sx={{
+                  display: 'block',
+                  px: 1,
+                  pb: 0.75,
+                  fontSize: 10.5,
+                  letterSpacing: '0.12em',
+                  color: 'rgba(255,255,255,0.38)',
+                }}
+              >
+                Comunidade
+              </Typography>
+            )}
+            <Tooltip
+              title={
+                GRUPO_WHATSAPP
+                  ? collapsed
+                    ? 'Entrar no grupo de WhatsApp'
+                    : ''
+                  : 'O convite do grupo será liberado em breve'
+              }
+              placement="right"
+            >
+              {/* `span` porque um Tooltip não escuta os eventos de um filho
+                  desabilitado — sem ele, o aviso do "em breve" não abriria. */}
+              <span>
+                <ListItemButton
+                  {...(GRUPO_WHATSAPP
+                    ? {
+                        component: 'a' as const,
+                        href: GRUPO_WHATSAPP,
+                        target: '_blank',
+                        // `noopener` porque a aba aberta ganharia acesso a este
+                        // `window` — e o app carrega o token da sessão.
+                        rel: 'noopener noreferrer',
+                      }
+                    : { disabled: true })}
+                  sx={{
+                    position: 'relative',
+                    overflow: 'hidden',
+                    borderRadius: 2.5,
+                    // Mesma altura dos itens de navegação logo acima: o
+                    // brilho já destaca o item, e um bloco mais alto que os
+                    // vizinhos só desequilibra a coluna.
+                    py: 0.65,
+                    px: collapsed ? 1 : 1.1,
+                    justifyContent: collapsed ? 'center' : undefined,
+                    color: '#fff',
+                    border: '1px solid rgba(37,211,102,0.28)',
+                    background:
+                      'linear-gradient(135deg, rgba(37,211,102,0.16) 0%, rgba(18,140,126,0.10) 55%, rgba(255,255,255,0.02) 100%)',
+                    /*
+                     * O halo só pulsa quando há para onde ir: no estado "em
+                     * breve" o cartão fica presente, mas quieto. Animar o que
+                     * não clica é prometer com o movimento o que a mão não cumpre.
+                     */
+                    animation: GRUPO_WHATSAPP
+                      ? 'respiroWhats 3.6s ease-in-out infinite'
+                      : 'none',
+                    opacity: GRUPO_WHATSAPP ? 1 : 0.72,
+                    transition:
+                      'transform .2s ease, border-color .2s ease, background .3s ease',
+                    '&:hover': {
+                      borderColor: 'rgba(37,211,102,0.65)',
+                      transform: GRUPO_WHATSAPP ? 'translateY(-1px)' : 'none',
+                      background:
+                        'linear-gradient(135deg, rgba(37,211,102,0.28) 0%, rgba(18,140,126,0.16) 55%, rgba(255,255,255,0.04) 100%)',
+                    },
+                    /*
+                     * O reflexo: uma faixa clara cruzando o cartão. É um
+                     * pseudo-elemento para não entrar no fluxo do conteúdo, e
+                     * `pointerEvents: none` para que ele passe por cima do texto
+                     * sem roubar o clique que o item inteiro existe para receber.
+                     */
+                    '&::after': GRUPO_WHATSAPP
+                      ? {
+                          content: '""',
+                          position: 'absolute',
+                          top: 0,
+                          bottom: 0,
+                          left: 0,
+                          width: '38%',
+                          background:
+                            'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)',
+                          animation: 'brilhoWhats 4.2s ease-in-out infinite',
+                          pointerEvents: 'none',
+                        }
+                      : undefined,
+                  }}
+                >
+                  <ListItemIcon
+                    sx={{
+                      minWidth: collapsed ? 0 : 38,
+                      color: '#25d366',
+                      filter: 'drop-shadow(0 0 6px rgba(37,211,102,0.55))',
+                      animation: GRUPO_WHATSAPP
+                        ? 'flutuaWhats 3.6s ease-in-out infinite'
+                        : 'none',
+                    }}
+                  >
+                    <WhatsAppIcon />
+                  </ListItemIcon>
+                  {!collapsed && (
+                    <ListItemText
+                      /*
+                       * Uma linha só. A descrição em segunda linha era o que
+                       * fazia o item ter o dobro da altura dos vizinhos — e
+                       * ela não informava nada que o nome já não diga. O "em
+                       * breve" continua visível, coladinho, porque esse SIM
+                       * muda o que acontece ao clicar.
+                       */
+                      primary={
+                        GRUPO_WHATSAPP
+                          ? 'Grupo de WhatsApp'
+                          : 'Grupo de WhatsApp · em breve'
+                      }
+                      primaryTypographyProps={{
+                        fontWeight: 600,
+                        fontSize: 14.5,
+                        noWrap: true,
+                      }}
+                    />
+                  )}
+                  {!collapsed && GRUPO_WHATSAPP && (
+                    <ArrowOutwardRoundedIcon
+                      sx={{ fontSize: 15, color: 'rgba(255,255,255,0.5)' }}
+                    />
+                  )}
+                </ListItemButton>
+              </span>
+            </Tooltip>
+          </Box>
         </Box>
 
         <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
