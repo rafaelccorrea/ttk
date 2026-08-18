@@ -23,19 +23,34 @@ import { Video } from '../modules/videos/entities/video.entity';
  * A ordem importa e é esta:
  *
  *   1. INGESTÃO (usa cota)   — produtos, vídeos e criadores novos.
- *   2. OEMBED (grátis)       — completa @handle e capa que a cota não alcançou.
- *   3. LIMPEZA (grátis)      — remove mídia quebrada para o fallback funcionar.
- *   4. ESPELHAMENTO (grátis) — leva tudo para o S3 antes das URLs expirarem.
- *   5. DEDUPLICAÇÃO (grátis) — esconde o mesmo produto repetido.
+ *   2. TOP DE VENDAS (cota)  — o topo global por GMV de 30 dias, ~10 requests.
+ *   3. OEMBED (grátis)       — completa @handle e capa que a cota não alcançou.
+ *   4. LIMPEZA (grátis)      — remove mídia quebrada para o fallback funcionar.
+ *   5. ESPELHAMENTO (grátis) — leva tudo para o S3 antes das URLs expirarem.
+ *   6. DEDUPLICAÇÃO (grátis) — esconde o mesmo produto repetido.
  *
- * As etapas 2 a 5 rodam SEMPRE, mesmo sem cota — é o que garante que a tela
+ * As etapas 3 a 6 rodam SEMPRE, mesmo sem cota — é o que garante que a tela
  * fique consistente mesmo quando a API do fornecedor está esgotada.
+ *
+ * ANTES DE RODAR: leia docs/COMANDOS.md. Este script escreve no banco e as
+ * etapas 1 e 2 gastam cota paga (e a 1 ainda transcreve áudio com Whisper).
  */
 
 const log = new Logger('Atualizar');
 
-/** Só ingere (etapa 1) quando `--completo`; por padrão faz a manutenção. */
+/** Só ingere (etapas 1 e 2) quando `--completo`; por padrão faz a manutenção. */
 const COM_INGESTAO = process.argv.includes('--completo');
+
+/**
+ * Quantos produtos do topo global entram por execução.
+ *
+ * Cinquenta são 5 páginas de 10 no fornecedor (o `page_size` dele trava em 10),
+ * e é fundo de lista o bastante para o ranking mudar de verdade entre um dia e
+ * outro sem virar varredura. Ajustável por `--top=N`.
+ */
+const TOP_VENDIDOS = Number(
+  process.argv.find((a) => a.startsWith('--top='))?.split('=')[1] ?? 50,
+);
 
 async function main() {
   const inicio = Date.now();
@@ -52,7 +67,7 @@ async function main() {
 
   // ---------------------------------------------------------------- 1) ingestão
   if (COM_INGESTAO) {
-    log.log('1/5 Ingestão (consome cota da API)...');
+    log.log('1/6 Ingestão (consome cota da API)...');
     try {
       const run = await ingestion.run('manual');
       log.log(`     produtos ${run.productsIngested} · vídeos ${run.videosUpserted}`);
@@ -60,14 +75,38 @@ async function main() {
       // Cota esgotada não pode abortar a manutenção: o resto ainda melhora a tela.
       log.warn(`     ingestão falhou (${error}) — seguindo com a manutenção`);
     }
+
+    /*
+     * O topo global, DEPOIS da ingestão e num passo próprio.
+     *
+     * Separado porque responde outra pergunta: as camadas da ingestão cuidam do
+     * catálogo que já temos e da cobertura por nicho, e nenhuma delas traz "o
+     * que mais vende no Brasil agora" — a descoberta varre categoria a
+     * categoria e ainda espera a hora marcada. Este passo é o único que olha o
+     * mercado inteiro, custa ~10 requests e por isso roda em toda execução
+     * completa.
+     *
+     * Depois da ingestão, e não antes, para que a cota grande vá primeiro para
+     * o refresh do catálogo: se acabar, o que se perde aqui volta na próxima.
+     */
+    log.log(`2/6 Top ${TOP_VENDIDOS} mais vendidos (global, por GMV de 30 dias)...`);
+    try {
+      const top = await ingestion.atualizarTopVendidos(TOP_VENDIDOS);
+      log.log(
+        `     ${top.vistos} vistos · ${top.aceitos} aceitos · ${top.requisicoes} requests`,
+      );
+    } catch (error) {
+      log.warn(`     top de vendas falhou (${error}) — seguindo com a manutenção`);
+    }
   } else {
-    log.log('1/5 Ingestão pulada (use --completo para incluir)');
+    log.log('1/6 Ingestão pulada (use --completo para incluir)');
+    log.log('2/6 Top de vendas pulado (use --completo para incluir)');
   }
 
-  // ------------------------------------------------------------------ 2) oEmbed
+  // ------------------------------------------------------------------ 3) oEmbed
   // O fornecedor devolve só o `user_id` do autor; sem o @handle o card fica sem
   // link e, às vezes, sem capa. O oEmbed do TikTok completa de graça.
-  log.log('2/5 Completando @handle e capa pelo oEmbed...');
+  log.log('3/6 Completando @handle e capa pelo oEmbed...');
   const semHandle = await videos
     .createQueryBuilder('v')
     .where(`v."creatorHandle" ~ '^[0-9]+$' OR v."videoUrl" IS NULL`)
@@ -87,17 +126,17 @@ async function main() {
   }
   log.log(`     ${completados} de ${semHandle.length} completados`);
 
-  // ----------------------------------------------------------------- 3) limpeza
+  // ----------------------------------------------------------------- 4) limpeza
   // URL que responde 403 (assinatura vencida) ou que aponta para um objeto que
   // não é imagem é PIOR que nula: impede o card de cair na foto do produto.
-  log.log('3/5 Removendo mídia quebrada...');
+  log.log('4/6 Removendo mídia quebrada...');
   const limpos = await limparMidiaQuebrada(videos, criadores);
   log.log(`     ${limpos.videos} thumbnails e ${limpos.avatares} avatares anulados`);
 
-  // ------------------------------------------------------------ 4) espelhamento
+  // ------------------------------------------------------------ 5) espelhamento
   // As URLs do fornecedor expiram (~72h) e renová-las custa cota. No S3 a URL
   // é nossa e não expira. As imagens ainda são padronizadas em 9:16 WebP.
-  log.log('4/5 Espelhando mídia no S3...');
+  log.log('5/6 Espelhando mídia no S3...');
   if (!mirror.enabled) {
     log.warn('     S3 não configurado (AWS_S3_BUCKET) — etapa pulada');
   } else {
@@ -107,11 +146,11 @@ async function main() {
     );
   }
 
-  // ------------------------------------------------------------ 5) deduplicação
+  // ------------------------------------------------------------ 6) deduplicação
   // O `product_id` é único por ANÚNCIO, não por produto: o mesmo item aparece
   // várias vezes por vendedor e por variação. Marcamos e escondemos — sem
   // apagar, para não perder histórico de métricas nem favoritos.
-  log.log('5/5 Marcando produtos duplicados...');
+  log.log('6/6 Marcando produtos duplicados...');
   const dup = await marcarDuplicados(produtos);
   log.log(`     ${dup.marcados} ocultados · ${dup.visiveis} visíveis`);
 

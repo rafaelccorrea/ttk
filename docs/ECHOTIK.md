@@ -9,6 +9,52 @@ ela é o que separa uma chave que rende de uma chave que acaba em dois dias.
 
 ---
 
+## Documentação oficial
+
+| O quê | Onde |
+|---|---|
+| Referência da API (endpoints, parâmetros, campos) | https://opendocs.echotik.live/en |
+| Painel das chaves (`APP_ID` / `APP_SECRET`, cota) | https://echotik.live/platform/api-keys |
+| Central de ajuda | https://help.echotik.live/en/ |
+| Página do serviço de API (planos e escopo) | https://echotik.live/en/api-service |
+
+A referência oficial manda sobre este documento no que diz respeito a
+parâmetros e nomes de campo. O que está aqui é o que **medimos** — inclusive
+onde o comportamento real diverge do documentado, que é o caso da seção 8.
+
+---
+
+## O objetivo permanente da coleta
+
+Toda execução de ingestão persegue estas quatro coisas, nesta ordem de
+importância. Quem for mexer em camada, orçamento ou ordem de chamada: é isto que
+não pode ser perdido.
+
+1. **Produtos NOVOS, que ainda não temos.** Catálogo que não cresce vira vitrine
+   velha. A descoberta por categoria e o top global (etapa 2 do
+   `atualiza:completo`) existem para isso — e o que importa medir não é quantos
+   produtos vieram, e sim quantos eram **inéditos**: varrer e trazer 300 itens
+   que já estavam no banco é cota queimada. O `descobrirNovos()` devolve
+   exatamente essa conta.
+2. **Atualizar os produtos que já temos.** Preço, nota e, principalmente, a
+   métrica diária de vendas — é ela que sustenta o ranking. Em lote de 10 por
+   requisição, é a camada mais barata por item e a que nunca deve ser sacrificada
+   quando a cota aperta.
+3. **Criadores.** Quem vende, com quantos seguidores, com qual GMV. É o que liga
+   produto a pessoa e o que alimenta a página de criadores.
+4. **Vídeos que VENDEM.** Não é qualquer vídeo: é o criativo com venda atrelada
+   (`sales_flag`, `total_video_sale_gmv_amt`). Produto sem vídeo é ficha sem
+   prova — ver a seção 0 —, e vídeo sem venda é conteúdo solto que não ajuda a
+   decidir o que anunciar.
+
+O `/echotik/video/list` continua sendo o melhor negócio da API para os itens 1 e
+4 ao mesmo tempo: cada linha traz o vídeo, o `product_id` e o `unique_id` do
+criador juntos. Descobrir pelo vídeo de venda é o que enche o catálogo já com a
+prova em mãos, em vez de trazer produto órfão e ter que voltar para buscar o
+criativo depois.
+
+---
+
 ## 0. O problema que motivou este documento
 
 Estado do catálogo em 15/08/2026:
@@ -331,3 +377,114 @@ que ele não tem criativo nenhum.
       vídeo**.
 - [ ] Medir depois com a mesma consulta da seção 0 e registrar aqui o novo
       percentual.
+
+---
+
+## 10. O arquivo bruto: toda resposta fica no banco
+
+**Nenhuma requisição ao EchoTik se perde.** Cada chamada que sai do
+`external-data.provider.ts` é gravada na tabela `api_raw_responses` pelo
+`ApiArchiveService`, e isso vale inclusive para as que falham — a requisição já
+foi paga, e a resposta é a única prova do que o fornecedor disse.
+
+Isto existe por dois motivos práticos. Primeiro, **auditoria**: número
+questionado na vitrine tem origem rastreável. Segundo, e é o que interessa no
+dia a dia, **contrato**: para descobrir quais campos um endpoint devolve, você
+NÃO precisa gastar requisição — o JSON já está no banco.
+
+### O que é gravado
+
+| Coluna | Conteúdo |
+|---|---|
+| `endpoint` | o caminho chamado, ex. `/echotik/product/list` |
+| `params` | `jsonb` com todos os parâmetros da query |
+| `subject` | o id do assunto extraído dos params (`product_id`, `video_ids`, `user_id`, `seller_id`, `category_id`) — é o que torna o arquivo pesquisável |
+| `httpStatus`, `code`, `message` | o desfecho, do HTTP e do envelope do EchoTik |
+| `itemCount` | quantos itens vieram em `data` |
+| `payload` | `jsonb` com a resposta inteira |
+| `purpose` | a finalidade declarada por quem chamou (qual camada da ingestão) |
+| `createdAt` | quando |
+
+Duas travas: resposta acima de **512KB** é guardada só como cabeçalho
+(`{truncado: true}`), e o arquivo é podado aos **90 dias**, no máximo uma poda
+por hora. A gravação é assíncrona e nunca lança — se o arquivo falhar, a
+ingestão segue.
+
+### Consultando o contrato de um endpoint sem gastar cota
+
+As chaves de uma resposta recente, que é a pergunta "quais campos este endpoint
+devolve":
+
+```sql
+SELECT jsonb_object_keys(payload->'data'->0) AS campo
+  FROM api_raw_responses
+ WHERE endpoint = '/echotik/product/list' AND code = 0 AND "itemCount" > 0
+ ORDER BY "createdAt" DESC
+ LIMIT 1;
+```
+
+Uma linha inteira, para ver formato e unidade de cada valor:
+
+```sql
+SELECT payload->'data'->0
+  FROM api_raw_responses
+ WHERE endpoint = '/echotik/video/list' AND code = 0
+ ORDER BY "createdAt" DESC LIMIT 1;
+```
+
+Tudo o que já perguntamos sobre um produto:
+
+```sql
+SELECT "createdAt", endpoint, code, "itemCount"
+  FROM api_raw_responses
+ WHERE subject LIKE '%1729...%'
+ ORDER BY "createdAt" DESC;
+```
+
+Quais endpoints estão sendo usados e quanto cada um custou:
+
+```sql
+SELECT endpoint, count(*) AS chamadas, sum(("code" <> 0)::int) AS falhas
+  FROM api_raw_responses
+ WHERE "createdAt" > now() - interval '30 days'
+ GROUP BY endpoint ORDER BY chamadas DESC;
+```
+
+Em código, `ApiArchiveService.buscarPorAssunto(subject, limite)` devolve as
+últimas respostas sobre um id.
+
+### Contratos confirmados na sondagem de 17/08/2026
+
+Medido com chamada real, região BR. Os `code=500` da primeira passada **não são
+porta fechada** — são endpoint existente reclamando de parâmetro obrigatório
+ausente. Só o 404 significa que o caminho não existe.
+
+| Endpoint | Estado | Parâmetro obrigatório | Campos por linha |
+|---|---|---|---|
+| `/echotik/product/list` | aberto | — | (ver seção 4) |
+| `/echotik/product/detail` | aberto | `product_ids` (até 10) | 101 |
+| `/echotik/video/list` | aberto | — | 31 |
+| `/echotik/video/detail` | aberto | `video_ids` | 31 |
+| `/echotik/live/list` | aberto | — | 36 |
+| `/echotik/live/detail` | aberto | `room_ids` | 36 |
+| `/echotik/live/product/list` | aberto | `room_id` | veio vazio na amostra |
+| `/echotik/influencer/list` | aberto | — | 53 |
+| `/echotik/influencer/detail` | aberto | `user_ids` | 51 |
+| `/echotik/influencer/video/list` | aberto | `user_id` ou `unique_id` | 29 |
+| `/echotik/influencer/product/list` | aberto | `user_id` | veio vazio na amostra |
+| `/echotik/shop/list` | **404** | — | não existe neste caminho |
+| `/echotik/category/list`, `/echotik/quota` | **404** | — | não existem |
+
+`page_size` continua travado em **10** em todos eles: `page_size max is 10`.
+
+Campos de `live/list` e `live/detail` que ainda não usamos e são os mais
+interessantes para o Copiloto ao Vivo: `room_id`, `live_status`, `duration`,
+`max_views_cnt`, `total_views_cnt`, `gpm`, `total_sale_gmv_amt`,
+`total_followers_growth_cnt`, `followers_growth_rate`, `live_sale_top3_product`,
+`product_category_gmv_distribution`, `per_live_sale_gmv_30d_amt`,
+`total_live_30d_cnt`.
+
+De `influencer/detail`, dois merecem atenção: `total_followers_cnt` (hoje o
+desktop raspa esse número do HTML do perfil, com regex) e `total_live_cnt` —
+conta que já transmitiu é prova direta de elegibilidade para live, bem melhor do
+que inferir pelo piso de mil seguidores.

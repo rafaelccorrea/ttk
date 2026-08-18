@@ -390,6 +390,85 @@ export class IngestionService implements OnModuleInit {
   }
 
   /**
+   * O TOP N DE VENDAS DA REGIÃO, global, por GMV dos últimos 30 dias.
+   *
+   * É a única camada que olha o mercado inteiro de uma vez. As outras têm cada
+   * uma o seu recorte e nenhuma responde a pergunta mais simples que existe
+   * aqui — "o que mais vende no Brasil agora": o refresh só reatualiza quem já
+   * está no catálogo, a descoberta varre CATEGORIA a categoria (de propósito,
+   * para dar nicho) e roda uma vez por dia, e o enrich nem procura produto.
+   * O `fetchTopProducts` do provider existia para isto e não era chamado por
+   * ninguém: o topo global nunca entrava.
+   *
+   * Custa pouco e é por isso que vale rodar sempre: 50 produtos são 5 páginas
+   * de 10, mais as chamadas de assinatura de capa — algo em torno de 10
+   * requests, contra as centenas do refresh do catálogo inteiro.
+   *
+   * Reaproveita o mesmo caminho da descoberta (mesmo filtro, mesma assinatura
+   * de capa, mesmo upsert), então um produto que já existe é ATUALIZADO, não
+   * duplicado, e o histórico diário dele continua de pé.
+   */
+  async atualizarTopVendidos(limite = 50): Promise<{
+    vistos: number;
+    aceitos: number;
+    requisicoes: number;
+  }> {
+    // Janela de cota própria: este passo pode ser chamado sozinho pelo script,
+    // fora de uma execução do cron, e sem abrir a janela o provider gastaria
+    // request sem ninguém contabilizar.
+    const allowance = await this.openApiAllowance();
+    if (allowance <= 0) {
+      this.logger.warn('Cota mensal esgotada: top de vendas não será atualizado.');
+      return { vistos: 0, aceitos: 0, requisicoes: 0 };
+    }
+    this.externalData.beginRun(allowance);
+
+    const encontrados = await this.externalData.fetchTopProducts(limite);
+    const { accepted } = filterSourcedProducts(encontrados, {
+      region: 'BR',
+      minSales: 1,
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    // Só a capa é assinada, pelo mesmo motivo da descoberta: a galeria inteira
+    // dobraria o custo por fotos que a vitrine não mostra.
+    const signed = await this.externalData.signImageUrls(
+      accepted.map((p) => p.images[0]).filter((u): u is string => !!u),
+    );
+
+    for (const ext of accepted) {
+      const signedCover = ext.images[0] ? signed.get(ext.images[0]) : undefined;
+      const cover = await this.persistImage(
+        signedCover ?? null,
+        'products',
+        ext.tiktokProductId,
+      );
+      const gallery = cover ? [cover] : [];
+      const product = await this.upsertProduct({
+        externalId: ext.externalId,
+        tiktokProductId: ext.tiktokProductId,
+        title: ext.cleanTitle,
+        category: ext.category,
+        price: ext.price,
+        imageUrl: gallery[0] ?? null,
+        images: gallery,
+        storeName: ext.storeName,
+        tiktokUrl: ext.tiktokUrl,
+        rating: ext.rating,
+        radarScore: null,
+      });
+      await this.upsertDailyMetric(product.id, today, ext.salesDaily, ext.revenueDaily);
+    }
+
+    await this.closeApiAllowance();
+    const requisicoes = this.externalData.requestsUsed;
+    this.logger.log(
+      `Top ${limite} de vendas: ${encontrados.length} vistos · ${accepted.length} aceitos · ${requisicoes} requests`,
+    );
+    return { vistos: encontrados.length, aceitos: accepted.length, requisicoes };
+  }
+
+  /**
    * Camada 1 — atualiza métricas do catálogo existente.
    * Prioriza quem está há mais tempo sem atualizar.
    */
