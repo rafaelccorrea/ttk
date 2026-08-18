@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  HttpException,
   ConflictException,
   Injectable,
   Logger,
@@ -615,6 +616,11 @@ export class CampaignsService {
     // parecia bug. A exceção só sobe se NENHUMA cena disparou (ex.: saldo
     // acabou logo na primeira), porque aí ela é a única informação que existe.
     const falhas: string[] = [];
+    // A PRIMEIRA causa real, com a mensagem original. Quando tudo falha pelo
+    // mesmo motivo (CLI fora do ar, retrato sumido), resumir para "verifique o
+    // saldo" escondia exatamente o que o usuário precisava ler — e o que o
+    // suporte precisava ouvir dele.
+    let primeiraCausa: string | null = null;
     let disparadas = 0;
     for (const cena of pendentes) {
       try {
@@ -625,11 +631,20 @@ export class CampaignsService {
           `render-all: cena ${cena.ordem} da campanha ${campaignId} falhou: ${error}`,
         );
         falhas.push(`cena ${cena.ordem}`);
+        if (!primeiraCausa) {
+          primeiraCausa =
+            error instanceof HttpException
+              ? String(
+                  (error.getResponse() as { message?: string })?.message ??
+                    error.message,
+                )
+              : 'erro inesperado no servidor';
+        }
       }
     }
     if (!disparadas && falhas.length) {
       throw new ConflictException(
-        'Nenhuma cena pôde ser disparada. Verifique o saldo e tente de novo.',
+        `Nenhuma cena pôde ser disparada. Motivo: ${primeiraCausa ?? 'desconhecido'}`,
       );
     }
 
