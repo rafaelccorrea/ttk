@@ -100,13 +100,23 @@ export function AppRoutes() {
               ter assinatura não protege nada. */}
           <Route path="/planos" element={<PlansPage />} />
           <Route path="/perfil" element={<ProfilePage />} />
+          {/* As ferramentas de IA do Essencial também abrem no gratuito, e o
+              teto delas não é o plano — é o SALDO. Quem não assina começa com a
+              cortesia de cadastro (SIGNUP_BONUS_CREDITS) e gasta até acabar; o
+              backend cobra crédito a cada chamada e responde 402 quando não há
+              saldo, que é uma resposta muito melhor do que "faça upgrade" para
+              quem só quer experimentar. Ver FEATURE_MIN_PLAN e
+              docs/CONTA-FREE.md. */}
+          <Route path="/estudio" element={<StudioPage />} />
+          <Route path="/analisar" element={<AnalyzePage />} />
+          <Route path="/geracoes" element={<GenerationsPage />} />
+          <Route path="/prompts" element={<PromptsPage />} />
           {/* Estar logado não basta: conta sem assinatura não entra no resto. */}
           <Route element={<RequireSubscription />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/tendencias" element={<TrendsPage />} />
             <Route path="/criadores" element={<CreatorsPage />} />
             <Route path="/favoritos" element={<FavoritesPage />} />
-            <Route path="/estudio" element={<StudioPage />} />
             {/* Campanhas e Multiplicador são Pro no backend; sem o gate aqui,
                 quem assina o Essencial abria a tela e só descobria no 403. */}
             <Route
@@ -145,8 +155,6 @@ export function AppRoutes() {
             />
             <Route path="/academy" element={<AcademyPage />} />
             <Route path="/indique" element={<ReferralPage />} />
-            <Route path="/prompts" element={<PromptsPage />} />
-            <Route path="/geracoes" element={<GenerationsPage />} />
             <Route
               path="/coleta"
               element={
@@ -155,7 +163,6 @@ export function AppRoutes() {
                 </PlanGate>
               }
             />
-            <Route path="/analisar" element={<AnalyzePage />} />
             {/* A rota existe para qualquer logado; quem barra é o AdminGuard
                 do backend, que responde 403 em todas as chamadas /admin. */}
             <Route path="/admin" element={<AdminPage />} />

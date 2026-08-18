@@ -421,22 +421,56 @@ gasto. Não há espaço para absorver aumento de custo sem mexer em preço.
 
 ---
 
-## 8. A conta gratuita não entra nesta conta
+## 8. O custo da conta gratuita
 
-Desde o modo amostra ([Conta gratuita](CONTA-FREE.md)), existe de novo uma conta sem
-assinatura — e ela **não aparece em lugar nenhum deste documento**, de propósito.
+Existe de novo uma conta sem assinatura ([Conta gratuita](CONTA-FREE.md)), e ela **tem
+custo**. Esta seção existe para que esse custo não vire surpresa.
 
-O motivo é que ela não consome nada do que aqui se precifica. Não há crédito de IA (o
-`SIGNUP_BONUS_CREDITS` segue em 0), não há minuto de live, e o dado que ela vê sai do que já
-está ingerido no banco: nenhuma consulta nova ao fornecedor, nenhuma chamada de modelo. O
-custo marginal de uma conta gratuita adicional é **zero**, e é isso que a mantém fora de
-`assertProfitability()` — não há margem a validar onde não há custo.
+### 8.1 O que ela consome, e o que não consome
 
-Isso é uma propriedade do desenho, não uma sorte: a amostra é um conjunto FIXO, global, o
-mesmo para todas as contas. No dia em que ela passar a ser calculada por usuário, por
-consulta, ou a aceitar qualquer parâmetro de busca, esta seção deixa de valer e a conta
-gratuita passa a ter um custo que precisa entrar na tabela. Quem for fazer essa mudança
-precisa voltar aqui antes.
+| Recurso | Custo por conta gratuita |
+|---|---|
+| Amostra de produtos e vídeos | **zero** — conjunto fixo e global, servido do que já está ingerido. Nenhuma consulta ao fornecedor |
+| Minutos de live | **zero** — o copiloto é Pro+ |
+| Créditos de IA | **até R$ 1,50** — a cortesia de cadastro |
 
-`FREE_SAMPLE` mora em `billing.config.ts` justamente para que essa decisão seja tomada
-lendo este arquivo.
+A cortesia (`SIGNUP_BONUS_CREDITS = 25`) é o único custo real, e existe porque uma conta que
+só olha não vira cliente: o vendedor precisa ver o roteiro sair com o produto dele. Vinte e
+cinco créditos dão três roteiros — dá para conhecer, não dá para operar.
+
+### 8.2 A conta do pior caso
+
+25 créditos × R$ 0,06 (o `worstCostPerCredit()` de hoje, seção 3) = **R$ 1,50 por conta
+gratuita**, no cenário em que a pessoa gasta tudo na ação mais cara que o plano dela alcança.
+Na prática é menos — um roteiro custa 8 créditos e sai por ~R$ 0,39 —, mas o número que se
+planeja é o do teto.
+
+Isso é **custo de aquisição**, não de operação: acontece uma vez por cadastro e nunca mais.
+`assertProfitability()` continua sem olhar para ele, porque aqui não há preço de venda a
+proteger — não é margem, é investimento. Quem trava o número é o teste
+"dá a cortesia de boas-vindas, e ela cabe no custo de aquisição", em `billing.config.spec.ts`.
+
+**Se `worstCostPerCredit()` subir, este custo sobe junto, em silêncio.** Foi por isso que o
+teste multiplica um pelo outro, em vez de conferir só o 25.
+
+### 8.3 O risco que isso reabre: multiconta
+
+Enquanto o gratuito era só a amostra, criar dez contas não dava nada a ninguém — a amostra é
+a mesma para todo mundo, e essa era a defesa. **Com a cortesia, cada conta nova vale R$ 1,50
+de IA**, e a defesa passa a ser outra. O que segura hoje:
+
+- a cortesia é **uma vez por conta** (lançamento `signup_bonus`, conferido antes de conceder)
+  e **não renova** no mês seguinte;
+- o cadastro exige **confirmação de e-mail**;
+- 25 créditos não montam operação nenhuma: quem quer volume assina.
+
+O que **não** existe hoje: limite por IP, por dispositivo ou por domínio de e-mail. Se a
+telemetria mostrar cadastros em série, é aqui que a trava entra — e o lugar dela é o
+cadastro, não o `charge`.
+
+### 8.4 O que muda se a amostra deixar de ser fixa
+
+A linha "zero" da tabela depende de a amostra ser um conjunto FIXO e global. No dia em que
+ela for calculada por usuário, por consulta, ou aceitar parâmetro de busca, passa a custar
+por conta e esta seção precisa ser refeita. `FREE_SAMPLE` e `SIGNUP_BONUS_CREDITS` moram em
+`billing.config.ts` justamente para que essa decisão seja tomada lendo este arquivo.

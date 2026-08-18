@@ -14,6 +14,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -26,11 +27,15 @@ import ImageNotSupportedRoundedIcon from '@mui/icons-material/ImageNotSupportedR
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { SmartImage } from '@/components/ui/SmartImage';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { ImageDropzone } from '@/components/ui/ImageDropzone';
 import { formatCurrency, formatNumber } from '@/utils/format';
 import { proxyImage } from '@/utils/tiktok';
+import { useSaldo } from '@/hooks/useSaldo';
+import { apiErrorMessage } from '@/contexts/AuthContext';
+import { billingService } from '@/services/billing.service';
+import { freeService } from '@/services/free.service';
 import { productsService, RankedProduct } from '@/services/products.service';
 import {
   PECAS_MAX,
@@ -74,8 +79,21 @@ function detalhesDoProduto(p: RankedProduct): string {
     p.storeName ? `Loja: ${p.storeName}` : null,
     `Categoria: ${p.category}`,
     p.rating ? `Avaliação: ${p.rating} de 5` : null,
-    `Vendas nos últimos 30 dias: ${formatNumber(p.salesPeriod)}`,
-    p.growthPct !== null
+    /*
+     * Condicional porque o produto pode vir da AMOSTRA gratuita, que não traz
+     * vendas — e a linha incondicional mandava "Vendas nos últimos 30 dias: —"
+     * dentro do prompt. Não é só feio na ficha: é ruído escrito no pedido que
+     * vai para o modelo, sobre o dado mais importante do produto.
+     */
+    p.salesPeriod
+      ? `Vendas nos últimos 30 dias: ${formatNumber(p.salesPeriod)}`
+      : null,
+    /*
+     * `!= null` (e não `!== null`): produto vindo da amostra gratuita pode não
+     * trazer o campo, e `undefined !== null` é verdadeiro — a ficha saía com
+     * "Crescimento no período: undefined%" e isso ia para dentro do prompt.
+     */
+    p.growthPct != null
       ? `Crescimento no período: ${p.growthPct >= 0 ? '+' : ''}${p.growthPct}%`
       : null,
   ];
@@ -229,20 +247,64 @@ export function StudioPage() {
   const [result, setResult] = useState<Script | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /*
+   * Conta gratuita: tem as ferramentas de IA, não tem o catálogo. `null`
+   * enquanto a carteira não chega — a lista só carrega depois, para não
+   * disparar a chamada errada e ter de refazê-la.
+   */
+  const [semDescoberta, setSemDescoberta] = useState<boolean | null>(null);
+  /*
+   * "Dá para gerar?" respondido antes do clique. O roteiro é cobrado como
+   * `script` na tabela do backend — a mesma chave que o 402 usaria.
+   */
+  const saldo = useSaldo('script');
 
   useEffect(() => {
     studioService.listScripts().then(setScripts).catch(console.error);
     campaignsService.listProducts().then(setMeusProdutos).catch(console.error);
+    billingService
+      .wallet()
+      .then((w) => setSemDescoberta(w.features?.discovery === false))
+      .catch(() => setSemDescoberta(false));
   }, []);
 
   // A lista carregada é só o topo do catálogo. Sem busca no servidor, um
   // produto fora dos 50 mais vendidos não aparecia por mais que se digitasse.
   useEffect(() => {
+    if (semDescoberta === null) return; // ainda não sabemos qual fonte usar
     let cancelado = false;
     setBuscando(true);
     const timer = setTimeout(() => {
-      productsService
-        .rank({ period: 30, limit: 50, search: busca.trim() || undefined })
+      /*
+       * Conta gratuita não tem `discovery`: o ranking responde 403 e a lista
+       * ficava vazia, com um "nenhum produto encontrado" que culpava a busca
+       * por uma trava de plano. Aqui ela recebe os produtos da amostra — os
+       * mesmos 20 da tela de Produtos —, que é o que ela tem e é suficiente
+       * para gerar um roteiro de verdade. A busca não filtra a amostra porque
+       * a amostra não é buscável (ver docs/CONTA-FREE.md).
+       */
+      const fonte = semDescoberta
+        ? freeService.sample().then((s) => ({
+            items: s.products.map(
+              (p) =>
+                ({
+                  id: p.id,
+                  title: p.title,
+                  category: p.category,
+                  imageUrl: p.imageUrl,
+                  price: p.price,
+                  // A amostra tem crescimento; vendas exatas, não. O que existe
+                  // vai junto: é contexto real para o roteiro.
+                  growthPct: p.growthPct,
+                }) as RankedProduct,
+            ),
+          }))
+        : productsService.rank({
+            period: 30,
+            limit: 50,
+            search: busca.trim() || undefined,
+          });
+      fonte
         .then((data) => {
           if (!cancelado) setTopProducts(data.items);
         })
@@ -255,7 +317,7 @@ export function StudioPage() {
       cancelado = true;
       clearTimeout(timer);
     };
-  }, [busca]);
+  }, [busca, semDescoberta]);
 
   // Último texto que este efeito escreveu. Só sobrescrevemos o que foi
   // preenchido automaticamente — o que o usuário digitou fica intocado.
@@ -311,8 +373,18 @@ export function StudioPage() {
       });
       setResult(script);
       setScripts((prev) => [script, ...prev]);
+      // O saldo acabou de mudar: sem recarregar, o botão continuaria liberado
+      // até um F5 — e a trava só serve se souber do gasto que ela mesma causou.
+      saldo.recarregar();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao gerar roteiro');
+      /*
+       * `err.message` do axios é "Request failed with status code 402" — e era
+       * isso que aparecia na tela quando o saldo acabava, que é justamente o
+       * momento em que a conta gratuita decide se assina. `apiErrorMessage`
+       * pega a mensagem que o backend escreveu ("Créditos insuficientes: este
+       * envio custa 8 e você tem 2…"), que é a única que serve para alguém.
+       */
+      setError(apiErrorMessage(err));
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -486,7 +558,17 @@ export function StudioPage() {
                       <ItemProduto
                         key={p.id}
                         titulo={p.title}
-                        legenda={`${formatCurrency(p.price)} · ${formatNumber(p.salesPeriod)} vendas`}
+                        legenda={
+                          /*
+                           * A amostra gratuita não traz o número de vendas (é
+                           * dado do plano pago), e `formatNumber(undefined)`
+                           * escrevia "— vendas" em toda linha. Sem o número, a
+                           * categoria é a informação útil que sobra.
+                           */
+                          semDescoberta
+                            ? `${formatCurrency(p.price)} · ${p.category}`
+                            : `${formatCurrency(p.price)} · ${formatNumber(p.salesPeriod)} vendas`
+                        }
                         foto={p.imageUrl ? proxyImage(p.imageUrl) : null}
                         ativo={selecao === `cat:${p.id}`}
                         onSelect={() => selecionar(`cat:${p.id}`)}
@@ -677,20 +759,39 @@ export function StudioPage() {
                   spacing={1.5}
                   sx={{ mt: 3, flexWrap: 'wrap', gap: 1 }}
                 >
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    size="large"
-                    disabled={busy || enviandoImagem}
-                    startIcon={<AutoAwesomeRoundedIcon />}
-                    sx={{ borderRadius: 2.5, px: 3, fontWeight: 700 }}
-                  >
-                    {busy
-                      ? 'Gerando…'
-                      : type === 'video' && formato === 'pecas'
-                        ? 'Gerar peças'
-                        : `Gerar roteiro ${type === 'live' ? 'de live' : 'do vídeo'}`}
-                  </Button>
+                  {/* Saldo insuficiente é sabido ANTES do clique: travar aqui
+                      evita o formulário inteiro terminar num 402. O <span> é
+                      necessário porque botão desabilitado não dispara os
+                      eventos que o Tooltip escuta. */}
+                  <Tooltip title={saldo.motivo}>
+                    <span>
+                      <Button
+                        type="submit"
+                        variant="contained"
+                        size="large"
+                        disabled={busy || enviandoImagem || saldo.insuficiente}
+                        startIcon={<AutoAwesomeRoundedIcon />}
+                        sx={{ borderRadius: 2.5, px: 3, fontWeight: 700 }}
+                      >
+                        {busy
+                          ? 'Gerando…'
+                          : type === 'video' && formato === 'pecas'
+                            ? 'Gerar peças'
+                            : `Gerar roteiro ${type === 'live' ? 'de live' : 'do vídeo'}`}
+                      </Button>
+                    </span>
+                  </Tooltip>
+                  {saldo.insuficiente && (
+                    <Button
+                      component={Link}
+                      to="/planos"
+                      variant="outlined"
+                      size="large"
+                      sx={{ borderRadius: 2.5, fontWeight: 700 }}
+                    >
+                      {saldo.semPlano ? 'Assinar um plano' : 'Comprar créditos'}
+                    </Button>
+                  )}
                   <Typography variant="body2" color="text.secondary">
                     {type === 'video' && formato === 'pecas' ? (
                       <>

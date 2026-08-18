@@ -238,8 +238,18 @@ export class BillingService implements OnModuleInit {
     );
     const saldo = owner?.credits ?? 0;
     if (saldo < total) {
+      /*
+       * A saída oferecida depende de quem está sem saldo. Pacote avulso exige
+       * assinatura (`purchasePack` → `assertSubscriber`), então mandar a conta
+       * gratuita "comprar um pacote" é indicar uma porta trancada — e ela chega
+       * aqui com frequência, porque é assim que a cortesia de cadastro termina.
+       */
+      const saida =
+        (owner?.plan ?? 'free') === 'free'
+          ? 'Assine um plano em Planos & Créditos para continuar.'
+          : 'Compre um pacote ou faça upgrade em Planos & Créditos.';
       throw new HttpException(
-        `Créditos insuficientes: este envio custa ${total} créditos e você tem ${saldo}. Compre um pacote ou assine um plano em Planos & Créditos.`,
+        `Créditos insuficientes: este envio custa ${total} créditos e você tem ${saldo}. ${saida}`,
         402,
       );
     }
@@ -325,7 +335,11 @@ export class BillingService implements OnModuleInit {
 
     if (!result.affected) {
       throw new HttpException(
-        `Créditos insuficientes: "${price.label}"${itens > 1 ? ` × ${itens}` : ''} custa ${total} créditos. Compre um pacote ou assine um plano em Planos & Créditos.`,
+        `Créditos insuficientes: "${price.label}"${itens > 1 ? ` × ${itens}` : ''} custa ${total} créditos. ${
+          (owner?.plan ?? 'free') === 'free'
+            ? 'Assine um plano em Planos & Créditos para continuar.'
+            : 'Compre um pacote ou faça upgrade em Planos & Créditos.'
+        }`,
         402,
       );
     }

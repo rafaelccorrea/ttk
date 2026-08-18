@@ -10,10 +10,13 @@ import {
   Grid,
   IconButton,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { ChangeEvent, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { BrandLoader } from '@/components/ui/BrandLoader';
+import { useSaldo } from '@/hooks/useSaldo';
 import { apiErrorMessage } from '@/contexts/AuthContext';
 import { api } from '@/services/api';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
@@ -23,6 +26,10 @@ import { campaignsService, UserProduct } from '@/services/campaigns.service';
 import { Script } from '@/services/studio.service';
 
 export function AnalyzePage() {
+  // A análise é cobrada como `analyze` (12 créditos); a transcrição, como
+  // `transcribe`. Cada botão trava pelo próprio preço.
+  const saldoAnalise = useSaldo('analyze');
+  const saldoTranscricao = useSaldo('transcribe');
   const [fileName, setFileName] = useState<string | null>(null);
   const [transcript, setTranscript] = useState('');
   const [products, setProducts] = useState<RankedProduct[]>([]);
@@ -92,6 +99,7 @@ export function AnalyzePage() {
         { headers: { 'Content-Type': 'multipart/form-data' } },
       );
       setTranscript(data.transcript);
+      saldoTranscricao.recarregar();
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
@@ -116,6 +124,8 @@ export function AnalyzePage() {
           : undefined,
       });
       setResult(data);
+      // Gastou: o botão precisa saber, senão só um F5 revelaria o novo saldo.
+      saldoAnalise.recarregar();
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
@@ -139,24 +149,32 @@ export function AnalyzePage() {
               <Typography variant="overline" color="text.secondary">
                 1 · Transcrição
               </Typography>
-              <Button
-                component="label"
-                fullWidth
-                variant="outlined"
-                startIcon={<UploadFileRoundedIcon />}
-                disabled={transcribing}
-                sx={{ my: 1.5, py: 1.5 }}
-              >
-                {transcribing
-                  ? 'Transcrevendo com Whisper...'
-                  : (fileName ?? 'Enviar vídeo ou áudio (máx. 25MB)')}
-                <input
-                  hidden
-                  type="file"
-                  accept="video/*,audio/*"
-                  onChange={handleFile}
-                />
-              </Button>
+              {/* Sem saldo, o arquivo nem deve ser escolhido: o upload sobe
+                  antes da cobrança, e deixar a pessoa esperar o envio de um
+                  vídeo para ouvir "créditos insuficientes" é o pior desperdício
+                  de tempo que esta tela pode causar. */}
+              <Tooltip title={saldoTranscricao.motivo}>
+                <span>
+                  <Button
+                    component="label"
+                    fullWidth
+                    variant="outlined"
+                    startIcon={<UploadFileRoundedIcon />}
+                    disabled={transcribing || saldoTranscricao.insuficiente}
+                    sx={{ my: 1.5, py: 1.5 }}
+                  >
+                    {transcribing
+                      ? 'Transcrevendo com Whisper...'
+                      : (fileName ?? 'Enviar vídeo ou áudio (máx. 25MB)')}
+                    <input
+                      hidden
+                      type="file"
+                      accept="video/*,audio/*"
+                      onChange={handleFile}
+                    />
+                  </Button>
+                </span>
+              </Tooltip>
               <TextField
                 fullWidth
                 multiline
@@ -221,16 +239,35 @@ export function AnalyzePage() {
                   {error}
                 </Alert>
               )}
-              <Button
-                fullWidth
-                variant="contained"
-                startIcon={<AutoAwesomeRoundedIcon />}
-                disabled={analyzing || !transcript.trim()}
-                onClick={handleAnalyze}
-                sx={{ mt: 2 }}
-              >
-                {analyzing ? 'Analisando...' : 'Analisar e gerar roteiro'}
-              </Button>
+              {/* Trava por saldo antes do clique — o <span> é o que permite o
+                  Tooltip explicar um botão desabilitado. */}
+              <Tooltip title={saldoAnalise.motivo}>
+                <span>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    startIcon={<AutoAwesomeRoundedIcon />}
+                    disabled={
+                      analyzing || !transcript.trim() || saldoAnalise.insuficiente
+                    }
+                    onClick={handleAnalyze}
+                    sx={{ mt: 2 }}
+                  >
+                    {analyzing ? 'Analisando...' : 'Analisar e gerar roteiro'}
+                  </Button>
+                </span>
+              </Tooltip>
+              {saldoAnalise.insuficiente && (
+                <Button
+                  component={Link}
+                  to="/planos"
+                  fullWidth
+                  variant="outlined"
+                  sx={{ mt: 1.5 }}
+                >
+                  {saldoAnalise.semPlano ? 'Assinar um plano' : 'Comprar créditos'}
+                </Button>
+              )}
             </CardContent>
           </Card>
         </Grid>
