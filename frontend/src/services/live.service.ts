@@ -160,6 +160,13 @@ export const TRANSCRIBE_BLOCK_MINUTES = 10;
 /** Teto de duração aceito pelo pipeline, em minutos. */
 export const TRANSCRIBE_MAX_MINUTES = 300;
 
+/**
+ * Piso de duração aceito pelo pipeline, em minutos — espelha `LIVE_MIN_MINUTES`
+ * do backend. Abaixo disso a gravação não tem conversa suficiente para virar
+ * base, e a recusa acontece aqui para o arquivo não subir à toa.
+ */
+export const LIVE_MIN_MINUTES = 10;
+
 /** Teto do upload — acima disso o backend recusa antes de ler o arquivo. */
 export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 

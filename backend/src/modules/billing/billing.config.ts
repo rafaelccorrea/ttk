@@ -213,6 +213,21 @@ export const TRANSCRIBE_BLOCK_MINUTES = 10;
  */
 export const TRANSCRIBE_MAX_MINUTES = 300;
 
+/**
+ * O piso da gravação que vira base de conhecimento de uma live.
+ *
+ * Não é limite técnico — o pipeline processa 40 segundos sem reclamar. É que o
+ * resultado não presta: a base sai de produtos, preços e objeções ditos em voz
+ * alta, e um recorte curto não tem nem catálogo nem repetição suficiente para o
+ * copiloto responder qualquer coisa. O vendedor gastaria a transcrição para
+ * receber uma base vazia e concluir que o produto não funciona.
+ *
+ * Dez minutos é o ponto a partir do qual uma live real já apresentou pelo menos
+ * um produto por inteiro. Vale para a live; a transcrição avulsa do Estúdio
+ * continua aceitando trechos curtos, que lá são o uso normal.
+ */
+export const LIVE_MIN_MINUTES = 10;
+
 /** Blocos cobrados para uma duração em segundos (sempre ≥ 1). */
 export function transcribeBlocks(durationSeconds: number): number {
   const minutos = durationSeconds / 60;

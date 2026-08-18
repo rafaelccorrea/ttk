@@ -28,6 +28,7 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { CREDITS_CHANGED_EVENT } from '@/services/api';
 import { billingService } from '@/services/billing.service';
 import {
+  LIVE_MIN_MINUTES,
   LiveSession,
   MAX_UPLOAD_BYTES,
   PRECO_PADRAO,
@@ -143,6 +144,12 @@ function NovaBaseDialog({
   const orcamento = estimarCreditos(duracao, precos);
   const longaDemais = duracao != null && duracao > TRANSCRIBE_MAX_MINUTES * 60;
   /*
+   * O piso, medido aqui no navegador pelo mesmo motivo do teto: o arquivo ainda
+   * não subiu. Barrar só depois, no backend, faria o vendedor esperar o upload
+   * inteiro de uma gravação que já se sabia curta demais.
+   */
+  const curtaDemais = duracao != null && duracao < LIVE_MIN_MINUTES * 60;
+  /*
    * Saldo insuficiente vira recusa aqui, na frente, e não uma sessão em 'erro'
    * lá atrás. Comparar contra o orçamento estimado — e não contra o piso do
    * backend — é o ponto: uma live de 3 horas com 8 créditos na conta passa na
@@ -228,7 +235,15 @@ function NovaBaseDialog({
             </Alert>
           )}
 
-          {semSaldo && !lendo && !longaDemais && (
+          {curtaDemais && (
+            <Alert severity="warning">
+              Esta gravação tem menos de {LIVE_MIN_MINUTES} minutos. É da fala da
+              live que eu tiro produtos, preços e objeções — num trecho curto não
+              há material suficiente, e a base sairia vazia. Envie a live inteira.
+            </Alert>
+          )}
+
+          {semSaldo && !lendo && !longaDemais && !curtaDemais && (
             <Alert
               severity="warning"
               action={
@@ -253,7 +268,7 @@ function NovaBaseDialog({
             </Alert>
           )}
 
-          {arquivo && !lendo && !longaDemais && !semSaldo && (
+          {arquivo && !lendo && !longaDemais && !curtaDemais && !semSaldo && (
             <Alert severity="info" icon={false}>
               <Typography fontWeight={800} mb={0.5}>
                 {orcamento.exato ? 'Vai consumir' : 'Vai consumir a partir de'}{' '}
@@ -300,10 +315,13 @@ function NovaBaseDialog({
             lendo ||
             enviando ||
             longaDemais ||
+            curtaDemais ||
             semSaldo
           }
         >
-          {semSaldo
+          {curtaDemais
+            ? `Mínimo de ${LIVE_MIN_MINUTES} minutos`
+            : semSaldo
             ? 'Créditos insuficientes'
             : arquivo && !lendo && !longaDemais
               ? `Enviar e gastar ${orcamento.creditos} créditos`

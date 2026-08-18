@@ -71,6 +71,27 @@ export class FfmpegRunner {
     }
   }
 
+  /**
+   * O que o ffmpeg enxerga de streams no arquivo.
+   *
+   * Existe para PERGUNTAR antes de mandar trabalho: extrair voz de uma gravação
+   * sem trilha de áudio termina em "Output file does not contain any stream",
+   * que é verdade e não ajuda ninguém — o vendedor lê isso no lugar de "a sua
+   * gravação está sem som".
+   *
+   * `legivel` separa os dois fracassos que pareciam um só: um arquivo mudo tem
+   * stream de vídeo e nenhuma de áudio; um arquivo corrompido ou que não é mídia
+   * não tem stream nenhuma. As correções são diferentes (gravar de novo com o
+   * microfone ligado vs. enviar outro arquivo), então a mensagem também é.
+   */
+  async streamsDe(arquivo: string): Promise<{ legivel: boolean; audio: boolean }> {
+    const saida = await this.inspecionar(arquivo);
+    return {
+      legivel: /Stream #\d+:\d+/.test(saida),
+      audio: /Stream #\d+:\d+.*:\s*Audio:/i.test(saida),
+    };
+  }
+
   /** Duração do arquivo em segundos, ou `null` quando não der para ler. */
   async duracao(arquivo: string): Promise<number | null> {
     const saida = await this.inspecionar(arquivo);
