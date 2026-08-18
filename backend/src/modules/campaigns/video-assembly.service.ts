@@ -166,6 +166,61 @@ export class VideoAssemblyService {
   }
 
   /**
+   * Substitui a trilha de áudio do clipe pela narração TTS.
+   *
+   * O clipe chega com a "fala" que o modelo de vídeo inventou — em português
+   * quebrado a ponto de não se entender. Trocar a trilha inteira (em vez de
+   * mixar) é deliberado: o áudio original é o defeito, não um fundo a
+   * preservar.
+   *
+   * Quando a narração é mais longa que o clipe, acelera até 1,35× (acima
+   * disso soa picotado; melhor cortar o rabo da frase do que virar leilão).
+   * Mais curta, completa com silêncio até o fim do vídeo.
+   */
+  async dublar(video: Buffer, narracao: Buffer): Promise<Buffer> {
+    if (!this.ffmpeg.enabled) {
+      throw new Error('ffmpeg não está disponível neste ambiente.');
+    }
+    return this.ffmpeg.comTmp('pikpok-dub-', async (pasta) => {
+      const entrada = join(pasta, 'entrada.mp4');
+      const voz = join(pasta, 'voz.mp3');
+      const saida = join(pasta, 'saida.mp4');
+      await writeFile(entrada, video);
+      await writeFile(voz, narracao);
+
+      const duracaoVideo = await this.ffmpeg.duracao(entrada);
+      const duracaoVoz = await this.ffmpeg.duracao(voz);
+      const atempo =
+        duracaoVideo && duracaoVoz && duracaoVoz > duracaoVideo
+          ? Math.min(1.35, duracaoVoz / duracaoVideo)
+          : 1;
+
+      await this.ffmpeg.rodar(
+        [
+          '-y',
+          '-i', entrada,
+          '-i', voz,
+          '-filter_complex',
+          `[1:a]atempo=${atempo.toFixed(3)},apad[a]`,
+          '-map', '0:v',
+          '-map', '[a]',
+          // O vídeo não é tocado: recodificar aqui degradaria a imagem duas
+          // vezes (a normalização da montagem ainda vem depois).
+          '-c:v', 'copy',
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-ar', '44100',
+          '-ac', '2',
+          '-shortest',
+          saida,
+        ],
+        TIMEOUT_MS,
+      );
+      return await readFile(saida);
+    });
+  }
+
+  /**
    * Duração de um arquivo que ainda está em memória, em segundos.
    *
    * Continua exposto aqui porque o Studio pede a duração do upload antes de

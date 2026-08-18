@@ -585,6 +585,51 @@ export class AiService {
   }
 
   /**
+   * Narração em pt-BR de uma fala de cena, em MP3.
+   *
+   * Existe porque o modelo de VÍDEO até fala, mas mastiga o português —
+   * ortografia sonora errada, sotaque quebrado, fala incompreensível (saiu
+   * assim em produção). A voz passa a vir de um TTS de verdade e substitui a
+   * trilha do clipe na finalização. Custo: ~R$ 0,01 por fala — invisível
+   * perto dos 60 créditos da cena.
+   *
+   * Devolve null (nunca lança) sem chave ou em falha: cena com áudio ruim é
+   * melhor que cena sem finalizar, e quem chama decide manter o original.
+   */
+  async narrar(texto: string): Promise<Buffer | null> {
+    const limpo = texto.trim();
+    if (!this.apiKey || !limpo) return null;
+    try {
+      const response = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini-tts',
+          voice: this.config.get<string>('TTS_VOICE') ?? 'nova',
+          input: limpo,
+          // A instrução é o que garante o sotaque: sem ela a voz lê pt-BR
+          // com prosódia de inglês.
+          instructions:
+            'Fale em português do Brasil, sotaque brasileiro natural, tom ' +
+            'animado de vendedora de vídeo curto, dicção clara.',
+          response_format: 'mp3',
+        }),
+      });
+      if (!response.ok) {
+        this.logger.warn(`TTS falhou: HTTP ${response.status}`);
+        return null;
+      }
+      return Buffer.from(await response.arrayBuffer());
+    } catch (error) {
+      this.logger.warn(`TTS falhou: ${error}`);
+      return null;
+    }
+  }
+
+  /**
    * Vetores de similaridade para o ranking semântico dos ganchos.
    *
    * text-embedding-3-small: US$ 0,02 por MILHÃO de tokens — embutir 200
