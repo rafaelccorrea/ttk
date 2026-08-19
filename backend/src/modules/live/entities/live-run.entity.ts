@@ -125,6 +125,31 @@ export class LiveRun {
   deliveryFailures: number;
 
   /**
+   * Agregados de audiência, materializados aqui pelo mesmo motivo dos
+   * contadores do funil: são o que a listagem de histórico mostra, e somar a
+   * série de `live_run_metrics` a cada tela seria o N+1 que `listarRuns` já
+   * evitou uma vez. A série detalhada continua na tabela própria — a run
+   * carrega só o resumo.
+   */
+  @Column({ type: 'int', default: 0 })
+  peakViewers: number;
+
+  @Column({ type: 'int', default: 0 })
+  totalLikes: number;
+
+  @Column({ type: 'int', default: 0 })
+  totalGifts: number;
+
+  @Column({ type: 'int', default: 0 })
+  totalGiftDiamonds: number;
+
+  @Column({ type: 'int', default: 0 })
+  totalFollows: number;
+
+  @Column({ type: 'int', default: 0 })
+  totalShares: number;
+
+  /**
    * O relógio da cobrança. O copiloto queima minutos da carteira enquanto está
    * no ar, e a cobrança é incremental: a cada tique, debita-se o que passou
    * desde `lastChargedAt` e soma-se em `minutesCharged`. Guardar o total já

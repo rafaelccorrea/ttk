@@ -337,7 +337,7 @@ async function seguidoresDe(usuario: string): Promise<number | null> {
     // vendedor. Pelo global, o perfil viria como o de um visitante anônimo.
     const resposta = await session
       .fromPartition(PARTICAO_TIKTOK)
-      .fetch(`https://www.tiktok.com/@${limpo}`);
+      .fetch(`https://www.tiktok.com/@${limpo}`, { credentials: 'include' });
     if (!resposta.ok) return null;
     const html = await resposta.text();
     /*
@@ -375,17 +375,48 @@ async function usuarioDoTikTok(): Promise<string | null> {
   try {
     const resposta = await session
       .fromPartition(PARTICAO_TIKTOK)
-      .fetch('https://www.tiktok.com/');
-    if (!resposta.ok) return null;
+      // `credentials: 'include'` é obrigatório: este fetch parte do processo
+      // principal, sem origem, e sem a diretiva os cookies da partição ficam
+      // de fora — a home viria DESLOGADA e o @ nunca apareceria.
+      .fetch('https://www.tiktok.com/foryou', { credentials: 'include' });
+    if (!resposta.ok) {
+      console.warn(`[usuarioDoTikTok] resposta ${resposta.status} da home`);
+      return null;
+    }
     const html = await resposta.text();
+
     /*
-     * O objeto `user` do app-context é o usuário LOGADO; os `uniqueId` soltos
-     * pela página são autores de vídeo do feed. Ancorar no `"user":{` é o que
-     * impede o campo de ser pré-preenchido com o @ de um criador qualquer.
+     * Caminho principal: o JSON inteiro que o TikTok embute para hidratar o
+     * app dele, parseado de verdade. O usuário LOGADO mora em
+     * `__DEFAULT_SCOPE__["webapp.app-context"].user` — os `uniqueId` soltos
+     * pela página são autores de vídeo do feed, e é por isso que a leitura
+     * ancora nesse objeto e nunca no primeiro match do HTML.
      */
+    const bloco =
+      /<script[^>]*id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/.exec(
+        html,
+      );
+    if (bloco) {
+      try {
+        const dados = JSON.parse(bloco[1]!) as {
+          __DEFAULT_SCOPE__?: Record<string, { user?: { uniqueId?: string } }>;
+        };
+        const unico = dados.__DEFAULT_SCOPE__?.['webapp.app-context']?.user?.uniqueId;
+        if (unico && /^[A-Za-z0-9._]{2,24}$/.test(unico)) return unico;
+      } catch (erro) {
+        console.warn(`[usuarioDoTikTok] JSON de hidratação ilegível: ${erro}`);
+      }
+    } else {
+      console.warn('[usuarioDoTikTok] página veio sem __UNIVERSAL_DATA_FOR_REHYDRATION__');
+    }
+
+    // Fallback: o mesmo dado, caçado por regex — vale quando o TikTok mudar o
+    // id do script ou embutir o contexto de outro jeito.
     const m = /"user"\s*:\s*\{[^{}]*?"uniqueId"\s*:\s*"([A-Za-z0-9._]{2,24})"/.exec(html);
+    if (!m) console.warn('[usuarioDoTikTok] nenhum uniqueId de usuário logado no HTML');
     return m ? m[1]! : null;
-  } catch {
+  } catch (erro) {
+    console.warn(`[usuarioDoTikTok] falhou: ${erro}`);
     return null;
   }
 }
@@ -452,7 +483,9 @@ const foco = new ModoFoco({
   usuarioLogado: () => usuarioDoTikTok(),
   buscar: async (url) => {
     try {
-      const resposta = await session.fromPartition(PARTICAO_TIKTOK).fetch(url);
+      const resposta = await session
+        .fromPartition(PARTICAO_TIKTOK)
+        .fetch(url, { credentials: 'include' });
       return resposta.ok ? await resposta.text() : null;
     } catch {
       return null;

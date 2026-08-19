@@ -201,6 +201,85 @@ export class LoteDeChatDto {
   messages: MensagemDoChatDto[];
 }
 
+/**
+ * Um instantâneo de audiência, como o app desktop o agregou.
+ *
+ * Os contadores são DELTAS da janela de agregação (~30s), não acumulados — ver
+ * `LiveRunMetric`. `viewerCount` é leitura de nível e pode faltar quando o
+ * webcast não a entregou na janela.
+ */
+export class InstantaneoDeMetricaDto {
+  @ApiProperty({ example: '2026-08-17T20:31:00.000Z' })
+  @IsDateString()
+  capturedAt: string;
+
+  @ApiPropertyOptional({ example: 312 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100_000_000)
+  viewerCount?: number;
+
+  @ApiPropertyOptional({ example: 480 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100_000_000)
+  likes?: number;
+
+  @ApiPropertyOptional({ example: 3 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1_000_000)
+  gifts?: number;
+
+  @ApiPropertyOptional({ example: 55 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100_000_000)
+  giftDiamonds?: number;
+
+  @ApiPropertyOptional({ example: 4 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1_000_000)
+  follows?: number;
+
+  @ApiPropertyOptional({ example: 2 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1_000_000)
+  shares?: number;
+
+  @ApiPropertyOptional({ example: 18 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1_000_000)
+  joins?: number;
+}
+
+/**
+ * O lote de instantâneos de audiência.
+ *
+ * É lote (e não um ponto por request) pelo mesmo motivo do chat: numa queda de
+ * rede o app acumula e despeja tudo quando reconecta. O teto de 120 cobre uma
+ * hora inteira de janela de 30s guardada offline — mais que isso é live que já
+ * não existe.
+ */
+export class LoteDeMetricasDto {
+  @ApiProperty({ type: [InstantaneoDeMetricaDto] })
+  @IsArray()
+  @ArrayMaxSize(120)
+  @ValidateNested({ each: true })
+  @Type(() => InstantaneoDeMetricaDto)
+  metrics: InstantaneoDeMetricaDto[];
+}
+
 export class EncerrarLiveRunDto {
   @ApiPropertyOptional({ example: 'A live acabou' })
   @IsOptional()

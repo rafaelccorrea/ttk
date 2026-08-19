@@ -23,6 +23,7 @@ import {
   LiveReplyDeliveryStatus,
 } from './entities/live-reply.entity';
 import { LiveRun, LiveRunMode } from './entities/live-run.entity';
+import { LiveRunMetric } from './entities/live-run-metric.entity';
 import { LiveSession } from './entities/live-session.entity';
 
 /**
@@ -761,6 +762,8 @@ export class LiveReplyService {
     private readonly sessoes: Repository<LiveSession>,
     @InjectRepository(AppUser)
     private readonly usuarios: Repository<AppUser>,
+    @InjectRepository(LiveRunMetric)
+    private readonly metricas: Repository<LiveRunMetric>,
     private readonly ai: AiService,
     private readonly billing: BillingService,
     private readonly custos: AiCostService,
@@ -897,6 +900,12 @@ export class LiveReplyService {
       usageRate: number | null;
       /** Mediana da latência da run, em ms. Null se não houve resposta. */
       latencyP50Ms: number | null;
+      peakViewers: number;
+      totalLikes: number;
+      totalGifts: number;
+      totalGiftDiamonds: number;
+      totalFollows: number;
+      totalShares: number;
     }>
   > {
     const runs = await this.runs.find({
@@ -955,8 +964,202 @@ export class LiveReplyService {
           run.repliesGenerated > 0 ? usadas / run.repliesGenerated : null,
         latencyP50Ms:
           agregado?.p50 != null ? Math.round(Number(agregado.p50)) : null,
+        peakViewers: run.peakViewers,
+        totalLikes: run.totalLikes,
+        totalGifts: run.totalGifts,
+        totalGiftDiamonds: run.totalGiftDiamonds,
+        totalFollows: run.totalFollows,
+        totalShares: run.totalShares,
       };
     });
+  }
+
+  /**
+   * Grava um lote de instantâneos de audiência e atualiza o resumo da run.
+   *
+   * Os agregados sobem por SQL incremental (e não relidos + salvos) porque o
+   * lote de métricas corre em paralelo com o processamento do chat, que também
+   * escreve na run — um save de entidade inteira aqui atropelaria os contadores
+   * do funil que outro request acabou de somar.
+   */
+  async registrarMetricas(
+    userId: string,
+    runId: string,
+    pontos: Array<{
+      capturedAt: Date;
+      viewerCount?: number;
+      likes?: number;
+      gifts?: number;
+      giftDiamonds?: number;
+      follows?: number;
+      shares?: number;
+      joins?: number;
+    }>,
+  ): Promise<{ aceitos: number }> {
+    const run = await this.acharRun(userId, runId);
+    if (!pontos.length) return { aceitos: 0 };
+
+    const linhas = pontos.map((p) =>
+      this.metricas.create({
+        liveRunId: run.id,
+        userId,
+        capturedAt: p.capturedAt,
+        viewerCount: p.viewerCount ?? null,
+        likes: p.likes ?? 0,
+        gifts: p.gifts ?? 0,
+        giftDiamonds: p.giftDiamonds ?? 0,
+        follows: p.follows ?? 0,
+        shares: p.shares ?? 0,
+        joins: p.joins ?? 0,
+      }),
+    );
+    await this.metricas.save(linhas);
+
+    const soma = (campo: keyof LiveRunMetric) =>
+      linhas.reduce((acc, l) => acc + (Number(l[campo]) || 0), 0);
+    const picoDoLote = Math.max(
+      0,
+      ...linhas.map((l) => l.viewerCount ?? 0),
+    );
+
+    await this.runs
+      .createQueryBuilder()
+      .update(LiveRun)
+      .set({
+        totalLikes: () => `"totalLikes" + ${soma('likes')}`,
+        totalGifts: () => `"totalGifts" + ${soma('gifts')}`,
+        totalGiftDiamonds: () =>
+          `"totalGiftDiamonds" + ${soma('giftDiamonds')}`,
+        totalFollows: () => `"totalFollows" + ${soma('follows')}`,
+        totalShares: () => `"totalShares" + ${soma('shares')}`,
+        peakViewers: () => `GREATEST("peakViewers", ${picoDoLote})`,
+      })
+      .where('id = :id', { id: run.id })
+      .execute();
+
+    return { aceitos: linhas.length };
+  }
+
+  /**
+   * A live inteira, para a página de detalhe na web: o resumo da run, a série
+   * de audiência e o que foi perguntado e respondido.
+   *
+   * As perguntas vêm da junção com as respostas — e não "toda mensagem do
+   * chat" — porque é isso que a página conta: o que o copiloto fez. As
+   * escaladas entram mesmo sem resposta, porque são justamente as lacunas que o
+   * vendedor precisa rever. O chat bruto (saudação, emoji, spam) fica de fora:
+   * tem retenção de 30 dias e não conta história nenhuma.
+   */
+  async detalharRun(userId: string, runId: string) {
+    const run = await this.acharRun(userId, runId);
+
+    const [serie, respostas, escaladas] = await Promise.all([
+      this.metricas.find({
+        where: { liveRunId: run.id },
+        order: { capturedAt: 'ASC' },
+      }),
+      this.respostas.find({
+        where: { liveRunId: run.id },
+        relations: { chatMessage: true },
+        order: { createdAt: 'ASC' },
+      }),
+      this.mensagens.find({
+        where: { liveRunId: run.id, status: 'escalada' },
+        order: { receivedAt: 'ASC' },
+      }),
+    ]);
+
+    const respondidas = new Set(respostas.map((r) => r.chatMessageId));
+
+    return {
+      ...this.resumoDaRun(run, respostas),
+      metricas: serie.map((m) => ({
+        capturedAt: m.capturedAt,
+        viewerCount: m.viewerCount,
+        likes: m.likes,
+        gifts: m.gifts,
+        giftDiamonds: m.giftDiamonds,
+        follows: m.follows,
+        shares: m.shares,
+        joins: m.joins,
+      })),
+      qa: [
+        ...respostas
+          // `silenciar` não vai à página pelo mesmo motivo que não vai ao
+          // painel: é o que o próprio copiloto considerou fraco.
+          .filter((r) => r.decision !== 'silenciar')
+          .map((r) => ({
+            chatMessageId: r.chatMessageId,
+            question: r.chatMessage?.text ?? '',
+            repeatCount: r.chatMessage?.repeatCount ?? 1,
+            receivedAt: r.chatMessage?.receivedAt ?? r.createdAt,
+            answer: r.text,
+            decision: r.decision,
+            confidence: Number(r.confidence),
+            latencyMs: r.latencyMs,
+            copiedAt: r.copiedAt,
+            deliveryStatus: r.deliveryStatus,
+            sentAt: r.sentAt,
+            failureReason: r.failureReason,
+          })),
+        ...escaladas
+          .filter((m) => !respondidas.has(m.id))
+          .map((m) => ({
+            chatMessageId: m.id,
+            question: m.text,
+            repeatCount: m.repeatCount,
+            receivedAt: m.receivedAt,
+            answer: null,
+            decision: 'escalar' as const,
+            confidence: null,
+            latencyMs: null,
+            copiedAt: null,
+            deliveryStatus: 'nao_aplica' as const,
+            sentAt: null,
+            failureReason: null,
+          })),
+      ].sort(
+        (a, b) =>
+          new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime(),
+      ),
+    };
+  }
+
+  /** O mesmo formato de linha de `listarRuns`, para uma run só. */
+  private resumoDaRun(run: LiveRun, respostas: LiveReply[]) {
+    const visiveis = respostas.filter((r) => r.decision !== 'silenciar');
+    const usadas = visiveis.filter((r) => r.copiedAt != null).length;
+    const latencias = visiveis
+      .map((r) => r.latencyMs)
+      .filter((n) => n > 0)
+      .sort((a, b) => a - b);
+    return {
+      id: run.id,
+      status: run.status,
+      mode: run.mode,
+      startedAt: run.startedAt,
+      endedAt: run.endedAt,
+      knowledgeSessionId: run.knowledgeSessionId,
+      tiktokUsername: run.tiktokUsername,
+      messagesSeen: run.messagesSeen,
+      repliesGenerated: run.repliesGenerated,
+      escalations: run.escalations,
+      repliesSent: run.repliesSent,
+      deliveryFailures: run.deliveryFailures,
+      minutesCharged: run.minutesCharged,
+      repliesUsed: usadas,
+      usageRate:
+        run.repliesGenerated > 0 ? usadas / run.repliesGenerated : null,
+      latencyP50Ms: latencias.length
+        ? latencias[Math.floor(latencias.length / 2)]
+        : null,
+      peakViewers: run.peakViewers,
+      totalLikes: run.totalLikes,
+      totalGifts: run.totalGifts,
+      totalGiftDiamonds: run.totalGiftDiamonds,
+      totalFollows: run.totalFollows,
+      totalShares: run.totalShares,
+    };
   }
 
   // ------------------------------------------- realimentação da base (f. 3)
