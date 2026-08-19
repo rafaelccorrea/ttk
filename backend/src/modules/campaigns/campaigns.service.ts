@@ -870,9 +870,8 @@ export class CampaignsService {
     let frame: Buffer | undefined;
     const prefixoEspelho = `${MEDIA_ROUTE}/`;
     if (imagemBase.startsWith(prefixoEspelho)) {
-      const objeto = await this.mirror.readObject(
-        imagemBase.slice(prefixoEspelho.length),
-      );
+      const chave = imagemBase.slice(prefixoEspelho.length);
+      const objeto = await this.mirror.readObject(chave);
       if (!objeto?.body?.length) {
         throw new ConflictException(
           'O frame base desta cena não pôde ser lido do armazenamento. ' +
@@ -880,6 +879,15 @@ export class CampaignsService {
         );
       }
       frame = objeto.body;
+      /*
+       * O driver de API da Higgsfield NÃO aceita buffer — só busca o frame
+       * por URL https. A pré-assinada resolve sem abrir o bucket: acesso
+       * temporário só àquele objeto. Sem ela, campanha inteira parava aqui
+       * com "precisa de URL pública" (aconteceu com o bucket privado local).
+       * O buffer segue junto para o driver de CLI, que prefere arquivo.
+       */
+      const assinada = await this.mirror.presignedUrl(chave);
+      if (assinada) imagemBase = assinada;
     }
 
     const media = await this.videogen.generateFromImage(
@@ -1161,6 +1169,14 @@ export class CampaignsService {
     if (cena.status !== 'pronta' || !cena.outputUrl) {
       throw new ConflictException('Só uma cena já renderizada pode ser redublada.');
     }
+    // Mesma regra da dublagem automática: TTS sobre o apresentador dessincroniza
+    // os lábios — a voz dele já nasce sincronizada no próprio vídeo.
+    if (cena.tipo !== 'produto') {
+      throw new ConflictException(
+        'A cena do apresentador mantém a voz original, sincronizada com os lábios. ' +
+          'A regravação por narração vale só para cenas de produto.',
+      );
+    }
     if (!cena.fala?.trim()) {
       throw new ConflictException('Esta cena não tem fala para narrar.');
     }
@@ -1241,6 +1257,14 @@ export class CampaignsService {
    * manter o original. Só toca no S3 quando TODA a cadeia deu certo.
    */
   private async dublarCena(cena: CampaignScene): Promise<string | null> {
+    /*
+     * SÓ cena de produto é dublada. Na cena de apresentador o modelo de vídeo
+     * gera a fala COM os lábios sincronizados — trocar a trilha por TTS
+     * deixava a boca dizendo uma coisa e o áudio outra, e a voz mudava de uma
+     * cena para a seguinte (defeito grave visto em uso real). Na cena de
+     * produto não há rosto na tela, então a narração TTS limpa só melhora.
+     */
+    if (cena.tipo !== 'produto') return null;
     if (!cena.fala?.trim() || !this.assembly.enabled) return null;
     try {
       const [video, narracao] = await Promise.all([

@@ -887,7 +887,11 @@ function Storyboard({
                           Baixar
                         </Button>
                       </Tooltip>
-                      {Boolean(cena.fala?.trim()) && (
+                      {/* Redublar é só para cena de PRODUTO: no apresentador a
+                          voz nasce sincronizada com os lábios no próprio vídeo,
+                          e trocá-la por TTS dessincroniza a boca. O backend
+                          recusa; aqui o botão nem aparece. */}
+                      {cena.tipo === 'produto' && Boolean(cena.fala?.trim()) && (
                         <Tooltip title="Regrava só a voz em português. Não consome créditos — o vídeo final é remontado com o novo áudio.">
                           <Button
                             size="small"

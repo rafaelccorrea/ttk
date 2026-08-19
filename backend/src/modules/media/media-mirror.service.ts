@@ -6,6 +6,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 
@@ -374,6 +375,28 @@ export class MediaMirrorService {
       return objeto;
     } catch (error) {
       this.logger.warn(`Leitura do S3 falhou (${key}): ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * URL https assinada e TEMPORÁRIA de um objeto do bucket privado.
+   *
+   * Existe para entregar um objeto a uma FORNECEDORA (a API da Higgsfield só
+   * busca frame por URL pública), sem abrir o bucket nem exigir
+   * AWS_S3_PUBLIC_BASE. A validade é curta de propósito: a fornecedora baixa
+   * o frame na hora do submit, e depois disso a URL não serve para nada.
+   */
+  async presignedUrl(key: string, expiresInSeconds = 3600): Promise<string | null> {
+    if (!this.client || !key) return null;
+    try {
+      return await getSignedUrl(
+        this.client,
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+        { expiresIn: expiresInSeconds },
+      );
+    } catch (error) {
+      this.logger.warn(`Pré-assinatura falhou (${key}): ${error}`);
       return null;
     }
   }
