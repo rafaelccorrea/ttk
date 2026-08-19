@@ -145,10 +145,13 @@ function montarPromptDeCena(opts: {
   // ----------------------------------------------------------------- ÁUDIO
   if (opts.fala?.trim()) {
     partes.push(
-      `Dialogue — the exact line, in BRAZILIAN PORTUGUESE (pt-BR): "${opts.fala.trim()}"`,
+      // "VERBATIM" com reforço: o modelo "corrigia" a concordância sozinho e
+      // trocava palavras da fala ("o dia todo" saiu "o dia toda" em produção).
+      `Dialogue — say this EXACT line VERBATIM, word for word as written, in BRAZILIAN PORTUGUESE (pt-BR): "${opts.fala.trim()}"`,
       `Audio: ${opts.vozDescricao ?? 'voice of a young Brazilian woman'}, natural pt-BR accent, ` +
         'calm warm conversational tone, relaxed pace with natural pauses — never shouting, never a radio announcer. ' +
         'Spoken language is Brazilian Portuguese ONLY — never Spanish or English. ' +
+        'Pronounce every word exactly as written — never substitute, re-inflect, add or drop a word. ' +
         'Lip-sync matches the dialogue word by word. No music.',
     );
   } else {
