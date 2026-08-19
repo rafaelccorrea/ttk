@@ -174,7 +174,7 @@ O que separa um roteiro que vende de um que enfeita (siga TUDO):
 - PROIBIDO o vocabulário de anúncio genérico: "incrível", "perfeito", "revolucionário", "surpreendente", "o melhor do mercado", "você precisa disso", "olha isso". Se a fala servir para qualquer produto, reescreva até servir só para este.
 - Fale como gente no WhatsApp, não como locutor: frases curtas, contração natural ("tá", "pra"), uma ideia por cena.
 - Varie o enquadramento e o gesto em CADA cena de apresentador ("inclina para a câmera", "mostra com as mãos", "aponta para baixo") — duas cenas com a mesma pose parecem foto repetida.
-- Pelo menos UMA cena de apresentador do meio deve mostrar a pessoa SEGURANDO o produto perto do rosto enquanto fala dele ("mostraProduto": false — a pessoa continua em quadro).
+- OBRIGATÓRIO, sem exceção: a SEGUNDA cena de apresentador do roteiro (contando o gancho como a primeira) mostra a pessoa SEGURANDO O PRODUTO na mão, perto do rosto, enquanto fala dele — escreva isso explicitamente em "acaoVisual" ("segura o [produto] na mão, perto do rosto"). É cena de apresentador ("mostraProduto": false — a pessoa continua em quadro). Roteiro sem essa cena está ERRADO.
 - As cenas se emendam: cada fala puxa a seguinte (pergunta → resposta, problema → virada, prova → oferta). Lidas em sequência, formam UMA conversa, não slides soltos.
 
 Responda APENAS com um array JSON, sem texto antes ou depois, no formato:

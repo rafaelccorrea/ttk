@@ -680,6 +680,7 @@ export class CampaignsService {
      */
     let imagemBase: string | null;
     let promptFinal: string;
+    let promptExtra = '';
 
     if (cena.tipo === 'produto') {
       imagemBase = cena.baseImageUrl;
@@ -709,8 +710,25 @@ export class CampaignsService {
         );
       }
       imagemBase = persona.seedImageUrl;
+      /**
+       * O roteiro manda o apresentador "segurar o produto" — mas o modelo de
+       * vídeo parte do retrato, onde produto nenhum existe, e sem saber O QUE
+       * segurar ele ignorava a ordem ou inventava um objeto qualquer. O nome
+       * (e o benefício, que descreve a aparência do resultado) entra no
+       * prompt para a mão ter o que mostrar.
+       */
+      const produtoDaCena = await this.produtos.findOneBy({
+        id: campanha.userProductId,
+      });
+      if (produtoDaCena) {
+        promptExtra =
+          `The product being presented is "${produtoDaCena.name}"` +
+          (produtoDaCena.benefit ? ` (${produtoDaCena.benefit})` : '') +
+          '. If the action mentions holding or showing the product, the person holds it clearly visible in hand. ';
+      }
       promptFinal =
         `${persona.promptFragment}. Action: ${cena.acaoVisual}. ` +
+        promptExtra +
         // Sem isto o retrato-semente congela a pose: toda cena saía com o
         // apresentador na MESMA posição, de busto parado — parecia foto.
         'Natural expressive hand gestures, dynamic body language, subtle camera movement. ' +
