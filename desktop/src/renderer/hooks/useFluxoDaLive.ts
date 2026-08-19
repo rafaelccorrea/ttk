@@ -141,7 +141,10 @@ export function useFluxoDaLive(): FluxoDaLive {
   // O placar da sala, fora do SSE: o webcast entrega direto ao processo
   // principal e chega aqui por um canal próprio — números, nunca identidade.
   useEffect(() => {
-    if (!ponte) return undefined;
+    // O optional chama a atenção de propósito: num reload parcial do dev o
+    // preload antigo ainda não expõe este método, e chamar direto derrubava o
+    // painel inteiro em preto. Sem placar é degradação; sem painel é apagão.
+    if (!ponte?.aoReceberAudiencia) return undefined;
     return ponte.aoReceberAudiencia((evento) => {
       if (evento.kind === 'viewers') {
         setViewers(evento.value);
