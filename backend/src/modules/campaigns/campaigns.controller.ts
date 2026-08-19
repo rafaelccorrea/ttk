@@ -216,6 +216,12 @@ export class CampaignsController {
     return this.campaigns.atualizarCampanhaPreferencias(user.id, id, dto);
   }
 
+  @Post(':id/queue/cancel')
+  @ApiOperation({ summary: 'Cancela as cenas ainda não disparadas da fila (grátis)' })
+  cancelQueue(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.campaigns.cancelarFila(user.id, id);
+  }
+
   @Get(':id/refresh')
   @ApiOperation({ summary: 'Atualiza o status das cenas em renderização' })
   refresh(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {

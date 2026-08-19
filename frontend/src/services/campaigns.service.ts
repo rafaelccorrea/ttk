@@ -217,6 +217,12 @@ export const campaignsService = {
     return data;
   },
 
+  /** Desliga a fila: o que não disparou não cobra; a cena em voo termina. */
+  async cancelQueue(id: string): Promise<CampaignDetail> {
+    const { data } = await api.post<CampaignDetail>(`/campaigns/${id}/queue/cancel`);
+    return data;
+  },
+
   async refresh(id: string): Promise<CampaignDetail> {
     const { data } = await api.get<CampaignDetail>(`/campaigns/${id}/refresh`);
     return data;

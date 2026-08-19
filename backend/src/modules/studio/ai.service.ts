@@ -610,13 +610,19 @@ export class AiService {
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini-tts',
-          voice: this.config.get<string>('TTS_VOICE') ?? 'nova',
+          // 'coral' segura melhor o pt-BR; 'nova' escorregava para prosódia
+          // de espanhol no meio da frase — saiu assim em produção.
+          voice: this.config.get<string>('TTS_VOICE') ?? 'coral',
           input: limpo,
-          // A instrução é o que garante o sotaque: sem ela a voz lê pt-BR
-          // com prosódia de inglês.
+          // A instrução é o que garante idioma E naturalidade — e precisa ser
+          // dura: "fale em português" solto não impedia o deslize de sotaque.
           instructions:
-            'Fale em português do Brasil, sotaque brasileiro natural, tom ' +
-            'animado de vendedora de vídeo curto, dicção clara.',
+            this.config.get<string>('TTS_INSTRUCOES') ??
+            'Você é uma apresentadora brasileira de São Paulo gravando um vídeo ' +
+              'curto de vendas. Fale EXCLUSIVAMENTE em português do Brasil — ' +
+              'nunca espanhol, nunca inglês. Sotaque paulistano natural, ritmo ' +
+              'de conversa (não de locutora), entusiasmo genuíno mas contido, ' +
+              'pausas naturais, como quem fala com uma amiga.',
           response_format: 'mp3',
         }),
       });

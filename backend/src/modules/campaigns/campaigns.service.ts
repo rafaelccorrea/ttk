@@ -56,6 +56,31 @@ const CANDIDATAS_SEMANTICAS = 200;
 /** Página da lista de campanhas — e também o teto que o cliente pode pedir. */
 const CAMPANHAS_POR_PAGINA = 10;
 
+/**
+ * Paleta de gestos e câmera, indexada pela ordem da cena.
+ *
+ * Todas as cenas de apresentador partem do MESMO retrato-semente, e com a
+ * mesma instrução fixa de "gestos naturais" o modelo repetia o MESMO gesto em
+ * todas — o vídeo parecia um loop. A variação é determinística pela ordem:
+ * duas renderizações da mesma cena saem parecidas (bom para retry), mas duas
+ * cenas vizinhas nunca ganham a mesma direção.
+ */
+const GESTOS_POR_CENA = [
+  'Leans slightly toward the camera, talking with open hands.',
+  'Gestures emphatically with one hand, then touches her chest.',
+  'Tilts head, smiles, and counts points on her fingers.',
+  'Raises eyebrows, gestures outward with both hands.',
+  'Nods while gesturing, then points toward the camera.',
+  'Shifts weight, sweeps one hand across the frame while talking.',
+];
+
+const CAMERAS_POR_CENA = [
+  'Camera slowly pushes in.',
+  'Subtle handheld sway.',
+  'Camera drifts slightly to the side.',
+  'Slow push-in with a gentle tilt.',
+];
+
 /** Teto de fotos por produto — mais que isso ninguém usa no storyboard. */
 const MAX_FOTOS = 5;
 
@@ -377,6 +402,22 @@ export class CampaignsService {
       campanha.finalVideoUrl = null;
     }
     return this.campanhas.save(campanha);
+  }
+
+  /**
+   * Desliga a fila de renderização.
+   *
+   * O que ainda não foi disparado não cobra nada — cancelar é de graça. A
+   * cena que JÁ está renderizando termina: o crédito dela já foi debitado na
+   * submissão, e abortar na fornecedora não estorna.
+   */
+  async cancelarFila(userId: string, campaignId: string) {
+    const campanha = await this.campanhas.findOneBy({ id: campaignId, userId });
+    if (!campanha) throw new NotFoundException('Campanha não encontrada.');
+    if (campanha.renderQueue) {
+      await this.campanhas.update(campaignId, { renderQueue: false });
+    }
+    return this.detalharCampanha(userId, campaignId);
   }
 
   async listarCampanhas(userId: string, page = 1, limit = CAMPANHAS_POR_PAGINA) {
@@ -716,15 +757,14 @@ export class CampaignsService {
       try {
         await this.renderizarCena(userId, pendentes[0].id);
       } catch (error) {
-        // A primeira nem disparou (saldo, CLI fora, retrato sumido): desligar
-        // a fila e subir a CAUSA REAL é a única informação útil que existe.
+        // A primeira nem disparou: desliga a fila e sobe a causa — a de
+        // negócio (saldo, retrato) como veio; a de infra, traduzida.
         await this.campanhas.update(campaignId, { renderQueue: false });
         this.logger.warn(
           `render-all: cena ${pendentes[0].ordem} da campanha ${campaignId} não disparou: ${error}`,
         );
-        if (error instanceof HttpException) throw error;
         throw new ConflictException(
-          'Nenhuma cena pôde ser disparada. Motivo: erro inesperado no servidor',
+          `Nenhuma cena pôde ser disparada. Motivo: ${this.causaParaOCliente(error)}`,
         );
       }
     }
@@ -842,16 +882,19 @@ export class CampaignsService {
           const promptVideo =
             `${persona.promptFragment}. Action: ${cena.acaoVisual}. ` +
             'The person keeps holding the same product visible in hand. ' +
-            'Natural expressive hand gestures, subtle camera movement. ' +
+            `${GESTOS_POR_CENA[(cena.ordem - 1) % GESTOS_POR_CENA.length]} ` +
+            `${CAMERAS_POR_CENA[(cena.ordem - 1) % CAMERAS_POR_CENA.length]} ` +
             (cena.fala
               ? `The person speaks in BRAZILIAN PORTUGUESE (pt-BR), lip-synced, saying exactly: "${cena.fala}". ` +
                 'All speech must be in Brazilian Portuguese — never English.'
               : 'No speech.');
-          const mediaComposta = await this.videogen.generateComposedVideo(userId, {
-            framePrompt,
-            referencias: [retrato, fotoProduto],
-            videoPrompt: promptVideo,
-          });
+          const mediaComposta = await this.dispararGeracao(cena.id, () =>
+            this.videogen.generateComposedVideo(userId, {
+              framePrompt,
+              referencias: [retrato, fotoProduto],
+              videoPrompt: promptVideo,
+            }),
+          );
           cena.promptFinal = promptVideo;
           cena.generatedMediaId = mediaComposta.id;
           cena.status = 'renderizando';
@@ -871,9 +914,10 @@ export class CampaignsService {
       promptFinal =
         `${persona.promptFragment}. Action: ${cena.acaoVisual}. ` +
         promptExtra +
-        // Sem isto o retrato-semente congela a pose: toda cena saía com o
-        // apresentador na MESMA posição, de busto parado — parecia foto.
-        'Natural expressive hand gestures, dynamic body language, subtle camera movement. ' +
+        // Variação determinística por cena: a instrução FIXA de "gestos
+        // naturais" fazia o modelo repetir o mesmo gesto em todas as cenas.
+        `${GESTOS_POR_CENA[(cena.ordem - 1) % GESTOS_POR_CENA.length]} ` +
+        `${CAMERAS_POR_CENA[(cena.ordem - 1) % CAMERAS_POR_CENA.length]} ` +
         (cena.fala
           ? `The person speaks in BRAZILIAN PORTUGUESE (pt-BR), lip-synced, saying exactly: "${cena.fala}". ` +
             'All speech must be in Brazilian Portuguese — never English.'
@@ -910,11 +954,8 @@ export class CampaignsService {
       if (assinada) imagemBase = assinada;
     }
 
-    const media = await this.videogen.generateFromImage(
-      userId,
-      imagemBase,
-      promptFinal,
-      frame,
+    const media = await this.dispararGeracao(cena.id, () =>
+      this.videogen.generateFromImage(userId, imagemBase, promptFinal, frame),
     );
 
     cena.promptFinal = promptFinal;
@@ -1037,6 +1078,45 @@ export class CampaignsService {
    *    desliga a fila — repetir a mesma falha nas cenas seguintes a cada 6s
    *    só encheria a tela de erros idênticos.
    */
+  /**
+   * O que o CLIENTE lê quando um disparo falha.
+   *
+   * Erro de negócio (4xx: saldo insuficiente, retrato não pronto) passa como
+   * veio — é acionável por ele. Erro de infra (5xx ou inesperado) NUNCA passa:
+   * "configure AWS_S3_PUBLIC_BASE ou use o driver de CLI" chegou à tela de um
+   * vendedor — é instrução para a gente, não para ele. A causa real fica no
+   * log, que é onde o suporte procura.
+   */
+  /**
+   * Chama a fornecedora com a tradução de erro aplicada NA ORIGEM: todo
+   * caminho que dispara geração (fila, render-all, clique manual) passa por
+   * aqui, então nenhum deles vaza detalhe de infra para a tela.
+   */
+  private async dispararGeracao<T>(
+    cenaId: string,
+    submit: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await submit();
+    } catch (error) {
+      this.logger.error(`Disparo da cena ${cenaId} falhou: ${error}`);
+      if (error instanceof HttpException && error.getStatus() < 500) throw error;
+      throw new ConflictException(this.causaParaOCliente(error));
+    }
+  }
+
+  private causaParaOCliente(error: unknown): string {
+    if (error instanceof HttpException && error.getStatus() < 500) {
+      return String(
+        (error.getResponse() as { message?: string })?.message ?? error.message,
+      );
+    }
+    return (
+      'instabilidade temporária na geração de vídeo. ' +
+      'Nenhum crédito foi cobrado — tente de novo em alguns minutos.'
+    );
+  }
+
   private async avancarFila(userId: string, campaignId: string): Promise<void> {
     if (this.filasEmVoo.has(campaignId)) return;
     this.filasEmVoo.add(campaignId);
@@ -1061,18 +1141,11 @@ export class CampaignsService {
           `Fila da campanha ${campaignId}: cena ${proxima.ordem} disparada.`,
         );
       } catch (error) {
-        const causa =
-          error instanceof HttpException
-            ? String(
-                (error.getResponse() as { message?: string })?.message ??
-                  error.message,
-              )
-            : 'erro inesperado no servidor';
         this.logger.warn(
           `Fila da campanha ${campaignId}: cena ${proxima.ordem} não disparou: ${error}`,
         );
         proxima.status = 'falhou';
-        proxima.error = `A cena não pôde ser disparada: ${causa}`;
+        proxima.error = `A cena não pôde ser disparada: ${this.causaParaOCliente(error)}`;
         await this.cenas.save(proxima);
         await this.campanhas.update(campaignId, { renderQueue: false });
       }

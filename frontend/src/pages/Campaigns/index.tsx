@@ -737,6 +737,19 @@ function Storyboard({
                   : `Gerar vídeo completo${custoTotal !== null ? ` · ${custoTotal} créditos` : ''}`}
               </Button>
             </Stack>
+            {/* Cancelar só desliga o que AINDA NÃO disparou — e isso é grátis.
+                A cena em voo termina, porque o crédito dela já foi debitado. */}
+            {detalhe.renderQueue && (
+              <Button
+                size="small"
+                color="inherit"
+                sx={{ mt: 1, color: 'text.secondary' }}
+                disabled={ocupado}
+                onClick={() => acao(() => campaignsService.cancelQueue(detalhe.id))}
+              >
+                Cancelar as cenas na fila (não cobra nada)
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1176,12 +1189,17 @@ function CampanhasTab({
   // Só consulta enquanto existe algo em andamento — parado, não gera tráfego.
   useEffect(() => {
     if (!aberta || !detalhe) return;
+    const cenasProntas =
+      detalhe.cenas.length > 0 && detalhe.cenas.every((c) => c.status === 'pronta');
     const emAndamento =
       detalhe.persona?.status === 'gerando' ||
       // Fila ligada: é o refresh que dispara a próxima cena — parar de
       // consultar aqui congelaria a fila no meio.
       detalhe.renderQueue ||
-      detalhe.cenas.some((c) => c.status === 'renderizando');
+      detalhe.cenas.some((c) => c.status === 'renderizando') ||
+      // Cenas prontas SEM vídeo final: é o refresh que monta — parar aqui
+      // era o que obrigava o usuário a dar F5 para ver o vídeo aparecer.
+      (cenasProntas && !detalhe.finalVideoUrl);
     if (!emAndamento) return;
     const timer = setTimeout(async () => {
       try {
