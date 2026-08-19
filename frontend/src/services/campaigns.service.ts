@@ -188,9 +188,11 @@ export const campaignsService = {
     return data;
   },
 
-  async list(page = 1): Promise<CampaignList> {
+  /** `q` busca no servidor — título, nome do produto ou preço — atravessando
+   *  todas as páginas, não só a aberta. */
+  async list(page = 1, q?: string): Promise<CampaignList> {
     const { data } = await api.get<CampaignList | Campaign[]>('/campaigns', {
-      params: { page },
+      params: { page, ...(q?.trim() ? { q: q.trim() } : {}) },
     });
     // Backend antigo (ou ainda não reiniciado) devolve o array puro. O front
     // e o back não deployam juntos — o front é subido à mão — então essa

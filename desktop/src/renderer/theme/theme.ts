@@ -274,6 +274,15 @@ export const theme = createTheme({
     },
     MuiDialog: {
       styleOverrides: {
+        /*
+         * Todo diálogo vive nos 40% da direita. O modal do MUI cobre a janela
+         * inteira, mas os 60% da esquerda são a BrowserView do TikTok, que o
+         * processo principal desenha POR CIMA deste documento — um diálogo
+         * centralizado na janela aparece cortado ao meio, com metade escondida
+         * atrás do vídeo. Alinhar o root ao painel é o que faz ele existir
+         * inteiro no único pedaço de tela que é nosso.
+         */
+        root: { left: '60%' },
         paper: {
           backgroundImage: 'none',
           backgroundColor: SUPERFICIE_ALTA,

@@ -633,15 +633,38 @@ export class CampaignsService {
     return this.detalharCampanha(userId, campaignId);
   }
 
-  async listarCampanhas(userId: string, page = 1, limit = CAMPANHAS_POR_PAGINA) {
+  async listarCampanhas(
+    userId: string,
+    page = 1,
+    limit = CAMPANHAS_POR_PAGINA,
+    busca?: string,
+  ) {
     const take = Math.min(Math.max(1, limit), CAMPANHAS_POR_PAGINA);
     const paginaAtual = Math.max(1, page);
-    const [itens, total] = await this.campanhas.findAndCount({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-      skip: (paginaAtual - 1) * take,
-      take,
-    });
+
+    /*
+     * A busca é do SERVIDOR, não um filtro da página atual: com a lista
+     * paginada, filtrar no cliente só encontraria o que por acaso está na
+     * página aberta. O termo alcança o título da campanha, o nome do produto e
+     * o preço — vírgula vira ponto porque o vendedor digita "99,90" e o
+     * `numeric` do Postgres imprime "99.90".
+     */
+    const termo = busca?.trim().slice(0, 120);
+    const consulta = this.campanhas
+      .createQueryBuilder('c')
+      .where('c."userId" = :userId', { userId })
+      .orderBy('c."createdAt"', 'DESC')
+      .skip((paginaAtual - 1) * take)
+      .take(take);
+    if (termo) {
+      consulta
+        .leftJoin(UserProduct, 'p', 'p.id = c."userProductId"')
+        .andWhere(
+          '(c.title ILIKE :q OR p.name ILIKE :q OR CAST(p."priceBrl" AS text) ILIKE :q)',
+          { q: `%${termo.replace(/,/g, '.')}%` },
+        );
+    }
+    const [itens, total] = await consulta.getManyAndCount();
 
     const idsDeProduto = [...new Set(itens.map((c) => c.userProductId))];
     const produtos = idsDeProduto.length

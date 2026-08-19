@@ -9,6 +9,7 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
 import PhotoLibraryRoundedIcon from '@mui/icons-material/PhotoLibraryRounded';
 import RocketLaunchRoundedIcon from '@mui/icons-material/RocketLaunchRounded';
+import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import {
   Alert,
   Box,
@@ -25,6 +26,7 @@ import {
   FormControlLabel,
   Grid,
   IconButton,
+  InputAdornment,
   MenuItem,
   Pagination,
   Skeleton,
@@ -1328,6 +1330,8 @@ function CampanhasTab({
   pagina,
   paginas,
   onPagina,
+  busca,
+  onBusca,
   precos,
   onChange,
 }: {
@@ -1342,6 +1346,9 @@ function CampanhasTab({
   pagina: number;
   paginas: number;
   onPagina: (pagina: number) => void;
+  /** O termo digitado; quem busca é a API, atravessando todas as páginas. */
+  busca: string;
+  onBusca: (termo: string) => void;
   precos: CampaignPricing | null;
   onChange: () => void;
 }) {
@@ -1579,8 +1586,31 @@ function CampanhasTab({
 
       <Grid item xs={12} md={7}>
         <Stack spacing={1.5}>
+          {/* A busca é do servidor e atravessa TODAS as páginas — nome da
+              campanha, produto ou preço. Um filtro local só acharia o que por
+              acaso está na página aberta. */}
+          {(campanhas.length > 0 || busca) && (
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Buscar por nome, produto ou valor…"
+              value={busca}
+              onChange={(e) => onBusca(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchRoundedIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          )}
           {!campanhas.length && (
-            <Alert severity="info">Nenhuma campanha ainda.</Alert>
+            <Alert severity="info">
+              {busca
+                ? `Nenhuma campanha encontrada para "${busca}".`
+                : 'Nenhuma campanha ainda.'}
+            </Alert>
           )}
           {dialogoDeConfirmacao}
           {campanhas.map((campanha) => (
@@ -1684,6 +1714,10 @@ export function CampaignsPage() {
     comVideo: 0,
   });
   const [paginaCampanhas, setPaginaCampanhas] = useState(1);
+  /** O que está no campo (`busca`) e o que já foi à API (`buscaAplicada`) —
+   *  separados pelo debounce, para não disparar uma request por tecla. */
+  const [buscaCampanhas, setBuscaCampanhas] = useState('');
+  const [buscaAplicada, setBuscaAplicada] = useState('');
   const [precos, setPrecos] = useState<CampaignPricing | null>(null);
   const [carregando, setCarregando] = useState(true);
   const montado = useRef(true);
@@ -1692,7 +1726,7 @@ export function CampaignsPage() {
     const [p, pe, c] = await Promise.all([
       campaignsService.listProducts(),
       campaignsService.listPersonas(),
-      campaignsService.list(paginaCampanhas),
+      campaignsService.list(paginaCampanhas, buscaAplicada),
     ]);
     if (!montado.current) return;
     setProdutos(p);
@@ -1701,7 +1735,18 @@ export function CampaignsPage() {
     // Excluir a última campanha da última página deixaria a tela numa página
     // que não existe mais — volta para a última que existe.
     if (paginaCampanhas > c.pageCount) setPaginaCampanhas(c.pageCount);
-  }, [paginaCampanhas]);
+  }, [paginaCampanhas, buscaAplicada]);
+
+  // O debounce da busca: 400ms depois da última tecla o termo vai à API, e a
+  // paginação volta ao começo — a página 3 de uma busca antiga não existe na
+  // lista filtrada.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setBuscaAplicada(buscaCampanhas);
+      setPaginaCampanhas(1);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [buscaCampanhas]);
 
   useEffect(() => {
     montado.current = true;
@@ -1814,6 +1859,8 @@ export function CampaignsPage() {
           pagina={campanhas.page}
           paginas={campanhas.pageCount}
           onPagina={setPaginaCampanhas}
+          busca={buscaCampanhas}
+          onBusca={setBuscaCampanhas}
           precos={precos}
           onChange={recarregar}
         />

@@ -1,6 +1,7 @@
 import { BrowserWindow, clipboard, type WebContents } from 'electron';
 import Store from 'electron-store';
 import { ApiClient } from './api-client';
+import { MODO_SIMULACAO, SimuladorChatSource } from './chat-simulado';
 import { EnviadorDeComentarios } from './comment-sender';
 import { AgregadorDeMetricas } from './metricas';
 import { AcumuladorDeLote, JANELA_LOTE_MS } from './rate-limiter';
@@ -213,7 +214,9 @@ export class Copiloto {
      * escorriam num chat que não existe. Só o `false` explícito barra — ver o
      * contrato de `estaAoVivo` no construtor.
      */
-    const aoVivo = await this.estaAoVivo(params.tiktokUsername).catch(() => null);
+    const aoVivo = MODO_SIMULACAO
+      ? true
+      : await this.estaAoVivo(params.tiktokUsername).catch(() => null);
     if (aoVivo === false) {
       throw new Error(
         'Sua live ainda não está no ar. Comece a transmissão no TikTok primeiro e conecte de novo — nenhum minuto foi gasto.',
@@ -293,7 +296,11 @@ export class Copiloto {
   }
 
   private async conectarChat(alvo: string): Promise<void> {
-    const chat = new WebcastChatSource();
+    // Em simulação a única peça trocada é a fonte: o lote, o backend, o modelo
+    // e o painel continuam os de verdade — é o que faz a simulação valer algo.
+    const chat: ChatSource = MODO_SIMULACAO
+      ? new SimuladorChatSource()
+      : new WebcastChatSource();
 
     chat.on('message', (mensagem) => {
       /*

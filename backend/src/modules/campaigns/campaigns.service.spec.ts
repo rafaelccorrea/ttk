@@ -41,6 +41,7 @@ function servico(deps: Partial<Record<string, Dict>> = {}) {
     generate: jest.fn(),
     generateFromImage: jest.fn(async () => ({ id: 'media-1', status: 'queued' })),
     refresh: jest.fn(),
+    deleteMany: jest.fn(),
   };
   const mirror = deps.mirror ?? {
     putImage: jest.fn(async () => 'https://cdn/img.webp'),

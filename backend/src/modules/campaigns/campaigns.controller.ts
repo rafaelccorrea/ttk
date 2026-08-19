@@ -182,11 +182,13 @@ export class CampaignsController {
     @CurrentUser() user: AuthUser,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('q') q?: string,
   ) {
     return this.campaigns.listarCampanhas(
       user.id,
       Number(page) || 1,
       Number(limit) || undefined,
+      q,
     );
   }
 

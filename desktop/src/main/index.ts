@@ -12,6 +12,7 @@ import {
 } from 'electron';
 import type { ConfiguracoesCopiloto } from '../shared/desktop-api';
 import type { LiveRunMode } from '../shared/live-events';
+import { MODO_SIMULACAO } from './chat-simulado';
 import { Copiloto } from './copiloto';
 import { ModoFoco } from './foco';
 import {
@@ -303,6 +304,10 @@ function anexarTikTok(janela: BrowserWindow): void {
  * seria vender o que não dá para entregar.
  */
 async function tiktokLogado(): Promise<boolean> {
+  // Simulação não tem TikTok: fingir o login é o que destrava a tela de
+  // conectar (e mantém o modo foco na espera, em vez de pedir uma senha que
+  // não vai a lugar nenhum).
+  if (MODO_SIMULACAO) return true;
   const cookies = await session
     .fromPartition(PARTICAO_TIKTOK)
     .cookies.get({ domain: '.tiktok.com', name: 'sessionid' })
@@ -376,6 +381,7 @@ async function seguidoresDe(usuario: string): Promise<number | null> {
  * conta.
  */
 async function usuarioDoTikTok(): Promise<string | null> {
+  if (MODO_SIMULACAO) return 'live.simulada';
   if (!(await tiktokLogado())) return null;
   try {
     const resposta = await session

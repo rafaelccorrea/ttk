@@ -1,4 +1,5 @@
 import type { WebContents } from 'electron';
+import { MODO_SIMULACAO } from './chat-simulado';
 import type { EstadoConexao } from '../shared/desktop-api';
 
 /**
@@ -135,6 +136,18 @@ export class ModoFoco {
   private alvo(): string {
     const modo = this.modo();
     if (modo === 'login') return this.deps.urlLogin;
+    /*
+     * Em simulação não existe live no tiktok.com para mostrar: navegar para
+     * `/@live.simulada/live` pintava a página "Sem LIVE" do TikTok — que
+     * parece um erro nosso. A esquerda fica na tela do PikPok, dizendo o que
+     * está acontecendo.
+     */
+    if (modo === 'live' && MODO_SIMULACAO) {
+      return paginaDeEspera(
+        'Live simulada em andamento — o chat de mentira está alimentando o painel ao lado.',
+        this.deps.logo,
+      );
+    }
     if (modo === 'live') {
       const nome = (this.conexao.tiktokUsername ?? this.usuario ?? '')
         .trim()
