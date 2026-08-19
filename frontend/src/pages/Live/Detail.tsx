@@ -51,6 +51,7 @@ import {
 } from '@/services/live.service';
 import { STATUS_UI, StatusChip, OrigemChip, estaProcessando, mensagemDeErro } from './status';
 import { CardDoApp } from './CardDoApp';
+import { EnvioDialog } from './EnvioDialog';
 
 const POLL_MS = 8000;
 
@@ -326,6 +327,7 @@ export function LiveDetailPage() {
   const [faqEditando, setFaqEditando] = useState<LiveFaq | null>(null);
   const [faqDialogo, setFaqDialogo] = useState(false);
   const [importando, setImportando] = useState(false);
+  const [reenviando, setReenviando] = useState(false);
   const [resultadoImport, setResultadoImport] =
     useState<ResultadoDaImportacao | null>(null);
   const { confirmar, dialogoDeConfirmacao } = useConfirmacao();
@@ -503,11 +505,32 @@ export function LiveDetailPage() {
         </Card>
       )}
 
+      {/*
+       * O erro vem com a saída na mão. Antes o alerta era um beco: dizia o que
+       * falhou e nada mais, e o caminho real (voltar à lista, criar OUTRA live,
+       * redigitar o título) ninguém adivinhava. O backend sempre aceitou
+       * reenviar para a mesma sessão — faltava a porta na tela. A linha do
+       * estorno fica porque é a primeira dúvida de quem pagou para ver um erro.
+       */}
       {sessao.status === 'erro' && (
-        <Alert severity="error" sx={{ mb: 2.5 }}>
+        <Alert
+          severity="error"
+          sx={{ mb: 2.5 }}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              startIcon={<UploadFileRoundedIcon />}
+              onClick={() => setReenviando(true)}
+            >
+              Enviar de novo
+            </Button>
+          }
+        >
           <AlertTitle>Não deu para terminar esta live</AlertTitle>
           {sessao.errorMessage ??
-            'O processamento falhou e não recebemos o motivo. Tente enviar a gravação de novo.'}
+            'O processamento falhou e não recebemos o motivo. Tente enviar a gravação de novo.'}{' '}
+          Os créditos desta tentativa foram devolvidos.
         </Alert>
       )}
 
@@ -834,6 +857,15 @@ export function LiveDetailPage() {
         produtos={sessao.produtos}
         onFechar={() => setFaqDialogo(false)}
         onSalvar={salvarFaq}
+      />
+      <EnvioDialog
+        aberto={reenviando}
+        onFechar={() => setReenviando(false)}
+        onPronta={() => {
+          setReenviando(false);
+          void carregar();
+        }}
+        reenvioDe={{ id: sessao.id, title: sessao.title }}
       />
       {dialogoDeConfirmacao}
     </>
