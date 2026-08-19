@@ -555,11 +555,11 @@ export class CampaignsService {
     if (dto.acaoVisual !== undefined) cena.acaoVisual = dto.acaoVisual;
 
     if (dto.baseImageUrl !== undefined) {
-      if (cena.tipo !== 'produto') {
-        throw new ConflictException(
-          'Só a cena de produto parte de uma foto. A cena do apresentador parte do retrato.',
-        );
-      }
+      // Vale para a demonstração (a foto É o frame) e para a cena do
+      // apresentador com o produto na mão (a foto entra como referência da
+      // composição). Cena de apresentador comum não usa foto nenhuma — mas
+      // recusar aqui obrigaria a UI a repetir a regra; guardar não custa e a
+      // renderização só usa quando a ação pede o produto.
       const campanha = await this.campanhas.findOneByOrFail({ id: cena.campaignId });
       const produto = await this.produtos.findOneBy({ id: campanha.userProductId });
       // A URL tem que ser uma das fotos JÁ espelhadas do produto. Sem esta
@@ -741,9 +741,15 @@ export class CampaignsService {
         cena.acaoVisual ?? '',
       );
       if (seguraProduto && produtoDaCena?.images.length) {
+        // A foto que vai na mão é a escolhida em "Trocar foto"; sem escolha,
+        // a capa do produto.
+        const fotoEscolhida =
+          cena.baseImageUrl && produtoDaCena.images.includes(cena.baseImageUrl)
+            ? cena.baseImageUrl
+            : produtoDaCena.images[0];
         const [retrato, fotoProduto] = await Promise.all([
           this.lerCena(persona.seedImageUrl),
-          this.lerCena(produtoDaCena.images[0]),
+          this.lerCena(fotoEscolhida),
         ]);
         if (retrato && fotoProduto) {
           const framePrompt =

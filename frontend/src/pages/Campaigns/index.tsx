@@ -865,9 +865,15 @@ function Storyboard({
                     </>
                   )}
                   {/* Trocar a foto é grátis e só faz sentido antes de
-                      renderizar — depois de pronta, o vídeo já existe. */}
-                  {cena.tipo === 'produto' && cena.status !== 'pronta' && (
-                    <Tooltip title="Escolher de qual foto esta cena parte (grátis)">
+                      renderizar — depois de pronta, o vídeo já existe. Vale
+                      para a demonstração E para a cena com o produto na mão
+                      (a foto escolhida é a que entra na composição). */}
+                  {(cena.tipo === 'produto' ||
+                    /segur|na m[ãa]o|em m[ãa]os|mostra o produto/i.test(
+                      cena.acaoVisual ?? '',
+                    )) &&
+                    cena.status !== 'pronta' && (
+                    <Tooltip title="Escolher qual foto do produto aparece nesta cena (grátis)">
                       <Button
                         size="small"
                         variant="outlined"
