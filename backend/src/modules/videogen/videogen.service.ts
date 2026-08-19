@@ -258,4 +258,20 @@ export class VideogenService {
       throw new NotFoundException(`Geração ${id} não encontrada`);
     }
   }
+
+  /**
+   * Limpeza em lote, para quando o DONO do vídeo morre (campanha apagada,
+   * persona apagada, roteiro regerado): sem isto as gerações ficam órfãs em
+   * "Minhas Gerações", apontando para URLs da Higgsfield que expiram — o
+   * vendedor via um card de um vídeo que já não existe em lugar nenhum.
+   *
+   * Silenciosa de propósito, ao contrário do `delete`: quem chama está no meio
+   * de uma exclusão maior, e um id que já não existe não é erro — é o estado
+   * que se queria alcançar.
+   */
+  async deleteMany(userId: string, ids: Array<string | null>): Promise<void> {
+    const validos = ids.filter((id): id is string => !!id);
+    if (!validos.length) return;
+    await this.media.delete(validos.map((id) => ({ id, userId })));
+  }
 }

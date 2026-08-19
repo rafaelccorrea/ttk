@@ -555,8 +555,12 @@ export class CampaignsService {
   }
 
   async removerPersona(userId: string, id: string): Promise<void> {
-    const r = await this.personas.delete({ id, userId });
-    if (!r.affected) throw new NotFoundException('Persona não encontrada.');
+    const persona = await this.personas.findOneBy({ id, userId });
+    if (!persona) throw new NotFoundException('Persona não encontrada.');
+    await this.personas.delete({ id, userId });
+    // O retrato-semente só serve a esta persona; sem ela, é um rosto órfão
+    // parado em "Minhas Gerações".
+    await this.videogen.deleteMany(userId, [persona.seedMediaId]);
   }
 
   // --------------------------------------------------------------- campanhas
@@ -719,7 +723,17 @@ export class CampaignsService {
       ? await this.billing.withCharge(userId, 'script', run)
       : await run();
 
+    // Regerar o roteiro descarta as cenas antigas — e as gerações delas, que
+    // sem isto ficariam órfãs em "Minhas Gerações".
+    const cenasAntigas = await this.cenas.find({
+      where: { campaignId },
+      select: { generatedMediaId: true },
+    });
     await this.cenas.delete({ campaignId });
+    await this.videogen.deleteMany(
+      userId,
+      cenasAntigas.map((c) => c.generatedMediaId),
+    );
     // Contador PRÓPRIO das cenas de produto. Antes a rotação usava o índice de
     // todas as cenas, então num roteiro com uma demonstração só ela caía
     // sempre na mesma foto — o vendedor subia cinco e via uma.
@@ -1669,8 +1683,19 @@ export class CampaignsService {
   }
 
   async removerCampanha(userId: string, id: string): Promise<void> {
+    // As gerações das cenas vão junto — coletadas ANTES do delete, porque a
+    // cascata das cenas apaga a referência. Sem isso, "Minhas Gerações" fica
+    // com vídeos de uma campanha que não existe mais (e cuja URL expira).
+    const cenas = await this.cenas.find({
+      where: { campaignId: id },
+      select: { generatedMediaId: true },
+    });
     const r = await this.campanhas.delete({ id, userId });
     if (!r.affected) throw new NotFoundException('Campanha não encontrada.');
+    await this.videogen.deleteMany(
+      userId,
+      cenas.map((c) => c.generatedMediaId),
+    );
   }
 
   /** Toda cena é alcançada pelo dono da campanha — nunca pelo id solto. */

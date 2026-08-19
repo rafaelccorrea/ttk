@@ -37,6 +37,20 @@ function statusColor(status: GeneratedMedia['status']): {
   return { bg: 'rgba(220,38,38,0.10)', color: '#dc2626' };
 }
 
+/** "12/08 às 19:45" — o card se identifica pela data, não pelo prompt. */
+function quandoGerou(iso: string): string {
+  const data = new Date(iso);
+  const dia = data.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+  });
+  const hora = data.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return `${dia} às ${hora}`;
+}
+
 function MediaCard({
   item,
   onDelete,
@@ -54,7 +68,20 @@ function MediaCard({
       : STATUS_LABEL[item.status];
 
   return (
-    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Card
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        borderRadius: 3,
+        overflow: 'hidden',
+        transition: 'transform .15s ease, box-shadow .15s ease',
+        '&:hover': {
+          transform: 'translateY(-2px)',
+          boxShadow: '0 10px 30px rgba(22,24,35,0.10)',
+        },
+      }}
+    >
       <Box
         sx={{
           aspectRatio: item.aspectRatio === '9:16' ? '9 / 14' : '16 / 10',
@@ -80,7 +107,10 @@ function MediaCard({
             <Box
               component="img"
               src={item.outputUrl}
-              alt={item.prompt}
+              // O prompt NÃO aparece em lugar nenhum do card — nem no alt. Ele
+              // é a receita interna da geração (direção de cena, restrições de
+              // modelo), texto de máquina que só confunde e expõe o bastidor.
+              alt="Imagem gerada por IA"
               sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           )
@@ -133,17 +163,9 @@ function MediaCard({
             </Tooltip>
           </Box>
         </Box>
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{
-            display: '-webkit-box',
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-          }}
-        >
-          {item.prompt}
+        <Typography variant="body2" color="text.secondary">
+          {quandoGerou(item.createdAt)}
+          {item.aspectRatio ? ` · ${item.aspectRatio}` : ''}
         </Typography>
       </CardContent>
     </Card>
@@ -192,26 +214,58 @@ export function GenerationsPage() {
 
   return (
     <>
+      {/* O mesmo cabeçalho-vitrine do resto do produto: gradiente sutil da
+          marca no fundo e no título, para a tela não parecer uma listagem
+          administrativa do que é, na prática, a galeria do usuário. */}
       <Box
-        display="flex"
-        alignItems="center"
-        justifyContent="space-between"
-        gap={1}
-        flexWrap="wrap"
+        sx={{
+          position: 'relative',
+          overflow: 'hidden',
+          borderRadius: 4,
+          p: { xs: 2.5, md: 3 },
+          mb: 3,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
+          backgroundImage:
+            'radial-gradient(70% 130% at 100% 0%, rgba(254,44,85,0.10) 0%, transparent 60%),' +
+            'radial-gradient(50% 100% at 0% 100%, rgba(0,194,187,0.07) 0%, transparent 60%)',
+        }}
       >
-        <Box minWidth={0}>
-          <Typography variant="h5">Minhas Gerações</Typography>
-          <Typography color="text.secondary" mb={{ xs: 1.5, sm: 3 }}>
-            Imagens e vídeos criados por IA a partir do Cofre de Prompts.
-          </Typography>
-        </Box>
-        <Button
-          startIcon={<RefreshRoundedIcon />}
-          onClick={load}
-          sx={{ flexShrink: 0, mb: { xs: 2, sm: 0 } }}
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          gap={1}
+          flexWrap="wrap"
         >
-          Atualizar
-        </Button>
+          <Box minWidth={0}>
+            <Typography
+              variant="h5"
+              sx={{
+                fontWeight: 800,
+                background: 'linear-gradient(90deg, #fe2c55 0%, #00c2bb 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                width: 'fit-content',
+              }}
+            >
+              Minhas Gerações
+            </Typography>
+            <Typography color="text.secondary" variant="body2" sx={{ mt: 0.5 }}>
+              Imagens e vídeos criados por IA a partir do Cofre de Prompts.
+            </Typography>
+          </Box>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshRoundedIcon />}
+            onClick={load}
+            sx={{ flexShrink: 0 }}
+          >
+            Atualizar
+          </Button>
+        </Box>
       </Box>
 
       {loading ? (
