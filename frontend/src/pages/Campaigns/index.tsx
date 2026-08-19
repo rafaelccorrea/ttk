@@ -890,9 +890,13 @@ function Storyboard({
                     <Typography variant="body2" color="text.secondary" px={2} textAlign="center">
                       {cena.error ?? 'A cena falhou.'} Os créditos foram estornados.
                     </Typography>
-                  ) : cena.baseImageUrl ? (
+                  ) : cena.tipo === 'produto' && cena.baseImageUrl ? (
                     // Pré-visualização honesta: é literalmente o frame de onde
-                    // a cena vai partir.
+                    // a cena vai partir. SÓ na demonstração — na cena de
+                    // apresentador o frame parte do retrato e a foto escolhida
+                    // entra apenas como referência da composição; usar a foto
+                    // como preview aqui fazia a troca parecer que substituía a
+                    // cena inteira, apresentador incluído.
                     <SmartImage src={cena.baseImageUrl} alt={`Cena ${cena.ordem}`} />
                   ) : detalhe.persona?.seedImageUrl ? (
                     <SmartImage
@@ -918,10 +922,27 @@ function Storyboard({
                     !(cena.status === 'pronta' && cena.outputUrl) &&
                     fotoCompostaDa(cena) && (
                       <Tooltip
-                        title={`É esta foto do produto que entra na mão do apresentador. Use "Trocar foto" para escolher outra.`}
+                        title={
+                          fotosDoProduto.length > 1
+                            ? `É esta foto do produto que entra na mão do apresentador. Clique para escolher entre as ${fotosDoProduto.length} fotos.`
+                            : 'É esta foto do produto que entra na mão do apresentador.'
+                        }
                       >
                         <Box
+                          component="button"
+                          type="button"
+                          aria-label="Escolher qual foto do produto entra nesta cena"
+                          onClick={() => setTrocandoFoto(cena.id)}
+                          disabled={
+                            ocupado ||
+                            cena.status === 'renderizando' ||
+                            fotosDoProduto.length < 2
+                          }
                           sx={{
+                            all: 'unset',
+                            // `position` depois do `all: unset`, que zera
+                            // tudo: o SmartImage é `absolute; inset: 0` e
+                            // precisa desta âncora.
                             position: 'absolute',
                             right: 8,
                             bottom: 8,
@@ -933,6 +954,8 @@ function Storyboard({
                             borderColor: 'background.paper',
                             boxShadow: 3,
                             bgcolor: 'background.paper',
+                            cursor:
+                              fotosDoProduto.length > 1 ? 'pointer' : 'default',
                           }}
                         >
                           <SmartImage
@@ -1130,7 +1153,10 @@ function Storyboard({
       <TrocarFotoDialog
         aberto={Boolean(cenaEmTroca)}
         fotos={fotosDoProduto}
-        atual={cenaEmTroca?.baseImageUrl ?? null}
+        // `fotoCompostaDa`, e não o campo cru: cena sem escolha explícita usa
+        // a capa na renderização, e o diálogo precisa destacar essa realidade
+        // em vez de abrir sem nenhuma foto marcada.
+        atual={cenaEmTroca ? fotoCompostaDa(cenaEmTroca) : null}
         onClose={() => setTrocandoFoto(null)}
         onEscolher={(url) => {
           const id = cenaEmTroca?.id;
