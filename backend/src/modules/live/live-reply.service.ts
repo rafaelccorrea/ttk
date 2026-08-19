@@ -481,6 +481,24 @@ export function aplicarPrecos(
  * sai sozinha). Também varre chave órfã de marcador malformado, pelo mesmo
  * motivo.
  */
+/**
+ * A resposta fala de bastidor? ("a base não informa", "não está cadastrado",
+ * "o sistema"...)
+ *
+ * O cliente da live não sabe — nem deve saber — que existe uma base de
+ * conhecimento atrás do chat. Resposta que menciona o bastidor quebra o
+ * personagem do vendedor e ainda confessa a limitação em público. O prompt já
+ * proíbe; isto é a rede para quando o modelo esquecer. Os padrões são frases
+ * ARTICULADAS de propósito: a palavra "base" solta é nome de produto legítimo
+ * ("S26 base"), e barrá-la sozinha escalaria resposta certa.
+ */
+const META_LINGUAGEM =
+  /\b(?:[an]a base|a base (?:não|nao)|base de conhecimento|(?:não|nao) (?:está |esta |foi )?informad|(?:não|nao) (?:está |esta )?cadastrad|sem cadastro|o sistema|meu banco de dados)\b/i;
+
+export function contemMetaLinguagem(texto: string): boolean {
+  return META_LINGUAGEM.test(texto ?? '');
+}
+
 export function humanizarMarcadores(texto: string): string {
   return (texto ?? '')
     .replace(/\{\{\s*PRE[CÇ]O\s*:\s*[^}]*?\s*\}\}/gi, '[produto sem preço na base]')
@@ -1852,6 +1870,9 @@ export class LiveReplyService {
     }
     // Link ou @menção: nunca vai pronto ao painel, mesmo confiante.
     if (contemLinkOuMencao(texto)) decisao = 'escalar';
+    // Fala de bastidor ("a base não informa") quebra o personagem do vendedor
+    // na frente do cliente: vira rascunho para ele reescrever com a voz dele.
+    if (contemMetaLinguagem(texto)) decisao = 'escalar';
     if (!texto) decisao = 'silenciar';
 
     mensagem.status = decisao === 'enviar' ? 'respondida' : 'escalada';

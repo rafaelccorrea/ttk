@@ -12,6 +12,7 @@ import {
   decidirResposta,
   ehAltoValor,
   ehListaNegra,
+  contemMetaLinguagem,
   ehPergunta,
   humanizarMarcadores,
   normalizarTexto,
@@ -318,6 +319,27 @@ describe('humanizarMarcadores', () => {
     expect(humanizarMarcadores('Sai por R$ 49,90 com frete grátis')).toBe(
       'Sai por R$ 49,90 com frete grátis',
     );
+  });
+});
+
+/*
+ * O cliente da live não sabe que existe uma "base" — resposta que fala de
+ * bastidor quebra o personagem do vendedor em público. A palavra "base"
+ * SOLTA é nome de produto legítimo ("S26 base") e não pode ser barrada.
+ */
+describe('contemMetaLinguagem', () => {
+  it('escala a resposta que confessa o bastidor', () => {
+    expect(contemMetaLinguagem('Tem o S25 FE, mas a base não informa desconto.')).toBe(true);
+    expect(contemMetaLinguagem('Esse produto não está cadastrado ainda.')).toBe(true);
+    expect(contemMetaLinguagem('Não foi informado o prazo de entrega.')).toBe(true);
+    expect(contemMetaLinguagem('Consta na base de conhecimento como esgotado.')).toBe(true);
+    expect(contemMetaLinguagem('O sistema não achou esse item.')).toBe(true);
+  });
+
+  it('não confunde produto chamado "base" com fala de bastidor', () => {
+    expect(contemMetaLinguagem('O S26 base sai por R$ 1.299,00 hoje!')).toBe(false);
+    expect(contemMetaLinguagem('Temos o S26 base e o S25 Ultra na live.')).toBe(false);
+    expect(contemMetaLinguagem('Tem frete grátis acima de R$ 99.')).toBe(false);
   });
 });
 
