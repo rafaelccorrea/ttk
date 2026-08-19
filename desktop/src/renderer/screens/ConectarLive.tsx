@@ -59,34 +59,39 @@ export function ConectarLive({
    * contam. Por isso este número NÃO entra no `disabled` do botão.
    */
   const [seguidores, setSeguidores] = useState<number | null>(null);
-  /** O vendedor mexeu no campo do @: o palpite automático não escreve mais. */
-  const [usuarioEditado, setUsuarioEditado] = useState(false);
+  /** A leitura do @ terminou (com ou sem nome) — separa "lendo" de "falhou". */
+  const [leuUsuario, setLeuUsuario] = useState(false);
 
   /*
-   * O @ vem preenchido com a conta logada na view ao lado.
+   * O @ NÃO é digitável: é a conta logada na view ao lado, lida pelo app.
    *
-   * Quem transmite é quase sempre quem está logado ali — e digitar o próprio @
-   * de novo, além de redundante, era onde nascia o erro de digitação que
-   * conectava o copiloto na live de outra pessoa. O palpite só escreve num
-   * campo INTOCADO (vazio e sem edição): sobrescrever o que o vendedor digitou
-   * para transmitir por outra conta seria trocar um bug por outro. Reexecuta
-   * quando o login muda porque trocar de conta ao lado muda a resposta certa.
+   * A regra do produto é uma só — o copiloto acompanha a live de quem está
+   * logado ali. O campo aberto era duas portas de erro com um custo cada: o
+   * erro de digitação conectava (e cobrava) o copiloto na live de um estranho,
+   * e o @ de outra conta prometia uma live que o app não conseguiria nem ler
+   * nem responder, já que a sessão é a da conta ao lado. Para transmitir por
+   * outra conta, troca-se o LOGIN à esquerda — e esta leitura acompanha.
    */
   useEffect(() => {
-    if (!ponte || usuarioEditado || tiktokLogado !== true) return undefined;
+    if (!ponte || tiktokLogado !== true) return undefined;
     let valendo = true;
+    setLeuUsuario(false);
     void ponte
       .usuarioDoTikTok()
       .then((nome) => {
-        if (valendo && nome) {
-          setUsuario((atual) => (atual.trim() === '' ? `@${nome}` : atual));
-        }
+        if (!valendo) return;
+        setUsuario(nome ? `@${nome}` : '');
+        setLeuUsuario(true);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!valendo) return;
+        setUsuario('');
+        setLeuUsuario(true);
+      });
     return () => {
       valendo = false;
     };
-  }, [ponte, usuarioEditado, tiktokLogado]);
+  }, [ponte, tiktokLogado]);
 
   /*
    * A consulta espera a digitação parar. Sem a folga, cada tecla do @ viraria
@@ -323,13 +328,18 @@ export function ConectarLive({
         <TextField
           fullWidth
           label="Perfil da live no TikTok"
-          placeholder="@sualoja"
-          value={usuario}
-          onChange={(e) => {
-            setUsuarioEditado(true);
-            setUsuario(e.target.value);
-          }}
-          helperText="O mesmo @ que está transmitindo agora, do lado esquerdo da tela."
+          value={
+            usuario ||
+            (tiktokLogado === true && !leuUsuario ? 'Lendo a conta logada…' : '')
+          }
+          InputProps={{ readOnly: true }}
+          helperText={
+            usuario
+              ? 'É a conta logada no TikTok aqui do lado. Para transmitir por outra, troque o login à esquerda.'
+              : leuUsuario && tiktokLogado === true
+                ? 'Não consegui ler o @ da conta logada. Recarregue a tela do TikTok ao lado e volte aqui.'
+                : 'O @ aparece sozinho assim que você estiver logado no TikTok ao lado.'
+          }
         />
 
         {semSaldo ? (

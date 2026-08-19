@@ -12,6 +12,7 @@ import {
 import type { ConfiguracoesCopiloto } from '../shared/desktop-api';
 import type { LiveRunMode } from '../shared/live-events';
 import { Copiloto } from './copiloto';
+import { ModoFoco } from './foco';
 import { estadoDaAtualizacao, iniciarAtualizador, instalarAgora } from './atualizador';
 
 /**
@@ -211,6 +212,8 @@ function anexarTikTok(janela: BrowserWindow): void {
   viewTikTok = view;
   janela.setBrowserView(view);
   void view.webContents.loadURL(URL_TIKTOK_LIVE);
+  // A view nasce presa ao modo foco: trava de navegação + tela por estado.
+  foco.anexar(view.webContents);
 
   const posicionar = (): void => {
     const { width, height } = janela.getContentBounds();
@@ -387,6 +390,7 @@ function observarLoginDoTikTok(): void {
   particao.cookies.on('changed', (_evento, cookie) => {
     if (cookie.name !== 'sessionid') return;
     void tiktokLogado().then((logado) => {
+      foco.definirLogado(logado);
       const janela = janelaPrincipal;
       if (janela && !janela.isDestroyed()) {
         janela.webContents.send('tiktok:logado', logado);
@@ -399,6 +403,9 @@ async function limparSessaoTikTok(): Promise<void> {
   const particao = session.fromPartition(PARTICAO_TIKTOK);
   await particao.clearStorageData();
   await particao.clearCache();
+  // `clearStorageData` não emite o evento de cookie: avisa o foco à mão, senão
+  // a view continuaria no último estado até a próxima abertura.
+  foco.definirLogado(false);
 
   const view = viewTikTok;
   if (view && !view.webContents.isDestroyed()) {
@@ -415,6 +422,30 @@ async function limparSessaoTikTok(): Promise<void> {
  */
 let janelaPrincipal: BrowserWindow | null = null;
 
+/**
+ * O modo foco da view do TikTok — ver `foco.ts`. Vive aqui porque é o processo
+ * principal quem conhece as três fontes que decidem o que a esquerda mostra:
+ * o cookie de login, o estado da run e a sessão para espiar a página da live.
+ */
+const foco = new ModoFoco({
+  view: () => {
+    const view = viewTikTok;
+    if (!view || view.webContents.isDestroyed()) return null;
+    return view.webContents;
+  },
+  urlLogin: URL_TIKTOK_LIVE,
+  estaLogado: () => tiktokLogado(),
+  usuarioLogado: () => usuarioDoTikTok(),
+  buscar: async (url) => {
+    try {
+      const resposta = await session.fromPartition(PARTICAO_TIKTOK).fetch(url);
+      return resposta.ok ? await resposta.text() : null;
+    } catch {
+      return null;
+    }
+  },
+});
+
 const copiloto = new Copiloto(
   () => janelaPrincipal,
   () => {
@@ -422,6 +453,7 @@ const copiloto = new Copiloto(
     if (!view || view.webContents.isDestroyed()) return null;
     return view.webContents;
   },
+  (estado) => foco.definirConexao(estado),
 );
 
 /**

@@ -126,6 +126,11 @@ export class Copiloto {
      * meio da live.
      */
     private readonly viewDoTikTok: () => WebContents | null = () => null,
+    /**
+     * Observador do estado da conexão fora do painel (o modo foco da view).
+     * Recebe o mesmo estado que o IPC publica, no mesmo instante.
+     */
+    private readonly aoMudarConexao: (estado: EstadoConexao) => void = () => {},
   ) {
     this.enviador = new EnviadorDeComentarios({
       webContents: () => this.viewDoTikTok(),
@@ -656,6 +661,7 @@ export class Copiloto {
   private atualizarConexao(estado: EstadoConexao): void {
     this.conexao = estado;
     this.publicar('live:conexao', estado);
+    this.aoMudarConexao(estado);
   }
 
   private avisarErro(motivo: string): void {
