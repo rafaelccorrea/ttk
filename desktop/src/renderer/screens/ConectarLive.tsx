@@ -49,6 +49,7 @@ export function ConectarLive({
   const [baseId, setBaseId] = useState('');
   const [usuario, setUsuario] = useState('');
   const [conectando, setConectando] = useState(false);
+  const [passoConexao, setPassoConexao] = useState(0);
   const [erroConexao, setErroConexao] = useState<string | null>(null);
   /**
    * Seguidores da conta digitada. `null` = não sei, e não sei é silêncio.
@@ -230,13 +231,16 @@ export function ConectarLive({
    */
   const precisaAtualizar = atualizacao?.situacao === 'pronta';
 
-  const conectar = async (): Promise<void> => {
+  const conectar = async (simulada = false): Promise<void> => {
     setConectando(true);
     setErroConexao(null);
     try {
       await ponte.conectar({
         knowledgeSessionId: baseId,
-        tiktokUsername: usuario.trim(),
+        // Na simulação não há transmissão de verdade: o @ é decorativo e o
+        // fallback cobre quem nem chegou a logar no TikTok.
+        tiktokUsername: usuario.trim() || '@live.simulada',
+        simulada,
       });
       aoConectar();
     } catch (e) {
@@ -245,6 +249,31 @@ export function ConectarLive({
       setConectando(false);
     }
   };
+
+  /*
+   * O "conectando" narrado. A conexão real atravessa três etapas (abrir a run,
+   * ligar o chat, preparar as respostas) e pode levar vários segundos em rede
+   * ruim — um botão parado em "Entrando…" nesse tempo parece travado. Os
+   * passos são cadenciados por tempo, não pelos eventos reais: é narração de
+   * espera, e a ordem bate com o que acontece de verdade.
+   */
+  const PASSOS_DA_CONEXAO = [
+    'Abrindo a transmissão…',
+    'Ligando a leitura do chat…',
+    'Preparando as respostas…',
+  ];
+  useEffect(() => {
+    if (!conectando) {
+      setPassoConexao(0);
+      return undefined;
+    }
+    const id = window.setInterval(
+      () => setPassoConexao((p) => Math.min(p + 1, PASSOS_DA_CONEXAO.length - 1)),
+      1_500,
+    );
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conectando]);
 
   return (
     <Moldura
@@ -393,6 +422,21 @@ export function ConectarLive({
           />
         ) : null}
 
+        {/*
+          O checklist do decolar: os três pré-requisitos num relance, cada um
+          virando verde conforme se resolve. Antes cada um só aparecia como um
+          erro na hora do clique — descoberta em série é o que faz a primeira
+          live parecer difícil.
+        */}
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <ItemDeChecklist ok={tiktokLogado === true} rotulo="TikTok logado" />
+          <ItemDeChecklist ok={Boolean(baseId)} rotulo="Base escolhida" />
+          <ItemDeChecklist
+            ok={!semSaldo}
+            rotulo={carteira.trialDisponivel ? 'Minutos de teste prontos' : 'Minutos na carteira'}
+          />
+        </Stack>
+
         <Button
           fullWidth
           size="large"
@@ -408,7 +452,7 @@ export function ConectarLive({
           onClick={() => void conectar()}
         >
           {conectando
-            ? 'Entrando na live…'
+            ? PASSOS_DA_CONEXAO[passoConexao]
             : precisaAtualizar
               ? 'Atualize para entrar na live'
               : semTikTok
@@ -416,13 +460,67 @@ export function ConectarLive({
                 : 'Entrar na live'}
         </Button>
 
-        <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+        <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+          {/*
+            A porta da demonstração: uma live inteira de mentira — chat
+            roteirizado, entrega sem tocar o TikTok — com a IA e a cobrança de
+            verdade. É como um vendedor cético entende o produto ANTES da
+            primeira transmissão real; o custo em minutos é o mesmo, e o
+            cockpit rotula tudo como "live de teste".
+          */}
+          <Button
+            size="small"
+            color="inherit"
+            disabled={!baseId || conectando || semSaldo || precisaAtualizar}
+            onClick={() => void conectar(true)}
+          >
+            Testar sem estar em live
+          </Button>
           <Button size="small" color="inherit" onClick={aoAbrirConfiguracoes}>
             Ajustes
           </Button>
         </Stack>
       </Stack>
     </Moldura>
+  );
+}
+
+/** Um item do checklist de pré-requisitos: verde resolvido, cinza pendente. */
+function ItemDeChecklist({
+  ok,
+  rotulo,
+}: {
+  readonly ok: boolean;
+  readonly rotulo: string;
+}): JSX.Element {
+  return (
+    <Stack
+      direction="row"
+      spacing={0.6}
+      alignItems="center"
+      sx={{
+        px: 1.1,
+        py: 0.4,
+        borderRadius: 999,
+        border: '1px solid',
+        borderColor: ok ? alpha(cores.sucesso, 0.45) : 'divider',
+        bgcolor: ok ? alpha(cores.sucesso, 0.10) : 'transparent',
+      }}
+    >
+      <Typography
+        variant="caption"
+        fontWeight={800}
+        sx={{ color: ok ? cores.sucesso : 'text.secondary', lineHeight: 1 }}
+      >
+        {ok ? '✓' : '·'}
+      </Typography>
+      <Typography
+        variant="caption"
+        sx={{ color: ok ? 'text.primary' : 'text.secondary', lineHeight: 1 }}
+      >
+        {rotulo}
+      </Typography>
+    </Stack>
   );
 }
 

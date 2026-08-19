@@ -113,7 +113,24 @@ export function CardEscalacao({
             borderColor: alpha(cores.vermelho, 0.35),
           }}
         />
-        <Typography variant="caption" color="text.secondary">
+        {/*
+          A idade esquenta com o tempo: cinza é "acabou de chegar", âmbar é
+          "responde logo", vermelho é "essa pergunta já quase morreu". Pergunta
+          de live tem prazo de validade de minutos, e a cor conta isso sem o
+          vendedor precisar fazer aritmética no meio da frase de venda.
+        */}
+        <Typography
+          variant="caption"
+          fontWeight={escalacao.idadeMs >= 120_000 ? 750 : 400}
+          sx={{
+            color:
+              escalacao.idadeMs >= 300_000
+                ? cores.vermelho
+                : escalacao.idadeMs >= 120_000
+                  ? '#f59e0b'
+                  : 'text.secondary',
+          }}
+        >
           {emIdade(escalacao.idadeMs)}
         </Typography>
       </Stack>

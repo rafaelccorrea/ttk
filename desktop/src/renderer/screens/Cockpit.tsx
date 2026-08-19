@@ -494,6 +494,101 @@ export function Cockpit({
 }
 
 /**
+ * Duas notas curtas (Lá5 → Dó6), geradas na hora — nenhum arquivo de som no
+ * bundle. O volume é deliberadamente baixo: precisa alcançar o vendedor a um
+ * metro da tela sem vazar no microfone da transmissão.
+ */
+function tocarChime(): void {
+  try {
+    const ctx = new AudioContext();
+    const tocar = (freq: number, inicio: number): void => {
+      const osc = ctx.createOscillator();
+      const ganho = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      ganho.gain.setValueAtTime(0.0001, ctx.currentTime + inicio);
+      ganho.gain.exponentialRampToValueAtTime(0.06, ctx.currentTime + inicio + 0.02);
+      ganho.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + inicio + 0.28);
+      osc.connect(ganho).connect(ctx.destination);
+      osc.start(ctx.currentTime + inicio);
+      osc.stop(ctx.currentTime + inicio + 0.3);
+    };
+    tocar(880, 0);
+    tocar(1046.5, 0.14);
+    window.setTimeout(() => void ctx.close(), 700);
+  } catch {
+    // Sem áudio (driver, política do SO) o flash visual continua fazendo o papel.
+  }
+}
+
+/**
+ * O placar de fim de live. O motivo vem primeiro (é a resposta a "por que
+ * parou?"); os números vêm grandes porque são o argumento de valor do produto
+ * — e o botão devolve o vendedor ao começo do fluxo.
+ */
+function ResumoDaLive({
+  motivo,
+  stats,
+  picoViewers,
+  curtidas,
+  aoFechar,
+}: {
+  readonly motivo: string;
+  readonly stats: import('@shared/live-events').LiveStatsEvent | null;
+  readonly picoViewers: number;
+  readonly curtidas: number;
+  readonly aoFechar: () => void;
+}): JSX.Element {
+  const numeros: Array<{ valor: string; rotulo: string }> = [];
+  if (stats) {
+    numeros.push(
+      { valor: `${stats.minutesCharged}`, rotulo: 'min de live' },
+      { valor: `${stats.repliesSent}`, rotulo: 'enviadas no chat' },
+      { valor: `${stats.repliesGenerated}`, rotulo: 'respostas geradas' },
+      { valor: `${stats.escalations}`, rotulo: 'escaladas p/ você' },
+    );
+  }
+  if (picoViewers > 0) numeros.push({ valor: `${picoViewers}`, rotulo: 'pico de público' });
+  if (curtidas > 0) numeros.push({ valor: `${curtidas}`, rotulo: 'curtidas' });
+
+  return (
+    <Box
+      sx={{
+        p: 2,
+        borderRadius: 3.5,
+        bgcolor: cores.superficieAlta,
+        border: '1px solid',
+        borderColor: alpha(cores.ciano, 0.35),
+      }}
+    >
+      <Typography fontWeight={800} sx={{ mb: 0.35 }}>
+        A transmissão foi encerrada
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: numeros.length ? 1.5 : 1 }}>
+        {motivo}
+      </Typography>
+      {numeros.length ? (
+        <Stack direction="row" flexWrap="wrap" useFlexGap spacing={2.5} sx={{ mb: 1.5 }}>
+          {numeros.map((n) => (
+            <Stack key={n.rotulo} spacing={0}>
+              <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.15 }}>
+                {n.valor}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {n.rotulo}
+              </Typography>
+            </Stack>
+          ))}
+        </Stack>
+      ) : null}
+      <Button size="small" variant="contained" onClick={aoFechar}>
+        Conectar outra live
+      </Button>
+    </Box>
+  );
+}
+
+/**
  * O rótulo de um dos dois blocos do cockpit.
  *
  * A contagem vive AQUI, e não dentro da lista, porque a tela rola por dentro
