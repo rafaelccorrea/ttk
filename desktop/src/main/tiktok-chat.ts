@@ -329,6 +329,15 @@ export class WebcastChatSource implements ChatSource {
 export class AnonimizadorDeAutor {
   private readonly salt = randomBytes(32).toString('hex');
 
+  /**
+   * O caminho de VOLTA do hash, para endereçar a resposta à pessoa na hora de
+   * digitar ("Ana: sai por R$ 89,90"). Vive SÓ NA MEMÓRIA desta run e morre
+   * com ela — não é serializado, não vai para log nem para o backend, que
+   * continua enxergando apenas o hash. É a única concessão do anonimizador, e
+   * ela nunca atravessa a fronteira do processo.
+   */
+  private readonly nomes = new Map<string, string>();
+
   constructor(private readonly runId: string) {}
 
   hash(username: string): string {
@@ -337,11 +346,24 @@ export class AnonimizadorDeAutor {
       .digest('hex');
   }
 
+  /** O nome por trás do hash, ou `null` se esta run nunca o viu. */
+  nomeDe(authorHash: string): string | null {
+    return this.nomes.get(authorHash) ?? null;
+  }
+
   /** Converte a mensagem crua no que sobe para o backend, já sem o nome. */
   mapear(mensagem: RawChatMessage): ChatMessageAnonima {
+    const authorHash = this.hash(mensagem.username);
+    this.nomes.set(authorHash, mensagem.username);
+    // Poda pelo mesmo motivo do mapa de cooldown do enviador: uma live de
+    // horas não pode acumular um nome por espectador para sempre.
+    if (this.nomes.size > 2000) {
+      const primeiro = this.nomes.keys().next().value;
+      if (primeiro) this.nomes.delete(primeiro);
+    }
     return {
       externalMessageId: mensagem.msgId,
-      authorHash: this.hash(mensagem.username),
+      authorHash,
       text: mensagem.text,
       receivedAt: mensagem.receivedAt.toISOString(),
     };

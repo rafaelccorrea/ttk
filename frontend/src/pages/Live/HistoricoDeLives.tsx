@@ -65,15 +65,47 @@ export function HistoricoDeLives() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Quando</TableCell>
-                <TableCell align="right">Público</TableCell>
-                <TableCell align="right">Curtidas</TableCell>
-                <TableCell align="right">Perguntas</TableCell>
-                <TableCell align="right">Respostas</TableCell>
-                <TableCell align="right">Aproveitamento</TableCell>
-                <TableCell align="right">Escalações</TableCell>
-                <TableCell align="right">Resposta em</TableCell>
-                <TableCell align="right">Minutos</TableCell>
+                {/* Cada cabeçalho explica COMO o número é medido. É onde a
+                    dúvida nasce ("perguntas conta emoji?") — a explicação nas
+                    células só aparecia depois que a pessoa já tinha desconfiado
+                    do valor. */}
+                <Cabecalho
+                  titulo="Quando"
+                  medida="Início da transmissão, no seu fuso horário."
+                  esquerda
+                />
+                <Cabecalho
+                  titulo="Público"
+                  medida="Pico de pessoas assistindo ao mesmo tempo, lido do próprio TikTok pelo app. Vazio em lives de antes da captura de audiência."
+                />
+                <Cabecalho
+                  titulo="Curtidas"
+                  medida="Total de curtidas recebidas durante a transmissão."
+                />
+                <Cabecalho
+                  titulo="Perguntas"
+                  medida="Mensagens do chat que o copiloto leu — depois da sua lista de palavras bloqueadas, antes de decidir se respondia."
+                />
+                <Cabecalho
+                  titulo="Respostas"
+                  medida="Respostas que o copiloto gerou e mostrou no painel."
+                />
+                <Cabecalho
+                  titulo="Aproveitamento"
+                  medida="Das respostas geradas, quantas você usou de verdade (copiou ou salvou na base). É a métrica de acerto do copiloto."
+                />
+                <Cabecalho
+                  titulo="Escalações"
+                  medida="Perguntas que o copiloto não sustentou e passou para você. Muitas indicam buracos na base."
+                />
+                <Cabecalho
+                  titulo="Resposta em"
+                  medida="Tempo típico (mediana) entre a pergunta chegar e a resposta ficar pronta."
+                />
+                <Cabecalho
+                  titulo="Minutos"
+                  medida="Minutos de copiloto no ar, cobrados da sua carteira de live."
+                />
               </TableRow>
             </TableHead>
             <TableBody>
@@ -132,6 +164,38 @@ export function HistoricoDeLives() {
         </ScrollX>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Cabeçalho com a definição da medida no hover. O pontilhado embaixo do texto
+ * é o convite — sem ele ninguém descobre que o hover existe.
+ */
+function Cabecalho({
+  titulo,
+  medida,
+  esquerda = false,
+}: {
+  titulo: string;
+  medida: string;
+  esquerda?: boolean;
+}) {
+  return (
+    <TableCell align={esquerda ? 'left' : 'right'}>
+      <Tooltip title={medida}>
+        <Box
+          component="span"
+          sx={{
+            cursor: 'help',
+            textDecoration: 'underline dotted',
+            textUnderlineOffset: 3,
+            textDecorationColor: 'rgba(22,24,35,0.3)',
+          }}
+        >
+          {titulo}
+        </Box>
+      </Tooltip>
+    </TableCell>
   );
 }
 

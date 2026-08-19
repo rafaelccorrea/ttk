@@ -4,6 +4,7 @@ import {
   EnviadorDeComentarios,
   motivoDeConteudoProibido,
   normalizar,
+  prefixarAutor,
   prepararTextoSeguro,
 } from './comment-sender';
 
@@ -161,6 +162,27 @@ describe('conteúdo que nunca vai ao chat', () => {
     // E-mail não é link de navegação, mas o padrão de domínio pega — o falso
     // positivo aqui é aceitável: escalar é sempre mais barato que publicar.
     expect(motivoDeConteudoProibido('temos o tamanho M sim')).toBeNull();
+  });
+});
+
+describe('endereçamento pelo nome, sem menção', () => {
+  it('prefixa com o nome de quem perguntou, sem arroba', () => {
+    expect(prefixarAutor('sai por R$ 49,90', 'Ana', 150)).toBe('Ana: sai por R$ 49,90');
+  });
+
+  it('tira o @ do nome — o arroba é gatilho de anti-spam, não endereço', () => {
+    expect(prefixarAutor('temos sim', '@ana.compras', 150)).toBe('ana.compras: temos sim');
+  });
+
+  it('sacrifica o prefixo, nunca o corpo, quando estoura o teto', () => {
+    const corpo = 'sai por R$ 1.299,00 com frete grátis';
+    expect(prefixarAutor(corpo, 'Ana', corpo.length + 3)).toBe(corpo);
+  });
+
+  it('sem nome (ou nome absurdo), a resposta sai solta como sempre saiu', () => {
+    expect(prefixarAutor('temos sim', undefined, 150)).toBe('temos sim');
+    expect(prefixarAutor('temos sim', '   ', 150)).toBe('temos sim');
+    expect(prefixarAutor('temos sim', 'x'.repeat(40), 150)).toBe('temos sim');
   });
 });
 

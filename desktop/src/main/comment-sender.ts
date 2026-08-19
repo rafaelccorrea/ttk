@@ -61,6 +61,14 @@ export interface PedidoDeEnvio {
   texto: string;
   /** O hash do autor da pergunta — nunca o @ dele (ver `tiktok-chat.ts`). */
   authorHash: string;
+  /**
+   * O nome de quem perguntou, para a resposta sair endereçada ("Ana: ...").
+   * SEM arroba de propósito: o @ é o gatilho clássico de anti-spam e continua
+   * proibido (`motivoDeConteudoProibido`); o nome puro endereça sem mencionar.
+   * Vem do mapa em memória do anonimizador e é opcional — sem ele a resposta
+   * sai solta, como sempre saiu.
+   */
+  nomeDoAutor?: string;
 }
 
 /**
@@ -273,10 +281,17 @@ export class EnviadorDeComentarios {
       return { status: 'bloqueada', motivo: 'Já existe um envio em andamento.' };
     }
 
-    const texto = this.prepararTexto(pedido.texto);
-    if (!texto) {
+    const corpo = this.prepararTexto(pedido.texto);
+    if (!corpo) {
       return { status: 'bloqueada', motivo: 'Texto vazio depois do preparo.' };
     }
+    // O prefixo entra DEPOIS de todos os filtros: ele é montado pelo app, não
+    // pelo modelo, então não passa (nem deve passar) pelo crivo de conteúdo.
+    const texto = prefixarAutor(
+      corpo,
+      pedido.nomeDoAutor,
+      this.config.limites.maxCaracteres,
+    );
 
     this.enviando = true;
     try {
@@ -423,7 +438,13 @@ export class EnviadorDeComentarios {
     // a menos custa cadência de bot.
     this.ultimoEnvioEm = agora;
     this.enviosDaJanela.push(agora);
-    this.ultimoTextoEnviado = normalizar(texto);
+    /*
+     * O CORPO, não o texto postado: a repetição que denuncia bot é a da frase
+     * gerada, e o prefixo com o nome de quem perguntou tornaria cada envio
+     * "diferente" — a mesma resposta para duas pessoas escaparia do freio.
+     * O `motivoDeBloqueio` compara contra o corpo pelo mesmo motivo.
+     */
+    this.ultimoTextoEnviado = normalizar(pedido.texto.trim());
     this.ultimoEnvioPorAutor.set(pedido.authorHash, agora);
 
     // O mapa de autores acompanha o tamanho da live; podar aqui evita que uma
@@ -708,6 +729,29 @@ export function prepararTextoSeguro(bruto: string, limite: number): string {
  * um deles quase certamente veio de conteúdo copiado do chat — ou seja, o
  * app estaria repetindo o link de um terceiro em nome do vendedor.
  */
+/**
+ * Endereça a resposta a quem perguntou — "Ana: sai por R$ 89,90" — sem arroba.
+ *
+ * O nome puro é o meio-termo que sobrou depois de descartar a menção: o @
+ * dispara o padrão anti-spam do TikTok (e por isso segue proibido logo
+ * abaixo), enquanto o nome dito como um vendedor humano diria endereça a
+ * pessoa sem notificar nem linkar ninguém.
+ *
+ * Se o conjunto estourar o teto de caracteres, quem cai é o PREFIXO, nunca o
+ * corpo: o corpo já passou pelo preparo que protege preço, e truncá-lo de novo
+ * reabriria exatamente o buraco que `prepararTextoSeguro` fecha.
+ */
+export function prefixarAutor(
+  corpo: string,
+  nome: string | undefined,
+  maxCaracteres: number,
+): string {
+  const limpo = (nome ?? '').trim().replace(/^@+/, '').replace(/\s+/g, ' ');
+  if (!limpo || limpo.length > 30) return corpo;
+  const composto = `${limpo}: ${corpo}`;
+  return composto.length <= maxCaracteres ? composto : corpo;
+}
+
 export function motivoDeConteudoProibido(texto: string): string | null {
   if (/https?:\/\/|www\.|\b[a-z0-9-]+\.(com|br|net|io|me|shop)\b/i.test(texto)) {
     return 'A resposta contém link.';

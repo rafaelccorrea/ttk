@@ -553,12 +553,16 @@ export class Copiloto {
          * entrega simulada posta no chat fake e confirma como enviada — o
          * ciclo completo do automático, visível, sem tocar o TikTok.
          */
+        // O nome de quem perguntou só existe AQUI, no mapa em memória da run —
+        // é o que permite endereçar a resposta sem o @ jamais ter saído do app.
+        const nomeDoAutor = this.anonimizador?.nomeDe(item.authorHash) ?? undefined;
         const resultado = MODO_SIMULACAO
-          ? await this.entregarSimulado(item.id, item.text)
+          ? await this.entregarSimulado(item.id, item.text, nomeDoAutor)
           : await this.enviador.enviar({
               replyId: item.id,
               texto: item.text,
               authorHash: item.authorHash,
+              nomeDoAutor,
             });
         if (resultado.status !== 'enviada') break;
       }
@@ -578,8 +582,13 @@ export class Copiloto {
   private async entregarSimulado(
     replyId: string,
     texto: string,
+    nomeDoAutor?: string,
   ): Promise<{ status: 'enviada' }> {
-    this.aoAtividadeSimulada({ autor: 'PikPok IA · pela sua conta', texto, ia: true });
+    this.aoAtividadeSimulada({
+      autor: 'PikPok IA · pela sua conta',
+      texto: nomeDoAutor ? `${nomeDoAutor}: ${texto}` : texto,
+      ia: true,
+    });
     await this.api.confirmarEntrega(replyId, 'enviada').catch(() => undefined);
     return { status: 'enviada' };
   }
