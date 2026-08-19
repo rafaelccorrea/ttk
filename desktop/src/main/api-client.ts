@@ -338,6 +338,27 @@ export class ApiClient {
   }
 
   /**
+   * Os nomes dos produtos de uma base, para a live simulada perguntar pelo
+   * que EXISTE nela. Perguntas genéricas fazem o motor responder genérico;
+   * citando o produto real, a demo mostra o preço da coluna `priceBrl` saindo
+   * no chat — que é a cena que vende o produto. Falha vira lista vazia: o
+   * simulador tem roteiro genérico de reserva.
+   */
+  async nomesDeProdutos(sessionId: string): Promise<string[]> {
+    try {
+      const detalhe = await this.requisitar<LiveSessionDetalhe>(
+        'GET',
+        `/live/sessions/${sessionId}`,
+      );
+      return (detalhe.produtos ?? [])
+        .map((p) => String((p as { name?: unknown }).name ?? '').trim())
+        .filter((nome) => nome.length > 1);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Grava o token cifrado pelo `safeStorage`.
    *
    * O `safeStorage` do Electron entrega a cifra ao SISTEMA OPERACIONAL — DPAPI

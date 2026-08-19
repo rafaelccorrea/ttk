@@ -30,6 +30,23 @@ import type { AudienceEvent, ChatSource, RawChatMessage } from './tiktok-chat';
  */
 export const MODO_SIMULACAO = process.env['PIKPOK_SIMULAR_LIVE'] === '1';
 
+/**
+ * As perguntas que a live faz sobre UM produto, pelo nome. É o que faz a demo
+ * exercitar a base de verdade: pergunta com o nome do produto → o motor acha o
+ * produto → o preço real da base sai no chat.
+ */
+const PERGUNTAS_DE_PRODUTO: readonly string[] = [
+  'quanto tá o {p}?',
+  'o {p} tem garantia?',
+  'tem o {p} em outra cor?',
+  'faz desconto no {p}?',
+  'tem estoque do {p}? quero 2',
+  'o {p} chega antes do fim de semana?',
+  'qual a diferença do {p} pro outro que você mostrou?',
+  'o {p} serve pra presente?',
+  'vale a pena o {p}? alguém já comprou?',
+];
+
 const ROTEIRO: readonly string[] = [
   'quanto tá esse?',
   'tem frete grátis?',
@@ -84,6 +101,37 @@ export class SimuladorChatSource implements ChatSource {
   private timerAudiencia: NodeJS.Timeout | null = null;
   private indice = 0;
   private viewers = 18;
+  private readonly roteiro: string[];
+
+  /**
+   * Com os produtos da base conectada, o roteiro pergunta por ELES; sem
+   * (base vazia, detalhe falhou), cai no roteiro genérico. As perguntas de
+   * produto são intercaladas com as genéricas e o ruído para a cadência
+   * continuar parecendo um chat, não uma sabatina.
+   */
+  constructor(produtos: string[] = []) {
+    if (produtos.length === 0) {
+      this.roteiro = [...ROTEIRO];
+      return;
+    }
+    const deProduto = produtos.flatMap((nome, i) =>
+      // Três perguntas por produto, deslocadas pelo índice para os modelos de
+      // frase não repetirem em sequência quando a base tem poucos itens.
+      [0, 1, 2].map((j) =>
+        PERGUNTAS_DE_PRODUTO[(i * 3 + j) % PERGUNTAS_DE_PRODUTO.length]!.replace(
+          '{p}',
+          nome,
+        ),
+      ),
+    );
+    const misturado: string[] = [];
+    const genericas = [...ROTEIRO];
+    // Duas de produto para cada genérica, até uma das listas secar.
+    while (deProduto.length || genericas.length) {
+      misturado.push(...deProduto.splice(0, 2), ...genericas.splice(0, 1));
+    }
+    this.roteiro = misturado;
+  }
 
   async connect(_roomIdOuUsername: string): Promise<void> {
     this.agendarProxima();
@@ -124,7 +172,7 @@ export class SimuladorChatSource implements ChatSource {
   }
 
   private emitir(): void {
-    const texto = ROTEIRO[this.indice % ROTEIRO.length]!;
+    const texto = this.roteiro[this.indice % this.roteiro.length]!;
     this.indice += 1;
     this.aoReceber?.({
       // UUID e não contador: reiniciar a simulação não pode repetir ids, senão

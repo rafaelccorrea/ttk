@@ -472,6 +472,24 @@ export function aplicarPrecos(
 }
 
 /**
+ * Traduz o marcador que SOBROU para gente ler.
+ *
+ * Roda só no caminho da escalação, depois de `resolvido` já ter virado
+ * decisão: o rascunho vai para a tela do vendedor, e "{{PRECO:db7f1ece-...}}"
+ * na cara dele é lixo de template — a informação real é "esse produto está sem
+ * preço na base", que é acionável (ele cadastra o preço e a próxima resposta
+ * sai sozinha). Também varre chave órfã de marcador malformado, pelo mesmo
+ * motivo.
+ */
+export function humanizarMarcadores(texto: string): string {
+  return (texto ?? '')
+    .replace(/\{\{\s*PRE[CÇ]O\s*:\s*[^}]*?\s*\}\}/gi, '[produto sem preço na base]')
+    .replace(/\{\{|\}\}/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/**
  * Todo número com cara de dinheiro que aparece num texto.
  *
  * Pega "R$ 1.499,90", "49,90", "99 reais" e "50 conto" — a forma como o chat de
@@ -1788,7 +1806,10 @@ export class LiveReplyService {
       base.produtos.has(id),
     );
     const preco = aplicarPrecos(bruta.text ?? '', base.precos);
-    const corte = truncarSeguro(preco.texto);
+    // O marcador que sobrou JÁ decidiu a escalação (abaixo); daqui em diante o
+    // texto é rascunho para humano ler, e uuid de template não se lê.
+    const legivel = preco.resolvido ? preco.texto : humanizarMarcadores(preco.texto);
+    const corte = truncarSeguro(legivel);
     const texto = corte.texto;
 
     let confianca = Number(bruta.confidence);

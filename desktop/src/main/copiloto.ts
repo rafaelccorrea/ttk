@@ -107,6 +107,8 @@ export class Copiloto {
   private metricas: AgregadorDeMetricas | null = null;
 
   private conexao: EstadoConexao = { ...CONEXAO_INICIAL };
+  /** A base da run em curso — é dela que a simulação tira o roteiro. */
+  private baseConectadaId: string | null = null;
   /**
    * Pausa é do CLIENTE de propósito: ela para de MANDAR mensagem, e não para a
    * cobrança. O minuto continua correndo porque a run continua aberta do outro
@@ -243,6 +245,7 @@ export class Copiloto {
       );
     }
 
+    this.baseConectadaId = params.knowledgeSessionId;
     this.atualizarConexao({
       ...CONEXAO_INICIAL,
       status: 'conectando',
@@ -338,7 +341,13 @@ export class Copiloto {
     // Em simulação a única peça trocada é a fonte: o lote, o backend, o modelo
     // e o painel continuam os de verdade — é o que faz a simulação valer algo.
     const chat: ChatSource = this.conexao.simulada
-      ? new SimuladorChatSource()
+      ? // Os produtos da base conectada viram o roteiro: a demo pergunta pelo
+        // que existe, e o preço real da base aparece no chat.
+        new SimuladorChatSource(
+          this.baseConectadaId
+            ? await this.api.nomesDeProdutos(this.baseConectadaId)
+            : [],
+        )
       : new WebcastChatSource();
 
     chat.on('message', (mensagem) => {
