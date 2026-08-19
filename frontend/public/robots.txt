@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /perfil
+Disallow: /assinatura
+Disallow: /ativar
+Disallow: /confirmar-email
+Disallow: /redefinir-senha
+
+Sitemap: https://pikpokviral.com.br/sitemap.xml
