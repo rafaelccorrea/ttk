@@ -441,7 +441,46 @@ function Storyboard({
   // operação por vez), mas o spinner tem que aparecer só no botão clicado:
   // três botões girando juntos liam como "redublou as três".
   const [redublando, setRedublando] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
+  /**
+   * Status da redublagem, preso à CENA e com desfecho.
+   *
+   * O aviso no topo da página falava de "cena 1" longe da cena 1 — e sumia
+   * sem dizer se deu certo. Aqui a mensagem nasce embaixo da cena clicada e
+   * termina em sucesso ("voz regravada") ou no motivo da falha.
+   */
+  const [redubStatus, setRedubStatus] = useState<{
+    id: string;
+    msg: string;
+    tipo: 'info' | 'success' | 'error';
+  } | null>(null);
+
+  const verificarRedub = useCallback(
+    async (cenaId: string, tentativa = 0) => {
+      const d = await campaignsService.detail(detalhe.id).catch(() => null);
+      const c = d?.cenas.find((x) => x.id === cenaId);
+      if (c?.error?.startsWith('Redublagem')) {
+        setRedubStatus({ id: cenaId, msg: c.error, tipo: 'error' });
+      } else if (c?.outputUrl?.includes('-ptbr')) {
+        setRedubStatus({
+          id: cenaId,
+          msg: 'Voz regravada em português. ✓',
+          tipo: 'success',
+        });
+      } else if (tentativa < 2) {
+        // Ainda processando: reconsulta em vez de declarar um desfecho falso.
+        setTimeout(() => void verificarRedub(cenaId, tentativa + 1), 10000);
+        return;
+      } else {
+        setRedubStatus({
+          id: cenaId,
+          msg: 'A regravação está demorando — recarregue em instantes para conferir.',
+          tipo: 'info',
+        });
+      }
+      onChange();
+    },
+    [detalhe.id, onChange],
+  );
   const [confirmarTudo, setConfirmarTudo] = useState(false);
   const { saldo, ilimitado } = useSaldo('video');
   const { confirmar, dialogo } = useConfirmarGasto();
@@ -504,11 +543,6 @@ function Storyboard({
       </Box>
 
       {erro && <Alert severity="error">{erro}</Alert>}
-      {aviso && (
-        <Alert severity="info" onClose={() => setAviso(null)}>
-          {aviso}
-        </Alert>
-      )}
 
       {/* A fala não entra no prompt do vídeo (só a ação visual entra), então o
           clipe sai sem narração automática. Prometer implicitamente o
@@ -796,13 +830,27 @@ function Storyboard({
                   )}
                 </Box>
 
-                {/* A redublagem roda em background: se falhou, o motivo
-                    gravado na cena é a única forma de o usuário saber. */}
-                {cena.status === 'pronta' && cena.error && (
-                  <Alert severity="warning" sx={{ mt: 1 }} variant="outlined">
-                    {cena.error}
+                {/* Status da redublagem DESTA cena: progresso, sucesso ou o
+                    motivo da falha — no lugar onde o clique aconteceu. */}
+                {redubStatus?.id === cena.id && (
+                  <Alert
+                    severity={redubStatus.tipo}
+                    variant="outlined"
+                    sx={{ mt: 1 }}
+                    onClose={() => setRedubStatus(null)}
+                  >
+                    {redubStatus.msg}
                   </Alert>
                 )}
+                {/* Falha registrada no servidor (ex.: de uma tentativa
+                    anterior) — visível mesmo sem clique nesta sessão. */}
+                {cena.status === 'pronta' &&
+                  cena.error &&
+                  redubStatus?.id !== cena.id && (
+                    <Alert severity="warning" sx={{ mt: 1 }} variant="outlined">
+                      {cena.error}
+                    </Alert>
+                  )}
 
                 {/* As ações da cena numa fileira discreta sob o vídeo — os
                     botões empilhados em largura total disputavam atenção com o
@@ -842,17 +890,15 @@ function Storyboard({
                               setRedublando(cena.id);
                               try {
                                 await acao(() => campaignsService.redubScene(cena.id));
-                                // O servidor regrava em background (o proxy da
-                                // hospedagem não sobrevive à espera). A recarga
-                                // programada busca o resultado sem o usuário
-                                // precisar adivinhar quando ficou pronto.
-                                setAviso(
-                                  `Regravando a voz da cena ${cena.ordem} em português — o vídeo atualiza sozinho em instantes.`,
-                                );
-                                setTimeout(() => {
-                                  setAviso(null);
-                                  onChange();
-                                }, 15000);
+                                // O servidor regrava em background; a
+                                // verificação agendada fecha o ciclo com
+                                // sucesso ou com o motivo da falha.
+                                setRedubStatus({
+                                  id: cena.id,
+                                  msg: 'Regravando a voz em português — o vídeo atualiza sozinho em instantes.',
+                                  tipo: 'info',
+                                });
+                                setTimeout(() => void verificarRedub(cena.id), 15000);
                               } finally {
                                 setRedublando(null);
                               }
