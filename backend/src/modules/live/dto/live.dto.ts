@@ -69,6 +69,18 @@ export class AtualizarProdutoDto {
   @MaxLength(500)
   promo?: string;
 
+  /**
+   * Texto livre que ensina a IA: garantia, material, medidas, voltagem, o que
+   * vem na caixa, condição de troca. Vai inteiro para o prompt da live.
+   */
+  @ApiPropertyOptional({
+    example: 'Garantia de 1 ano. Vem com capinha e película. Tela de 6,5".',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  details?: string;
+
   @ApiPropertyOptional({ type: [String], example: ['o kit rosa', 'aquele de 129'] })
   @IsOptional()
   @IsArray()

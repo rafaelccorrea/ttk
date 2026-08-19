@@ -68,6 +68,14 @@ export class LiveProduct {
   promo: string | null;
 
   /**
+   * Texto livre com o que o chat pergunta e nenhum campo estruturado guarda:
+   * garantia, material, medidas, voltagem, o que vem na caixa, condição de
+   * troca. Vai inteiro para o prompt da live — é o campo de "ensinar a IA".
+   */
+  @Column({ type: 'text', nullable: true })
+  details: string | null;
+
+  /**
    * Como o público chama o produto no chat: "o azul", "aquele kit", "o de 200".
    * Ninguém digita o nome do catálogo. É por estes apelidos que a pergunta vai
    * casar com o produto certo na fase ao vivo, então eles valem tanto quanto o

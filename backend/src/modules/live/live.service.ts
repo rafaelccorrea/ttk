@@ -667,6 +667,7 @@ export class LiveService {
           variants: p.variantes ?? [],
           shippingInfo: p.frete,
           promo: p.promo,
+          details: p.detalhes ?? null,
           aliases: p.aliases ?? [],
           confidence: p.confianca.toFixed(2),
           origin: 'ia',
@@ -825,6 +826,7 @@ export class LiveService {
         variants: dto.variants ?? [],
         shippingInfo: dto.shippingInfo ?? null,
         promo: dto.promo ?? null,
+        details: dto.details ?? null,
         aliases: dto.aliases ?? [],
         confidence: null,
         // Digitado pelo vendedor: a origem é fato do cadastro, não escolha do
@@ -851,6 +853,7 @@ export class LiveService {
     if (dto.variants !== undefined) produto.variants = dto.variants;
     if (dto.shippingInfo !== undefined) produto.shippingInfo = dto.shippingInfo;
     if (dto.promo !== undefined) produto.promo = dto.promo;
+    if (dto.details !== undefined) produto.details = dto.details;
     if (dto.aliases !== undefined) produto.aliases = dto.aliases;
     if (dto.active !== undefined) produto.active = dto.active;
 

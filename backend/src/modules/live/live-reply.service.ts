@@ -2128,6 +2128,7 @@ export class LiveReplyService {
         variantes: p.variants,
         frete: p.shippingInfo,
         promo: p.promo,
+        detalhes: p.details,
         aliases: p.aliases,
       })),
       faq: faq.map((f) => ({
@@ -2153,7 +2154,15 @@ export class LiveReplyService {
           .map((p) => p.priceBrl)
           .filter((p): p is string => Boolean(p)),
         textos: [
-          ...produtos.flatMap((p) => [p.shippingInfo ?? '', p.promo ?? '']),
+          ...produtos.flatMap((p) => [
+            p.shippingInfo ?? '',
+            p.promo ?? '',
+            // Os detalhes entram pelo mesmo motivo do frete: um valor em
+            // dinheiro que o vendedor ESCREVEU ali ("garantia cobre até R$
+            // 200") é dele — a resposta pode repeti-lo sem ser acusada de
+            // inventar número.
+            p.details ?? '',
+          ]),
           ...faq.map((f) => f.answer ?? ''),
         ],
       }),

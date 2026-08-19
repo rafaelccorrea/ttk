@@ -47,6 +47,8 @@ export interface LiveProduct {
   variants: unknown[];
   shippingInfo: string | null;
   promo: string | null;
+  /** Texto livre que ensina a IA: garantia, material, medidas, o que vem na caixa. */
+  details: string | null;
   aliases: string[];
   confidence: string | null;
   origin: LiveOrigin;
@@ -174,6 +176,7 @@ export interface ProdutoInput {
   variants?: string[];
   shippingInfo?: string;
   promo?: string;
+  details?: string;
   aliases?: string[];
   active?: boolean;
 }

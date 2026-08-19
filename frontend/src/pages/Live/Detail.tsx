@@ -97,6 +97,7 @@ function ProdutoDialog({
   const [variacoes, setVariacoes] = useState('');
   const [frete, setFrete] = useState('');
   const [promo, setPromo] = useState('');
+  const [detalhes, setDetalhes] = useState('');
   const [apelidos, setApelidos] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -108,6 +109,7 @@ function ProdutoDialog({
     setVariacoes(deLista(produto?.variants));
     setFrete(produto?.shippingInfo ?? '');
     setPromo(produto?.promo ?? '');
+    setDetalhes(produto?.details ?? '');
     setApelidos(deLista(produto?.aliases));
     setErro(null);
   }, [aberto, produto]);
@@ -123,6 +125,7 @@ function ProdutoDialog({
         variants: paraLista(variacoes),
         shippingInfo: frete.trim(),
         promo: promo.trim(),
+        details: detalhes.trim(),
         aliases: paraLista(apelidos),
       });
       onFechar();
@@ -150,8 +153,8 @@ function ProdutoDialog({
           <CurrencyField label="Preço" value={preco} onChange={setPreco} fullWidth />
           <TextField
             label="Variações"
-            placeholder="P, M, G"
-            helperText="Tamanhos, cores ou kits, separados por vírgula."
+            placeholder="preto, azul, 128GB, 256GB, P, M, G"
+            helperText="Cores, tamanhos, capacidades, voltagens ou kits — tudo separado por vírgula. É o que responde 'tem na cor preta?'."
             value={variacoes}
             onChange={(e) => setVariacoes(e.target.value)}
             fullWidth
@@ -169,6 +172,22 @@ function ProdutoDialog({
             value={promo}
             onChange={(e) => setPromo(e.target.value.slice(0, 500))}
             fullWidth
+          />
+          {/*
+            O campo de ENSINAR a IA. Os campos de cima são estruturados; este é
+            o texto corrido de tudo que o chat pergunta e não tem casinha:
+            garantia, material, medida, voltagem, o que vem na caixa, troca.
+            Quanto mais aqui, menos pergunta escala para o vendedor ao vivo.
+          */}
+          <TextField
+            label="Detalhes que ensinam a IA"
+            placeholder={'Garantia de 1 ano. Tela de 6,5". Vem com capinha e película. Troca grátis em 7 dias.'}
+            helperText="Escreva tudo que você responderia no chat: garantia, material, medidas, o que acompanha, condição de troca. A IA usa este texto palavra por palavra."
+            value={detalhes}
+            onChange={(e) => setDetalhes(e.target.value.slice(0, 2000))}
+            fullWidth
+            multiline
+            minRows={3}
           />
           <TextField
             label="Como o chat chama este produto"
@@ -677,6 +696,33 @@ export function LiveDetailPage() {
                         {produto.promo && (
                           <Typography variant="caption" color="text.secondary" display="block">
                             {produto.promo}
+                          </Typography>
+                        )}
+                        {/*
+                          O termômetro de quanto a IA sabe deste produto: com
+                          detalhes, a primeira linha deles aparece (o resto no
+                          hover); sem, um convite discreto para ensinar — é o
+                          campo que mais reduz escalação ao vivo.
+                        */}
+                        {produto.details ? (
+                          <Tooltip title={produto.details}>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              display="block"
+                              sx={{
+                                maxWidth: 260,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              📘 {produto.details}
+                            </Typography>
+                          </Tooltip>
+                        ) : (
+                          <Typography variant="caption" color="warning.main" display="block">
+                            sem detalhes — ensine a IA no lápis
                           </Typography>
                         )}
                       </TableCell>

@@ -115,6 +115,8 @@ export interface ProdutoExtraido {
   promo: string | null;
   /** Como o produto é chamado informalmente ("a canequinha", "o kit rosa"). */
   aliases: string[];
+  /** Texto corrido com o resto do que foi dito: material, garantia, medidas... */
+  detalhes: string | null;
   confianca: number;
   /** Segundo da live onde o produto foi mencionado; null quando indeterminado. */
   inicioSec: number | null;
@@ -246,7 +248,8 @@ Regras que mandam em tudo:
 - Quando o áudio estiver ambíguo (nome truncado, número confuso, produto citado de passagem), extraia mesmo assim, mas com "confianca" baixa.
 - "confianca" é de 0 a 1: 0.9+ quando a informação foi dita de forma limpa e repetida; 0.5 quando deu para entender mas com ruído; 0.2 quando é palpite sobre o que foi dito.
 - "aliases" é o ponto mais importante e o mais esquecido: capture como o apresentador E o público se referem ao produto informalmente ("a canequinha", "o rosa", "aquele do vídeo", "o kit"). É por esses nomes que o chat pergunta, não pelo nome do anúncio.
-- "variantes": cor, tamanho, sabor, voltagem — só as que foram faladas.
+- "variantes": cor, tamanho, sabor, voltagem, capacidade — TODAS as que foram faladas, uma por item ("preto", "azul", "128GB", "220V"). O chat pergunta por variante o tempo todo; variante não capturada é pergunta que o vendedor vai ter que responder à mão.
+- "detalhes": TUDO MAIS que o apresentador disse sobre o produto e que não coube nos outros campos — material, garantia, medidas, peso, o que vem na caixa, cuidados, para quem serve. Texto corrido, nas palavras dele. Capture o máximo que foi realmente dito; null só se nada sobrou.
 - "frete": o que foi dito sobre entrega/frete, nas palavras dele. null se não falou.
 - "promo": condição promocional dita (leve 2 pague 1, cupom, preço só na live). null se não falou.
 - "inicioSec": o segundo aproximado, dentro da live inteira, em que o produto foi apresentado.
@@ -259,7 +262,7 @@ Você recebe candidatos de produto extraídos de trechos diferentes da MESMA liv
 
 Sua tarefa:
 - Fundir candidatos que são o MESMO produto, mesmo com nomes diferentes. Use aliases, variantes e preço para decidir. Na dúvida sobre serem o mesmo, NÃO funda: dois produtos separados são recuperáveis na tela, um produto fundido errado esconde informação.
-- Ao fundir: una os aliases de todos (sem repetir), una as variantes, e escolha o nome mais claro e completo para "nome".
+- Ao fundir: una os aliases de todos (sem repetir), una as variantes, concatene os "detalhes" sem repetir informação, e escolha o nome mais claro e completo para "nome".
 - Preço: mantenha o MAIS RECENTEMENTE mencionado (o maior "inicioSec" entre os candidatos que trouxeram preço). Preço em live muda ao vivo — o último é o que vale.
 - Frete e promo: prefira a informação mais recente e não-nula.
 - "confianca" do produto fundido: a maior entre os candidatos que sustentam o nome e o preço escolhidos.
@@ -353,6 +356,11 @@ const SCHEMA_PRODUTO = {
       items: { type: 'string' },
       description: 'Como o produto é chamado informalmente na live e no chat.',
     },
+    detalhes: {
+      type: ['string', 'null'],
+      description:
+        'Tudo mais que foi DITO sobre o produto e não coube nos outros campos: material, garantia, medidas, voltagem, o que acompanha, condição de troca.',
+    },
     confianca: { type: 'number', description: 'De 0 a 1.' },
     inicioSec: { type: ['number', 'null'] },
   },
@@ -363,6 +371,7 @@ const SCHEMA_PRODUTO = {
     'frete',
     'promo',
     'aliases',
+    'detalhes',
     'confianca',
     'inicioSec',
   ],
@@ -1492,6 +1501,11 @@ export class AiService {
         frete: texto(item.frete),
         promo: texto(item.promo),
         aliases: textos(item.aliases),
+        // Teto maior que o dos campos curtos: é o campo de "tudo que foi dito".
+        detalhes:
+          typeof item.detalhes === 'string' && item.detalhes.trim()
+            ? item.detalhes.trim().slice(0, 2000)
+            : null,
         confianca: Number.isFinite(confianca)
           ? Math.min(Math.max(confianca, 0), 1)
           : 0.5,
