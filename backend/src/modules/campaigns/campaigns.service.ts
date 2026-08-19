@@ -77,6 +77,14 @@ export class CampaignsService {
    */
   private readonly montagensEmVoo = new Set<string>();
 
+  /**
+   * Campanhas cuja fila está avançando NESTE instante. O polling chega a cada
+   * 6s e um disparo leva alguns segundos: sem a trava, dois refreshes
+   * sobrepostos veriam a mesma cena 'pendente' e a disparariam (e cobrariam)
+   * duas vezes.
+   */
+  private readonly filasEmVoo = new Set<string>();
+
   constructor(
     @InjectRepository(UserProduct)
     private readonly produtos: Repository<UserProduct>,
@@ -583,12 +591,19 @@ export class CampaignsService {
   }
 
   /**
-   * Renderiza de uma vez tudo o que ainda falta.
+   * Liga a fila de renderização: dispara a PRIMEIRA cena que falta e deixa o
+   * polling (`atualizarCampanha`) avançar as demais, uma por vez.
    *
-   * A cobrança continua sendo cena a cena, dentro do `renderizarCena` — o que
-   * muda é só o número de cliques. Quem desiste no meio já pagou apenas o que
-   * disparou, e a montagem final acontece sozinha quando a última fica pronta
-   * (ver `atualizarCampanha`).
+   * A versão anterior disparava todas as cenas dentro deste request — o mesmo
+   * padrão que o proxy da hospedagem já derrubou na redublagem: com 6 cenas o
+   * request passava do timeout, o navegador via erro de rede e ninguém sabia
+   * quantas cenas tinham sido cobradas. Uma cena em voo por vez também tira a
+   * disputa pela fornecedora e pelo saldo: a próxima só é cobrada quando a
+   * anterior terminou.
+   *
+   * A cobrança continua cena a cena, dentro do `renderizarCena`. Quem desiste
+   * no meio desliga a fila tendo pago só o que já rendeu, e a montagem final
+   * acontece sozinha quando a última fica pronta.
    */
   async renderizarTudo(userId: string, campaignId: string) {
     const campanha = await this.campanhas.findOneBy({ id: campaignId, userId });
@@ -599,6 +614,16 @@ export class CampaignsService {
       order: { ordem: 'ASC' },
     });
     if (!cenas.length) throw new ConflictException('Gere o roteiro antes de renderizar.');
+
+    // Cenas que já falharam voltam para a fila: o clique em "gerar tudo" é o
+    // pedido explícito de tentar de novo. A fila em si só consome 'pendente',
+    // então uma cena que falhar DURANTE esta rodada não entra em loop.
+    const falhadas = cenas.filter((c) => c.status === 'falhou');
+    for (const cena of falhadas) {
+      cena.status = 'pendente';
+      cena.error = null;
+    }
+    if (falhadas.length) await this.cenas.save(falhadas);
 
     const pendentes = cenas.filter(
       (c) => c.status === 'pendente' || c.status === 'falhou',
@@ -616,44 +641,28 @@ export class CampaignsService {
       }
     }
 
-    // Em série, de propósito: cada cena é uma cobrança, e disparar em paralelo
-    // faria o saldo ser lido pelos dois lados antes de qualquer débito.
-    //
-    // Uma cena falhar NÃO derruba as seguintes: abortar no meio deixava a
-    // campanha metade disparada, metade nem tentada — e a metade não tentada
-    // parecia bug. A exceção só sobe se NENHUMA cena disparou (ex.: saldo
-    // acabou logo na primeira), porque aí ela é a única informação que existe.
-    const falhas: string[] = [];
-    // A PRIMEIRA causa real, com a mensagem original. Quando tudo falha pelo
-    // mesmo motivo (CLI fora do ar, retrato sumido), resumir para "verifique o
-    // saldo" escondia exatamente o que o usuário precisava ler — e o que o
-    // suporte precisava ouvir dele.
-    let primeiraCausa: string | null = null;
-    let disparadas = 0;
-    for (const cena of pendentes) {
+    campanha.renderQueue = true;
+    await this.campanhas.save(campanha);
+
+    // Já existe cena em voo (ex.: um render individual clicado antes): a fila
+    // fica armada e o polling assume dali — disparar outra agora quebraria a
+    // regra de UMA por vez.
+    const emVoo = cenas.some((c) => c.status === 'renderizando');
+    if (!emVoo) {
       try {
-        await this.renderizarCena(userId, cena.id);
-        disparadas += 1;
+        await this.renderizarCena(userId, pendentes[0].id);
       } catch (error) {
+        // A primeira nem disparou (saldo, CLI fora, retrato sumido): desligar
+        // a fila e subir a CAUSA REAL é a única informação útil que existe.
+        await this.campanhas.update(campaignId, { renderQueue: false });
         this.logger.warn(
-          `render-all: cena ${cena.ordem} da campanha ${campaignId} falhou: ${error}`,
+          `render-all: cena ${pendentes[0].ordem} da campanha ${campaignId} não disparou: ${error}`,
         );
-        falhas.push(`cena ${cena.ordem}`);
-        if (!primeiraCausa) {
-          primeiraCausa =
-            error instanceof HttpException
-              ? String(
-                  (error.getResponse() as { message?: string })?.message ??
-                    error.message,
-                )
-              : 'erro inesperado no servidor';
-        }
+        if (error instanceof HttpException) throw error;
+        throw new ConflictException(
+          'Nenhuma cena pôde ser disparada. Motivo: erro inesperado no servidor',
+        );
       }
-    }
-    if (!disparadas && falhas.length) {
-      throw new ConflictException(
-        `Nenhuma cena pôde ser disparada. Motivo: ${primeiraCausa ?? 'desconhecido'}`,
-      );
     }
 
     return this.detalharCampanha(userId, campaignId);
@@ -892,6 +901,12 @@ export class CampaignsService {
     if (todasProntas) campanha.status = 'pronta';
     await this.campanhas.save(campanha);
 
+    // A fila avança AQUI, dentro do polling: com a cena anterior resolvida
+    // acima, este é o momento em que existe vaga para a próxima. Depois do
+    // save de propósito — o disparo grava créditos e status por conta
+    // própria, e um save posterior com o objeto velho os apagaria.
+    if (campanha.renderQueue) await this.avancarFila(userId, campaignId);
+
     /**
      * Monta sozinho assim que a última cena fica pronta. É o que o vendedor
      * quer: ele pediu um vídeo, não seis pedaços. Falha aqui não pode derrubar
@@ -912,6 +927,64 @@ export class CampaignsService {
     }
 
     return this.detalharCampanha(userId, campaignId);
+  }
+
+  /**
+   * Um passo da fila de renderização: se não há cena em voo, dispara a
+   * próxima 'pendente'; se não sobrou nenhuma, desliga a fila.
+   *
+   * Regras que fazem a fila ser segura:
+   *  - UMA cena em voo por vez — a próxima só é cobrada quando a anterior
+   *    terminou, então desistir no meio nunca deixa cobrança órfã;
+   *  - só consome 'pendente' — cena que falha na fornecedora vira 'falhou'
+   *    (estornada) e NÃO é retentada sozinha, senão um defeito permanente
+   *    viraria loop de disparo;
+   *  - falha no DISPARO (saldo, CLI fora) marca a cena com a causa real e
+   *    desliga a fila — repetir a mesma falha nas cenas seguintes a cada 6s
+   *    só encheria a tela de erros idênticos.
+   */
+  private async avancarFila(userId: string, campaignId: string): Promise<void> {
+    if (this.filasEmVoo.has(campaignId)) return;
+    this.filasEmVoo.add(campaignId);
+    try {
+      const cenas = await this.cenas.find({
+        where: { campaignId },
+        order: { ordem: 'ASC' },
+      });
+      if (cenas.some((c) => c.status === 'renderizando')) return;
+
+      const proxima = cenas.find((c) => c.status === 'pendente');
+      if (!proxima) {
+        // Acabaram as pendentes (prontas ou falhadas): a fila cumpriu o que
+        // tinha; a montagem automática decide sozinha logo adiante.
+        await this.campanhas.update(campaignId, { renderQueue: false });
+        return;
+      }
+
+      try {
+        await this.renderizarCena(userId, proxima.id);
+        this.logger.log(
+          `Fila da campanha ${campaignId}: cena ${proxima.ordem} disparada.`,
+        );
+      } catch (error) {
+        const causa =
+          error instanceof HttpException
+            ? String(
+                (error.getResponse() as { message?: string })?.message ??
+                  error.message,
+              )
+            : 'erro inesperado no servidor';
+        this.logger.warn(
+          `Fila da campanha ${campaignId}: cena ${proxima.ordem} não disparou: ${error}`,
+        );
+        proxima.status = 'falhou';
+        proxima.error = `A cena não pôde ser disparada: ${causa}`;
+        await this.cenas.save(proxima);
+        await this.campanhas.update(campaignId, { renderQueue: false });
+      }
+    } finally {
+      this.filasEmVoo.delete(campaignId);
+    }
   }
 
   /**

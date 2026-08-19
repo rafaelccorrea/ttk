@@ -500,7 +500,11 @@ function Storyboard({
   const custoTotal = precos ? faltaRenderizar.length * precos.cena : null;
   const semSaldo =
     !ilimitado && saldo !== null && custoTotal !== null && saldo < custoTotal;
-  const renderizando = detalhe.cenas.some((c) => c.status === 'renderizando');
+  // A fila (`renderQueue`) conta como "renderizando": o servidor gera as
+  // cenas uma por vez, e entre um disparo e outro pode não haver nenhuma cena
+  // com status `renderizando` — mas a campanha continua trabalhando.
+  const renderizando =
+    detalhe.renderQueue || detalhe.cenas.some((c) => c.status === 'renderizando');
   // O backend bloqueia regerar depois da primeira cena pronta (seria jogar o
   // crédito dela fora) — o botão segue a mesma regra para nem oferecer o erro.
   const algumaPronta = detalhe.cenas.some((c) => c.status === 'pronta');
@@ -807,6 +811,15 @@ function Storyboard({
                     />
                   ) : cena.status === 'renderizando' ? (
                     <BrandLoader minHeight={160} />
+                  ) : cena.status === 'pendente' && detalhe.renderQueue ? (
+                    // Na fila: o servidor vai disparar esta cena sozinho
+                    // quando a anterior terminar — sem botão, sem clique.
+                    <Stack alignItems="center" spacing={1} px={2}>
+                      <CircularProgress size={20} color="inherit" />
+                      <Typography variant="caption" color="text.secondary" textAlign="center">
+                        Na fila — gera sozinha quando a cena anterior terminar.
+                      </Typography>
+                    </Stack>
                   ) : cena.status === 'falhou' ? (
                     <Typography variant="body2" color="text.secondary" px={2} textAlign="center">
                       {cena.error ?? 'A cena falhou.'} Os créditos foram estornados.
@@ -1000,6 +1013,9 @@ function Storyboard({
                       disabled={
                         ocupado ||
                         cena.status === 'renderizando' ||
+                        // Com a fila ligada é o servidor quem dispara: o
+                        // clique aqui duplicaria o pedido da mesma cena.
+                        detalhe.renderQueue ||
                         (cena.tipo === 'apresentador' && !personaPronta)
                       }
                       onClick={() =>
@@ -1118,6 +1134,9 @@ function CampanhasTab({
     if (!aberta || !detalhe) return;
     const emAndamento =
       detalhe.persona?.status === 'gerando' ||
+      // Fila ligada: é o refresh que dispara a próxima cena — parar de
+      // consultar aqui congelaria a fila no meio.
+      detalhe.renderQueue ||
       detalhe.cenas.some((c) => c.status === 'renderizando');
     if (!emAndamento) return;
     const timer = setTimeout(() => void carregarDetalhe(aberta).catch(console.error), POLL_MS);

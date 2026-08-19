@@ -52,6 +52,12 @@ export interface Campaign {
   script: string | null;
   /** Vídeo montado a partir das cenas — é o entregável da campanha. */
   finalVideoUrl: string | null;
+  /**
+   * Fila ligada: o servidor está gerando as cenas UMA POR VEZ, avançando a
+   * cada refresh. Enquanto true, a campanha está trabalhando mesmo que
+   * nenhuma cena esteja `renderizando` neste exato instante.
+   */
+  renderQueue: boolean;
   creditsSpent: number;
   createdAt: string;
 }

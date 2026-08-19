@@ -176,12 +176,20 @@ describe('gerarRoteiro — rotação de fotos', () => {
   });
 });
 
-describe('renderizarTudo', () => {
+describe('renderizarTudo — fila de renderização', () => {
   function base(cenasNoBanco: Dict[], falha: Set<string>) {
+    const campanha: Dict = {
+      id: 'c1',
+      userProductId: 'p1',
+      personaId: 'pe1',
+      renderQueue: false,
+    };
+    const campanhas = repo({
+      findOneBy: jest.fn(async () => campanha),
+      update: jest.fn(async () => ({})),
+    });
     const { service, ...deps } = servico({
-      campanhas: repo({
-        findOneBy: jest.fn(async () => ({ id: 'c1', userProductId: 'p1', personaId: 'pe1' })),
-      }),
+      campanhas,
       cenas: repo({ find: jest.fn(async () => cenasNoBanco) }),
       produtos: repo({ findOneBy: jest.fn(async () => ({ id: 'p1', images: FOTOS })) }),
       personas: repo({
@@ -197,26 +205,135 @@ describe('renderizarTudo', () => {
     jest
       .spyOn(service, 'detalharCampanha')
       .mockResolvedValue({ id: 'c1' } as never);
-    return { service, espiao, ...deps };
+    return { service, espiao, campanha, ...deps, campanhas };
   }
 
-  it('uma cena falhar NÃO impede as seguintes de disparar', async () => {
+  it('dispara SÓ a primeira cena e liga a fila — o resto é do polling', async () => {
     const cenas = [
       { id: 's1', ordem: 1, tipo: 'produto', status: 'pendente' },
       { id: 's2', ordem: 2, tipo: 'produto', status: 'pendente' },
       { id: 's3', ordem: 3, tipo: 'produto', status: 'pendente' },
     ];
-    const { service, espiao } = base(cenas, new Set(['s2']));
+    const { service, espiao, campanha } = base(cenas, new Set());
     await service.renderizarTudo('u1', 'c1');
-    expect(espiao).toHaveBeenCalledTimes(3); // s3 disparou mesmo com s2 caída
+    expect(espiao).toHaveBeenCalledTimes(1);
+    expect(espiao).toHaveBeenCalledWith('u1', 's1');
+    expect(campanha.renderQueue).toBe(true);
   });
 
-  it('se NENHUMA dispara, a exceção sobe (é a única informação que existe)', async () => {
+  it('com cena já em voo, arma a fila sem disparar outra (uma por vez)', async () => {
+    const cenas = [
+      { id: 's1', ordem: 1, tipo: 'produto', status: 'renderizando' },
+      { id: 's2', ordem: 2, tipo: 'produto', status: 'pendente' },
+    ];
+    const { service, espiao, campanha } = base(cenas, new Set());
+    await service.renderizarTudo('u1', 'c1');
+    expect(espiao).not.toHaveBeenCalled();
+    expect(campanha.renderQueue).toBe(true);
+  });
+
+  it('cena falhada volta para a fila como pendente (o clique é o retry)', async () => {
+    const cenas = [
+      { id: 's1', ordem: 1, tipo: 'produto', status: 'falhou', error: 'x' },
+    ];
+    const { service, espiao } = base(cenas, new Set());
+    await service.renderizarTudo('u1', 'c1');
+    expect(cenas[0].status).toBe('pendente');
+    expect(cenas[0].error).toBeNull();
+    expect(espiao).toHaveBeenCalledWith('u1', 's1');
+  });
+
+  it('se a primeira nem dispara, a exceção sobe e a fila desliga', async () => {
     const cenas = [{ id: 's1', ordem: 1, tipo: 'produto', status: 'pendente' }];
-    const { service } = base(cenas, new Set(['s1']));
+    const { service, campanhas } = base(cenas, new Set(['s1']));
     await expect(service.renderizarTudo('u1', 'c1')).rejects.toThrow(
       ConflictException,
     );
+    expect(campanhas.update as jest.Mock).toHaveBeenCalledWith('c1', {
+      renderQueue: false,
+    });
+  });
+});
+
+describe('avancarFila (via atualizarCampanha)', () => {
+  function base(cenasNoBanco: Dict[], opts: { falhaDisparo?: boolean } = {}) {
+    const campanha: Dict = {
+      id: 'c1',
+      userProductId: 'p1',
+      personaId: 'pe1',
+      renderQueue: true,
+      creditsSpent: 0,
+      finalVideoUrl: 'https://cdn/final.mp4', // impede a montagem automática no teste
+    };
+    const cenasSalvas: Dict[] = [];
+    const campanhas = repo({
+      findOneBy: jest.fn(async () => campanha),
+      update: jest.fn(async () => ({})),
+    });
+    const cenas = repo({
+      find: jest.fn(async () => cenasNoBanco),
+      save: jest.fn(async (c: Dict) => {
+        cenasSalvas.push(c);
+        return c;
+      }),
+    });
+    const { service } = servico({ campanhas, cenas });
+    const espiao = jest
+      .spyOn(service, 'renderizarCena')
+      .mockImplementation(async (_u, id) => {
+        if (opts.falhaDisparo) throw new ConflictException('Saldo insuficiente.');
+        return { id } as never;
+      });
+    jest
+      .spyOn(service, 'detalharCampanha')
+      .mockResolvedValue({ id: 'c1' } as never);
+    return { service, espiao, campanhas, cenasSalvas };
+  }
+
+  it('sem cena em voo, dispara a PRÓXIMA pendente na ordem', async () => {
+    const { service, espiao } = base([
+      { id: 's1', ordem: 1, status: 'pronta' },
+      { id: 's2', ordem: 2, status: 'pendente' },
+      { id: 's3', ordem: 3, status: 'pendente' },
+    ]);
+    await service.atualizarCampanha('u1', 'c1');
+    expect(espiao).toHaveBeenCalledTimes(1);
+    expect(espiao).toHaveBeenCalledWith('u1', 's2');
+  });
+
+  it('com cena em voo, NÃO dispara outra', async () => {
+    const { service, espiao } = base([
+      { id: 's1', ordem: 1, status: 'renderizando', generatedMediaId: null },
+      { id: 's2', ordem: 2, status: 'pendente' },
+    ]);
+    await service.atualizarCampanha('u1', 'c1');
+    expect(espiao).not.toHaveBeenCalled();
+  });
+
+  it('sem pendentes, desliga a fila', async () => {
+    const { service, espiao, campanhas } = base([
+      { id: 's1', ordem: 1, status: 'pronta' },
+      { id: 's2', ordem: 2, status: 'falhou' }, // falhou NÃO é retentada sozinha
+    ]);
+    await service.atualizarCampanha('u1', 'c1');
+    expect(espiao).not.toHaveBeenCalled();
+    expect(campanhas.update as jest.Mock).toHaveBeenCalledWith('c1', {
+      renderQueue: false,
+    });
+  });
+
+  it('falha no disparo grava a causa na cena e desliga a fila', async () => {
+    const { service, campanhas, cenasSalvas } = base(
+      [{ id: 's1', ordem: 1, status: 'pendente' }],
+      { falhaDisparo: true },
+    );
+    await service.atualizarCampanha('u1', 'c1');
+    const cena = cenasSalvas.find((c) => c.id === 's1');
+    expect(cena?.status).toBe('falhou');
+    expect(String(cena?.error)).toContain('Saldo insuficiente');
+    expect(campanhas.update as jest.Mock).toHaveBeenCalledWith('c1', {
+      renderQueue: false,
+    });
   });
 });
 

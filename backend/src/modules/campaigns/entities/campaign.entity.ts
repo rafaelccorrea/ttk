@@ -84,6 +84,15 @@ export class Campaign {
   finalVideoUrl: string | null;
 
   /**
+   * Fila de renderização ligada: o polling dispara UMA cena por vez até
+   * acabarem as pendentes. Fica no banco, e não em memória, porque a fila
+   * atravessa muitos requests (cada avanço é um refresh) e precisa sobreviver
+   * a um restart do servidor no meio da campanha.
+   */
+  @Column({ type: 'boolean', default: false })
+  renderQueue: boolean;
+
+  /**
    * Quanto já foi debitado. Somado cena a cena no momento de submeter cada
    * uma: cobrar tudo na frente quebra quando o vendedor desiste no meio.
    */
