@@ -1095,6 +1095,12 @@ function CampanhasTab({
   const [aberta, setAberta] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<CampaignDetail | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // Batida do polling. O efeito abaixo dependia só de `detalhe`: quando um
+  // refresh falhava (500, rede), o estado não mudava, o efeito não rodava de
+  // novo e o polling MORRIA — a cena ficava "renderizando" para sempre na
+  // tela mesmo com a geração concluída no servidor. O contador re-arma o
+  // timer aconteça o que acontecer com a consulta.
+  const [batidaDePolling, setBatidaDePolling] = useState(0);
 
   // O passo do topo acompanha o que está na tela: lista/criação é "Roteiro",
   // campanha aberta é "Vídeo". Sem isto o cabeçalho mente sobre onde a pessoa
@@ -1148,9 +1154,18 @@ function CampanhasTab({
       detalhe.renderQueue ||
       detalhe.cenas.some((c) => c.status === 'renderizando');
     if (!emAndamento) return;
-    const timer = setTimeout(() => void carregarDetalhe(aberta).catch(console.error), POLL_MS);
+    const timer = setTimeout(async () => {
+      try {
+        await carregarDetalhe(aberta);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        // Mesmo em falha o próximo tique é agendado — ver `batidaDePolling`.
+        setBatidaDePolling((b) => b + 1);
+      }
+    }, POLL_MS);
     return () => clearTimeout(timer);
-  }, [aberta, detalhe, carregarDetalhe]);
+  }, [aberta, detalhe, batidaDePolling, carregarDetalhe]);
 
   async function criar() {
     // Guarda de reentrância: o `disabled` do botão depende do React ter

@@ -902,6 +902,41 @@ export class CampaignsService {
     return cena;
   }
 
+  /** Colhe UMA cena em voo: consulta a fornecedora, espelha e dubla. */
+  private async colherCena(
+    userId: string,
+    cena: CampaignScene,
+    campanha: Campaign,
+  ): Promise<void> {
+    const media = await this.videogen.refresh(userId, cena.generatedMediaId!);
+    if (media.status === 'completed' && media.outputUrl) {
+      // Espelha antes de guardar: o MP4 da fornecedora expira em horas.
+      cena.outputUrl =
+        (await this.mirror.mirror(media.outputUrl, 'campaign-scenes', cena.id)) ??
+        media.outputUrl;
+      /**
+       * Dublagem em pt-BR por TTS, trocando a trilha do clipe.
+       *
+       * O modelo de vídeo fala — mas mastiga o português a ponto de não se
+       * entender (aconteceu em produção). A voz passa a vir de um TTS de
+       * verdade; o áudio original é o defeito, não um fundo a preservar.
+       * Best-effort: se o TTS ou o remux falhar, a cena fica com o áudio
+       * original — pior áudio é melhor que cena travada em "renderizando".
+       */
+      cena.outputUrl = (await this.dublarCena(cena)) ?? cena.outputUrl;
+      cena.status = 'pronta';
+    } else if (['failed', 'nsfw', 'canceled'].includes(media.status)) {
+      // O estorno já aconteceu dentro do refresh do videogen.
+      cena.status = 'falhou';
+      cena.error = media.error ?? 'A geração falhou.';
+      campanha.creditsSpent = Math.max(
+        0,
+        campanha.creditsSpent - ACTION_PRICES.video.credits,
+      );
+    }
+    await this.cenas.save(cena);
+  }
+
   /** Consulta as cenas em andamento e fecha a campanha quando todas concluem. */
   async atualizarCampanha(userId: string, campaignId: string) {
     const campanha = await this.campanhas.findOneBy({ id: campaignId, userId });
@@ -910,35 +945,22 @@ export class CampaignsService {
     const cenas = await this.cenas.find({ where: { campaignId } });
     for (const cena of cenas) {
       if (cena.status !== 'renderizando' || !cena.generatedMediaId) continue;
-      const media = await this.videogen.refresh(userId, cena.generatedMediaId);
-      if (media.status === 'completed' && media.outputUrl) {
-        // Espelha antes de guardar: o MP4 da fornecedora expira em horas.
-        cena.outputUrl =
-          (await this.mirror.mirror(media.outputUrl, 'campaign-scenes', cena.id)) ??
-          media.outputUrl;
-        /**
-         * Dublagem em pt-BR por TTS, trocando a trilha do clipe.
-         *
-         * O modelo de vídeo fala — mas mastiga o português a ponto de não se
-         * entender (aconteceu em produção). A voz passa a vir de um TTS de
-         * verdade; o áudio original é o defeito, não um fundo a preservar.
-         * Best-effort: se o TTS ou o remux falhar, a cena fica com o áudio
-         * original — pior áudio é melhor que cena travada em "renderizando".
-         */
-        cena.outputUrl = await this.dublarCena(cena) ?? cena.outputUrl;
-        cena.status = 'pronta';
-      } else if (['failed', 'nsfw', 'canceled'].includes(media.status)) {
-        // O estorno já aconteceu dentro do refresh do videogen.
-        cena.status = 'falhou';
-        cena.error = media.error ?? 'A geração falhou.';
-        campanha.creditsSpent = Math.max(
-          0,
-          campanha.creditsSpent - ACTION_PRICES.video.credits,
+      /*
+       * Cada cena tem o seu try: um erro transitório da fornecedora (ou do
+       * espelho) numa cena derrubava o refresh INTEIRO como 500 — a tela
+       * parava de atualizar, a fila não avançava e uma geração já concluída
+       * ficava presa em "renderizando" para sempre. Logar e seguir deixa o
+       * próximo poll tentar de novo, que é o comportamento certo para falha
+       * passageira.
+       */
+      try {
+        await this.colherCena(userId, cena, campanha);
+      } catch (error) {
+        this.logger.warn(
+          `Refresh da cena ${cena.id} (campanha ${campaignId}) falhou: ${error}`,
         );
       }
-      await this.cenas.save(cena);
     }
-
     const atualizadas = await this.cenas.find({ where: { campaignId } });
     const todasProntas =
       atualizadas.length > 0 && atualizadas.every((c) => c.status === 'pronta');
