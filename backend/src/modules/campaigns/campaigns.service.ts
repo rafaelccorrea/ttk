@@ -162,11 +162,16 @@ function montarPromptDeCena(opts: {
       // cortada no fim dos 5s. Compacto de propósito — ver PROMPT_MAX.
       `Audio: ${opts.vozDescricao ?? 'voice of a young Brazilian woman'}, natural pt-BR accent, ` +
         'calm warm conversational tone — never shouting, never a radio announcer. ' +
-        'Brazilian Portuguese ONLY (never Spanish or English); say every word exactly as written — ' +
-        'no substitutions or re-inflections; prices are Brazilian reais, never dollars. ' +
-        'Speech starts at the very first frame (no laugh, giggle or pause before it) ' +
-        'and the full line ends within the 5-second clip at a calm pace. ' +
-        'Perfect word-by-word lip-sync. No music.',
+        'Brazilian Portuguese ONLY (never Spanish or English). ' +
+        // O exemplo literal pesa mais que a regra abstrata: "verbatim" sozinho
+        // não impediu a voz feminina de flexionar "todo" para "toda".
+        'Say every word EXACTLY as written — a word or its ending NEVER changes ("todo" never becomes "toda"); ' +
+        'prices are Brazilian reais, never dollars. ' +
+        // Sorriso é expressão; risada é SOM — e o som é o defeito. Separar os
+        // dois evita que o modelo troque o sorriso por cara fechada.
+        'NO laughing or giggling SOUNDS — a smile is fine, laughter audio is not. ' +
+        'Speech starts at the very first frame and the full line ends within the 5-second clip at a calm pace. ' +
+        'Word-by-word lip-sync. No music.',
     );
   } else {
     partes.push('Audio: no speech, no music — subtle ambient sound only.');
@@ -411,7 +416,9 @@ export class CampaignsService {
     }
 
     const promptFragment = montarFragmento(attrs);
-    const retrato = `portrait of ${promptFragment}, looking at camera, waist up`;
+    // "closed-mouth smile, about to speak": retrato no meio da risada fazia o
+    // vídeo ABRIR com risada sonora — o modelo anima a expressão que recebe.
+    const retrato = `portrait of ${promptFragment}, looking at camera, waist up, gentle closed-mouth smile, about to start speaking`;
 
     // A cobrança acontece aqui dentro, com estorno automático se a API recusar.
     const media = await this.videogen.generate(userId, {
