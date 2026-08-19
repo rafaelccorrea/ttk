@@ -13,6 +13,7 @@ import {
   ehAltoValor,
   ehListaNegra,
   ehPergunta,
+  humanizarMarcadores,
   normalizarTexto,
   truncarSeguro,
   valoresPermitidos,
@@ -289,6 +290,34 @@ describe('contemPrecoLiteral', () => {
       expect(contemPrecoLiteral('temos do 34 ao 42', base)).toBe(false);
       expect(contemPrecoLiteral('vem 3 unidades no kit', base)).toBe(false);
     });
+  });
+});
+
+/*
+ * O rascunho da escalação é lido por um humano no meio da live: um
+ * "{{PRECO:uuid}}" na tela é lixo de template, enquanto "[produto sem preço na
+ * base]" diz exatamente o que fazer. A humanização roda SÓ no caminho escalado
+ * — a decisão de escalar já foi tomada pelo `resolvido` antes dela.
+ */
+describe('humanizarMarcadores', () => {
+  it('troca o marcador cru por um aviso legível', () => {
+    expect(humanizarMarcadores('{{PRECO:db7f1ece-df97}}')).toBe(
+      '[produto sem preço na base]',
+    );
+    expect(
+      humanizarMarcadores('O S25 FE sai por {{PRECO:95121c87}} hoje.'),
+    ).toBe('O S25 FE sai por [produto sem preço na base] hoje.');
+  });
+
+  it('varre chave órfã de marcador malformado', () => {
+    expect(humanizarMarcadores('sai por {{PRECO:abc} no pix')).not.toContain('{{');
+    expect(humanizarMarcadores('custa }} 50')).not.toContain('}}');
+  });
+
+  it('não mexe em texto sem marcador', () => {
+    expect(humanizarMarcadores('Sai por R$ 49,90 com frete grátis')).toBe(
+      'Sai por R$ 49,90 com frete grátis',
+    );
   });
 });
 
