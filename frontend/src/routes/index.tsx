@@ -25,6 +25,7 @@ import { IngestionPage } from '@/pages/Ingestion';
 import { LandingPage } from '@/pages/Landing';
 import { LivePage } from '@/pages/Live';
 import { LiveDetailPage } from '@/pages/Live/Detail';
+import { LiveRunPage } from '@/pages/Live/RunDetail';
 import { LoginPage } from '@/pages/Login';
 import { MultiplierPage } from '@/pages/Multiplier';
 import { PlansPage } from '@/pages/Plans';
@@ -164,6 +165,16 @@ export function AppRoutes() {
               element={
                 <PlanGate feature="live_copilot">
                   <LivePage />
+                </PlanGate>
+              }
+            />
+            {/* Vem antes de `/copiloto/:id` só por leitura — o roteador ranqueia
+                o segmento estático `lives` acima do dinâmico de qualquer forma. */}
+            <Route
+              path="/copiloto/lives/:id"
+              element={
+                <PlanGate feature="live_copilot">
+                  <LiveRunPage />
                 </PlanGate>
               }
             />

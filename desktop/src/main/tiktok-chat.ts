@@ -99,6 +99,34 @@ interface WebcastChatPayload {
   comment?: string;
 }
 
+/** `roomUser` — a leitura periódica de quantos assistem. */
+interface WebcastRoomUserPayload {
+  viewerCount?: number;
+}
+
+/** `like` — cada evento traz quantas curtidas aquele toque somou. */
+interface WebcastLikePayload {
+  likeCount?: number;
+}
+
+/**
+ * `gift` — presentes em sequência (streak) chegam como vários eventos com o
+ * contador subindo; só o que tem `repeatEnd` fecha a conta. Somar cada evento
+ * intermediário contaria o mesmo presente dezenas de vezes, e o valor em
+ * diamantes é a métrica de dinheiro da live — a que menos pode mentir.
+ */
+interface WebcastGiftPayload {
+  diamondCount?: number;
+  repeatCount?: number;
+  repeatEnd?: boolean;
+  giftType?: number;
+}
+
+/** `social` — follow e share chegam juntos, separados pelo `displayType`. */
+interface WebcastSocialPayload {
+  displayType?: string;
+}
+
 /**
  * A fonte padrão: o WebSocket do webcast, via `tiktok-live-connector`.
  *
@@ -110,6 +138,7 @@ export class WebcastChatSource implements ChatSource {
   private alvo = '';
 
   private aoReceber: ((m: RawChatMessage) => void) | null = null;
+  private aoMedir: ((a: AudienceEvent) => void) | null = null;
   private aoCair: ((e: Error) => void) | null = null;
   private aoErrar: ((e: Error) => void) | null = null;
 
@@ -125,12 +154,17 @@ export class WebcastChatSource implements ChatSource {
   }
 
   on(evt: 'message', cb: (m: RawChatMessage) => void): void;
+  on(evt: 'audience', cb: (a: AudienceEvent) => void): void;
   on(evt: 'disconnect' | 'error', cb: (e: Error) => void): void;
   on(
-    evt: 'message' | 'disconnect' | 'error',
-    cb: ((m: RawChatMessage) => void) | ((e: Error) => void),
+    evt: 'message' | 'audience' | 'disconnect' | 'error',
+    cb:
+      | ((m: RawChatMessage) => void)
+      | ((a: AudienceEvent) => void)
+      | ((e: Error) => void),
   ): void {
     if (evt === 'message') this.aoReceber = cb as (m: RawChatMessage) => void;
+    else if (evt === 'audience') this.aoMedir = cb as (a: AudienceEvent) => void;
     else if (evt === 'disconnect') this.aoCair = cb as (e: Error) => void;
     else this.aoErrar = cb as (e: Error) => void;
   }
@@ -166,6 +200,44 @@ export class WebcastChatSource implements ChatSource {
     conexao.on('chat', (dados: WebcastChatPayload) => {
       const mensagem = this.normalizar(dados);
       if (mensagem) this.aoReceber?.(mensagem);
+    });
+
+    /*
+     * A audiência da sala, que o webcast entrega de graça junto com o chat.
+     *
+     * `processInitialData` reenvia histórico na reconexão — para o chat isso é
+     * inócuo (o `msgId` deduplica no backend), mas curtida e presente não têm
+     * id. É o agregador quem absorve isso: ele soma por janela e manda DELTAS,
+     * então o custo de uma reconexão é, no pior caso, uma janela gorda — nunca
+     * a live inteira contada duas vezes.
+     */
+    conexao.on('roomUser', (dados: WebcastRoomUserPayload) => {
+      if (typeof dados.viewerCount === 'number' && dados.viewerCount >= 0) {
+        this.aoMedir?.({ kind: 'viewers', value: dados.viewerCount });
+      }
+    });
+    conexao.on('like', (dados: WebcastLikePayload) => {
+      const valor = Number(dados.likeCount ?? 1);
+      if (valor > 0) this.aoMedir?.({ kind: 'likes', value: valor });
+    });
+    conexao.on('gift', (dados: WebcastGiftPayload) => {
+      // Streak (giftType 1) só fecha no `repeatEnd`; os eventos intermediários
+      // são o mesmo presente ainda sendo segurado — ver `WebcastGiftPayload`.
+      if (dados.giftType === 1 && !dados.repeatEnd) return;
+      const vezes = Math.max(1, Number(dados.repeatCount ?? 1));
+      this.aoMedir?.({
+        kind: 'gift',
+        count: vezes,
+        diamonds: Math.max(0, Number(dados.diamondCount ?? 0)) * vezes,
+      });
+    });
+    conexao.on('social', (dados: WebcastSocialPayload) => {
+      const tipo = dados.displayType ?? '';
+      if (/follow/i.test(tipo)) this.aoMedir?.({ kind: 'follow' });
+      else if (/share/i.test(tipo)) this.aoMedir?.({ kind: 'share' });
+    });
+    conexao.on('member', () => {
+      this.aoMedir?.({ kind: 'join' });
     });
 
     // A lib emite `disconnected` sem motivo e `streamEnd` quando a live acaba —

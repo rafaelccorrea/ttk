@@ -425,6 +425,17 @@ export class ApiClient {
   }
 
   /**
+   * Um lote de instantâneos de audiência (viewers, curtidas, presentes).
+   * Deltas por janela de ~30s — quem agrega é o `AgregadorDeMetricas`.
+   */
+  async enviarMetricas(pontos: unknown[]): Promise<void> {
+    if (!this.runId || pontos.length === 0) return;
+    await this.requisitar('POST', `/live/runs/${this.runId}/metrics`, {
+      metrics: pontos,
+    });
+  }
+
+  /**
    * O batimento de um minuto — que é TAMBÉM a cobrança do minuto de live (ver o
    * comentário longo em `live-run.controller.ts`). Por isso ele começa junto
    * com a run e para junto: um timer que sobrevive ao fim da transmissão cobra

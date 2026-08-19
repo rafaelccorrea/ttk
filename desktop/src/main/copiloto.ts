@@ -2,6 +2,7 @@ import { BrowserWindow, clipboard, type WebContents } from 'electron';
 import Store from 'electron-store';
 import { ApiClient } from './api-client';
 import { EnviadorDeComentarios } from './comment-sender';
+import { AgregadorDeMetricas } from './metricas';
 import { AcumuladorDeLote, JANELA_LOTE_MS } from './rate-limiter';
 import {
   AnonimizadorDeAutor,
@@ -94,6 +95,14 @@ export class Copiloto {
   private chat: ChatSource | null = null;
   private anonimizador: AnonimizadorDeAutor | null = null;
   private acumulador: AcumuladorDeLote<ChatMessageAnonima> | null = null;
+  /**
+   * A audiência da sala (viewers, curtidas, presentes), agregada em janelas de
+   * 30s e subida ao backend — é o que a página do copiloto na web desenha
+   * depois que a live acaba. Nada disso passa pela pausa nem pela lista negra:
+   * pausar para de RESPONDER, mas a live continua acontecendo e o retrato dela
+   * continua valendo.
+   */
+  private metricas: AgregadorDeMetricas | null = null;
 
   private conexao: EstadoConexao = { ...CONEXAO_INICIAL };
   /**
@@ -131,6 +140,14 @@ export class Copiloto {
      * Recebe o mesmo estado que o IPC publica, no mesmo instante.
      */
     private readonly aoMudarConexao: (estado: EstadoConexao) => void = () => {},
+    /**
+     * A transmissão do @ está no ar? `true`/`false` quando deu para ler a
+     * página da live; `null` quando não deu — e o `null` NUNCA bloqueia, porque
+     * a leitura é de dado de terceiro sem contrato e negar a live de quem está
+     * transmitindo por causa de um HTML remontado seria o erro mais caro.
+     */
+    private readonly estaAoVivo: (usuario: string) => Promise<boolean | null> = () =>
+      Promise.resolve(null),
   ) {
     this.enviador = new EnviadorDeComentarios({
       webContents: () => this.viewDoTikTok(),
@@ -190,6 +207,19 @@ export class Copiloto {
       throw new Error('Já existe uma transmissão em andamento.');
     }
 
+    /*
+     * A conferência vem ANTES de a run existir porque a run COBRA: conectar
+     * fora do ar abria uma transmissão de ninguém e os minutos do vendedor
+     * escorriam num chat que não existe. Só o `false` explícito barra — ver o
+     * contrato de `estaAoVivo` no construtor.
+     */
+    const aoVivo = await this.estaAoVivo(params.tiktokUsername).catch(() => null);
+    if (aoVivo === false) {
+      throw new Error(
+        'Sua live ainda não está no ar. Comece a transmissão no TikTok primeiro e conecte de novo — nenhum minuto foi gasto.',
+      );
+    }
+
     this.atualizarConexao({
       ...CONEXAO_INICIAL,
       status: 'conectando',
@@ -203,6 +233,10 @@ export class Copiloto {
       });
 
       this.anonimizador = new AnonimizadorDeAutor(run.id);
+      this.metricas = new AgregadorDeMetricas((pontos) =>
+        this.api.enviarMetricas(pontos),
+      );
+      this.metricas.iniciar();
       this.acumulador = new AcumuladorDeLote<ChatMessageAnonima>(
         (lote) => this.api.enviarLote(lote),
         JANELA_LOTE_MS,
@@ -286,6 +320,10 @@ export class Copiloto {
       this.acumulador.adicionar(this.anonimizador.mapear(mensagem));
     });
 
+    chat.on('audience', (evento) => {
+      this.metricas?.registrar(evento);
+    });
+
     // Queda do webcast não derruba a run: a `WebcastChatSource` reconecta
     // sozinha com backoff, e o vendedor só precisa saber que o chat oscilou.
     chat.on('disconnect', (erro) => this.avisarErro(erro.message));
@@ -328,6 +366,10 @@ export class Copiloto {
     // A cauda do lote vai junto: são as últimas perguntas da live, geralmente
     // as de "ainda dá tempo de comprar?".
     this.acumulador?.descarregar();
+    // A última janela de audiência sobe ANTES de a run fechar — depois do
+    // `encerrarRun` o cliente já não tem runId e o envio viraria no-op.
+    await this.metricas?.encerrar().catch(() => undefined);
+    this.metricas = null;
 
     await this.api.encerrarRun(motivo).catch(() => undefined);
     await this.limpar();
@@ -349,6 +391,10 @@ export class Copiloto {
     this.chat = null;
     this.acumulador?.parar();
     this.acumulador = null;
+    // No fim normal o `encerrar` já descarregou; aqui é a rede de segurança
+    // dos caminhos de erro, onde só importa parar o relógio.
+    await this.metricas?.encerrar().catch(() => undefined);
+    this.metricas = null;
     this.anonimizador = null;
     this.pausado = false;
     // A run acabou: o automático não atravessa para a próxima. A `degradacao`

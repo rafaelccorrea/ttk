@@ -142,13 +142,46 @@ export function LivePage() {
               }}
             />
             <Box sx={{ minWidth: 0 }}>
-              <Typography variant="h5" sx={{ lineHeight: 1.2 }}>
+              <Typography
+                variant="h5"
+                sx={{
+                  lineHeight: 1.2,
+                  fontWeight: 800,
+                  // O gradiente da marca no título, não num enfeite ao lado:
+                  // é o mesmo par de cores do app desktop e do ícone.
+                  background: 'linear-gradient(90deg, #fe2c55 0%, #00c2bb 100%)',
+                  backgroundClip: 'text',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  width: 'fit-content',
+                }}
+              >
                 Copiloto de Live
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                 Suba uma live que você já fez e transforme o que você falou ao
                 vivo numa base de conhecimento dos seus produtos.
               </Typography>
+              {/* O produto em três passos, para quem chega sem contexto: a
+                  jornada atravessa web e desktop e nada mais na tela conta
+                  essa ordem. */}
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ mt: 1.25, flexWrap: 'wrap', rowGap: 0.75 }}
+              >
+                {['1 · Monte a base', '2 · Instale o app', '3 · Entre ao vivo'].map(
+                  (passo) => (
+                    <Chip
+                      key={passo}
+                      size="small"
+                      variant="outlined"
+                      label={passo}
+                      sx={{ fontWeight: 700 }}
+                    />
+                  ),
+                )}
+              </Stack>
             </Box>
           </Stack>
           <Button

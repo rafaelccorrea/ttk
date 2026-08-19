@@ -104,7 +104,13 @@ export class ModoFoco {
         'Os minutos acabaram e o copiloto parou de responder. Compre mais horas no site para voltar.';
       this.aoVivo = false;
     } else if (estado.status === 'encerrada' || estado.status === 'erro') {
-      this.aviso = estado.motivo;
+      /*
+       * Encerrou = página virada, SEM aviso preso na tela. O motivo já está no
+       * painel, que é onde se lê; deixá-lo aqui ("Encerrado pelo vendedor…")
+       * fazia a espera exibi-lo para sempre E suprimia a detecção — o vendedor
+       * que continuava transmitindo nunca via a própria live voltar à esquerda.
+       */
+      this.aviso = null;
       this.aoVivo = false;
     } else if (estado.status === 'conectando') {
       // Run nova = página limpa: o motivo da anterior já foi lido.

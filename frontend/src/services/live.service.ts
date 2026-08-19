@@ -113,6 +113,53 @@ export interface LiveRunResumo {
    */
   usageRate: number | null;
   latencyP50Ms: number | null;
+  /** Audiência agregada pelo app durante a transmissão. Zero em lives antigas,
+   * de antes de o desktop capturar audiência. */
+  peakViewers: number;
+  totalLikes: number;
+  totalGifts: number;
+  totalGiftDiamonds: number;
+  totalFollows: number;
+  totalShares: number;
+}
+
+/** Um instantâneo de audiência (~30s). Contadores são deltas da janela. */
+export interface LiveRunMetricPoint {
+  capturedAt: string;
+  /** Nulo quando o webcast não entregou a leitura naquela janela. */
+  viewerCount: number | null;
+  likes: number;
+  gifts: number;
+  giftDiamonds: number;
+  follows: number;
+  shares: number;
+  joins: number;
+}
+
+/**
+ * Uma pergunta do chat e o que o copiloto fez com ela. `answer` nula é uma
+ * escalação que ficou sem resposta — a lacuna que o vendedor precisa rever.
+ */
+export interface LiveRunQa {
+  chatMessageId: string;
+  question: string;
+  /** Quantas pessoas fizeram esta mesma pergunta (cluster). */
+  repeatCount: number;
+  receivedAt: string;
+  answer: string | null;
+  decision: 'enviar' | 'escalar';
+  confidence: number | null;
+  latencyMs: number | null;
+  copiedAt: string | null;
+  deliveryStatus: 'nao_aplica' | 'pendente' | 'enviada' | 'falhou' | 'cancelada';
+  sentAt: string | null;
+  failureReason: string | null;
+}
+
+export interface LiveRunDetail extends LiveRunResumo {
+  tiktokUsername: string | null;
+  metricas: LiveRunMetricPoint[];
+  qa: LiveRunQa[];
 }
 
 export interface ResultadoDaImportacao {
@@ -231,6 +278,10 @@ export const liveService = {
 
   /** Histórico das transmissões, com aproveitamento e latência. */
   listRuns: () => api.get<LiveRunResumo[]>('/live/runs').then((r) => r.data),
+
+  /** Uma transmissão inteira: métricas de audiência, perguntas e respostas. */
+  getRun: (id: string) =>
+    api.get<LiveRunDetail>(`/live/runs/${id}`).then((r) => r.data),
 
   getSession: (id: string) =>
     api.get<LiveSessionDetail>(`/live/sessions/${id}`).then((r) => r.data),

@@ -422,6 +422,32 @@ async function usuarioDoTikTok(): Promise<string | null> {
 }
 
 /**
+ * A transmissão do @ está no ar agora? `null` quando não deu para ler.
+ *
+ * A mesma marca que o modo foco vigia (`"status":2` no JSON de hidratação do
+ * LiveRoom; fora do ar vem 4), aqui a serviço da COBRANÇA: é o que impede o
+ * botão de conectar de abrir uma run — que debita minuto — para uma live que
+ * não existe. Dado de terceiro, sem contrato: qualquer tropeço vira `null`, e
+ * `null` não barra ninguém.
+ */
+async function aoVivoNoTikTok(usuario: string): Promise<boolean | null> {
+  const limpo = usuario.trim().replace(/^@/, '');
+  if (!/^[A-Za-z0-9._]{2,24}$/.test(limpo)) return null;
+  try {
+    const resposta = await session
+      .fromPartition(PARTICAO_TIKTOK)
+      .fetch(`https://www.tiktok.com/@${limpo}/live`, { credentials: 'include' });
+    if (!resposta.ok) return null;
+    const html = await resposta.text();
+    if (/"status"\s*:\s*2\b/.test(html)) return true;
+    if (/"status"\s*:\s*4\b/.test(html)) return false;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Avisa o painel quando esse login entra ou sai.
  *
  * Sem isto, quem terminasse o login à esquerda ficaria olhando para um passo 1
@@ -502,6 +528,7 @@ const copiloto = new Copiloto(
     return view.webContents;
   },
   (estado) => foco.definirConexao(estado),
+  (usuario) => aoVivoNoTikTok(usuario),
 );
 
 /**

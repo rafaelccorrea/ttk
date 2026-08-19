@@ -30,8 +30,26 @@ import { DownloadDoApp, liveService } from '@/services/live.service';
  *     instalação faz o vendedor achar que baixou vírus; ler antes que vai
  *     acontecer transforma o susto em expectativa.
  */
+/**
+ * O visitante está num celular ou tablet?
+ *
+ * A pergunta importa porque o instalador é um `.exe`/`.dmg`: no telefone o
+ * download não instala nada — a pessoa baixa 200MB, não consegue abrir e
+ * conclui que o produto quebrou. Melhor dizer a verdade ("é no computador")
+ * do que entregar um botão que só funciona pela metade.
+ *
+ * User agent com `iPad` explícito: o Safari do iPadOS se apresenta como Mac,
+ * e a pista que sobra é ser "Mac" com tela de toque.
+ */
+function emDispositivoMovel(): boolean {
+  const ua = navigator.userAgent;
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
+  return /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+}
+
 export function CardDoApp({ paraQuem }: { paraQuem: 'lista' | 'detalhe' }) {
   const [info, setInfo] = useState<DownloadDoApp | null>(null);
+  const mobile = emDispositivoMovel();
 
   useEffect(() => {
     let vivo = true;
@@ -150,7 +168,14 @@ export function CardDoApp({ paraQuem }: { paraQuem: 'lista' | 'detalhe' }) {
           </Typography>
         </Box>
 
-        {info.disponivel ? (
+        {mobile ? (
+          // No celular o botão some de propósito: o instalador não abre em
+          // Android/iOS, e um download que não instala vira chamado de suporte.
+          <Chip
+            label="Baixe pelo computador"
+            sx={{ fontWeight: 700, flexShrink: 0 }}
+          />
+        ) : info.disponivel ? (
           <Stack spacing={1} sx={{ flexShrink: 0 }}>
             {info.windows && (
               <Button
@@ -185,7 +210,16 @@ export function CardDoApp({ paraQuem }: { paraQuem: 'lista' | 'detalhe' }) {
         )}
       </Stack>
 
-      {naoAssinado && (
+      {mobile && info.disponivel && (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Você está num celular. O aplicativo do copiloto é um programa de{' '}
+          <strong>computador</strong> (Windows ou Mac) — abra esta página no seu
+          computador para baixar. A base de conhecimento você pode montar por
+          aqui normalmente.
+        </Alert>
+      )}
+
+      {naoAssinado && !mobile && (
         <Alert severity="info" sx={{ mt: 2 }}>
           Na instalação o Windows vai avisar que não reconhece o programa. É
           esperado: clique em <strong>Mais informações</strong> e depois em{' '}

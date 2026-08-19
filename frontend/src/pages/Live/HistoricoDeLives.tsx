@@ -14,6 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ScrollX } from '@/components/ui/ScrollX';
 import { LiveRunResumo, liveService } from '@/services/live.service';
 
@@ -31,6 +32,7 @@ import { LiveRunResumo, liveService } from '@/services/live.service';
  * funciona — mil mensagens vistas não dizem nada sobre acerto.
  */
 export function HistoricoDeLives() {
+  const navigate = useNavigate();
   const [runs, setRuns] = useState<LiveRunResumo[] | null>(null);
 
   useEffect(() => {
@@ -55,7 +57,8 @@ export function HistoricoDeLives() {
         </Stack>
         <Typography variant="body2" color="text.secondary" mb={2}>
           Aproveitamento é quanto das respostas do copiloto você usou de verdade
-          — é o número que diz se ele está acertando.
+          — é o número que diz se ele está acertando. Clique numa linha para ver
+          a live inteira: público, perguntas e respostas.
         </Typography>
 
         <ScrollX>
@@ -63,6 +66,8 @@ export function HistoricoDeLives() {
             <TableHead>
               <TableRow>
                 <TableCell>Quando</TableCell>
+                <TableCell align="right">Público</TableCell>
+                <TableCell align="right">Curtidas</TableCell>
                 <TableCell align="right">Perguntas</TableCell>
                 <TableCell align="right">Respostas</TableCell>
                 <TableCell align="right">Aproveitamento</TableCell>
@@ -73,7 +78,12 @@ export function HistoricoDeLives() {
             </TableHead>
             <TableBody>
               {runs.map((run) => (
-                <TableRow key={run.id} hover>
+                <TableRow
+                  key={run.id}
+                  hover
+                  onClick={() => navigate(`/copiloto/lives/${run.id}`)}
+                  sx={{ cursor: 'pointer' }}
+                >
                   <TableCell>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <span>{quando(run.startedAt)}</span>
@@ -84,6 +94,14 @@ export function HistoricoDeLives() {
                         <Chip size="small" variant="outlined" label="automático" />
                       )}
                     </Stack>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Tooltip title="Pico de pessoas assistindo. Vazio em lives de antes da captura de audiência.">
+                      <span>{run.peakViewers > 0 ? run.peakViewers : '—'}</span>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="right">
+                    {run.totalLikes > 0 ? run.totalLikes : '—'}
                   </TableCell>
                   <TableCell align="right">{run.messagesSeen}</TableCell>
                   <TableCell align="right">{run.repliesGenerated}</TableCell>
