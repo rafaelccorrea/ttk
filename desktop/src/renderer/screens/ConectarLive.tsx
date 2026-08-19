@@ -19,6 +19,12 @@ import { SEM_PONTE, obterPonte } from '../ponte';
 import { useEstadoAtualizacao } from '../hooks/useEstadoAtualizacao';
 import { useTikTokLogado } from '../hooks/useTikTokLogado';
 
+const PASSOS_DA_CONEXAO = [
+  'Abrindo a transmissão…',
+  'Ligando a leitura do chat…',
+  'Preparando as respostas…',
+];
+
 /**
  * Tela 2 — escolher a base e entrar na live.
  *
@@ -122,6 +128,30 @@ export function ConectarLive({
       clearTimeout(id);
     };
   }, [ponte, usuario]);
+
+  /*
+   * O "conectando" narrado. A conexão real atravessa três etapas (abrir a run,
+   * ligar o chat, preparar as respostas) e pode levar vários segundos em rede
+   * ruim — um botão parado em "Entrando…" nesse tempo parece travado. Os
+   * passos são cadenciados por tempo, não pelos eventos reais: é narração de
+   * espera, e a ordem bate com o que acontece de verdade.
+   *
+   * Este efeito mora AQUI EM CIMA, com os outros hooks, por obrigação e não
+   * por estética: abaixo há retornos condicionais, e um hook depois deles
+   * muda a contagem entre renders — o React derruba a árvore inteira e o
+   * painel vira uma tela preta.
+   */
+  useEffect(() => {
+    if (!conectando) {
+      setPassoConexao(0);
+      return undefined;
+    }
+    const id = window.setInterval(
+      () => setPassoConexao((p) => Math.min(p + 1, PASSOS_DA_CONEXAO.length - 1)),
+      1_500,
+    );
+    return () => window.clearInterval(id);
+  }, [conectando]);
 
   const carregar = useCallback(async (): Promise<void> => {
     if (!ponte) return;
@@ -250,30 +280,6 @@ export function ConectarLive({
     }
   };
 
-  /*
-   * O "conectando" narrado. A conexão real atravessa três etapas (abrir a run,
-   * ligar o chat, preparar as respostas) e pode levar vários segundos em rede
-   * ruim — um botão parado em "Entrando…" nesse tempo parece travado. Os
-   * passos são cadenciados por tempo, não pelos eventos reais: é narração de
-   * espera, e a ordem bate com o que acontece de verdade.
-   */
-  const PASSOS_DA_CONEXAO = [
-    'Abrindo a transmissão…',
-    'Ligando a leitura do chat…',
-    'Preparando as respostas…',
-  ];
-  useEffect(() => {
-    if (!conectando) {
-      setPassoConexao(0);
-      return undefined;
-    }
-    const id = window.setInterval(
-      () => setPassoConexao((p) => Math.min(p + 1, PASSOS_DA_CONEXAO.length - 1)),
-      1_500,
-    );
-    return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conectando]);
 
   return (
     <Moldura
