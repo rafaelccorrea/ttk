@@ -60,6 +60,18 @@ export interface EstadoAtualizacao {
   erro: string | null;
 }
 
+/**
+ * Um evento de audiência da sala, espelho do `AudienceEvent` da fonte de chat
+ * (`main/tiktok-chat.ts`) — números da sala, nunca identidade de espectador.
+ */
+export type EventoDeAudiencia =
+  | { kind: 'viewers'; value: number }
+  | { kind: 'likes'; value: number }
+  | { kind: 'gift'; count: number; diamonds: number }
+  | { kind: 'follow' }
+  | { kind: 'share' }
+  | { kind: 'join' };
+
 /** Quem está logado, para o painel dizer em qual conta ele está. */
 export interface SessaoDesktop {
   email: string;
@@ -109,6 +121,12 @@ export interface EstadoConexao {
   baseTitulo: string | null;
   /** Mensagem pronta quando `status` é 'erro' ou 'sem_saldo'. */
   motivo: string | null;
+  /**
+   * A run é de mentira: chat roteirizado no lugar do webcast, entrega sem
+   * tocar o TikTok. A IA, o backend e a cobrança continuam reais — é o modo
+   * de conhecer o produto sem estar transmitindo.
+   */
+  simulada: boolean;
 }
 
 /**
@@ -261,6 +279,8 @@ export interface PikPokDesktopApi {
   readonly conectar: (params: {
     knowledgeSessionId: string;
     tiktokUsername: string;
+    /** Live de teste: chat roteirizado, IA e cobrança reais — ver EstadoConexao. */
+    simulada?: boolean;
   }) => Promise<EstadoConexao>;
   readonly encerrar: (motivo?: string) => Promise<EstadoConexao>;
   /** Liga/desliga o processamento sem derrubar a run nem parar a cobrança. */
@@ -294,6 +314,15 @@ export interface PikPokDesktopApi {
    */
   readonly aoReceberEvento: (
     ouvinte: (evento: import('./live-events').LiveEvent) => void,
+  ) => () => void;
+
+  /**
+   * A audiência da sala em tempo real (viewers, curtidas, presentes), direto
+   * do webcast — sem passar pelo backend. É o placar da live no rodapé do
+   * cockpit; nenhum destes números carrega identidade de espectador.
+   */
+  readonly aoReceberAudiencia: (
+    ouvinte: (evento: EventoDeAudiencia) => void,
   ) => () => void;
 
   /** Copia para a área de transferência e avisa `POST /live/replies/:id/copied`. */

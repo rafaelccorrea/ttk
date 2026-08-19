@@ -1,6 +1,6 @@
 import SettingsIcon from '@mui/icons-material/SettingsOutlined';
-import { Box, IconButton, Stack, Tooltip, Typography, alpha } from '@mui/material';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Box, Button, Chip, IconButton, Stack, Tooltip, Typography, alpha } from '@mui/material';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EstadoConexao, EstadoEnvio } from '@shared/desktop-api';
 import type { LiveReplyEvent } from '@shared/live-events';
 import { BarraDeStatus } from '../components/BarraDeStatus';
@@ -65,6 +65,12 @@ export function Cockpit({
 
   const [envio, setEnvio] = useState<EstadoEnvio>(ENVIO_DESCONHECIDO);
   const [termoAberto, setTermoAberto] = useState(false);
+  /**
+   * Acende quando entra escalação NOVA e apaga sozinho: é o flash que puxa o
+   * canto do olho de quem está falando com a câmera — junto com o chime.
+   */
+  const [flashEscalacao, setFlashEscalacao] = useState(false);
+  const escalacoesAntes = useRef(0);
   /** Por que a última tentativa de ligar o automático não pegou. */
   const [erroDoModo, setErroDoModo] = useState<string | null>(null);
 
@@ -141,6 +147,26 @@ export function Cockpit({
     }
   }, [ponte, pausado]);
 
+  /*
+   * O único som do app, e por bom motivo: a escalação é o único evento que
+   * EXIGE o vendedor — todo o resto o copiloto resolve sozinho. Quem está
+   * olhando para a câmera não vê card nenhum nascer; o chime é o que o traz
+   * de volta ao painel. Duas notas curtas via WebAudio (nenhum asset), volume
+   * baixo o bastante para não vazar no microfone da live.
+   */
+  useEffect(() => {
+    const agora = fluxo.escalacoes.length;
+    if (agora > escalacoesAntes.current) {
+      tocarChime();
+      setFlashEscalacao(true);
+      const id = window.setTimeout(() => setFlashEscalacao(false), 1_600);
+      escalacoesAntes.current = agora;
+      return () => window.clearTimeout(id);
+    }
+    escalacoesAntes.current = agora;
+    return undefined;
+  }, [fluxo.escalacoes.length]);
+
   /**
    * As respostas de baixa confiança viram o RASCUNHO da escalação, casadas
    * pela mensagem que as originou. É o mesmo modelo, a mesma chamada e o mesmo
@@ -203,6 +229,7 @@ export function Cockpit({
     tiktokUsername: null,
     baseTitulo: null,
     motivo: null,
+    simulada: false,
   };
 
   return (
@@ -220,9 +247,26 @@ export function Cockpit({
         }}
       >
         <Stack sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle1" fontWeight={800} noWrap>
-            {estadoBarra.tiktokUsername ?? 'Sua live'}
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={0.85} sx={{ minWidth: 0 }}>
+            <Typography variant="subtitle1" fontWeight={800} noWrap>
+              {estadoBarra.tiktokUsername ?? 'Sua live'}
+            </Typography>
+            {/* O rótulo que impede o susto na fatura: nada aqui foi ao TikTok. */}
+            {estadoBarra.simulada ? (
+              <Chip
+                size="small"
+                label="live de teste"
+                sx={{
+                  height: 18,
+                  fontSize: 10.5,
+                  bgcolor: alpha(cores.ciano, 0.14),
+                  color: cores.ciano,
+                  border: '1px solid',
+                  borderColor: alpha(cores.ciano, 0.4),
+                }}
+              />
+            ) : null}
+          </Stack>
           {/*
             A base entra com um ponto ciano na frente: sem ele esta linha é só
             mais um cinza pequeno, e ela responde a "de onde vêm as respostas
@@ -300,18 +344,39 @@ export function Cockpit({
         </Box>
       ) : null}
 
+      {/*
+        O RESUMO fecha o ciclo: a live acabou e esta é a única chance de o
+        vendedor ver, em números, o que o copiloto fez por ele — depois disso a
+        história só existe no site. Os números vêm do evento `ended`, que
+        carrega os contadores finais da run.
+      */}
       {fluxo.encerrada && !fluxo.semSaldo ? (
         <Box sx={{ px: 2, pb: 1 }}>
-          <Aviso
-            titulo="A transmissão foi encerrada"
-            descricao={fluxo.encerrada}
-            acao={{ rotulo: 'Conectar de novo', aoClicar: aoEncerrar }}
+          <ResumoDaLive
+            motivo={fluxo.encerrada}
+            stats={fluxo.stats}
+            picoViewers={fluxo.picoViewers}
+            curtidas={fluxo.curtidas}
+            aoFechar={aoEncerrar}
           />
         </Box>
       ) : null}
 
       {/* ------------------------------------------------ painel de escalação */}
-      <Box sx={{ px: 2.25, pb: 1, pt: 1, flex: '0 1 auto', minHeight: 0, overflowY: 'auto' }}>
+      <Box
+        sx={{
+          px: 2.25,
+          pb: 1,
+          pt: 1,
+          flex: '0 1 auto',
+          minHeight: 0,
+          overflowY: 'auto',
+          // O flash da escalação nova: um lavado vermelho que acende e escorre
+          // de volta ao nada — pareado com o chime, para o canto do olho.
+          transition: 'background-color 1.2s ease',
+          bgcolor: flashEscalacao ? alpha(cores.vermelho, 0.14) : 'transparent',
+        }}
+      >
         <TituloDeSecao
           texto="precisa de você"
           cor={cores.vermelho}
@@ -403,6 +468,8 @@ export function Cockpit({
         envio={envio}
         minutosRestantes={minutosRestantes}
         respostasPorMinuto={fluxo.respostasPorMinuto}
+        viewers={fluxo.viewers}
+        curtidas={fluxo.curtidas}
         pausado={pausado}
         aoAlternarPausa={() => void alternarPausa()}
         aoAlternarModo={() => void alternarModo()}

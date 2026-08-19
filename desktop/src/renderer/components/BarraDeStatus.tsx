@@ -23,6 +23,8 @@ export function BarraDeStatus({
   envio,
   minutosRestantes,
   respostasPorMinuto,
+  viewers,
+  curtidas,
   pausado,
   aoAlternarPausa,
   aoAlternarModo,
@@ -33,6 +35,10 @@ export function BarraDeStatus({
   readonly envio: EstadoEnvio;
   readonly minutosRestantes: number | null;
   readonly respostasPorMinuto: number;
+  /** Espectadores agora; `null` enquanto o webcast não reportou. */
+  readonly viewers: number | null;
+  /** Curtidas acumuladas na run. */
+  readonly curtidas: number;
   readonly pausado: boolean;
   readonly aoAlternarPausa: () => void;
   readonly aoAlternarModo: () => void;
@@ -149,9 +155,24 @@ export function BarraDeStatus({
         <Indicador
           valor={minutosRestantes === null ? '—' : `${minutosRestantes}`}
           rotulo="min"
-          alerta={minutosRestantes !== null && minutosRestantes <= 5}
+          // Dois degraus: âmbar avisa com tempo de comprar; vermelho é urgência.
+          tom={
+            minutosRestantes === null
+              ? 'ok'
+              : minutosRestantes <= 5
+                ? 'critico'
+                : minutosRestantes <= 15
+                  ? 'atencao'
+                  : 'ok'
+          }
         />
         <Indicador valor={`${respostasPorMinuto}`} rotulo="resp/min" />
+        {/* O placar da live: o vendedor não precisa da tela do TikTok para
+            saber se a sala cresce — os números moram no mesmo relance. */}
+        {viewers !== null ? (
+          <Indicador valor={compacto(viewers)} rotulo="assistindo" />
+        ) : null}
+        {curtidas > 0 ? <Indicador valor={compacto(curtidas)} rotulo="curtidas" /> : null}
 
         <Box sx={{ flex: 1 }} />
 
@@ -175,18 +196,20 @@ export function BarraDeStatus({
 function Indicador({
   valor,
   rotulo,
-  alerta = false,
+  tom = 'ok',
 }: {
   readonly valor: string;
   readonly rotulo: string;
-  readonly alerta?: boolean;
+  readonly tom?: 'ok' | 'atencao' | 'critico';
 }): JSX.Element {
   return (
     <Stack direction="row" alignItems="baseline" spacing={0.5}>
       <Typography
         variant="subtitle2"
         fontWeight={800}
-        color={alerta ? 'error.main' : 'text.primary'}
+        color={
+          tom === 'critico' ? 'error.main' : tom === 'atencao' ? '#f59e0b' : 'text.primary'
+        }
       >
         {valor}
       </Typography>
@@ -195,6 +218,11 @@ function Indicador({
       </Typography>
     </Stack>
   );
+}
+
+/** 1.2k em vez de 1234: o rodapé é lido de relance, não somado. */
+function compacto(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : `${n}`;
 }
 
 function corDoStatus(status: EstadoConexao['status'], pausado: boolean): string {

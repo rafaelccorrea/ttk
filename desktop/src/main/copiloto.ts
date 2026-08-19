@@ -87,6 +87,7 @@ const CONEXAO_INICIAL: EstadoConexao = {
   tiktokUsername: null,
   baseTitulo: null,
   motivo: null,
+  simulada: false,
 };
 
 export class Copiloto {
@@ -213,10 +214,19 @@ export class Copiloto {
   async conectar(params: {
     knowledgeSessionId: string;
     tiktokUsername: string;
+    simulada?: boolean;
   }): Promise<EstadoConexao> {
     if (this.conexao.status === 'ativa' || this.conexao.status === 'pausada') {
       throw new Error('Já existe uma transmissão em andamento.');
     }
+
+    /*
+     * Simulada por PEDIDO ("testar sem estar em live", no painel) ou por
+     * AMBIENTE (dev). A escolha vale para a run inteira e viaja no estado da
+     * conexão — é como o modo foco sabe desenhar o chat fake e como o rótulo
+     * de teste chega à tela.
+     */
+    const simulada = MODO_SIMULACAO || params.simulada === true;
 
     /*
      * A conferência vem ANTES de a run existir porque a run COBRA: conectar
@@ -224,7 +234,7 @@ export class Copiloto {
      * escorriam num chat que não existe. Só o `false` explícito barra — ver o
      * contrato de `estaAoVivo` no construtor.
      */
-    const aoVivo = MODO_SIMULACAO
+    const aoVivo = simulada
       ? true
       : await this.estaAoVivo(params.tiktokUsername).catch(() => null);
     if (aoVivo === false) {
@@ -237,6 +247,7 @@ export class Copiloto {
       ...CONEXAO_INICIAL,
       status: 'conectando',
       tiktokUsername: params.tiktokUsername,
+      simulada,
     });
 
     try {
@@ -261,7 +272,7 @@ export class Copiloto {
            */
           try {
             await this.api.enviarLote(lote);
-            if (MODO_SIMULACAO) {
+            if (this.conexao.simulada) {
               console.log(`[sim] lote de ${lote.length} mensagem(ns) aceito pelo backend`);
             }
           } catch (erro) {
@@ -300,6 +311,7 @@ export class Copiloto {
         status: 'erro',
         tiktokUsername: params.tiktokUsername,
         motivo: mensagem,
+        simulada,
       });
       throw erro;
     }
@@ -325,7 +337,7 @@ export class Copiloto {
   private async conectarChat(alvo: string): Promise<void> {
     // Em simulação a única peça trocada é a fonte: o lote, o backend, o modelo
     // e o painel continuam os de verdade — é o que faz a simulação valer algo.
-    const chat: ChatSource = MODO_SIMULACAO
+    const chat: ChatSource = this.conexao.simulada
       ? new SimuladorChatSource()
       : new WebcastChatSource();
 
@@ -348,7 +360,7 @@ export class Copiloto {
 
       // Antes de qualquer filtro, como num chat de verdade: até o "kkkk" que o
       // limiar vai descartar aparece na tela — descartá-lo é parte do show.
-      if (MODO_SIMULACAO) {
+      if (this.conexao.simulada) {
         this.aoAtividadeSimulada({
           autor: mensagem.username,
           texto: mensagem.text,
@@ -365,6 +377,9 @@ export class Copiloto {
 
     chat.on('audience', (evento) => {
       this.metricas?.registrar(evento);
+      // O placar da live no rodapé do cockpit — direto do webcast, sem volta
+      // pelo backend. São números da sala; nenhum carrega espectador.
+      this.publicar('live:audiencia', evento);
     });
 
     // Queda do webcast não derruba a run: a `WebcastChatSource` reconecta
@@ -556,7 +571,7 @@ export class Copiloto {
         // O nome de quem perguntou só existe AQUI, no mapa em memória da run —
         // é o que permite endereçar a resposta sem o @ jamais ter saído do app.
         const nomeDoAutor = this.anonimizador?.nomeDe(item.authorHash) ?? undefined;
-        const resultado = MODO_SIMULACAO
+        const resultado = this.conexao.simulada
           ? await this.entregarSimulado(item.id, item.text, nomeDoAutor)
           : await this.enviador.enviar({
               replyId: item.id,
@@ -653,7 +668,7 @@ export class Copiloto {
   private repassarEvento(evento: LiveEvent): void {
     // Na simulação o terminal é o raio-X: cada evento do SSE aparece, e a
     // ausência deles aponta o lado do fio em que o silêncio nasce.
-    if (MODO_SIMULACAO) console.log(`[sim] SSE: ${evento.type}`);
+    if (this.conexao.simulada) console.log(`[sim] SSE: ${evento.type}`);
     if (evento.type === 'reply') {
       const { limiarDescarte } = this.lerConfiguracoes();
       if (evento.data.confidence < limiarDescarte) return;

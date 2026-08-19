@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   BrowserView,
@@ -67,6 +67,21 @@ function logoParaEspera(): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * O vídeo de fundo da live simulada (`PIKPOK_SIM_VIDEO=<caminho>`), validado
+ * na largada: apontar o player para um arquivo que não existe renderia uma
+ * tela preta sem explicação nenhuma — melhor cair no fundo escuro e avisar.
+ */
+function videoDaSimulacao(): string | null {
+  const caminho = process.env['PIKPOK_SIM_VIDEO'];
+  if (!caminho) return null;
+  if (!existsSync(caminho)) {
+    console.warn(`[sim] PIKPOK_SIM_VIDEO aponta para arquivo inexistente: ${caminho}`);
+    return null;
+  }
+  return caminho;
 }
 
 /**
@@ -529,6 +544,7 @@ const foco = new ModoFoco({
     }
   },
   logo: logoParaEspera(),
+  videoSimulado: videoDaSimulacao(),
 });
 
 const copiloto = new Copiloto(

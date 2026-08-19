@@ -1,5 +1,8 @@
 import type { WebContents } from 'electron';
-import { MODO_SIMULACAO } from './chat-simulado';
+import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { EstadoConexao } from '../shared/desktop-api';
 
 /**
@@ -35,9 +38,10 @@ type Modo = 'login' | 'espera' | 'live';
 
 export class ModoFoco {
   private logado: boolean | null = null;
-  private conexao: Pick<EstadoConexao, 'status' | 'tiktokUsername'> = {
+  private conexao: Pick<EstadoConexao, 'status' | 'tiktokUsername' | 'simulada'> = {
     status: 'desconectado',
     tiktokUsername: null,
+    simulada: false,
   };
   /** O @ dono da sessão, para saber QUAL live abrir antes de a run existir. */
   private usuario: string | null = null;
@@ -61,6 +65,11 @@ export class ModoFoco {
       buscar: (url: string) => Promise<string | null>;
       /** A logo do app como data URL, ou `null` — a espera tem fallback. */
       logo: string | null;
+      /**
+       * Um vídeo local para tocar atrás do chat simulado (`PIKPOK_SIM_VIDEO`),
+       * para a demo parecer uma live de verdade. `null` = fundo escuro.
+       */
+      videoSimulado: string | null;
     },
   ) {}
 
@@ -95,7 +104,11 @@ export class ModoFoco {
 
   definirConexao(estado: EstadoConexao): void {
     const anterior = this.conexao.status;
-    this.conexao = { status: estado.status, tiktokUsername: estado.tiktokUsername };
+    this.conexao = {
+      status: estado.status,
+      tiktokUsername: estado.tiktokUsername,
+      simulada: estado.simulada,
+    };
 
     if (estado.status === 'sem_saldo') {
       // O painel também conta, mas é AQUI que o vendedor está olhando — a live
@@ -143,8 +156,23 @@ export class ModoFoco {
      * espectadores fictícios e as respostas da IA, correndo como numa live —
      * é onde se VÊ o copiloto trabalhando (`publicarNoChatSimulado`).
      */
-    if (modo === 'live' && MODO_SIMULACAO) {
-      return paginaDeChatSimulado(this.deps.logo);
+    if (modo === 'live' && this.conexao.simulada) {
+      const html = paginaDeChatSimulado(this.deps.logo, this.deps.videoSimulado);
+      /*
+       * COM vídeo a página vira arquivo, e não data URL: uma página `data:`
+       * não tem permissão para carregar `file://` — o player ficaria preto.
+       * Servida de `file://`, ela enxerga o vídeo local do mesmo esquema.
+       */
+      if (this.deps.videoSimulado) {
+        const caminho = join(tmpdir(), 'pikpok-chat-simulado.html');
+        try {
+          writeFileSync(caminho, html, 'utf8');
+          return pathToFileURL(caminho).toString();
+        } catch {
+          // Sem disco, sem vídeo: cai no data URL de fundo escuro.
+        }
+      }
+      return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
     }
     if (modo === 'live') {
       const nome = (this.conexao.tiktokUsername ?? this.usuario ?? '')
@@ -157,7 +185,10 @@ export class ModoFoco {
 
   private permitida(url: string): boolean {
     const modo = this.modo();
-    if (url === 'about:blank' || url.startsWith('data:')) return true;
+    // `file:` é a nossa própria página do chat simulado servida de disco.
+    if (url === 'about:blank' || url.startsWith('data:') || url.startsWith('file:')) {
+      return true;
+    }
     // Login exige o site inteiro liberado dentro do domínio: o fluxo passa por
     // redirects, 2FA e captcha, todos em subdomínios do tiktok.com.
     if (modo === 'login') return /^https:\/\/([a-z0-9-]+\.)*tiktok\.com\//i.test(url);
@@ -205,7 +236,7 @@ export class ModoFoco {
    * em silêncio, porque não há onde desenhar.
    */
   publicarNoChatSimulado(item: { autor: string; texto: string; ia: boolean }): void {
-    if (!MODO_SIMULACAO || this.modo() !== 'live') return;
+    if (!this.conexao.simulada || this.modo() !== 'live') return;
     const view = this.deps.view();
     if (!view || view.isDestroyed()) return;
     void view
@@ -267,6 +298,8 @@ function paginaDeEspera(aviso: string | null, logo: string | null): string {
   html,body{margin:0;height:100%;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;
     display:flex;align-items:center;justify-content:center;text-align:center;-webkit-user-select:none;overflow:hidden;
     background:#0a0a0e}
+  body{animation:surgir .35s ease both}
+  @keyframes surgir{from{opacity:0}to{opacity:1}}
   /* O fundo respira de leve nas duas cores da marca, cada blob no seu tempo. */
   .fundo{position:fixed;inset:-20%;pointer-events:none}
   .fundo::before,.fundo::after{content:'';position:absolute;width:60vmax;height:60vmax;border-radius:50%;
@@ -332,13 +365,28 @@ function paginaDeEspera(aviso: string | null, logo: string | null): string {
  * é a cena que a simulação existe para mostrar: o copiloto respondendo o chat
  * em tempo real. Tudo num data URL, com o script embutido; nenhuma rede.
  */
-function paginaDeChatSimulado(logo: string | null): string {
+function paginaDeChatSimulado(logo: string | null, video: string | null): string {
   const marca = logo
     ? `<img class="logo" src="${logo}" alt="" draggable="false">`
     : '<div class="logo fallback">P</div>';
-  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>PikPok</title><style>
+  const videoUrl = video ? pathToFileURL(video).toString() : null;
+  const fundoVideo = videoUrl
+    ? `<video class="palco-video" src="${videoUrl}" autoplay muted loop playsinline></video><div class="veu"></div>`
+    : '';
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>PikPok</title><style>
   html,body{margin:0;height:100%;background:#0a0a0e;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;
     -webkit-user-select:none;overflow:hidden}
+  body{animation:surgir .35s ease both}
+  @keyframes surgir{from{opacity:0}to{opacity:1}}
+  /* O "vídeo da live" ocupa a tela toda; o chat flutua por cima, como no
+     TikTok. O véu escurece a base para o texto continuar legível. */
+  .palco-video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+  .veu{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,transparent 22%),
+      linear-gradient(0deg,rgba(0,0,0,.7) 0%,transparent 45%),
+      linear-gradient(90deg,rgba(0,0,0,.45) 0%,transparent 55%)}
+  .topo,#chat{position:relative;z-index:2}
+  .msg .texto{text-shadow:0 1px 3px rgba(0,0,0,.8)}
   .topo{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08);
     background:rgba(255,255,255,.03)}
   .logo{width:30px;height:30px;border-radius:9px;object-fit:cover}
@@ -366,7 +414,9 @@ function paginaDeChatSimulado(logo: string | null): string {
     border-radius:12px;padding:8px 12px}
   .msg.ia .autor{background:linear-gradient(90deg,#FE2C55,#00C2BB);-webkit-background-clip:text;
     color:transparent;font-weight:800}
+  ${videoUrl ? '#chat{right:auto;width:min(62%,540px)}.topo{background:rgba(10,10,14,.55);backdrop-filter:blur(6px)}' : ''}
   </style></head><body>
+  ${fundoVideo}
   <div class="topo">${marca}<span class="aovivo">ao vivo</span><span class="rotulo">live simulada · o chat é de mentira, a IA é de verdade</span></div>
   <div id="chat"></div>
   <script>
@@ -390,7 +440,6 @@ function paginaDeChatSimulado(logo: string | null): string {
     };
   })();
   </script></body></html>`;
-  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
 function escapar(texto: string): string {

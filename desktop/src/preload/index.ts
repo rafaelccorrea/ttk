@@ -7,6 +7,7 @@ import type {
   EstadoAtualizacao,
   EstadoConexao,
   EstadoEnvio,
+  EventoDeAudiencia,
   TermoDeEnvio,
   BaseDeConhecimento,
   PikPokDesktopApi,
@@ -70,6 +71,8 @@ function assinar<T>(canal: string, ouvinte: (dados: T) => void): () => void {
 const api: PikPokDesktopApi = {
   obterVersao: () => ipcRenderer.invoke('app:versao') as Promise<string>,
   plataforma: process.platform,
+
+  aoReceberAudiencia: (ouvinte) => assinar<EventoDeAudiencia>('live:audiencia', ouvinte),
 
   tiktokLogado: () => ipcRenderer.invoke('tiktok:logado') as Promise<boolean>,
   aoMudarTikTok: (ouvinte) => assinar<boolean>('tiktok:logado', ouvinte),

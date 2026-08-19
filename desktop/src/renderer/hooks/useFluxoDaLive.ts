@@ -50,6 +50,12 @@ export interface FluxoDaLive {
   encerrada: string | null;
   /** Respostas por minuto, calculado sobre a janela dos últimos 60s. */
   respostasPorMinuto: number;
+  /** Quantos assistem AGORA, direto do webcast. `null` até a primeira leitura. */
+  viewers: number | null;
+  /** Curtidas acumuladas desde a conexão. */
+  curtidas: number;
+  /** O maior número de espectadores visto na run — é o número do resumo. */
+  picoViewers: number;
   descartarEscalacao: (chatMessageId: string) => void;
 }
 
@@ -69,6 +75,9 @@ export function useFluxoDaLive(): FluxoDaLive {
   const [perguntas, setPerguntas] = useState<Record<string, string>>({});
   const [semSaldo, setSemSaldo] = useState<string | null>(null);
   const [encerrada, setEncerrada] = useState<string | null>(null);
+  const [viewers, setViewers] = useState<number | null>(null);
+  const [curtidas, setCurtidas] = useState(0);
+  const [picoViewers, setPicoViewers] = useState(0);
   /** Carimbos das respostas recentes, só para o "por minuto" do rodapé. */
   const carimbos = useRef<number[]>([]);
   /**
@@ -129,6 +138,19 @@ export function useFluxoDaLive(): FluxoDaLive {
     });
   }, [ponte]);
 
+  // O placar da sala, fora do SSE: o webcast entrega direto ao processo
+  // principal e chega aqui por um canal próprio — números, nunca identidade.
+  useEffect(() => {
+    if (!ponte) return undefined;
+    return ponte.aoReceberAudiencia((evento) => {
+      if (evento.kind === 'viewers') {
+        setViewers(evento.value);
+        setPicoViewers((pico) => Math.max(pico, evento.value));
+      }
+      if (evento.kind === 'likes') setCurtidas((total) => total + evento.value);
+    });
+  }, [ponte]);
+
   const ordenadas = useMemo<Escalacao[]>(() => {
     return escalacoes
       .map((e) => ({ ...e, idadeMs: Math.max(0, agora - Date.parse(e.receivedAt)) }))
@@ -149,6 +171,9 @@ export function useFluxoDaLive(): FluxoDaLive {
     semSaldo,
     encerrada,
     respostasPorMinuto,
+    viewers,
+    curtidas,
+    picoViewers,
     descartarEscalacao: (chatMessageId) =>
       setEscalacoes((atual) => atual.filter((e) => e.chatMessageId !== chatMessageId)),
   };
