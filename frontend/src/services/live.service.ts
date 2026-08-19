@@ -359,6 +359,25 @@ export const liveService = {
   deleteFaq: (id: string) => api.delete(`/live/faq/${id}`).then(() => undefined),
 
   // ------------------------------------------------------------- app desktop
-  getDownload: () =>
-    api.get<DownloadDoApp>('/live/download').then((r) => r.data),
+  /*
+   * Vem de `/app/download.json`, um arquivo ESTÁTICO gerado pelo build do
+   * frontend (ver `scripts/copiar-app-desktop.mjs`) e publicado junto com o
+   * instalador — não do backend. A versão e o link nascem do mesmo build que
+   * empacota o `.exe`, então não existe o estado "subiu o instalador novo mas o
+   * site anuncia o antigo". O 404 é o estado normal enquanto não há release
+   * (e em dev, onde o `dist/app` não existe): vira "em breve" no card.
+   */
+  getDownload: (): Promise<DownloadDoApp> =>
+    fetch('/app/download.json')
+      .then((r) => {
+        if (!r.ok) throw new Error(`download.json: ${r.status}`);
+        return r.json() as Promise<DownloadDoApp>;
+      })
+      .catch(() => ({
+        disponivel: false,
+        versao: null,
+        windows: null,
+        mac: null,
+        assinado: false,
+      })),
 };

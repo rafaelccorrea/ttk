@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  copyFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -61,8 +68,37 @@ function main() {
     copyFileSync(join(origem, nome), join(destino, nome));
   }
 
+  /*
+   * O manifesto que o SITE lê (o `latest.yml` é o que o UPDATER lê). A versão
+   * sai do nome do arquivo que acabou de ser copiado — a mesma origem do `.exe`
+   * que o botão baixa —, então o link e o número que aparecem na página não têm
+   * como divergir do instalador publicado. Antes isso vinha de envs no backend
+   * (`DESKTOP_DOWNLOAD_WINDOWS`/`DESKTOP_VERSION`), que precisavam ser editadas
+   * à mão a cada release e viviam esquecidas apontando para a versão anterior.
+   */
+  const versao =
+    instalador.match(/^PikPok-Copiloto-Setup-(.+)\.exe$/)?.[1] ?? null;
+  writeFileSync(
+    join(destino, 'download.json'),
+    JSON.stringify(
+      {
+        disponivel: true,
+        versao,
+        windows: `/app/${instalador}`,
+        mac: null,
+        // Instalador sem assinatura de código: a página avisa do SmartScreen.
+        // Quando houver certificado, mudar aqui (e nada mais).
+        assinado: false,
+      },
+      null,
+      2,
+    ),
+  );
+
   const mb = (statSync(join(destino, instalador)).size / 1024 / 1024).toFixed(1);
-  console.log(`dist/app: ${instalador} (${mb}MB) + latest.yml prontos para subir.`);
+  console.log(
+    `dist/app: ${instalador} (${mb}MB) + latest.yml + download.json prontos para subir.`,
+  );
 }
 
 function avisar(motivo) {
