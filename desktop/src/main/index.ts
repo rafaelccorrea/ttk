@@ -601,8 +601,14 @@ function registrarIpc(): void {
   ipcMain.handle('live:carteira', () => copiloto.obterCarteiraLive());
   ipcMain.handle(
     'live:conectar',
-    (_evento, params: { knowledgeSessionId: string; tiktokUsername: string }) =>
-      copiloto.conectar(params),
+    (
+      _evento,
+      params: {
+        knowledgeSessionId: string;
+        tiktokUsername: string;
+        simulada?: boolean;
+      },
+    ) => copiloto.conectar(params),
   );
   ipcMain.handle('live:encerrar', (_evento, motivo?: string) =>
     copiloto.encerrar(motivo),
