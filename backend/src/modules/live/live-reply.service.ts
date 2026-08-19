@@ -492,8 +492,10 @@ export function aplicarPrecos(
  * ARTICULADAS de propósito: a palavra "base" solta é nome de produto legítimo
  * ("S26 base"), e barrá-la sozinha escalaria resposta certa.
  */
+// Sem \b no FIM de propósito: metade das alternativas é prefixo ("informad",
+// "cadastrad") que precisa casar "informado/informada/informados".
 const META_LINGUAGEM =
-  /\b(?:[an]a base|a base (?:não|nao)|base de conhecimento|(?:não|nao) (?:está |esta |foi )?informad|(?:não|nao) (?:está |esta )?cadastrad|sem cadastro|o sistema|meu banco de dados)\b/i;
+  /\b(?:[an]a base|a base (?:não|nao)|base de conhecimento|(?:não|nao) (?:está |esta |foi )?informad|(?:não|nao) (?:está |esta )?cadastrad|sem cadastro|o sistema|meu banco de dados)/i;
 
 export function contemMetaLinguagem(texto: string): boolean {
   return META_LINGUAGEM.test(texto ?? '');
