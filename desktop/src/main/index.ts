@@ -14,7 +14,12 @@ import type { ConfiguracoesCopiloto } from '../shared/desktop-api';
 import type { LiveRunMode } from '../shared/live-events';
 import { Copiloto } from './copiloto';
 import { ModoFoco } from './foco';
-import { estadoDaAtualizacao, iniciarAtualizador, instalarAgora } from './atualizador';
+import {
+  estadoDaAtualizacao,
+  iniciarAtualizador,
+  instalarAgora,
+  verificarAgora,
+} from './atualizador';
 
 /**
  * Processo principal do copiloto ao vivo, em MODO SOMENTE-PAINEL.
@@ -567,6 +572,7 @@ function registrarIpc(): void {
 
   ipcMain.handle('atualizacao:obter', () => estadoDaAtualizacao());
   ipcMain.handle('atualizacao:instalar', () => instalarAgora());
+  ipcMain.handle('atualizacao:verificar', () => verificarAgora());
 
   ipcMain.handle('live:bases', () => copiloto.listarBases());
   ipcMain.handle('live:carteira', () => copiloto.obterCarteiraLive());

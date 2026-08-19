@@ -93,6 +93,8 @@ const api: PikPokDesktopApi = {
     assinar<EstadoAtualizacao>('atualizacao:mudou', ouvinte),
   instalarAtualizacao: () =>
     ipcRenderer.invoke('atualizacao:instalar') as Promise<void>,
+  verificarAtualizacao: () =>
+    ipcRenderer.invoke('atualizacao:verificar') as Promise<EstadoAtualizacao>,
 
   listarBases: () =>
     ipcRenderer.invoke('live:bases') as Promise<BaseDeConhecimento[]>,

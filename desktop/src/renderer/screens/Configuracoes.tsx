@@ -196,6 +196,13 @@ export function Configuracoes({
           ) : null}
         </Stack>
 
+        <Ajuste
+          titulo="Atualizar sistema"
+          explicacao="O app baixa as atualizações sozinho e instala quando você fecha. Este botão só adianta a conferência — útil antes de começar uma live."
+        >
+          <BlocoDeAtualizacao />
+        </Ajuste>
+
         <BlocoDaConta aoSair={aoSair} />
       </Stack>
     </Moldura>
@@ -255,6 +262,80 @@ function Moldura({
         </Button>
       </Stack>
       {children}
+    </Stack>
+  );
+}
+
+/**
+ * O canto do "atualizar sistema": versão atual, estado do updater e o botão
+ * que adianta a checagem. O download continua automático — este bloco só dá ao
+ * vendedor o gesto e a resposta ("você já está na mais recente") que o fluxo
+ * silencioso não tem como dar.
+ */
+function BlocoDeAtualizacao(): JSX.Element {
+  const ponte = obterPonte();
+  const estado = useEstadoAtualizacao();
+  const [versao, setVersao] = useState('');
+  const [checando, setChecando] = useState(false);
+  const [checou, setChecou] = useState(false);
+
+  useEffect(() => {
+    ponte?.obterVersao().then(setVersao).catch(() => undefined);
+  }, [ponte]);
+
+  const verificar = async (): Promise<void> => {
+    if (!ponte) return;
+    setChecando(true);
+    try {
+      await ponte.verificarAtualizacao();
+      setChecou(true);
+    } finally {
+      setChecando(false);
+    }
+  };
+
+  const situacao = estado?.situacao ?? 'ociosa';
+  const linha =
+    situacao === 'pronta'
+      ? `Versão ${estado?.versao ?? 'nova'} baixada — reinicie para aplicar.`
+      : situacao === 'baixando'
+        ? `Baixando a versão ${estado?.versao ?? 'nova'}…`
+        : situacao === 'atualizada'
+          ? 'Você já está na versão mais recente.'
+          : situacao === 'falhou' && checou
+            ? (estado?.erro ?? 'Não deu para verificar agora. Tente de novo em instantes.')
+            : null;
+
+  return (
+    <Stack spacing={1.25}>
+      <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Button
+          variant="outlined"
+          color="inherit"
+          size="small"
+          disabled={checando || situacao === 'baixando'}
+          onClick={() => void verificar()}
+        >
+          {checando ? 'Verificando…' : 'Verificar atualização'}
+        </Button>
+        {situacao === 'pronta' ? (
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => void ponte?.instalarAtualizacao()}
+          >
+            Reiniciar e atualizar
+          </Button>
+        ) : null}
+        {versao ? (
+          <Chip size="small" variant="outlined" label={`versão ${versao}`} />
+        ) : null}
+      </Stack>
+      {linha ? (
+        <Typography variant="caption" color="text.secondary">
+          {linha}
+        </Typography>
+      ) : null}
     </Stack>
   );
 }

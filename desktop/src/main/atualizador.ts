@@ -81,7 +81,10 @@ export function iniciarAtualizador(obterJanela: () => BrowserWindow | null): voi
   });
 
   autoUpdater.on('update-not-available', () => {
-    anunciar({ situacao: 'ociosa', versao: null, erro: null });
+    // 'atualizada', e não 'ociosa': é a resposta que o botão "verificar" dos
+    // ajustes precisa mostrar — "você já está na mais recente" é informação,
+    // silêncio é dúvida. O rodapé e a trava da live só olham 'pronta'.
+    anunciar({ situacao: 'atualizada', versao: null, erro: null });
   });
 
   autoUpdater.on('update-downloaded', (info) => {
@@ -122,4 +125,27 @@ export function iniciarAtualizador(obterJanela: () => BrowserWindow | null): voi
 export function instalarAgora(): void {
   if (estado.situacao !== 'pronta') return;
   autoUpdater.quitAndInstall();
+}
+
+/**
+ * Checagem pedida pelo vendedor, sem esperar o ciclo de 6h.
+ *
+ * O download e a instalação continuam com as mesmas regras do fluxo automático
+ * (baixa em silêncio, nunca reinicia sozinho) — o botão só ADIANTA a pergunta.
+ * A resposta volta pelo mesmo estado que o rodapé e os ajustes já observam.
+ */
+export async function verificarAgora(): Promise<EstadoAtualizacao> {
+  if (!app.isPackaged) {
+    return {
+      situacao: 'falhou',
+      versao: null,
+      erro: 'A verificação só existe no app instalado — em desenvolvimento não há pacote para atualizar.',
+    };
+  }
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch {
+    // O handler de 'error' já registrou o motivo em `estado`.
+  }
+  return estado;
 }

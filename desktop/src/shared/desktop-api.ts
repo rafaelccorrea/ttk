@@ -53,7 +53,8 @@ export interface EstadoAtivacao {
  * `src/main/atualizador.ts`.
  */
 export interface EstadoAtualizacao {
-  situacao: 'ociosa' | 'baixando' | 'pronta' | 'falhou';
+  /** `atualizada` = a última checagem confirmou que não há versão nova. */
+  situacao: 'ociosa' | 'baixando' | 'pronta' | 'falhou' | 'atualizada';
   /** A versão que está vindo, quando já se sabe qual é. */
   versao: string | null;
   erro: string | null;
@@ -248,6 +249,11 @@ export interface PikPokDesktopApi {
   ) => () => void;
   /** Fecha o app, aplica o pacote já baixado e reabre. Pedido pelo vendedor. */
   readonly instalarAtualizacao: () => Promise<void>;
+  /**
+   * Checa AGORA se há versão nova, sem esperar o ciclo de 6h. É o botão
+   * "verificar atualização" dos ajustes; o download continua automático.
+   */
+  readonly verificarAtualizacao: () => Promise<EstadoAtualizacao>;
 
   // -------------------------------------------------------------- conexão
   readonly listarBases: () => Promise<BaseDeConhecimento[]>;
