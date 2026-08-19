@@ -69,6 +69,14 @@ const MIN_FOTOS = 3;
 export class CampaignsService {
   private readonly logger = new Logger(CampaignsService.name);
 
+  /**
+   * Campanhas com montagem em voo. O polling chama o refresh a cada 6s e
+   * cada refresh sem vídeo final tentava montar DE NOVO — montagens idênticas
+   * empilhadas disputando o ffmpeg (e o limite de processos da hospedagem)
+   * entre si e com as dublagens.
+   */
+  private readonly montagensEmVoo = new Set<string>();
+
   constructor(
     @InjectRepository(UserProduct)
     private readonly produtos: Repository<UserProduct>,
@@ -890,7 +898,12 @@ export class CampaignsService {
      * a consulta de status — as cenas continuam prontas e o botão de montar
      * de novo fica disponível.
      */
-    if (todasProntas && !campanha.finalVideoUrl && this.assembly.enabled) {
+    if (
+      todasProntas &&
+      !campanha.finalVideoUrl &&
+      this.assembly.enabled &&
+      !this.montagensEmVoo.has(campaignId)
+    ) {
       try {
         return await this.montar(userId, campaignId);
       } catch (error) {
@@ -916,6 +929,22 @@ export class CampaignsService {
         'A montagem não está disponível neste servidor (ffmpeg ausente).',
       );
     }
+    if (this.montagensEmVoo.has(campaignId)) {
+      throw new ConflictException('A montagem já está em andamento — aguarde.');
+    }
+    this.montagensEmVoo.add(campaignId);
+    try {
+      return await this.montarInterno(userId, campanha, campaignId);
+    } finally {
+      this.montagensEmVoo.delete(campaignId);
+    }
+  }
+
+  private async montarInterno(
+    userId: string,
+    campanha: Campaign,
+    campaignId: string,
+  ) {
 
     const cenas = await this.cenas.find({
       where: { campaignId },

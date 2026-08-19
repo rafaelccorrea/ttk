@@ -38,6 +38,24 @@ export class FfmpegRunner {
    */
   private permissaoGarantida = false;
 
+  /**
+   * Fila de execução: UM ffmpeg por vez neste processo.
+   *
+   * A hospedagem compartilhada limita processos e memória por conta (LVE).
+   * Quando a montagem do vídeo final e uma dublagem coincidiam — e o polling
+   * torna isso rotina —, o segundo ffmpeg era morto pelo limite SEM linha de
+   * erro: o log parava nos headers de saída e a operação "falhava do nada".
+   * Serializar custa segundos de espera; a concorrência custava a operação.
+   */
+  private fila: Promise<unknown> = Promise.resolve();
+
+  private enfileirar<T>(tarefa: () => Promise<T>): Promise<T> {
+    const execucao = this.fila.then(tarefa, tarefa);
+    // A fila nunca pode rejeitar, senão um erro antigo derruba o próximo.
+    this.fila = execucao.catch(() => undefined);
+    return execucao;
+  }
+
   private async garantirExecutavel(): Promise<void> {
     if (this.permissaoGarantida || !ffmpegPath || process.platform === 'win32') {
       this.permissaoGarantida = true;
@@ -65,10 +83,12 @@ export class FfmpegRunner {
     }
     await this.garantirExecutavel();
     try {
-      await execFileAsync(ffmpegPath as string, args, {
-        timeout: timeoutMs,
-        maxBuffer: 32 * 1024 * 1024,
-      });
+      await this.enfileirar(() =>
+        execFileAsync(ffmpegPath as string, args, {
+          timeout: timeoutMs,
+          maxBuffer: 32 * 1024 * 1024,
+        }),
+      );
     } catch (error) {
       // O ffmpeg escreve o motivo real no stderr; sem isso o erro vira só
       // "Command failed" e não dá para saber o que quebrou.
