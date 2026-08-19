@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { readFile, unlink } from 'node:fs/promises';
+import { readFile, stat, unlink } from 'node:fs/promises';
 import { In, LessThan, Repository } from 'typeorm';
 import {
   ACTION_PRICES,
@@ -321,6 +321,16 @@ export class LiveService {
     batimento.unref?.();
 
     try {
+      /*
+       * O tamanho que CHEGOU, não o que o navegador enviou. Quando o proxy da
+       * hospedagem trunca um upload grande, o multer grava o pedaço que veio e
+       * o resto do pipeline só enxerga "arquivo ilegível" — esta linha é o que
+       * permite comparar com o original e flagrar o truncamento pelo log.
+       */
+      const bytes = await stat(entradaPath).then((s) => s.size).catch(() => null);
+      this.logger.log(
+        `Live ${sessionId}: processando "${nome}" (${bytes === null ? 'tamanho ilegível' : `${bytes} bytes`})`,
+      );
       await this.chunker.comAudioExtraido(
         entradaPath,
         nome,

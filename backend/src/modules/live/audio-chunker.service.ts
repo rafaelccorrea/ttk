@@ -93,6 +93,11 @@ export class AudioChunkerService {
      * antes custa uma leitura de cabeçalho e devolve a frase certa.
      */
     const streams = await this.ffmpeg.streamsDe(entradaPath);
+    if (!streams.sondou) {
+      throw new Error(
+        'Não consegui abrir o processador de vídeo agora — o servidor estava sobrecarregado ou reiniciando. O arquivo está bem; envie de novo em alguns minutos.',
+      );
+    }
     if (!streams.legivel) {
       throw new Error(
         'Não consegui ler este arquivo de vídeo. Envie a gravação da live num formato comum (MP4, MOV ou MKV) e confira se o envio terminou por completo.',

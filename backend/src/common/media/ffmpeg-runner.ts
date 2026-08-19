@@ -137,9 +137,17 @@ export class FfmpegRunner {
    */
   async streamsDe(
     arquivo: string,
-  ): Promise<{ legivel: boolean; audio: boolean; video: boolean }> {
+  ): Promise<{ sondou: boolean; legivel: boolean; audio: boolean; video: boolean }> {
     const saida = await this.inspecionar(arquivo);
     return {
+      /*
+       * `sondou: false` = o ffmpeg nem chegou a descrever o arquivo (morto
+       * pelo LVE, binário sem +x, restart de deploy). É falha NOSSA, não do
+       * arquivo — um arquivo ruim de verdade produz stderr com o motivo
+       * ("Invalid data found..."). Sem essa separação, todo kill de processo
+       * virava "seu vídeo está corrompido" na tela do vendedor.
+       */
+      sondou: saida.trim().length > 0,
       legivel: /Stream #\d+:\d+/.test(saida),
       audio: /Stream #\d+:\d+.*:\s*Audio:/i.test(saida),
       /*

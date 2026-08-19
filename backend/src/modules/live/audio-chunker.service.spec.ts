@@ -18,7 +18,7 @@ describe('AudioChunkerService', () => {
   function comDuracaoDe(segundos: number | null) {
     const ffmpeg = {
       enabled: true,
-      streamsDe: async () => ({ legivel: true, video: true, audio: true }),
+      streamsDe: async () => ({ sondou: true, legivel: true, video: true, audio: true }),
       comTmp: async <T>(_prefixo: string, fn: (pasta: string) => Promise<T>) =>
         fn('/tmp/pasta-falsa'),
       rodar: async () => undefined,

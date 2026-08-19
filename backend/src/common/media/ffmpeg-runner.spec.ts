@@ -38,6 +38,7 @@ live.mp4: Invalid data found when processing input
 
   it('reconhece a gravação completa — imagem e som', async () => {
     await expect(comRelatorio(COM_AUDIO).streamsDe('live.mp4')).resolves.toEqual({
+      sondou: true,
       legivel: true,
       audio: true,
       video: true,
@@ -46,6 +47,7 @@ live.mp4: Invalid data found when processing input
 
   it('reconhece a gravação muda — tem vídeo, não tem som', async () => {
     await expect(comRelatorio(SEM_AUDIO).streamsDe('live.mp4')).resolves.toEqual({
+      sondou: true,
       legivel: true,
       audio: false,
       video: true,
@@ -54,6 +56,7 @@ live.mp4: Invalid data found when processing input
 
   it('separa o arquivo ilegível do arquivo mudo', async () => {
     await expect(comRelatorio(ILEGIVEL).streamsDe('live.mp4')).resolves.toEqual({
+      sondou: true,
       legivel: false,
       audio: false,
       video: false,
@@ -67,6 +70,7 @@ Input #0, ogg, from 'live.ogg':
   Stream #0:0: Audio: opus, 48000 Hz, mono, fltp
 `;
     await expect(comRelatorio(soAudio).streamsDe('live.ogg')).resolves.toEqual({
+      sondou: true,
       legivel: true,
       audio: true,
       video: false,
@@ -86,8 +90,23 @@ Input #0, mp3, from 'live.mp3':
   Stream #0:1: Video: mjpeg (Baseline), yuvj420p(pc), 600x600 [SAR 1:1 DAR 1:1], 90k tbr (attached pic)
 `;
     await expect(comRelatorio(mp3ComCapa).streamsDe('live.mp3')).resolves.toEqual({
+      sondou: true,
       legivel: true,
       audio: true,
+      video: false,
+    });
+  });
+
+  /*
+   * O stderr vazio é o processo morto (LVE, restart de deploy), não um arquivo
+   * ruim — um arquivo ruim de verdade produz stderr com o motivo. É a diferença
+   * entre "tente de novo" e "seu vídeo está corrompido" na tela do vendedor.
+   */
+  it('separa o ffmpeg que nem rodou do arquivo ilegível', async () => {
+    await expect(comRelatorio('').streamsDe('live.mp4')).resolves.toEqual({
+      sondou: false,
+      legivel: false,
+      audio: false,
       video: false,
     });
   });
