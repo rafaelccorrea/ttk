@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { execFile } from 'node:child_process';
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -57,14 +57,30 @@ export class FfmpegRunner {
   }
 
   private async garantirExecutavel(): Promise<void> {
-    if (this.permissaoGarantida || !ffmpegPath || process.platform === 'win32') {
+    if (this.permissaoGarantida || !ffmpegPath) {
       this.permissaoGarantida = true;
       return;
     }
+    /*
+     * `ffmpegPath` é só uma string montada pelo pacote — o binário em si é
+     * baixado num postinstall, e um deploy que pulou ou bloqueou esse download
+     * deixa o caminho apontando para o nada. Aí todo spawn morre em ENOENT com
+     * stderr vazio e o sintoma vira "arquivo ilegível" na live. Uma linha de
+     * log no primeiro uso responde isso de vez.
+     */
     try {
-      await chmod(ffmpegPath as string, 0o755);
-    } catch (error) {
-      this.logger.warn(`chmod no ffmpeg falhou: ${error}`);
+      await access(ffmpegPath as string);
+    } catch {
+      this.logger.error(
+        `Binário do ffmpeg NÃO existe em "${ffmpegPath}" — o download do ffmpeg-static falhou neste deploy (rode "npm rebuild ffmpeg-static").`,
+      );
+    }
+    if (process.platform !== 'win32') {
+      try {
+        await chmod(ffmpegPath as string, 0o755);
+      } catch (error) {
+        this.logger.warn(`chmod no ffmpeg falhou: ${error}`);
+      }
     }
     this.permissaoGarantida = true;
   }
@@ -117,7 +133,21 @@ export class FfmpegRunner {
         ]);
         return stderr ?? '';
       } catch (error) {
-        return (error as { stderr?: string }).stderr ?? '';
+        const stderr = (error as { stderr?: string }).stderr ?? '';
+        if (!stderr.trim()) {
+          /*
+           * stderr vazio = o ffmpeg nem chegou a reclamar do arquivo. O que
+           * interessa é o erro do SPAWN: ENOENT diz que o binário do
+           * ffmpeg-static não veio no deploy, EACCES que o chmod não pegou,
+           * SIGKILL que o LVE matou o processo. Sem esta linha, tudo isso
+           * vira só "sondou: false" e o diagnóstico para aqui.
+           */
+          const e = error as NodeJS.ErrnoException & { signal?: string };
+          this.logger.error(
+            `ffmpeg não descreveu "${arquivo}": code=${e.code ?? '?'} signal=${e.signal ?? '?'} ${e.message}`,
+          );
+        }
+        return stderr;
       }
     });
   }
