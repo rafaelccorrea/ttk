@@ -74,6 +74,80 @@ const GESTOS_POR_CENA = [
   'Shifts weight, sweeps one hand across the frame while talking.',
 ];
 
+/**
+ * Prompt de renderização em BLOCOS rotulados, num idioma só por bloco.
+ *
+ * A versão anterior emendava fragmento da persona (inglês), ação do roteiro
+ * (português) e a ordem de fala no meio de tudo — prompt bilíngue sem
+ * estrutura, e o modelo respondia com áudio à deriva (espanhol saiu em
+ * produção). Blocos rotulados dizem ao modelo o que é direção, o que é
+ * diálogo e em que língua cada coisa está.
+ *
+ * "No on-screen text" não é preciosismo: o modelo às vezes inventa legenda
+ * própria queimada no quadro — que depois briga com a NOSSA legenda na
+ * montagem.
+ */
+function montarPromptDeCena(opts: {
+  sujeito: string;
+  acaoVisual: string;
+  extras?: string[];
+  fala?: string | null;
+  vozDescricao?: string;
+  /** Cena SEM rosto (demonstração): mãos podem aparecer, pessoa não. */
+  semPessoa?: boolean;
+}): string {
+  const partes = [
+    // ------------------------------------------------------------- SUJEITO
+    opts.sujeito,
+    // --------------------------------------------------------------- CENA
+    `Scene action (described in Portuguese): ${opts.acaoVisual}`,
+    ...(opts.extras ?? []),
+    // ------------------------------------------------------- CONTINUIDADE
+    // O clipe parte de um frame real: o modelo tende a "recriar" o sujeito
+    // no meio do movimento. Travar identidade e cenário é o que impede o
+    // rosto (ou o produto) de trocar entre o primeiro e o último segundo.
+    'Continuity: single continuous shot, no cuts, no scene transitions. ' +
+      'Keep EXACTLY the same appearance as the starting frame from beginning to end — ' +
+      'same face, same hair, same outfit, same background, same lighting. ' +
+      'Do not morph, do not change identity, do not add or remove people or objects.',
+    // ------------------------------------------------------------ ESTÉTICA
+    'Look: realistic UGC smartphone video, vertical 9:16, natural daylight or soft indoor light, ' +
+      'natural skin texture (not airbrushed), shallow depth of field, steady but slightly handheld.',
+    'Motion: natural human timing, no slow motion, no time-lapse, no speed ramps. ' +
+      'Every gesture happens ONCE — never repeat or loop the same movement within the shot. ' +
+      'Movements are calm and unhurried, like a real person talking to a friend.',
+    // A montagem corta seco de uma cena para a outra: clipe que termina "em
+    // repouso" denuncia a emenda. Terminar em movimento suave faz uma cena
+    // parecer continuação da anterior.
+    'Flow: the shot begins mid-motion and ends mid-motion (never frozen or posed), ' +
+      'so consecutive scenes cut together seamlessly, as if each scene flows out of the previous one.',
+  ];
+
+  // ----------------------------------------------------------------- ÁUDIO
+  if (opts.fala?.trim()) {
+    partes.push(
+      `Dialogue — the exact line, spoken in BRAZILIAN PORTUGUESE (pt-BR): "${opts.fala.trim()}"`,
+      `Audio: ${opts.vozDescricao ?? 'voice of a young Brazilian woman'}, natural Brazilian Portuguese accent and prosody, ` +
+        'calm, warm, conversational tone — like recommending to a friend, never a radio announcer, never shouting. ' +
+        'The ONLY spoken language is Brazilian Portuguese — never Spanish, never English, never any other language. ' +
+        'Lip movements match the dialogue word by word. No background music.',
+    );
+  } else {
+    partes.push('Audio: no speech, no narration, no music — subtle ambient sound only.');
+  }
+
+  // -------------------------------------------------------------- PROIBIDO
+  partes.push(
+    'Strictly forbidden: on-screen text, captions, subtitles, logos, watermarks, emojis, UI elements; ' +
+      'extra people entering the frame; deformed or extra fingers; ' +
+      'flickering, frame jumps, glitches; ' +
+      (opts.semPessoa
+        ? 'faces or full people in frame (hands and forearms are allowed when the action needs them).'
+        : 'changing the presenter\'s face, age, hair or clothes.'),
+  );
+  return partes.join('\n');
+}
+
 const CAMERAS_POR_CENA = [
   'Camera slowly pushes in.',
   'Subtle handheld sway.',
@@ -817,12 +891,18 @@ export class CampaignsService {
        * assim em produção. A fala da cena entra como o texto a narrar, e o
        * pt-BR vira ordem, não esperança.
        */
-      promptFinal =
-        `Product demo shot. Camera motion: ${cena.acaoVisual}. No people in frame. ` +
-        (cena.fala
-          ? `Voiceover in BRAZILIAN PORTUGUESE (pt-BR) saying exactly: "${cena.fala}". ` +
-            'All speech must be in Brazilian Portuguese — never English.'
-          : 'No speech, no narration.');
+      promptFinal = montarPromptDeCena({
+        // "No people" seco brigava com ações como "mão abre, aplica nos
+        // lábios" — o proibido agora permite mãos e barra só rosto/pessoa.
+        sujeito:
+          'Close-up product demonstration of the exact product shown in the starting frame. ' +
+          'The product is the hero: keep its shape, colors, label and packaging IDENTICAL to the starting frame — never redesign it. ' +
+          'Demonstrate the product the way it is actually used in real life (a pen writes, a lipstick is applied, a garment is worn or held up) — the action must fit this specific type of product.',
+        acaoVisual: cena.acaoVisual,
+        fala: cena.fala,
+        vozDescricao: 'female voiceover (narrator, off-screen)',
+        semPessoa: true,
+      });
     } else {
       const persona = await this.personas.findOneBy({ id: campanha.personaId });
       if (!persona?.seedImageUrl || persona.status !== 'pronta') {
@@ -842,10 +922,12 @@ export class CampaignsService {
         id: campanha.userProductId,
       });
       if (produtoDaCena) {
+        // Só o NOME, e nada de texto de marketing: o benefício é claim em
+        // português no meio do bloco inglês — não descreve nada visual e
+        // ainda desestabilizava o idioma do áudio.
         promptExtra =
-          `The product being presented is "${produtoDaCena.name}"` +
-          (produtoDaCena.benefit ? ` (${produtoDaCena.benefit})` : '') +
-          '. If the action mentions holding or showing the product, the person holds it clearly visible in hand. ';
+          `The product being presented is "${produtoDaCena.name}". ` +
+          'If the action mentions holding or showing the product, the person holds it clearly visible in hand.';
       }
 
       /**
@@ -879,15 +961,17 @@ export class CampaignsService {
             `second reference image ("${produtoDaCena.name}") in hand, close to the face, ` +
             `label facing the camera. Scene: ${cena.acaoVisual}. ` +
             'Do not redesign or restyle the product — reproduce it faithfully.';
-          const promptVideo =
-            `${persona.promptFragment}. Action: ${cena.acaoVisual}. ` +
-            'The person keeps holding the same product visible in hand. ' +
-            `${GESTOS_POR_CENA[(cena.ordem - 1) % GESTOS_POR_CENA.length]} ` +
-            `${CAMERAS_POR_CENA[(cena.ordem - 1) % CAMERAS_POR_CENA.length]} ` +
-            (cena.fala
-              ? `The person speaks in BRAZILIAN PORTUGUESE (pt-BR), lip-synced, saying exactly: "${cena.fala}". ` +
-                'All speech must be in Brazilian Portuguese — never English.'
-              : 'No speech.');
+          const promptVideo = montarPromptDeCena({
+            sujeito:
+              `${persona.promptFragment}. ` +
+              'The person keeps holding the same product clearly visible in hand.',
+            acaoVisual: cena.acaoVisual,
+            extras: [
+              GESTOS_POR_CENA[(cena.ordem - 1) % GESTOS_POR_CENA.length],
+              CAMERAS_POR_CENA[(cena.ordem - 1) % CAMERAS_POR_CENA.length],
+            ],
+            fala: cena.fala,
+          });
           const mediaComposta = await this.dispararGeracao(cena.id, () =>
             this.videogen.generateComposedVideo(userId, {
               framePrompt,
@@ -911,17 +995,18 @@ export class CampaignsService {
           `Cena ${cena.id}: composição com referências indisponível (retrato ou foto ilegível).`,
         );
       }
-      promptFinal =
-        `${persona.promptFragment}. Action: ${cena.acaoVisual}. ` +
-        promptExtra +
-        // Variação determinística por cena: a instrução FIXA de "gestos
-        // naturais" fazia o modelo repetir o mesmo gesto em todas as cenas.
-        `${GESTOS_POR_CENA[(cena.ordem - 1) % GESTOS_POR_CENA.length]} ` +
-        `${CAMERAS_POR_CENA[(cena.ordem - 1) % CAMERAS_POR_CENA.length]} ` +
-        (cena.fala
-          ? `The person speaks in BRAZILIAN PORTUGUESE (pt-BR), lip-synced, saying exactly: "${cena.fala}". ` +
-            'All speech must be in Brazilian Portuguese — never English.'
-          : 'No speech.');
+      promptFinal = montarPromptDeCena({
+        sujeito: persona.promptFragment,
+        acaoVisual: cena.acaoVisual,
+        extras: [
+          ...(promptExtra ? [promptExtra.trim()] : []),
+          // Variação determinística por cena: a instrução FIXA de "gestos
+          // naturais" fazia o modelo repetir o mesmo gesto em todas as cenas.
+          GESTOS_POR_CENA[(cena.ordem - 1) % GESTOS_POR_CENA.length],
+          CAMERAS_POR_CENA[(cena.ordem - 1) % CAMERAS_POR_CENA.length],
+        ],
+        fala: cena.fala,
+      });
     }
 
     /**

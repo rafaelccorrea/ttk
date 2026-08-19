@@ -172,10 +172,13 @@ O que separa um roteiro que vende de um que enfeita (siga TUDO):
 - Se houver preço, o CTA o usa como argumento concreto ("por R$ 10 você resolve isso hoje"). Sem preço, o CTA usa urgência ou prova.
 - Especificidade vende: números, tempo, situação concreta do dia a dia ("na correria de sair de casa", "durou o churrasco inteiro"). Cada fala precisa de ao menos um detalhe concreto.
 - PROIBIDO o vocabulário de anúncio genérico: "incrível", "perfeito", "revolucionário", "surpreendente", "o melhor do mercado", "você precisa disso", "olha isso". Se a fala servir para qualquer produto, reescreva até servir só para este.
-- Fale como gente no WhatsApp, não como locutor: frases curtas, contração natural ("tá", "pra"), uma ideia por cena.
-- Varie o enquadramento e o gesto em CADA cena de apresentador ("inclina para a câmera", "mostra com as mãos", "aponta para baixo") — duas cenas com a mesma pose parecem foto repetida.
+- Fale como gente no WhatsApp, não como locutor: frases curtas, contração natural ("tá", "pra"), uma ideia por cena. O tom é CALMO e próximo — quem recomenda a uma amiga, não quem grita promoção; nada de exclamação em série nem urgência histérica.
+- O PRODUTO dita a ação: a demonstração usa o produto do jeito que ele é usado na vida real. Caneta ESCREVE no papel; batom PASSA nos lábios; camiseta é VESTIDA ou mostrada no corpo; creme é ESPALHADO na pele; fone vai ao OUVIDO; utensílio de cozinha é usado COZINHANDO. Nunca descreva um gesto genérico ("segura e mostra") quando existe o gesto natural daquele tipo de produto.
+- Varie o enquadramento e o gesto em CADA cena de apresentador ("inclina para a câmera", "mostra com as mãos", "aponta para baixo") — duas cenas com a mesma pose parecem foto repetida. E dentro de UMA cena, um gesto só acontece UMA vez: nada de repetir o mesmo movimento no mesmo clipe.
+- "acaoVisual" rica em detalhes concretos: o que a mão faz, para onde o olhar vai, o que entra ou sai do quadro, em que superfície a ação acontece — detalhe suficiente para filmar sem adivinhar nada.
 - OBRIGATÓRIO, sem exceção: a SEGUNDA cena de apresentador do roteiro (contando o gancho como a primeira) mostra a pessoa SEGURANDO O PRODUTO na mão, perto do rosto, enquanto fala dele — escreva isso explicitamente em "acaoVisual" ("segura o [produto] na mão, perto do rosto"). É cena de apresentador ("mostraProduto": false — a pessoa continua em quadro). Roteiro sem essa cena está ERRADO.
 - As cenas se emendam: cada fala puxa a seguinte (pergunta → resposta, problema → virada, prova → oferta). Lidas em sequência, formam UMA conversa, não slides soltos.
+- As IMAGENS também se emendam: o fim de uma "acaoVisual" prepara o começo da seguinte, como se uma cena fizesse parte da outra — a mão que pega o produto no fim de uma cena é a mão que já o usa na próxima; o olhar que desce para o objeto vira o close desse objeto. Transição limpa e sutil, nunca um salto de contexto (cozinha → banheiro sem motivo).
 
 Responda APENAS com um array JSON, sem texto antes ou depois, no formato:
 [{"fala": "...", "acaoVisual": "...", "mostraProduto": false}]
