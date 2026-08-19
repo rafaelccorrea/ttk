@@ -876,15 +876,40 @@ function Storyboard({
                       sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                   ) : cena.status === 'renderizando' ? (
-                    <BrandLoader minHeight={160} />
+                    <Stack alignItems="center" spacing={1} px={2}>
+                      <BrandLoader minHeight={120} />
+                      {/* Por que NÃO tem cancelar aqui: o crédito desta cena
+                          foi debitado na submissão à fornecedora e abortar lá
+                          não estorna — cancelar agora só jogaria o crédito
+                          fora. Se a geração falhar, o estorno é automático. */}
+                      <Typography variant="caption" color="text.secondary" textAlign="center">
+                        Gerando — esta cena já foi cobrada e não dá mais para
+                        cancelar. Se falhar, o crédito volta sozinho.
+                      </Typography>
+                    </Stack>
                   ) : cena.status === 'pendente' && detalhe.renderQueue ? (
                     // Na fila: o servidor vai disparar esta cena sozinho
-                    // quando a anterior terminar — sem botão, sem clique.
+                    // quando a anterior terminar. O cancelar fica AQUI, no
+                    // cartão da cena — o botão global embaixo do "Gerar vídeo
+                    // completo" existia, mas quem quer parar olha para a cena.
                     <Stack alignItems="center" spacing={1} px={2}>
                       <CircularProgress size={20} color="inherit" />
                       <Typography variant="caption" color="text.secondary" textAlign="center">
                         Na fila — gera sozinha quando a cena anterior terminar.
                       </Typography>
+                      <Tooltip title="Desliga a fila inteira: nenhuma cena que ainda não começou será gerada nem cobrada. A cena que já está gerando termina normalmente.">
+                        <Button
+                          size="small"
+                          color="inherit"
+                          sx={{ color: 'text.secondary' }}
+                          disabled={ocupado}
+                          onClick={() =>
+                            acao(() => campaignsService.cancelQueue(detalhe.id))
+                          }
+                        >
+                          Cancelar (não cobra nada)
+                        </Button>
+                      </Tooltip>
                     </Stack>
                   ) : cena.status === 'falhou' ? (
                     <Typography variant="body2" color="text.secondary" px={2} textAlign="center">
