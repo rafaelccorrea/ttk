@@ -133,15 +133,24 @@ export class FfmpegRunner {
         ]);
         return stderr ?? '';
       } catch (error) {
-        const stderr = (error as { stderr?: string }).stderr ?? '';
+        let stderr = (error as { stderr?: string }).stderr ?? '';
         if (!stderr.trim()) {
           /*
-           * stderr vazio = o ffmpeg nem chegou a reclamar do arquivo. O que
-           * interessa é o erro do SPAWN: ENOENT diz que o binário do
-           * ffmpeg-static não veio no deploy, EACCES que o chmod não pegou,
-           * SIGKILL que o LVE matou o processo. Sem esta linha, tudo isso
-           * vira só "sondou: false" e o diagnóstico para aqui.
+           * No Node da Hostinger o `error.stderr` do execFile chega VAZIO e o
+           * relatório do ffmpeg vem embutido no `message`, depois da linha
+           * "Command failed: <comando>". Sem este resgate, todo arquivo — até
+           * o perfeito — era diagnosticado como "o ffmpeg nem rodou", porque o
+           * `-i` sem saída sempre termina em erro e o stderr é o relatório.
            */
+          const linhas = ((error as Error).message ?? '').split('\n');
+          if (/^Command failed:/.test(linhas[0] ?? '')) {
+            stderr = linhas.slice(1).join('\n');
+          }
+        }
+        if (!stderr.trim()) {
+          // Agora sim: nada em lugar nenhum = o ffmpeg nem chegou a reclamar
+          // do arquivo. ENOENT = binário ausente no deploy, EACCES = chmod não
+          // pegou, SIGKILL = LVE matou o processo.
           const e = error as NodeJS.ErrnoException & { signal?: string };
           this.logger.error(
             `ffmpeg não descreveu "${arquivo}": code=${e.code ?? '?'} signal=${e.signal ?? '?'} ${e.message}`,
