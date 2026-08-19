@@ -437,6 +437,10 @@ function Storyboard({
   const [ocupado, setOcupado] = useState(false);
   // Cena cuja foto está sendo trocada (null = diálogo fechado).
   const [trocandoFoto, setTrocandoFoto] = useState<string | null>(null);
+  // QUAL cena está redublando. O `ocupado` global trava tudo (certo — é uma
+  // operação por vez), mas o spinner tem que aparecer só no botão clicado:
+  // três botões girando juntos liam como "redublou as três".
+  const [redublando, setRedublando] = useState<string | null>(null);
   const [confirmarTudo, setConfirmarTudo] = useState(false);
   const { saldo, ilimitado } = useSaldo('video');
   const { confirmar, dialogo } = useConfirmarGasto();
@@ -812,11 +816,24 @@ function Storyboard({
                             size="small"
                             variant="outlined"
                             color="inherit"
-                            startIcon={<AutoAwesomeRoundedIcon />}
+                            startIcon={
+                              redublando === cena.id ? (
+                                <CircularProgress size={14} color="inherit" />
+                              ) : (
+                                <AutoAwesomeRoundedIcon />
+                              )
+                            }
                             disabled={ocupado}
-                            onClick={() => acao(() => campaignsService.redubScene(cena.id))}
+                            onClick={async () => {
+                              setRedublando(cena.id);
+                              try {
+                                await acao(() => campaignsService.redubScene(cena.id));
+                              } finally {
+                                setRedublando(null);
+                              }
+                            }}
                           >
-                            Redublar · grátis
+                            {redublando === cena.id ? 'Redublando...' : 'Redublar · grátis'}
                           </Button>
                         </Tooltip>
                       )}
@@ -982,7 +999,15 @@ function CampanhasTab({
   }, [etapa, aberta]);
 
   const carregarDetalhe = useCallback(async (id: string) => {
-    // `refresh` consulta as gerações em andamento e devolve a campanha inteira.
+    /*
+     * Duas fases, de propósito. O `refresh` consulta a fornecedora e pode
+     * rodar dublagem e montagem — segundos de ffmpeg dentro do request. Com
+     * ele na frente, clicar em "Abrir" deixava a tela em branco até o
+     * servidor terminar de trabalhar. O detalhe puro chega em milissegundos e
+     * pinta a tela; o refresh atualiza por cima quando terminar.
+     */
+    const rapido = await campaignsService.detail(id).catch(() => null);
+    if (rapido) setDetalhe(rapido);
     const dados = await campaignsService.refresh(id);
     setDetalhe(dados);
   }, []);

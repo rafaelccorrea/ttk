@@ -310,14 +310,42 @@ export class VideoAssemblyService {
       await writeFile(entrada, cena);
 
       /**
-       * Só inventa silêncio quando a cena vem MUDA.
+       * Só inventa silêncio quando a cena vem MUDA — e "mudo" tem que vir do
+       * PRÓPRIO ffmpeg, não de uma sonda que pode falhar.
        *
        * O concat descarta o áudio inteiro se um dos trechos não tiver faixa,
-       * então toda cena precisa ter uma. Mas mapear silêncio sem checar
-       * apagaria a narração das cenas que têm voz — que é o que o vendedor
-       * está pagando para gerar.
+       * então toda cena precisa ter uma. Mas em produção a sonda de áudio
+       * respondeu "mudo" para uma cena COM voz (o log mostrava o stream aac e
+       * a normalização entrando com anullsrc) e o vídeo final saiu em
+       * silêncio. Por isso a ordem inverteu: primeiro tenta com o áudio real;
+       * se o ffmpeg disser que o stream não existe, refaz como mudo. Errar
+       * para o lado do retry custa um spawn; errar para o do silêncio custava
+       * a voz que o vendedor pagou.
        */
-      const mudo = !(await this.temAudio(entrada));
+      const sonda = await this.ffmpeg.inspecionar(entrada);
+      const pareceMudo = sonda !== '' && !/:s*Audio:/i.test(sonda);
+      if (!pareceMudo) {
+        try {
+          return await this.codificar(entrada, saida, largura, altura, legenda, false);
+        } catch (error) {
+          const msg = String(error);
+          if (!/matches no streams|Invalid stream specifier/i.test(msg)) throw error;
+          this.logger.warn('Cena sem faixa de áudio de verdade; refazendo como muda.');
+        }
+      }
+      return await this.codificar(entrada, saida, largura, altura, legenda, true);
+    });
+  }
+
+  /** Uma passada de normalização, com ou sem a faixa de áudio original. */
+  private async codificar(
+    entrada: string,
+    saida: string,
+    largura: number,
+    altura: number,
+    legenda: string | null,
+    mudo: boolean,
+  ): Promise<Buffer> {
       const duracao = mudo ? null : await this.ffmpeg.duracao(entrada);
 
       await this.ffmpeg.rodar(
@@ -367,7 +395,6 @@ export class VideoAssemblyService {
       );
 
       return await readFile(saida);
-    });
   }
 
   /**
