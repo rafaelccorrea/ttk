@@ -76,6 +76,16 @@ export class Campaign {
   @Column({ type: 'text', nullable: true })
   script: string | null;
 
+  /**
+   * Gesto de uso real do produto ("escreve no papel", "passa nos lábios"),
+   * deduzido UMA vez pelo roteirista — que conhece nome, benefício e categoria
+   * — e injetado verbatim no prompt de toda cena de demonstração. Sem ele o
+   * modelo de vídeo tinha que adivinhar como o objeto se usa, e adivinhava
+   * "segura e gira" para tudo.
+   */
+  @Column({ type: 'text', nullable: true })
+  comoUsa: string | null;
+
   @Column({ nullable: true })
   model: string;
 

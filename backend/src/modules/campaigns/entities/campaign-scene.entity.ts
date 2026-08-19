@@ -74,6 +74,15 @@ export class CampaignScene {
   @Column({ type: 'text' })
   acaoVisual: string;
 
+  /**
+   * Cena de apresentador em que a pessoa manuseia/usa o produto — dispara a
+   * composição retrato+foto do produto na renderização. Marcado pelo roteiro;
+   * a regex sobre `acaoVisual` ("segura", "na mão"...) vira só fallback, porque
+   * não pegava ações de uso real ("passa o batom", "veste a camiseta").
+   */
+  @Column({ type: 'boolean', default: false })
+  seguraProduto: boolean;
+
   /** Fragmento da persona + ação, montado no servidor na hora de renderizar. */
   @Column({ type: 'text', nullable: true })
   promptFinal: string | null;

@@ -615,6 +615,7 @@ export class CampaignsService {
           fala: cena.fala,
           acaoVisual: cena.acaoVisual,
           tipo: mostraProduto ? 'produto' : 'apresentador',
+          seguraProduto: !mostraProduto && cena.seguraProduto === true,
           // Alterna entre as fotos disponíveis para não repetir o mesmo
           // enquadramento em duas demonstrações seguidas.
           baseImageUrl: foto,
@@ -624,6 +625,7 @@ export class CampaignsService {
     );
 
     campanha.script = resultado.content;
+    campanha.comoUsa = resultado.comoUsa ?? null;
     campanha.model = resultado.model;
     campanha.status = 'storyboard';
     if (this.ai.enabled) campanha.creditsSpent += ACTION_PRICES.script.credits;
@@ -919,9 +921,13 @@ export class CampaignsService {
           'Close-up product demonstration of the exact product shown in the starting frame' +
           (produtoDaCena ? ` — the product is "${produtoDaCena.name}"` : '') +
           '. The product is the hero: keep its shape, colors, label and packaging IDENTICAL to the starting frame — never redesign it. ' +
-          'Demonstrate the product the way THIS specific type of product is actually used in real life: ' +
-          'a pen writes on paper, a lipstick is applied to lips, a garment is worn or held against the body, ' +
-          'a cream is spread on skin, a kitchen tool is used with food. ' +
+          // O gesto vem do roteirista, que conhece o produto; os exemplos são
+          // só a rede para roteiro antigo/fallback sem `comoUsa`.
+          (campanha.comoUsa
+            ? `Demonstrate the product being used for real — how it is used (described in Portuguese): ${campanha.comoUsa}. `
+            : 'Demonstrate the product the way THIS specific type of product is actually used in real life: ' +
+              'a pen writes on paper, a lipstick is applied to lips, a garment is worn or held against the body, ' +
+              'a cream is spread on skin, a kitchen tool is used with food. ') +
           'Never a generic "hold and rotate" when the product has a natural use gesture.',
         acaoVisual: cena.acaoVisual,
         fala: cena.fala,
@@ -949,7 +955,10 @@ export class CampaignsService {
         // ainda desestabilizava o idioma do áudio.
         promptExtra =
           `The product being presented is "${produtoDaCena.name}". ` +
-          'If the action mentions holding or showing the product, the person holds it clearly visible in hand.';
+          (campanha.comoUsa
+            ? `How this product is used (described in Portuguese): ${campanha.comoUsa}. `
+            : '') +
+          'If the action mentions holding, showing or using the product, the person handles it clearly visible in hand.';
       }
 
       /**
@@ -962,9 +971,12 @@ export class CampaignsService {
        * uma geração de imagem a mais dentro dos mesmos 60 créditos (margem
        * documentada no `generateComposedVideo`).
        */
-      const seguraProduto = /segur|na m[ãa]o|em m[ãa]os|mostra o produto/i.test(
-        cena.acaoVisual ?? '',
-      );
+      // A flag do roteiro é a fonte; a regex fica de fallback para cenas
+      // gravadas antes dela existir (não pegava "passa o batom" nem "veste a
+      // camiseta", justamente as ações de uso real).
+      const seguraProduto =
+        cena.seguraProduto ||
+        /segur|na m[ãa]o|em m[ãa]os|mostra o produto/i.test(cena.acaoVisual ?? '');
       if (seguraProduto && produtoDaCena?.images.length) {
         // A foto que vai na mão é a escolhida em "Trocar foto"; sem escolha,
         // a capa do produto.
@@ -982,6 +994,9 @@ export class CampaignsService {
             'reference image, same face, hair and outfit, holding the EXACT product from the ' +
             `second reference image ("${produtoDaCena.name}") in hand, close to the face, ` +
             `label facing the camera. Scene: ${cena.acaoVisual}. ` +
+            (campanha.comoUsa
+              ? `The person is about to use the product (how it is used, in Portuguese: ${campanha.comoUsa}). `
+              : '') +
             'Do not redesign or restyle the product — reproduce it faithfully.';
           const promptVideo = montarPromptDeCena({
             sujeito:

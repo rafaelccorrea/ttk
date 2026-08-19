@@ -64,10 +64,23 @@ export interface CenaGerada {
    * retrato do apresentador. Só é pedida quando o vendedor subiu fotos.
    */
   mostraProduto?: boolean;
+  /**
+   * Cena de apresentador em que a pessoa manuseia/usa o produto — quem
+   * renderiza usa isso para compor retrato+foto real no frame base.
+   */
+  seguraProduto?: boolean;
+  /**
+   * Gesto de uso real do produto, repetido igual em toda cena pelo modelo
+   * (manter o array plano é mais robusto de parsear que um objeto wrapper).
+   * Quem consome pega o primeiro não-vazio.
+   */
+  comoUsa?: string;
 }
 
 export interface CampanhaResult extends ScriptResult {
   cenas: CenaGerada[];
+  /** Gesto de uso real do produto ("escreve no papel") — um por roteiro. */
+  comoUsa?: string | null;
 }
 
 /** Um anúncio real usado como matéria-prima para destilar o formato. */
@@ -177,16 +190,18 @@ O que separa um roteiro que vende de um que enfeita (siga TUDO):
 - O PRODUTO dita a ação: a demonstração usa o produto do jeito que ele é usado na vida real. Caneta ESCREVE no papel; batom PASSA nos lábios; camiseta é VESTIDA ou mostrada no corpo; creme é ESPALHADO na pele; fone vai ao OUVIDO; utensílio de cozinha é usado COZINHANDO. Nunca descreva um gesto genérico ("segura e mostra") quando existe o gesto natural daquele tipo de produto.
 - Varie o enquadramento e o gesto em CADA cena de apresentador ("inclina para a câmera", "mostra com as mãos", "aponta para baixo") — duas cenas com a mesma pose parecem foto repetida. E dentro de UMA cena, um gesto só acontece UMA vez: nada de repetir o mesmo movimento no mesmo clipe.
 - "acaoVisual" rica em detalhes concretos: o que a mão faz, para onde o olhar vai, o que entra ou sai do quadro, em que superfície a ação acontece — detalhe suficiente para filmar sem adivinhar nada.
-- OBRIGATÓRIO, sem exceção: a SEGUNDA cena de apresentador do roteiro (contando o gancho como a primeira) mostra a pessoa SEGURANDO O PRODUTO na mão, perto do rosto, enquanto fala dele — escreva isso explicitamente em "acaoVisual" ("segura o [produto] na mão, perto do rosto"). É cena de apresentador ("mostraProduto": false — a pessoa continua em quadro). Roteiro sem essa cena está ERRADO.
+- OBRIGATÓRIO, sem exceção: a SEGUNDA cena de apresentador do roteiro (contando o gancho como a primeira) mostra a pessoa SEGURANDO O PRODUTO na mão, perto do rosto, enquanto fala dele — escreva isso explicitamente em "acaoVisual" ("segura o [produto] na mão, perto do rosto") e marque "seguraProduto": true. É cena de apresentador ("mostraProduto": false — a pessoa continua em quadro). Roteiro sem essa cena está ERRADO.
 - As cenas se emendam: cada fala puxa a seguinte (pergunta → resposta, problema → virada, prova → oferta). Lidas em sequência, formam UMA conversa, não slides soltos.
 - As IMAGENS também se emendam: o fim de uma "acaoVisual" prepara o começo da seguinte, como se uma cena fizesse parte da outra — a mão que pega o produto no fim de uma cena é a mão que já o usa na próxima; o olhar que desce para o objeto vira o close desse objeto. Transição limpa e sutil, nunca um salto de contexto (cozinha → banheiro sem motivo).
 
 Responda APENAS com um array JSON, sem texto antes ou depois, no formato:
-[{"fala": "...", "acaoVisual": "...", "mostraProduto": false}]
+[{"fala": "...", "acaoVisual": "...", "mostraProduto": false, "seguraProduto": false, "comoUsa": "..."}]
 
 Regras para cada campo:
 - "fala": português do Brasil falado, no máximo 15 palavras (é o que cabe em 5 segundos);
 - "acaoVisual": o que a câmera mostra — AÇÃO e ENQUADRAMENTO apenas;
+- "comoUsa": o gesto de uso REAL deste produto, em 3 a 8 palavras no infinitivo ("escrever no papel", "passar nos lábios", "vestir e mostrar no corpo"). Deduza do tipo do produto e repita a MESMA frase em todas as cenas;
+- "seguraProduto": true quando a cena é de apresentador ("mostraProduto": false) e a pessoa segura, mostra ou USA o produto em quadro; false nas demais e em toda cena de produto;
 - "mostraProduto": true quando a cena é uma demonstração em close do produto, sem a pessoa em quadro. Nessas cenas a imagem parte de uma FOTO REAL do produto, então "acaoVisual" deve descrever só movimento de câmera e do objeto — de preferência mãos USANDO o produto do jeito real dele (caneta escrevendo, batom passando, creme espalhando); girar o produto no ar é o último recurso, só para produto sem gesto de uso. Nunca a pessoa em quadro.
 
 A primeira cena é SEMPRE da pessoa falando ("mostraProduto": false): gancho precisa de rosto. O CTA final normalmente também converte melhor com rosto — mas se o produto em close com a oferta narrada contar melhor a história (ex.: unboxing, resultado final), a última cena pode ser de produto.
@@ -768,6 +783,9 @@ export class AiService {
       return {
         content: this.cenasParaMarkdown(request.productName, cenas),
         cenas,
+        // O modelo repete a mesma frase em toda cena; o primeiro não-vazio é o
+        // gesto do roteiro inteiro.
+        comoUsa: cenas.find((c) => c.comoUsa)?.comoUsa ?? null,
         model: response.model,
       };
     } catch (error) {
@@ -808,6 +826,13 @@ export class AiService {
       .map((c, i) => ({
         fala: c.fala.trim().slice(0, 400),
         acaoVisual: c.acaoVisual.trim().slice(0, 400),
+        comoUsa:
+          typeof c.comoUsa === 'string'
+            ? c.comoUsa.trim().slice(0, 120) || undefined
+            : undefined,
+        // Só vale em cena de apresentador: em cena de produto a pessoa nem
+        // aparece, não há o que compor.
+        seguraProduto: c.seguraProduto === true && c.mostraProduto !== true,
         // O gancho é sempre com rosto, mesmo se o modelo marcar diferente:
         // abrir num close de objeto não segura o scroll. A última cena ficou
         // por conta do modelo — travá-la em rosto deixava um único slot de
@@ -884,10 +909,12 @@ export class AiService {
       {
         fala: `Tá saindo por ${preco}. Vale dar uma olhada no carrinho.`,
         acaoVisual: 'segura o produto perto do rosto e indica a parte de baixo da tela com um gesto calmo, uma vez',
+        seguraProduto: true,
       },
       {
         fala: `Eu testei por uma semana e não largo mais.`,
         acaoVisual: `usa o ${r.productName} numa situação real do dia a dia, sem pressa`,
+        seguraProduto: true,
       },
       {
         fala: `Antes eu perdia tempo com ${problema}. Agora não.`,
@@ -897,6 +924,7 @@ export class AiService {
       {
         fala: `Quem comprou já entendeu. Acho que vale a pena pra você também.`,
         acaoVisual: 'segura o produto com as duas mãos junto ao peito, olhando tranquila para a câmera',
+        seguraProduto: true,
       },
     ];
 
@@ -910,6 +938,8 @@ export class AiService {
     return {
       content: this.cenasParaMarkdown(r.productName, cenas),
       cenas,
+      // Template não conhece o tipo do produto — deduzir aqui seria chute.
+      comoUsa: null,
       model: 'template-local',
     };
   }
