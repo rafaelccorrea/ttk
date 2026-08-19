@@ -87,9 +87,10 @@ export function validarFala(valor: string): Erro {
  * A cena é renderizada em 1080×1920 A PARTIR desta foto: uma miniatura de
  * 200px vira um borrão em tela cheia, e o vendedor só descobre depois de
  * gastar os créditos da cena. 500px no menor lado é o piso em que a ampliação
- * ainda segura.
+ * ainda segura. 500 barrava foto vertical legítima de celular (ex.:
+ * 365×547) — o piso real de usabilidade em 720p é ~300 no menor lado.
  */
-export const FOTO_LADO_MINIMO = 500;
+export const FOTO_LADO_MINIMO = 300;
 
 /**
  * Valida as DIMENSÕES da foto — assíncrona porque precisa decodificar.
