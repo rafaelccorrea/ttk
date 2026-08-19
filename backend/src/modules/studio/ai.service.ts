@@ -172,7 +172,8 @@ O que separa um roteiro que vende de um que enfeita (siga TUDO):
 - Se houver preço, o CTA o usa como argumento concreto ("por R$ 10 você resolve isso hoje"). Sem preço, o CTA usa urgência ou prova.
 - Especificidade vende: números, tempo, situação concreta do dia a dia ("na correria de sair de casa", "durou o churrasco inteiro"). Cada fala precisa de ao menos um detalhe concreto.
 - PROIBIDO o vocabulário de anúncio genérico: "incrível", "perfeito", "revolucionário", "surpreendente", "o melhor do mercado", "você precisa disso", "olha isso". Se a fala servir para qualquer produto, reescreva até servir só para este.
-- Fale como gente no WhatsApp, não como locutor: frases curtas, contração natural ("tá", "pra"), uma ideia por cena. O tom é CALMO e próximo — quem recomenda a uma amiga, não quem grita promoção; nada de exclamação em série nem urgência histérica.
+- Fale como gente no WhatsApp, não como locutor: frases curtas, contração natural ("tá", "pra"), uma ideia por cena. O tom é CALMO e próximo — quem recomenda a uma amiga, não quem grita promoção.
+- PROIBIDO o tom de leilão: "corre", "para tudo", "antes que acabe", "última chance", "olha isso", exclamação em série. Urgência, quando existir, é dita com calma e motivo concreto ("o lote desse preço costuma durar pouco"), nunca gritada. O CTA convida ("vale dar uma olhada no carrinho"), não comanda aos berros.
 - O PRODUTO dita a ação: a demonstração usa o produto do jeito que ele é usado na vida real. Caneta ESCREVE no papel; batom PASSA nos lábios; camiseta é VESTIDA ou mostrada no corpo; creme é ESPALHADO na pele; fone vai ao OUVIDO; utensílio de cozinha é usado COZINHANDO. Nunca descreva um gesto genérico ("segura e mostra") quando existe o gesto natural daquele tipo de produto.
 - Varie o enquadramento e o gesto em CADA cena de apresentador ("inclina para a câmera", "mostra com as mãos", "aponta para baixo") — duas cenas com a mesma pose parecem foto repetida. E dentro de UMA cena, um gesto só acontece UMA vez: nada de repetir o mesmo movimento no mesmo clipe.
 - "acaoVisual" rica em detalhes concretos: o que a mão faz, para onde o olhar vai, o que entra ou sai do quadro, em que superfície a ação acontece — detalhe suficiente para filmar sem adivinhar nada.
@@ -186,7 +187,7 @@ Responda APENAS com um array JSON, sem texto antes ou depois, no formato:
 Regras para cada campo:
 - "fala": português do Brasil falado, no máximo 15 palavras (é o que cabe em 5 segundos);
 - "acaoVisual": o que a câmera mostra — AÇÃO e ENQUADRAMENTO apenas;
-- "mostraProduto": true quando a cena é uma demonstração em close do produto, sem a pessoa em quadro. Nessas cenas a imagem parte de uma FOTO REAL do produto, então "acaoVisual" deve descrever só movimento de câmera e do objeto (girar, aproximar, mãos usando), nunca a pessoa.
+- "mostraProduto": true quando a cena é uma demonstração em close do produto, sem a pessoa em quadro. Nessas cenas a imagem parte de uma FOTO REAL do produto, então "acaoVisual" deve descrever só movimento de câmera e do objeto — de preferência mãos USANDO o produto do jeito real dele (caneta escrevendo, batom passando, creme espalhando); girar o produto no ar é o último recurso, só para produto sem gesto de uso. Nunca a pessoa em quadro.
 
 A primeira cena é SEMPRE da pessoa falando ("mostraProduto": false): gancho precisa de rosto. O CTA final normalmente também converte melhor com rosto — mas se o produto em close com a oferta narrada contar melhor a história (ex.: unboxing, resultado final), a última cena pode ser de produto.
 
@@ -872,30 +873,30 @@ export class AiService {
 
     const base: CenaGerada[] = [
       {
-        fala: `Se você sofre com ${problema}, para tudo e olha isso aqui.`,
-        acaoVisual: `segura o ${r.productName} perto da câmera, expressão de surpresa`,
+        fala: `Se você também convive com ${problema}, deixa eu te mostrar uma coisa.`,
+        acaoVisual: `olha para a câmera com meio sorriso e inclina levemente o corpo para frente, uma vez`,
       },
       {
         fala: `É o ${r.productName}. ${beneficio} — e leva segundos pra usar.`,
-        acaoVisual: 'câmera aproxima devagar no produto, mãos demonstrando o uso',
+        acaoVisual: `mãos demonstram o ${r.productName} do jeito que ele é usado de verdade, câmera aproxima devagar`,
         mostraProduto: true,
       },
       {
-        fala: `Tá saindo por ${preco}. Toca no carrinho antes que acabe.`,
-        acaoVisual: 'aponta para baixo, sorrindo, produto ao lado do rosto',
+        fala: `Tá saindo por ${preco}. Vale dar uma olhada no carrinho.`,
+        acaoVisual: 'segura o produto perto do rosto e indica a parte de baixo da tela com um gesto calmo, uma vez',
       },
       {
         fala: `Eu testei por uma semana e não largo mais.`,
-        acaoVisual: `usa o ${r.productName} naturalmente, rotina do dia a dia`,
+        acaoVisual: `usa o ${r.productName} numa situação real do dia a dia, sem pressa`,
       },
       {
         fala: `Antes eu perdia tempo com ${problema}. Agora não.`,
-        acaoVisual: 'comparação antes e depois lado a lado',
+        acaoVisual: 'close no resultado do uso, câmera desliza devagar sobre ele',
         mostraProduto: true,
       },
       {
-        fala: `Quem comprou já entendeu. Corre que o estoque some.`,
-        acaoVisual: 'segura o produto com as duas mãos, olhando para a câmera',
+        fala: `Quem comprou já entendeu. Acho que vale a pena pra você também.`,
+        acaoVisual: 'segura o produto com as duas mãos junto ao peito, olhando tranquila para a câmera',
       },
     ];
 

@@ -66,13 +66,26 @@ const CAMPANHAS_POR_PAGINA = 10;
  * cenas vizinhas nunca ganham a mesma direção.
  */
 const GESTOS_POR_CENA = [
-  'Leans slightly toward the camera, talking with open hands.',
-  'Gestures emphatically with one hand, then touches her chest.',
-  'Tilts head, smiles, and counts points on her fingers.',
-  'Raises eyebrows, gestures outward with both hands.',
-  'Nods while gesturing, then points toward the camera.',
-  'Shifts weight, sweeps one hand across the frame while talking.',
+  'leans slightly toward the camera while talking, hands relaxed',
+  'makes one soft open-hand gesture, then lets the hand rest',
+  'tilts the head with a gentle smile while talking',
+  'raises the eyebrows once, with a single small outward hand gesture',
+  'gives one slow nod while talking, hands mostly still',
+  'shifts weight naturally to one side, one hand moves briefly',
 ];
+
+/**
+ * Gesto da paleta como FALLBACK, não como segunda ordem: a acaoVisual do
+ * roteiro já traz o próprio gesto, e duas direções de movimento no mesmo
+ * prompt saíam como o apresentador repetindo/emendando gestos sem parar.
+ */
+function gestoDaCena(ordem: number): string {
+  return (
+    'Gesture (ONLY if the scene action above does not already describe one; otherwise ignore this line): ' +
+    GESTOS_POR_CENA[(ordem - 1) % GESTOS_POR_CENA.length] +
+    '. One single gesture in the whole clip, performed once, slowly.'
+  );
+}
 
 /**
  * Prompt de renderização em BLOCOS rotulados, num idioma só por bloco.
@@ -128,7 +141,8 @@ function montarPromptDeCena(opts: {
     partes.push(
       `Dialogue — the exact line, spoken in BRAZILIAN PORTUGUESE (pt-BR): "${opts.fala.trim()}"`,
       `Audio: ${opts.vozDescricao ?? 'voice of a young Brazilian woman'}, natural Brazilian Portuguese accent and prosody, ` +
-        'calm, warm, conversational tone — like recommending to a friend, never a radio announcer, never shouting. ' +
+        'calm, warm, conversational tone — like recommending something to a close friend. ' +
+        'Relaxed pace with natural micro-pauses; the voice NEVER shouts, never rushes, never sounds like a radio announcer or an aggressive ad. ' +
         'The ONLY spoken language is Brazilian Portuguese — never Spanish, never English, never any other language. ' +
         'Lip movements match the dialogue word by word. No background music.',
     );
@@ -877,6 +891,13 @@ export class CampaignsService {
     let promptFinal: string;
     let promptExtra = '';
 
+    // O nome entra no prompt das DUAS variantes de cena: sem ele o modelo de
+    // vídeo não sabe que objeto está animando — e sem saber o que é, não sabe
+    // COMO ele se usa (caneta escreve, batom passa nos lábios).
+    const produtoDaCena = await this.produtos.findOneBy({
+      id: campanha.userProductId,
+    });
+
     if (cena.tipo === 'produto') {
       imagemBase = cena.baseImageUrl;
       if (!imagemBase) {
@@ -895,9 +916,13 @@ export class CampaignsService {
         // "No people" seco brigava com ações como "mão abre, aplica nos
         // lábios" — o proibido agora permite mãos e barra só rosto/pessoa.
         sujeito:
-          'Close-up product demonstration of the exact product shown in the starting frame. ' +
-          'The product is the hero: keep its shape, colors, label and packaging IDENTICAL to the starting frame — never redesign it. ' +
-          'Demonstrate the product the way it is actually used in real life (a pen writes, a lipstick is applied, a garment is worn or held up) — the action must fit this specific type of product.',
+          'Close-up product demonstration of the exact product shown in the starting frame' +
+          (produtoDaCena ? ` — the product is "${produtoDaCena.name}"` : '') +
+          '. The product is the hero: keep its shape, colors, label and packaging IDENTICAL to the starting frame — never redesign it. ' +
+          'Demonstrate the product the way THIS specific type of product is actually used in real life: ' +
+          'a pen writes on paper, a lipstick is applied to lips, a garment is worn or held against the body, ' +
+          'a cream is spread on skin, a kitchen tool is used with food. ' +
+          'Never a generic "hold and rotate" when the product has a natural use gesture.',
         acaoVisual: cena.acaoVisual,
         fala: cena.fala,
         vozDescricao: 'female voiceover (narrator, off-screen)',
@@ -918,9 +943,6 @@ export class CampaignsService {
        * (e o benefício, que descreve a aparência do resultado) entra no
        * prompt para a mão ter o que mostrar.
        */
-      const produtoDaCena = await this.produtos.findOneBy({
-        id: campanha.userProductId,
-      });
       if (produtoDaCena) {
         // Só o NOME, e nada de texto de marketing: o benefício é claim em
         // português no meio do bloco inglês — não descreve nada visual e
@@ -967,7 +989,7 @@ export class CampaignsService {
               'The person keeps holding the same product clearly visible in hand.',
             acaoVisual: cena.acaoVisual,
             extras: [
-              GESTOS_POR_CENA[(cena.ordem - 1) % GESTOS_POR_CENA.length],
+              gestoDaCena(cena.ordem),
               CAMERAS_POR_CENA[(cena.ordem - 1) % CAMERAS_POR_CENA.length],
             ],
             fala: cena.fala,
@@ -1002,7 +1024,7 @@ export class CampaignsService {
           ...(promptExtra ? [promptExtra.trim()] : []),
           // Variação determinística por cena: a instrução FIXA de "gestos
           // naturais" fazia o modelo repetir o mesmo gesto em todas as cenas.
-          GESTOS_POR_CENA[(cena.ordem - 1) % GESTOS_POR_CENA.length],
+          gestoDaCena(cena.ordem),
           CAMERAS_POR_CENA[(cena.ordem - 1) % CAMERAS_POR_CENA.length],
         ],
         fala: cena.fala,
