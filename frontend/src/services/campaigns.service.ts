@@ -36,6 +36,12 @@ export interface CampaignScene {
   ordem: number;
   /** `produto` anima a foto real; `apresentador` anima o retrato da persona. */
   tipo: 'apresentador' | 'produto';
+  /**
+   * Cena de apresentador que segura/usa o produto — o frame é composto com a
+   * foto real. Marcado pelo roteiro; `false` nas cenas antigas (a tela ainda
+   * cai numa regex de fallback para elas).
+   */
+  seguraProduto: boolean;
   baseImageUrl: string | null;
   fala: string;
   acaoVisual: string;

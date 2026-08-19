@@ -72,10 +72,24 @@ import {
   CampaignDetail,
   CampaignList,
   CampaignPricing,
+  CampaignScene,
   Persona,
   UserProduct,
   campaignsService,
 } from '@/services/campaigns.service';
+
+/**
+ * Cena que compõe a foto REAL do produto no frame — demonstração ou
+ * apresentador com o produto na mão. A flag vem do roteiro; a regex é só o
+ * fallback para cenas gravadas antes dela existir (o mesmo teste do backend).
+ */
+function cenaUsaProduto(cena: CampaignScene): boolean {
+  return (
+    cena.tipo === 'produto' ||
+    cena.seguraProduto ||
+    /segur|na m[ãa]o|em m[ãa]os|mostra o produto/i.test(cena.acaoVisual ?? '')
+  );
+}
 
 /**
  * Troca a foto de onde a cena de produto parte.
@@ -496,6 +510,18 @@ function Storyboard({
   const fotosDoProduto = detalhe.produto?.images ?? [];
   const cenaEmTroca = detalhe.cenas.find((c) => c.id === trocandoFoto) ?? null;
 
+  /**
+   * Espelha a escolha do backend na renderização: a foto marcada na cena se
+   * ainda existir no produto, senão a capa. É o que faz o cartão mostrar a
+   * MESMA foto que vai entrar na mão do apresentador — antes a composição era
+   * anunciada no selo mas nenhuma foto aparecia, e o vendedor não sabia qual
+   * produto ia aparecer.
+   */
+  const fotoCompostaDa = (cena: CampaignScene): string | null =>
+    cena.baseImageUrl && fotosDoProduto.includes(cena.baseImageUrl)
+      ? cena.baseImageUrl
+      : (fotosDoProduto[0] ?? null);
+
   // O que ainda falta pagar: cena pendente ou que falhou. Renderizando já foi
   // cobrada, e pronta idem — somá-las inflaria o total do diálogo.
   const faltaRenderizar = detalhe.cenas.filter(
@@ -881,6 +907,41 @@ function Storyboard({
                       </Typography>
                     </Stack>
                   )}
+
+                  {/* Qual foto do produto entra na mão do apresentador. O selo
+                      dizia "com o SEU produto" mas nenhuma foto aparecia — e
+                      sem escolha o servidor usa a capa em silêncio. A
+                      miniatura mostra a MESMA foto que a renderização vai
+                      compor; "Trocar foto" muda as duas. */}
+                  {cena.tipo === 'apresentador' &&
+                    cenaUsaProduto(cena) &&
+                    !(cena.status === 'pronta' && cena.outputUrl) &&
+                    fotoCompostaDa(cena) && (
+                      <Tooltip
+                        title={`É esta foto do produto que entra na mão do apresentador. Use "Trocar foto" para escolher outra.`}
+                      >
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            right: 8,
+                            bottom: 8,
+                            width: 64,
+                            aspectRatio: '3 / 4',
+                            borderRadius: 1.5,
+                            overflow: 'hidden',
+                            border: '2px solid',
+                            borderColor: 'background.paper',
+                            boxShadow: 3,
+                            bgcolor: 'background.paper',
+                          }}
+                        >
+                          <SmartImage
+                            src={fotoCompostaDa(cena)!}
+                            alt="Foto do produto que entra nesta cena"
+                          />
+                        </Box>
+                      </Tooltip>
+                    )}
                 </Box>
 
                 {/* Status da redublagem DESTA cena: progresso, sucesso ou o
@@ -971,11 +1032,7 @@ function Storyboard({
                       renderizar — depois de pronta, o vídeo já existe. Vale
                       para a demonstração E para a cena com o produto na mão
                       (a foto escolhida é a que entra na composição). */}
-                  {(cena.tipo === 'produto' ||
-                    /segur|na m[ãa]o|em m[ãa]os|mostra o produto/i.test(
-                      cena.acaoVisual ?? '',
-                    )) &&
-                    cena.status !== 'pronta' && (
+                  {cenaUsaProduto(cena) && cena.status !== 'pronta' && (
                     <Tooltip title="Escolher qual foto do produto aparece nesta cena (grátis)">
                       <Button
                         size="small"
@@ -999,25 +1056,14 @@ function Storyboard({
                     label={
                       cena.tipo === 'produto'
                         ? 'Demonstração · parte da sua foto'
-                        : // O MESMO teste do backend: quando a ação manda
-                          // segurar o produto, o frame é composto com a SUA
-                          // foto — e o selo precisa dizer isso, senão a cena
-                          // mais cara do roteiro passa por uma cena comum.
-                          /segur|na m[ãa]o|em m[ãa]os|mostra o produto/i.test(
-                              cena.acaoVisual ?? '',
-                            )
+                        : // Quando a cena compõe o produto no frame, o selo
+                          // precisa dizer isso — senão a cena mais cara do
+                          // roteiro passa por uma cena comum.
+                          cenaUsaProduto(cena)
                           ? 'Apresentador · com o SEU produto na mão'
                           : 'Apresentador · parte do retrato'
                     }
-                    color={
-                      cena.tipo === 'produto' ||
-                      (cena.tipo === 'apresentador' &&
-                        /segur|na m[ãa]o|em m[ãa]os|mostra o produto/i.test(
-                          cena.acaoVisual ?? '',
-                        ))
-                        ? 'primary'
-                        : 'default'
-                    }
+                    color={cenaUsaProduto(cena) ? 'primary' : 'default'}
                     sx={{ alignSelf: 'flex-start', fontWeight: 700 }}
                   />
                   <CampoDeCena
