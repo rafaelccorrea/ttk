@@ -112,10 +112,15 @@ export class UpdateCampaignDto {
 }
 
 export class UpdateSceneDto {
-  @ApiPropertyOptional()
+  /**
+   * 90 caracteres ≈ 12 palavras ditas COM CALMA em 5 segundos. O teto antigo
+   * de 400 deixava escrever um parágrafo que o modelo atropelava ou cortava
+   * no fim do clipe — o limite aqui é o limite físico da cena.
+   */
+  @ApiPropertyOptional({ maxLength: 90 })
   @IsOptional()
   @IsString()
-  @MaxLength(400)
+  @MaxLength(90)
   fala?: string;
 
   @ApiPropertyOptional()

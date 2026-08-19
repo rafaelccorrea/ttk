@@ -182,7 +182,8 @@ A estrutura obrigatória, distribuída entre as cenas disponíveis:
 O que separa um roteiro que vende de um que enfeita (siga TUDO):
 - Se houver "Problema que resolve", o GANCHO nasce dele: a primeira fala encena ou nomeia ESSE problema, com as palavras de quem o sofre. Nada de abrir com o nome do produto.
 - Se houver "Principal benefício", ele aparece no corpo como CENA, não como adjetivo: mostre o benefício acontecendo ("passa às 7h, às 22h ainda tá lá"), nunca o declare ("é de alta qualidade").
-- Se houver preço, o CTA o usa como argumento concreto ("por R$ 10 você resolve isso hoje"). Sem preço, o CTA usa urgência ou prova.
+- Se houver preço, o CTA o usa como argumento concreto ("por dez reais você resolve isso hoje"). Sem preço, o CTA usa urgência ou prova.
+- Preço e números SEMPRE com a moeda em palavra depois do número ("dez reais", "29,90 reais") — NUNCA "R$ 10": o símbolo antes do número sai falado como dólar no vídeo.
 - Especificidade vende: números, tempo, situação concreta do dia a dia ("na correria de sair de casa", "durou o churrasco inteiro"). Cada fala precisa de ao menos um detalhe concreto.
 - PROIBIDO o vocabulário de anúncio genérico: "incrível", "perfeito", "revolucionário", "surpreendente", "o melhor do mercado", "você precisa disso", "olha isso". Se a fala servir para qualquer produto, reescreva até servir só para este.
 - Fale como gente no WhatsApp, não como locutor: frases curtas, contração natural ("tá", "pra"), uma ideia por cena. O tom é CALMO e próximo — quem recomenda a uma amiga, não quem grita promoção.
@@ -198,7 +199,7 @@ Responda APENAS com um array JSON, sem texto antes ou depois, no formato:
 [{"fala": "...", "acaoVisual": "...", "mostraProduto": false, "seguraProduto": false, "comoUsa": "..."}]
 
 Regras para cada campo:
-- "fala": português do Brasil falado, no máximo 15 palavras (é o que cabe em 5 segundos);
+- "fala": português do Brasil falado, no máximo 12 palavras E 90 caracteres — dita COM CALMA, é o que cabe em 5 segundos sem atropelar o final. Escreva como se FALA, não como se escreve: ritmo de conversa, vírgula onde a pessoa respira;
 - "acaoVisual": o que a câmera mostra — AÇÃO e ENQUADRAMENTO apenas;
 - "comoUsa": o gesto de uso REAL deste produto, em 3 a 8 palavras no infinitivo ("escrever no papel", "passar nos lábios", "vestir e mostrar no corpo"). Deduza do tipo do produto e repita a MESMA frase em todas as cenas;
 - "seguraProduto": true quando a cena é de apresentador ("mostraProduto": false) e a pessoa segura, mostra ou USA o produto em quadro; false nas demais e em toda cena de produto;
@@ -824,7 +825,8 @@ export class AiService {
       )
       .slice(0, esperadas)
       .map((c, i) => ({
-        fala: c.fala.trim().slice(0, 400),
+        // 90 e não 400: é o que cabe FALADO em 5s (mesmo teto do UpdateSceneDto).
+        fala: c.fala.trim().slice(0, 90),
         acaoVisual: c.acaoVisual.trim().slice(0, 400),
         comoUsa:
           typeof c.comoUsa === 'string'
@@ -894,7 +896,14 @@ export class AiService {
   private campanhaFallback(r: CampanhaRequest): CampanhaResult {
     const beneficio = r.benefit ?? 'o resultado que você procura';
     const problema = r.problemSolved ?? 'aquele problema chato do dia a dia';
-    const preco = r.priceBrl ? `R$ ${r.priceBrl.toFixed(2)}` : 'um preço que cabe no bolso';
+    // Moeda em palavra DEPOIS do número: "R$ 10" sai falado como dólar.
+    const preco = r.priceBrl
+      ? `${
+          Number.isInteger(r.priceBrl)
+            ? r.priceBrl
+            : r.priceBrl.toFixed(2).replace('.', ',')
+        } reais`
+      : 'um preço que cabe no bolso';
 
     const base: CenaGerada[] = [
       {

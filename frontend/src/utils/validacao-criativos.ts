@@ -16,7 +16,8 @@ export const LIMITES = {
   beneficio: 500,
   problema: 500,
   rotuloPersona: 60,
-  fala: 400,
+  /** 90 ≈ 12 palavras ditas com calma em 5s — o mesmo teto do servidor. */
+  fala: 90,
   acaoVisual: 400,
   /** `Max(1_000_000)` no DTO. */
   precoMaximo: 1_000_000,
@@ -31,7 +32,9 @@ export const LIMITES = {
 } as const;
 
 /** Quantas palavras cabem nos ~5 segundos de uma cena. */
-const PALAVRAS_POR_CENA = 15;
+// 12, não 15: no ritmo calmo que o prompt pede, 15 palavras atropelavam o
+// final da fala (ou o clipe cortava no meio).
+const PALAVRAS_POR_CENA = 12;
 
 export type Erro = string | null;
 

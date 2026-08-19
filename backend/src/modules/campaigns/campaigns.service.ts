@@ -96,6 +96,15 @@ function gestoDaCena(ordem: number): string {
 const PROMPT_MAX = 2400;
 
 /**
+ * "R$ 10" sai FALADO como dólar: o símbolo antes do número induz o modelo.
+ * Aqui a moeda vira palavra depois do número ("10 reais") — vale para roteiro
+ * antigo e para fala editada à mão; o roteirista novo já escreve assim.
+ */
+function falaParaAudio(fala: string): string {
+  return fala.replace(/R\$\s*([\d.,]+)/g, '$1 reais');
+}
+
+/**
  * Prompt de renderização em BLOCOS rotulados, num idioma só por bloco.
  *
  * A versão anterior emendava fragmento da persona (inglês), ação do roteiro
@@ -145,14 +154,19 @@ function montarPromptDeCena(opts: {
   // ----------------------------------------------------------------- ÁUDIO
   if (opts.fala?.trim()) {
     partes.push(
-      // "VERBATIM" com reforço: o modelo "corrigia" a concordância sozinho e
-      // trocava palavras da fala ("o dia todo" saiu "o dia toda" em produção).
-      `Dialogue — say this EXACT line VERBATIM, word for word as written, in BRAZILIAN PORTUGUESE (pt-BR): "${opts.fala.trim()}"`,
+      // "VERBATIM": o modelo "corrigia" a concordância sozinho ("o dia todo"
+      // saiu "o dia toda" em produção).
+      `Dialogue — say VERBATIM, word for word, in BRAZILIAN PORTUGUESE (pt-BR): "${falaParaAudio(opts.fala.trim())}"`,
+      // Cada frase abaixo cobre um defeito que JÁ saiu em produção: espanhol,
+      // palavra flexionada, preço em dólar, clipe abrindo com risada e fala
+      // cortada no fim dos 5s. Compacto de propósito — ver PROMPT_MAX.
       `Audio: ${opts.vozDescricao ?? 'voice of a young Brazilian woman'}, natural pt-BR accent, ` +
-        'calm warm conversational tone, relaxed pace with natural pauses — never shouting, never a radio announcer. ' +
-        'Spoken language is Brazilian Portuguese ONLY — never Spanish or English. ' +
-        'Pronounce every word exactly as written — never substitute, re-inflect, add or drop a word. ' +
-        'Lip-sync matches the dialogue word by word. No music.',
+        'calm warm conversational tone — never shouting, never a radio announcer. ' +
+        'Brazilian Portuguese ONLY (never Spanish or English); say every word exactly as written — ' +
+        'no substitutions or re-inflections; prices are Brazilian reais, never dollars. ' +
+        'Speech starts at the very first frame (no laugh, giggle or pause before it) ' +
+        'and the full line ends within the 5-second clip at a calm pace. ' +
+        'Perfect word-by-word lip-sync. No music.',
     );
   } else {
     partes.push('Audio: no speech, no music — subtle ambient sound only.');
