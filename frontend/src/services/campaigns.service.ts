@@ -170,6 +170,15 @@ export const campaignsService = {
     await api.delete(`/campaigns/personas/${id}`);
   },
 
+  /** Apelido e voz — grátis, não mexe no retrato. */
+  async updatePersona(
+    id: string,
+    patch: { label?: string; voz?: string },
+  ): Promise<Persona> {
+    const { data } = await api.patch<Persona>(`/campaigns/personas/${id}`, patch);
+    return data;
+  },
+
   async create(input: {
     userProductId: string;
     personaId: string;

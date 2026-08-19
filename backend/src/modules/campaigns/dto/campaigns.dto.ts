@@ -84,6 +84,27 @@ export class CreatePersonaDto {
   attrs: Record<string, string>;
 }
 
+/**
+ * Edição de persona SEM novo retrato: apelido e voz não entram no prompt de
+ * imagem, então mudar aqui é grátis e vale já para a próxima renderização.
+ * Atributos visuais (cabelo, figurino...) ficam de fora de propósito — mudar
+ * a aparência exige regenerar o retrato, que é outra operação (e outra cobrança).
+ */
+export class UpdatePersonaDto {
+  @ApiPropertyOptional({ example: 'Ju da cozinha' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  label?: string;
+
+  /** Id de voz do catálogo (`persona-options`, grupo "voz"). */
+  @ApiPropertyOptional({ example: 'masculina-grave' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  voz?: string;
+}
+
 export class CreateCampaignDto {
   @ApiProperty()
   @IsUUID()

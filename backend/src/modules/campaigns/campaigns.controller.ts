@@ -32,6 +32,7 @@ import {
   CreatePersonaDto,
   CreateUserProductDto,
   UpdateCampaignDto,
+  UpdatePersonaDto,
   UpdateSceneDto,
 } from './dto/campaigns.dto';
 
@@ -147,6 +148,18 @@ export class CampaignsController {
   @ApiOperation({ summary: 'Atualiza o status do retrato da persona' })
   refreshPersona(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.campaigns.atualizarPersona(user.id, id);
+  }
+
+  @Patch('personas/:id')
+  @ApiOperation({
+    summary: 'Edita a voz da persona (grátis — não mexe no retrato)',
+  })
+  updatePersona(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePersonaDto,
+  ) {
+    return this.campaigns.editarPersona(user.id, id, dto);
   }
 
   @Delete('personas/:id')

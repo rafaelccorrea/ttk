@@ -509,6 +509,10 @@ function ProdutoCard({
   onChange: () => void;
 }) {
   const [galeria, setGaleria] = useState(false);
+  // A exclusão pode ser RECUSADA pelo servidor (produto com campanhas) — sem
+  // este estado, a recusa morria num rejection silencioso e o clique parecia
+  // simplesmente não funcionar.
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
   // Excluir leva junto fotos e o vínculo com campanhas — não pode ser um
   // clique acidental na lixeira.
   const { confirmar, dialogoDeConfirmacao } = useConfirmacao();
@@ -636,8 +640,12 @@ function ProdutoCard({
                 destrutivo: true,
               });
               if (!ok) return;
-              await campaignsService.deleteProduct(produto.id);
-              onChange();
+              try {
+                await campaignsService.deleteProduct(produto.id);
+                onChange();
+              } catch (error) {
+                setErroExclusao(mensagemDeErro(error));
+              }
             }}
             // Cinza em repouso, vermelho ao mirar: excluir não pode disputar
             // atenção com a ação principal, mas tem que avisar que é destrutivo.
@@ -654,6 +662,17 @@ function ProdutoCard({
           </IconButton>
         </Tooltip>
       </CardContent>
+
+      {erroExclusao && (
+        <Alert
+          severity="error"
+          variant="outlined"
+          onClose={() => setErroExclusao(null)}
+          sx={{ mx: 2, mb: 2 }}
+        >
+          {erroExclusao}
+        </Alert>
+      )}
 
       <GaleriaDialog
         produto={produto}

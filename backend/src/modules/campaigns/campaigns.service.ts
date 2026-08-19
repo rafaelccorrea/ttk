@@ -22,6 +22,7 @@ import {
   CreatePersonaDto,
   CreateUserProductDto,
   UpdateCampaignDto,
+  UpdatePersonaDto,
   UpdateSceneDto,
 } from './dto/campaigns.dto';
 import { Campaign } from './entities/campaign.entity';
@@ -420,6 +421,20 @@ export class CampaignsService {
   }
 
   async removerProduto(userId: string, id: string): Promise<void> {
+    /*
+     * A FK das campanhas é ON DELETE RESTRICT de propósito: apagar o produto
+     * em cascata levaria junto campanhas com cenas JÁ PAGAS. Mas o RESTRICT
+     * sozinho virava um 500 de banco que o usuário lia como "a deleção não
+     * funciona" — a recusa precisa vir ANTES, com o motivo e o caminho.
+     */
+    const emUso = await this.campanhas.count({
+      where: { userId, userProductId: id },
+    });
+    if (emUso) {
+      throw new ConflictException(
+        `Este produto tem ${emUso} campanha(s). Exclua as campanhas dele primeiro — elas carregam cenas já pagas.`,
+      );
+    }
     const r = await this.produtos.delete({ id, userId });
     if (!r.affected) throw new NotFoundException('Produto não encontrado.');
   }
@@ -500,6 +515,38 @@ export class CampaignsService {
     } else if (['failed', 'nsfw', 'canceled'].includes(media.status)) {
       persona.status = 'falhou';
     }
+    return this.personas.save(persona);
+  }
+
+  /**
+   * Edita apelido e voz da persona — grátis, porque nenhum dos dois entra no
+   * prompt do retrato. A voz nova vale já para a próxima renderização e para a
+   * próxima dublagem; cenas já renderizadas mantêm o áudio que têm.
+   */
+  async editarPersona(
+    userId: string,
+    id: string,
+    dto: UpdatePersonaDto,
+  ): Promise<Persona> {
+    const persona = await this.personas.findOneBy({ id, userId });
+    if (!persona) throw new NotFoundException('Persona não encontrada.');
+
+    if (dto.label !== undefined) {
+      const limpo = dto.label.trim();
+      // Apelido apagado volta ao nome pelos atributos — nunca fica sem nome.
+      persona.label = limpo || rotularPersona(persona.attrs);
+    }
+
+    if (dto.voz !== undefined) {
+      // Mesma contenção da criação: só ids do catálogo, nunca texto livre —
+      // o fragment da voz entra verbatim no prompt de vídeo.
+      const grupoVoz = PERSONA_GROUPS.find((g) => g.key === 'voz')!;
+      if (!grupoVoz.options.some((o) => o.id === dto.voz)) {
+        throw new BadRequestException('Escolha uma voz do catálogo.');
+      }
+      persona.attrs = { ...persona.attrs, voz: dto.voz };
+    }
+
     return this.personas.save(persona);
   }
 

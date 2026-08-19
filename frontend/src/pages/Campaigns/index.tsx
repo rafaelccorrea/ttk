@@ -207,6 +207,19 @@ function PersonasTab({
   const [label, setLabel] = useState('');
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // Edição inline de persona existente — nome e voz não mexem no retrato.
+  const [editandoNome, setEditandoNome] = useState<string | null>(null);
+  const [nomeRascunho, setNomeRascunho] = useState('');
+  const grupoVoz = grupos.find((g) => g.key === 'voz');
+
+  async function salvarPersona(id: string, patch: { label?: string; voz?: string }) {
+    try {
+      await campaignsService.updatePersona(id, patch);
+      onChange();
+    } catch (error) {
+      setErro(mensagemDeErro(error, 'Falha ao editar o apresentador'));
+    }
+  }
   const { confirmar, dialogo } = useConfirmarGasto();
   const saldoImagem = useSaldo('image');
 
@@ -361,9 +374,78 @@ function PersonasTab({
                   )}
                 </Box>
                 <CardContent sx={{ py: 1.5 }}>
-                  <Typography fontWeight={700} fontSize={14} noWrap>
-                    {persona.label}
-                  </Typography>
+                  {/* Nome editável no clique: título da persona é como ela
+                      aparece nas campanhas, e antes só dava para acertar na
+                      criação. Salvar vazio volta ao nome pelos atributos. */}
+                  {editandoNome === persona.id ? (
+                    <TextField
+                      size="small"
+                      autoFocus
+                      fullWidth
+                      value={nomeRascunho}
+                      onChange={(e) => setNomeRascunho(e.target.value)}
+                      onBlur={() => {
+                        void salvarPersona(persona.id, { label: nomeRascunho.trim() });
+                        setEditandoNome(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          void salvarPersona(persona.id, { label: nomeRascunho.trim() });
+                          setEditandoNome(null);
+                        }
+                        if (e.key === 'Escape') setEditandoNome(null);
+                      }}
+                      inputProps={{
+                        maxLength: LIMITES.rotuloPersona,
+                        style: { fontSize: 14, fontWeight: 700 },
+                        'aria-label': 'Nome do apresentador',
+                      }}
+                    />
+                  ) : (
+                    <Tooltip title="Clique para renomear">
+                      <Typography
+                        fontWeight={700}
+                        fontSize={14}
+                        noWrap
+                        sx={{ cursor: 'pointer' }}
+                        onClick={() => {
+                          setNomeRascunho(persona.label);
+                          setEditandoNome(persona.id);
+                        }}
+                      >
+                        {persona.label}
+                      </Typography>
+                    </Tooltip>
+                  )}
+                  {/* Voz editável a qualquer momento: ela não entra no prompt
+                      do retrato, então trocar é grátis e vale já para a
+                      próxima renderização e dublagem. */}
+                  {grupoVoz && (
+                    <TextField
+                      select
+                      size="small"
+                      fullWidth
+                      label={grupoVoz.label}
+                      sx={{ mt: 1 }}
+                      value={persona.attrs?.voz ?? ''}
+                      onChange={(e) =>
+                        void salvarPersona(persona.id, { voz: e.target.value })
+                      }
+                      SelectProps={{ displayEmpty: true }}
+                      InputLabelProps={{ shrink: true }}
+                    >
+                      {!persona.attrs?.voz && (
+                        <MenuItem value="" disabled>
+                          Padrão do gênero
+                        </MenuItem>
+                      )}
+                      {grupoVoz.options.map((opcao) => (
+                        <MenuItem key={opcao.id} value={opcao.id}>
+                          {opcao.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  )}
                   <Box display="flex" alignItems="center" gap={1} mt={0.5}>
                     <Chip
                       size="small"
