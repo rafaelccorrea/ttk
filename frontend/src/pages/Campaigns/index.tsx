@@ -22,6 +22,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   Grid,
   IconButton,
   MenuItem,
@@ -32,6 +33,7 @@ import {
   StepButton,
   StepLabel,
   Stepper,
+  Switch,
   TextField,
   Tooltip,
   Typography,
@@ -549,6 +551,29 @@ function Storyboard({
       </Box>
 
       {erro && <Alert severity="error">{erro}</Alert>}
+
+      {/* Legenda é escolha: quem usa a legenda automática do TikTok acabava
+          com duas sobrepostas. Mudar com o final pronto descarta o arquivo e a
+          montagem automática refaz com a escolha nova. */}
+      <FormControlLabel
+        sx={{ alignSelf: 'flex-start', ml: 0 }}
+        control={
+          <Switch
+            checked={detalhe.subtitles ?? true}
+            disabled={ocupado}
+            onChange={(e) =>
+              void acao(() =>
+                campaignsService.update(detalhe.id, { subtitles: e.target.checked }),
+              )
+            }
+          />
+        }
+        label={
+          <Typography variant="body2" color="text.secondary">
+            Legendas no vídeo final (as falas queimadas na tela)
+          </Typography>
+        }
+      />
 
       {/* A fala não entra no prompt do vídeo (só a ação visual entra), então o
           clipe sai sem narração automática. Prometer implicitamente o

@@ -52,6 +52,8 @@ export interface Campaign {
   script: string | null;
   /** Vídeo montado a partir das cenas — é o entregável da campanha. */
   finalVideoUrl: string | null;
+  /** Legendas queimadas no vídeo final. */
+  subtitles: boolean;
   /**
    * Fila ligada: o servidor está gerando as cenas UMA POR VEZ, avançando a
    * cada refresh. Enquanto true, a campanha está trabalhando mesmo que
@@ -222,6 +224,15 @@ export const campaignsService = {
 
   async delete(id: string): Promise<void> {
     await api.delete(`/campaigns/${id}`);
+  },
+
+  /** Preferências (ex.: legendas). Mudar com o final pronto o remonta. */
+  async update(
+    id: string,
+    input: { subtitles?: boolean },
+  ): Promise<Campaign> {
+    const { data } = await api.patch<Campaign>(`/campaigns/${id}`, input);
+    return data;
   },
 
   async updateScene(

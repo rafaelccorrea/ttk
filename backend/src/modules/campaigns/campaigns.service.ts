@@ -21,6 +21,7 @@ import {
   CreateCampaignDto,
   CreatePersonaDto,
   CreateUserProductDto,
+  UpdateCampaignDto,
   UpdateSceneDto,
 } from './dto/campaigns.dto';
 import { Campaign } from './entities/campaign.entity';
