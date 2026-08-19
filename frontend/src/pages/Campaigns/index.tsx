@@ -25,6 +25,7 @@ import {
   Grid,
   IconButton,
   MenuItem,
+  Pagination,
   Skeleton,
   Stack,
   Step,
@@ -67,6 +68,7 @@ import {
   AttributeGroup,
   Campaign,
   CampaignDetail,
+  CampaignList,
   CampaignPricing,
   Persona,
   UserProduct,
@@ -1060,6 +1062,9 @@ function CampanhasTab({
   produtos,
   personas,
   campanhas,
+  pagina,
+  paginas,
+  onPagina,
   precos,
   onChange,
 }: {
@@ -1069,7 +1074,11 @@ function CampanhasTab({
   onEtapa: (etapa: number) => void;
   produtos: UserProduct[];
   personas: Persona[];
+  /** Só a página atual — quem pagina é o servidor. */
   campanhas: Campaign[];
+  pagina: number;
+  paginas: number;
+  onPagina: (pagina: number) => void;
   precos: CampaignPricing | null;
   onChange: () => void;
 }) {
@@ -1294,6 +1303,28 @@ function CampanhasTab({
           {campanhas.map((campanha) => (
             <Card key={campanha.id}>
               <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                {/* A capa do produto identifica a campanha de relance — com
+                    várias campanhas do mesmo vendedor, o título sozinho não
+                    distingue nada. */}
+                <Box
+                  sx={{
+                    position: 'relative',
+                    width: 56,
+                    height: 56,
+                    borderRadius: 1.5,
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                    bgcolor: 'rgba(22,24,35,0.06)',
+                    display: 'grid',
+                    placeItems: 'center',
+                  }}
+                >
+                  {campanha.productImage ? (
+                    <SmartImage src={campanha.productImage} alt={campanha.title} />
+                  ) : (
+                    <MovieFilterRoundedIcon color="disabled" fontSize="small" />
+                  )}
+                </Box>
                 <Box flexGrow={1}>
                   <Typography fontWeight={700}>{campanha.title}</Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -1324,6 +1355,14 @@ function CampanhasTab({
               </CardContent>
             </Card>
           ))}
+          {paginas > 1 && (
+            <Pagination
+              count={paginas}
+              page={pagina}
+              onChange={(_e, nova) => onPagina(nova)}
+              sx={{ alignSelf: 'center', pt: 1 }}
+            />
+          )}
         </Stack>
       </Grid>
     </Grid>
@@ -1354,7 +1393,14 @@ export function CampaignsPage() {
   const [grupos, setGrupos] = useState<AttributeGroup[]>([]);
   const [produtos, setProdutos] = useState<UserProduct[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
-  const [campanhas, setCampanhas] = useState<Campaign[]>([]);
+  const [campanhas, setCampanhas] = useState<CampaignList>({
+    items: [],
+    total: 0,
+    page: 1,
+    pageCount: 1,
+    comVideo: 0,
+  });
+  const [paginaCampanhas, setPaginaCampanhas] = useState(1);
   const [precos, setPrecos] = useState<CampaignPricing | null>(null);
   const [carregando, setCarregando] = useState(true);
   const montado = useRef(true);
@@ -1363,13 +1409,16 @@ export function CampaignsPage() {
     const [p, pe, c] = await Promise.all([
       campaignsService.listProducts(),
       campaignsService.listPersonas(),
-      campaignsService.list(),
+      campaignsService.list(paginaCampanhas),
     ]);
     if (!montado.current) return;
     setProdutos(p);
     setPersonas(pe);
     setCampanhas(c);
-  }, []);
+    // Excluir a última campanha da última página deixaria a tela numa página
+    // que não existe mais — volta para a última que existe.
+    if (paginaCampanhas > c.pageCount) setPaginaCampanhas(c.pageCount);
+  }, [paginaCampanhas]);
 
   useEffect(() => {
     montado.current = true;
@@ -1402,11 +1451,13 @@ export function CampaignsPage() {
 
   // Cada passo é "cumprido" pelo que existe de verdade na conta, não por ter
   // sido visitado: visitar não produz nada.
+  // Totais da conta inteira, não da página atual: a lista é paginada e a
+  // campanha com vídeo pode estar em qualquer página.
   const cumprido = [
     produtos.some((p) => p.images.length >= LIMITES.fotosMinimasPorProduto),
     personas.some((p) => p.status === 'pronta'),
-    campanhas.length > 0,
-    campanhas.some((c) => c.finalVideoUrl),
+    campanhas.total > 0,
+    campanhas.comVideo > 0,
   ];
 
   // O que impede o avanço, em uma frase. É a informação que antes só aparecia
@@ -1476,7 +1527,10 @@ export function CampaignsPage() {
           onEtapa={setPasso}
           produtos={produtos}
           personas={personas}
-          campanhas={campanhas}
+          campanhas={campanhas.items}
+          pagina={campanhas.page}
+          paginas={campanhas.pageCount}
+          onPagina={setPaginaCampanhas}
           precos={precos}
           onChange={recarregar}
         />

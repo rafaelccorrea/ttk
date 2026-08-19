@@ -59,7 +59,19 @@ export interface Campaign {
    */
   renderQueue: boolean;
   creditsSpent: number;
+  /** Foto de capa do produto da campanha — a miniatura do card da lista. */
+  productImage?: string | null;
   createdAt: string;
+}
+
+export interface CampaignList {
+  items: Campaign[];
+  total: number;
+  page: number;
+  pageCount: number;
+  /** Quantas campanhas da conta INTEIRA já têm vídeo final — o stepper marca
+   *  o passo "Vídeo" com isso, e a página atual não sabe responder sozinha. */
+  comVideo: number;
 }
 
 export interface CampaignDetail extends Campaign {
@@ -159,8 +171,22 @@ export const campaignsService = {
     return data;
   },
 
-  async list(): Promise<Campaign[]> {
-    const { data } = await api.get<Campaign[]>('/campaigns');
+  async list(page = 1): Promise<CampaignList> {
+    const { data } = await api.get<CampaignList | Campaign[]>('/campaigns', {
+      params: { page },
+    });
+    // Backend antigo (ou ainda não reiniciado) devolve o array puro. O front
+    // e o back não deployam juntos — o front é subido à mão — então essa
+    // janela existe de verdade; normalizar aqui evita a tela em branco.
+    if (Array.isArray(data)) {
+      return {
+        items: data,
+        total: data.length,
+        page: 1,
+        pageCount: 1,
+        comVideo: data.filter((c) => c.finalVideoUrl).length,
+      };
+    }
     return data;
   },
 

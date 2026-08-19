@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
 import { garantirConteudoPermitido } from '../../common/moderacao';
 import { BillingService } from '../billing/billing.service';
@@ -51,6 +51,9 @@ const MAX_REFERENCIAS = 8;
  * venderam.
  */
 const CANDIDATAS_SEMANTICAS = 200;
+
+/** Página da lista de campanhas — e também o teto que o cliente pode pedir. */
+const CAMPANHAS_POR_PAGINA = 10;
 
 /** Teto de fotos por produto — mais que isso ninguém usa no storyboard. */
 const MAX_FOTOS = 5;
@@ -345,8 +348,49 @@ export class CampaignsService {
     );
   }
 
-  listarCampanhas(userId: string): Promise<Campaign[]> {
-    return this.campanhas.find({ where: { userId }, order: { createdAt: 'DESC' } });
+  /**
+   * Lista paginada, cada campanha com a foto de capa do seu produto.
+   *
+   * A foto vem daqui, e não de outra chamada, porque o card da lista é a
+   * primeira coisa que a tela pinta — buscar o produto de cada campanha no
+   * cliente seria N requests para mostrar N miniaturas.
+   *
+   * `comVideo` acompanha o total porque o stepper da tela marca o passo
+   * "Vídeo" como cumprido quando ALGUMA campanha tem vídeo final — e com a
+   * lista paginada a página atual não sabe responder isso sozinha.
+   */
+  async listarCampanhas(userId: string, page = 1, limit = CAMPANHAS_POR_PAGINA) {
+    const take = Math.min(Math.max(1, limit), CAMPANHAS_POR_PAGINA);
+    const paginaAtual = Math.max(1, page);
+    const [itens, total] = await this.campanhas.findAndCount({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      skip: (paginaAtual - 1) * take,
+      take,
+    });
+
+    const idsDeProduto = [...new Set(itens.map((c) => c.userProductId))];
+    const produtos = idsDeProduto.length
+      ? await this.produtos.findBy({ id: In(idsDeProduto) })
+      : [];
+    const capaPorProduto = new Map(
+      produtos.map((p) => [p.id, p.images[0] ?? null]),
+    );
+
+    const comVideo = await this.campanhas.count({
+      where: { userId, finalVideoUrl: Not(IsNull()) },
+    });
+
+    return {
+      items: itens.map((c) => ({
+        ...c,
+        productImage: capaPorProduto.get(c.userProductId) ?? null,
+      })),
+      total,
+      page: paginaAtual,
+      pageCount: Math.max(1, Math.ceil(total / take)),
+      comVideo,
+    };
   }
 
   /** Campanha com cenas — é o que a tela de detalhe consome. */

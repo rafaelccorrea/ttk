@@ -163,9 +163,17 @@ export class CampaignsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Campanhas do vendedor' })
-  list(@CurrentUser() user: AuthUser) {
-    return this.campaigns.listarCampanhas(user.id);
+  @ApiOperation({ summary: 'Campanhas do vendedor (paginado, com a foto do produto)' })
+  list(
+    @CurrentUser() user: AuthUser,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.campaigns.listarCampanhas(
+      user.id,
+      Number(page) || 1,
+      Number(limit) || undefined,
+    );
   }
 
   @Get(':id')
