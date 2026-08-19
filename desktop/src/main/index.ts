@@ -339,6 +339,41 @@ async function seguidoresDe(usuario: string): Promise<number | null> {
 }
 
 /**
+ * O @ da conta logada na view do TikTok, ou `null` quando não der para saber.
+ *
+ * Existe para a tela de conectar não pedir o que o app já sabe: na enorme
+ * maioria das lives, quem transmite é a MESMA conta logada na metade esquerda
+ * da janela — e o vendedor digitava o próprio @ de novo, com direito a erro de
+ * digitação que conectava o copiloto na live de um estranho.
+ *
+ * O nome sai do JSON de hidratação da home do tiktok.com, lido com a sessão da
+ * partição — o mesmo caminho (e a mesma fragilidade assumida) de
+ * `seguidoresDe`: dado de terceiro, sem contrato, então qualquer tropeço vira
+ * `null` e a tela apenas volta a pedir o @ digitado. É indicação com conserto
+ * visível — o campo continua editável para o caso raro de transmitir por outra
+ * conta.
+ */
+async function usuarioDoTikTok(): Promise<string | null> {
+  if (!(await tiktokLogado())) return null;
+  try {
+    const resposta = await session
+      .fromPartition(PARTICAO_TIKTOK)
+      .fetch('https://www.tiktok.com/');
+    if (!resposta.ok) return null;
+    const html = await resposta.text();
+    /*
+     * O objeto `user` do app-context é o usuário LOGADO; os `uniqueId` soltos
+     * pela página são autores de vídeo do feed. Ancorar no `"user":{` é o que
+     * impede o campo de ser pré-preenchido com o @ de um criador qualquer.
+     */
+    const m = /"user"\s*:\s*\{[^{}]*?"uniqueId"\s*:\s*"([A-Za-z0-9._]{2,24})"/.exec(html);
+    return m ? m[1]! : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Avisa o painel quando esse login entra ou sai.
  *
  * Sem isto, quem terminasse o login à esquerda ficaria olhando para um passo 1
@@ -412,6 +447,7 @@ function registrarIpc(): void {
   ipcMain.handle('tiktok:seguidores', (_evento, usuario: string) =>
     seguidoresDe(usuario),
   );
+  ipcMain.handle('tiktok:usuario', () => usuarioDoTikTok());
   ipcMain.handle('ativacao:iniciar', () => copiloto.iniciarAtivacao());
   ipcMain.handle('sessao:obter', () => copiloto.obterSessao());
   // A ordem importa: o copiloto encerra a run com o token ainda válido, e só

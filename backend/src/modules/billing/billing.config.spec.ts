@@ -192,6 +192,26 @@ describe('billing.config — contas de cortesia', () => {
     expect(isCompAccount('')).toBe(false);
     expect(isCompAccount(null)).toBe(false);
   });
+
+  /*
+   * Admin implica cortesia — SÓ nesta direção. Sem isto, um e-mail em
+   * ADMIN_EMAILS mas fora de COMP_ACCOUNT_EMAILS era o dono da plataforma
+   * travando em limite de crédito e de minuto no meio de uma demonstração.
+   */
+  describe('admin sem limite', () => {
+    const adminOriginal = process.env.ADMIN_EMAILS;
+    afterEach(() => {
+      if (adminOriginal === undefined) delete process.env.ADMIN_EMAILS;
+      else process.env.ADMIN_EMAILS = adminOriginal;
+    });
+
+    it('trata admin como cortesia mesmo fora de COMP_ACCOUNT_EMAILS', () => {
+      delete process.env.COMP_ACCOUNT_EMAILS;
+      process.env.ADMIN_EMAILS = 'PikPok@pikpok.app';
+      expect(isCompAccount('pikpok@pikpok.app')).toBe(true);
+      expect(isCompAccount('cliente@loja.com')).toBe(false);
+    });
+  });
 });
 
 describe('billing.config — hierarquia de planos', () => {

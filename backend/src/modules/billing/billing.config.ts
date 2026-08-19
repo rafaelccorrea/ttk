@@ -7,6 +7,8 @@
  * Câmbio conservador usado nas estimativas: US$ 1 = R$ 6,00.
  */
 
+import { isAdmin } from '../admin/admin.access';
+
 export const CREDIT_VALUE_BRL = 0.1;
 
 /** Margem mínima exigida sobre o custo real (40%). */
@@ -616,6 +618,16 @@ export function compAccountEmails(): string[] {
 
 export function isCompAccount(email: string | undefined | null): boolean {
   if (!email) return false;
+  /*
+   * Admin implica cortesia — nesta direção, e SÓ nesta. As listas continuam
+   * separadas porque cortesia não pode dar poder (um e-mail em
+   * COMP_ACCOUNT_EMAILS não vira admin), mas o contrário era uma pegadinha de
+   * configuração: quem entrava em ADMIN_EMAILS e não em COMP_ACCOUNT_EMAILS
+   * era o dono da casa travando em limite de crédito e de minuto de live no
+   * meio de uma demonstração. Quem enxerga e altera a conta de todo mundo por
+   * definição não paga para usar a própria plataforma.
+   */
+  if (isAdmin(email)) return true;
   return compAccountEmails().includes(email.trim().toLowerCase());
 }
 

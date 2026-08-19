@@ -218,6 +218,14 @@ export interface PikPokDesktopApi {
    * na tela deve ser BLOQUEADO com base nele.
    */
   readonly seguidoresDoTikTok: (usuario: string) => Promise<number | null>;
+  /**
+   * O @ da conta logada na view do TikTok, ou `null` quando não der para ler.
+   *
+   * Serve para pré-preencher o campo do @ na tela de conectar — quem transmite
+   * é quase sempre a conta logada ao lado. É palpite editável, nunca trava:
+   * `null` só significa que o vendedor digita como sempre digitou.
+   */
+  readonly usuarioDoTikTok: () => Promise<string | null>;
 
   // ------------------------------------------------------------- ativação
   /** Pede um código novo e começa o polling no processo principal. */

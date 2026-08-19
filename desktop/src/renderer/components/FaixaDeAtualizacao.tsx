@@ -1,10 +1,9 @@
 import DownloadIcon from '@mui/icons-material/DownloadingOutlined';
 import RestartIcon from '@mui/icons-material/RestartAlt';
 import { Box, Button, Stack, Typography, alpha } from '@mui/material';
-import { useEffect, useState } from 'react';
-import type { EstadoAtualizacao } from '@shared/desktop-api';
 import { cores } from '../theme/theme';
 import { obterPonte } from '../ponte';
+import { useEstadoAtualizacao } from '../hooks/useEstadoAtualizacao';
 
 /**
  * A linha que conta que existe uma versão nova — e só isso.
@@ -22,13 +21,7 @@ import { obterPonte } from '../ponte';
  */
 export function FaixaDeAtualizacao(): JSX.Element | null {
   const ponte = obterPonte();
-  const [estado, setEstado] = useState<EstadoAtualizacao | null>(null);
-
-  useEffect(() => {
-    if (!ponte) return undefined;
-    void ponte.obterEstadoAtualizacao().then(setEstado).catch(() => undefined);
-    return ponte.aoMudarAtualizacao(setEstado);
-  }, [ponte]);
+  const estado = useEstadoAtualizacao();
 
   if (!ponte || estado?.situacao !== 'pronta') return null;
 

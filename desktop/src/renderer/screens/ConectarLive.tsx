@@ -16,6 +16,7 @@ import { mensagemDeErro } from '../erros';
 import { LINKS } from '../links';
 import { cores } from '../theme/theme';
 import { SEM_PONTE, obterPonte } from '../ponte';
+import { useEstadoAtualizacao } from '../hooks/useEstadoAtualizacao';
 import { useTikTokLogado } from '../hooks/useTikTokLogado';
 
 /**
@@ -41,6 +42,7 @@ export function ConectarLive({
 }): JSX.Element {
   const ponte = obterPonte();
   const tiktokLogado = useTikTokLogado();
+  const atualizacao = useEstadoAtualizacao();
   const [bases, setBases] = useState<BaseDeConhecimento[] | null>(null);
   const [carteira, setCarteira] = useState<CarteiraLive | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -57,6 +59,34 @@ export function ConectarLive({
    * contam. Por isso este número NÃO entra no `disabled` do botão.
    */
   const [seguidores, setSeguidores] = useState<number | null>(null);
+  /** O vendedor mexeu no campo do @: o palpite automático não escreve mais. */
+  const [usuarioEditado, setUsuarioEditado] = useState(false);
+
+  /*
+   * O @ vem preenchido com a conta logada na view ao lado.
+   *
+   * Quem transmite é quase sempre quem está logado ali — e digitar o próprio @
+   * de novo, além de redundante, era onde nascia o erro de digitação que
+   * conectava o copiloto na live de outra pessoa. O palpite só escreve num
+   * campo INTOCADO (vazio e sem edição): sobrescrever o que o vendedor digitou
+   * para transmitir por outra conta seria trocar um bug por outro. Reexecuta
+   * quando o login muda porque trocar de conta ao lado muda a resposta certa.
+   */
+  useEffect(() => {
+    if (!ponte || usuarioEditado || tiktokLogado !== true) return undefined;
+    let valendo = true;
+    void ponte
+      .usuarioDoTikTok()
+      .then((nome) => {
+        if (valendo && nome) {
+          setUsuario((atual) => (atual.trim() === '' ? `@${nome}` : atual));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      valendo = false;
+    };
+  }, [ponte, usuarioEditado, tiktokLogado]);
 
   /*
    * A consulta espera a digitação parar. Sem a folga, cada tecla do @ viraria
@@ -179,6 +209,21 @@ export function ConectarLive({
    * travar o botão por não saber seguraria quem está logado.
    */
   const semTikTok = tiktokLogado === false;
+  /*
+   * Versão nova baixada = live nova só depois de atualizar.
+   *
+   * A regra do updater — nada reinicia durante uma live — continua de pé: o
+   * bloqueio é SÓ nesta porta, antes de haver live para derrubar, e é o único
+   * momento em que reiniciar não custa nada ao vendedor. Deixar entrar
+   * desatualizado era como as correções de resposta e de leitura de chat
+   * demoravam dias para chegar em quem mais precisava delas: o app fica aberto
+   * o dia inteiro e o "instala quando fechar" nunca chegava.
+   *
+   * Só o estado 'pronta' trava — é o único com ação de zero espera. Download em
+   * andamento ou falho não seguram ninguém: a live de hoje não pode depender da
+   * banda ou do GitHub agora.
+   */
+  const precisaAtualizar = atualizacao?.situacao === 'pronta';
 
   const conectar = async (): Promise<void> => {
     setConectando(true);
@@ -280,7 +325,10 @@ export function ConectarLive({
           label="Perfil da live no TikTok"
           placeholder="@sualoja"
           value={usuario}
-          onChange={(e) => setUsuario(e.target.value)}
+          onChange={(e) => {
+            setUsuarioEditado(true);
+            setUsuario(e.target.value);
+          }}
           helperText="O mesmo @ que está transmitindo agora, do lado esquerdo da tela."
         />
 
@@ -308,6 +356,17 @@ export function ConectarLive({
           />
         ) : null}
 
+        {precisaAtualizar ? (
+          <Aviso
+            titulo="Atualize antes de entrar na live"
+            descricao={`A versão ${atualizacao?.versao ?? 'nova'} já está baixada — o app reabre nela em segundos. Entrar na live com a versão antiga deixaria você sem as correções mais recentes de leitura do chat e de respostas.`}
+            acao={{
+              rotulo: 'Atualizar e reabrir agora',
+              aoClicar: () => void ponte.instalarAtualizacao(),
+            }}
+          />
+        ) : null}
+
         {semTikTok ? (
           <Aviso
             titulo="Entre na sua conta do TikTok"
@@ -329,15 +388,22 @@ export function ConectarLive({
           size="large"
           variant="contained"
           disabled={
-            !baseId || usuario.trim().length === 0 || conectando || semSaldo || semTikTok
+            !baseId ||
+            usuario.trim().length === 0 ||
+            conectando ||
+            semSaldo ||
+            semTikTok ||
+            precisaAtualizar
           }
           onClick={() => void conectar()}
         >
           {conectando
             ? 'Entrando na live…'
-            : semTikTok
-              ? 'Entre no TikTok para continuar'
-              : 'Entrar na live'}
+            : precisaAtualizar
+              ? 'Atualize para entrar na live'
+              : semTikTok
+                ? 'Entre no TikTok para continuar'
+                : 'Entrar na live'}
         </Button>
 
         <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
