@@ -786,53 +786,59 @@ function Storyboard({
                   )}
                 </Box>
 
-                {cena.status === 'pronta' && cena.outputUrl && (
-                  <>
-                    <Button
-                      size="small"
-                      fullWidth
-                      startIcon={<DownloadRoundedIcon />}
-                      component="a"
-                      href={resolveApiUrl(cena.outputUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      sx={{ mt: 1 }}
-                    >
-                      Baixar cena {cena.ordem}
-                    </Button>
-                    {Boolean(cena.fala?.trim()) && (
-                      <Tooltip title="Regrava só a voz em português (grátis) — o vídeo final é remontado com o novo áudio.">
+                {/* As ações da cena numa fileira discreta sob o vídeo — os
+                    botões empilhados em largura total disputavam atenção com o
+                    conteúdo e alongavam o card. */}
+                <Stack direction="row" spacing={1} mt={1} flexWrap="wrap" useFlexGap>
+                  {cena.status === 'pronta' && cena.outputUrl && (
+                    <>
+                      <Tooltip title="Baixar o MP4 desta cena">
                         <Button
                           size="small"
-                          fullWidth
-                          startIcon={<AutoAwesomeRoundedIcon />}
-                          disabled={ocupado}
-                          onClick={() => acao(() => campaignsService.redubScene(cena.id))}
-                          sx={{ mt: 0.5 }}
+                          variant="outlined"
+                          color="inherit"
+                          startIcon={<DownloadRoundedIcon />}
+                          component="a"
+                          href={resolveApiUrl(cena.outputUrl)}
+                          target="_blank"
+                          rel="noopener noreferrer"
                         >
-                          Redublar em pt-BR
+                          Baixar
                         </Button>
                       </Tooltip>
-                    )}
-                  </>
-                )}
-
-                {/* Trocar a foto é grátis e só faz sentido antes de renderizar
-                    — depois de pronta, o vídeo já existe. */}
-                {cena.tipo === 'produto' && cena.status !== 'pronta' && (
-                  <Tooltip title="Escolher de qual foto esta cena parte">
-                    <Button
-                      size="small"
-                      fullWidth
-                      startIcon={<PhotoLibraryRoundedIcon />}
-                      onClick={() => setTrocandoFoto(cena.id)}
-                      disabled={ocupado || cena.status === 'renderizando'}
-                      sx={{ mt: 1 }}
-                    >
-                      Trocar foto
-                    </Button>
-                  </Tooltip>
-                )}
+                      {Boolean(cena.fala?.trim()) && (
+                        <Tooltip title="Regrava só a voz em português. Não consome créditos — o vídeo final é remontado com o novo áudio.">
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="inherit"
+                            startIcon={<AutoAwesomeRoundedIcon />}
+                            disabled={ocupado}
+                            onClick={() => acao(() => campaignsService.redubScene(cena.id))}
+                          >
+                            Redublar · grátis
+                          </Button>
+                        </Tooltip>
+                      )}
+                    </>
+                  )}
+                  {/* Trocar a foto é grátis e só faz sentido antes de
+                      renderizar — depois de pronta, o vídeo já existe. */}
+                  {cena.tipo === 'produto' && cena.status !== 'pronta' && (
+                    <Tooltip title="Escolher de qual foto esta cena parte (grátis)">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="inherit"
+                        startIcon={<PhotoLibraryRoundedIcon />}
+                        onClick={() => setTrocandoFoto(cena.id)}
+                        disabled={ocupado || cena.status === 'renderizando'}
+                      >
+                        Trocar foto
+                      </Button>
+                    </Tooltip>
+                  )}
+                </Stack>
               </Grid>
 
               <Grid item xs={12} sm={7}>

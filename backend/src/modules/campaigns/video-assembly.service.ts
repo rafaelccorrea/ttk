@@ -339,10 +339,17 @@ export class VideoAssemblyService {
           })(),
           ...(mudo ? [] : ['-af', this.filtroDeAudio(duracao)]),
           '-c:v', 'libx264',
-          // `medium` em vez de `veryfast`: com a normalização acontecendo uma vez
-          // por clipe, o orçamento de CPU que sobrou vira qualidade de imagem. No
-          // mesmo CRF, um preset mais lento gasta menos bits pelo mesmo detalhe.
-          '-preset', 'medium',
+          /*
+           * `veryfast` + 2 threads: o preset não é escolha estética, é o que
+           * CABE na hospedagem. Com `medium` e threads automáticas o x264
+           * tentava alocar buffers para todos os núcleos da máquina
+           * compartilhada, o limite de memória do LVE negava, e o encoder
+           * morria em "Error while opening encoder" — a montagem inteira caía.
+           * O custo visual do preset mais rápido é pequeno; a montagem não
+           * acontecer custava o produto.
+           */
+          '-preset', 'veryfast',
+          '-threads', '2',
           '-crf', '20',
           '-pix_fmt', 'yuv420p',
           '-c:a', 'aac',
