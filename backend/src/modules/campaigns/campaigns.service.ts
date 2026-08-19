@@ -359,6 +359,25 @@ export class CampaignsService {
    * "Vídeo" como cumprido quando ALGUMA campanha tem vídeo final — e com a
    * lista paginada a página atual não sabe responder isso sozinha.
    */
+  /**
+   * Preferências da campanha. Mudar a legenda com o final já montado descarta
+   * o arquivo: ele carrega a escolha antiga, e a montagem automática refaz
+   * com a nova no próximo refresh.
+   */
+  async atualizarCampanhaPreferencias(
+    userId: string,
+    id: string,
+    dto: UpdateCampaignDto,
+  ): Promise<Campaign> {
+    const campanha = await this.campanhas.findOneBy({ id, userId });
+    if (!campanha) throw new NotFoundException('Campanha não encontrada.');
+    if (dto.subtitles !== undefined && dto.subtitles !== campanha.subtitles) {
+      campanha.subtitles = dto.subtitles;
+      campanha.finalVideoUrl = null;
+    }
+    return this.campanhas.save(campanha);
+  }
+
   async listarCampanhas(userId: string, page = 1, limit = CAMPANHAS_POR_PAGINA) {
     const take = Math.min(Math.max(1, limit), CAMPANHAS_POR_PAGINA);
     const paginaAtual = Math.max(1, page);
@@ -1126,7 +1145,8 @@ export class CampaignsService {
       final = await this.assembly.juntar(
         arquivos,
         undefined,
-        cenas.map((c) => c.fala ?? null),
+        // Legenda é escolha da campanha; desligada, as cenas entram limpas.
+        campanha.subtitles ? cenas.map((c) => c.fala ?? null) : [],
       );
     } catch (error) {
       // Sem isto o erro do ffmpeg subia como 500 "Internal server error" — a

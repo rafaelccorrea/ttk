@@ -84,6 +84,15 @@ export class Campaign {
   finalVideoUrl: string | null;
 
   /**
+   * Queimar as falas como legenda no vídeo final.
+   *
+   * Ligado por padrão (a maioria assiste sem som), mas é escolha: quem usa a
+   * legenda automática do TikTok acabava com duas sobrepostas.
+   */
+  @Column({ type: 'boolean', default: true })
+  subtitles: boolean;
+
+  /**
    * Fila de renderização ligada: o polling dispara UMA cena por vez até
    * acabarem as pendentes. Fica no banco, e não em memória, porque a fila
    * atravessa muitos requests (cada avanço é um refresh) e precisa sobreviver

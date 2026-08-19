@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsNotEmpty,
   IsNumber,
@@ -100,6 +101,14 @@ export class CreateCampaignDto {
   @IsOptional()
   @IsIn([15, 30, 45, 60])
   durationSeconds?: number;
+}
+
+export class UpdateCampaignDto {
+  /** Liga/desliga as legendas queimadas do vídeo final. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  subtitles?: boolean;
 }
 
 export class UpdateSceneDto {

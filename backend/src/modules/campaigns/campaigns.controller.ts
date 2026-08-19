@@ -31,6 +31,7 @@ import {
   CreateCampaignDto,
   CreatePersonaDto,
   CreateUserProductDto,
+  UpdateCampaignDto,
   UpdateSceneDto,
 } from './dto/campaigns.dto';
 
@@ -203,6 +204,16 @@ export class CampaignsController {
   })
   renderAll(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.campaigns.renderizarTudo(user.id, id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Preferências da campanha (ex.: legendas do vídeo final)' })
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCampaignDto,
+  ) {
+    return this.campaigns.atualizarCampanhaPreferencias(user.id, id, dto);
   }
 
   @Get(':id/refresh')
