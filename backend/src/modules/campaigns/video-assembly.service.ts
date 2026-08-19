@@ -195,13 +195,26 @@ export class VideoAssemblyService {
           ? Math.min(1.35, duracaoVoz / duracaoVideo)
           : 1;
 
+      /*
+       * O áudio é CORTADO pelo filtro (`atrim`), nunca pelo `-shortest`.
+       *
+       * Com o vídeo em `-c:v copy`, os pacotes de vídeo drenam para o muxer
+       * de uma vez e o `-shortest` não tem "corrida" para encerrar — enquanto
+       * o `apad` segue gerando silêncio para sempre. Em produção o processo
+       * ficava pendurado até o timeout de 5 minutos matá-lo, e a redublagem
+       * "falhava" sem uma linha de erro no log, todas as vezes.
+       */
+      const limite = duracaoVideo
+        ? `,atrim=0:${duracaoVideo.toFixed(3)}`
+        : '';
+
       await this.ffmpeg.rodar(
         [
           '-y',
           '-i', entrada,
           '-i', voz,
           '-filter_complex',
-          `[1:a]atempo=${atempo.toFixed(3)},apad[a]`,
+          `[1:a]atempo=${atempo.toFixed(3)},apad${limite}[a]`,
           '-map', '0:v',
           '-map', '[a]',
           // O vídeo não é tocado: recodificar aqui degradaria a imagem duas
@@ -211,7 +224,9 @@ export class VideoAssemblyService {
           '-b:a', '192k',
           '-ar', '44100',
           '-ac', '2',
-          '-shortest',
+          // Só quando a duração não pôde ser lida — aí o -shortest é o único
+          // freio que resta, e o timeout é a rede de segurança.
+          ...(duracaoVideo ? [] : ['-shortest']),
           saida,
         ],
         TIMEOUT_MS,
