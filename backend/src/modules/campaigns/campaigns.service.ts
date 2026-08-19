@@ -1009,15 +1009,47 @@ export class CampaignsService {
     return { ...cena, redublagem: 'processando' as const };
   }
 
-  /** A parte demorada da redublagem — SEMPRE fora do ciclo de request. */
+  /**
+   * A parte demorada da redublagem — SEMPRE fora do ciclo de request.
+   *
+   * Cada etapa tem nome, e a falha fica GRAVADA em `cena.error` mesmo com a
+   * cena pronta: a versão anterior falhava em silêncio no log do servidor, e
+   * a tela dizia "regravando" para uma regravação que nunca aconteceu — três
+   * vezes seguidas, sem ninguém saber por quê.
+   */
   private async processarRedublagem(sceneId: string): Promise<void> {
     const cena = await this.cenas.findOneByOrFail({ id: sceneId });
-    const dublada = await this.dublarCena(cena);
-    if (!dublada) {
-      this.logger.warn(`Redublagem da cena ${sceneId}: narração não gerada.`);
-      return;
+
+    const falhar = async (motivo: string) => {
+      this.logger.warn(`Redublagem da cena ${sceneId}: ${motivo}`);
+      cena.error = `Redublagem falhou: ${motivo}`;
+      await this.cenas.save(cena);
+    };
+
+    const video = await this.lerCena(cena.outputUrl);
+    if (!video) return falhar('o clipe da cena não pôde ser lido do armazenamento.');
+
+    const narracao = await this.ai.narrar(cena.fala ?? '');
+    if (!narracao) {
+      return falhar('a voz não pôde ser gerada (TTS indisponível ou sem chave).');
     }
+
+    let dublado: Buffer;
+    try {
+      dublado = await this.assembly.dublar(video, narracao);
+    } catch (error) {
+      return falhar(`a troca de áudio falhou no ffmpeg — ${(error as Error).message}`);
+    }
+
+    const dublada = await this.mirror.putVideo(
+      dublado,
+      'campaign-scenes',
+      `${cena.id}-ptbr`,
+    );
+    if (!dublada) return falhar('o clipe dublado não pôde ser guardado no S3.');
+
     cena.outputUrl = dublada;
+    cena.error = null;
     await this.cenas.save(cena);
 
     // O vídeo final montado carrega o áudio antigo: descartar aqui faz a

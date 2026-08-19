@@ -796,6 +796,14 @@ function Storyboard({
                   )}
                 </Box>
 
+                {/* A redublagem roda em background: se falhou, o motivo
+                    gravado na cena é a única forma de o usuário saber. */}
+                {cena.status === 'pronta' && cena.error && (
+                  <Alert severity="warning" sx={{ mt: 1 }} variant="outlined">
+                    {cena.error}
+                  </Alert>
+                )}
+
                 {/* As ações da cena numa fileira discreta sob o vídeo — os
                     botões empilhados em largura total disputavam atenção com o
                     conteúdo e alongavam o card. */}
