@@ -19,6 +19,7 @@ import { BillingService } from '../billing/billing.service';
 import { AiService, ProdutoExtraido } from '../studio/ai.service';
 import { TranscriptionService } from '../studio/transcription.service';
 import { AudioChunkerService, FatiaDeAudio } from './audio-chunker.service';
+import { LiveReplyService } from './live-reply.service';
 import { lerCatalogo } from './csv';
 import {
   AtualizarFaqDto,
@@ -145,6 +146,12 @@ export class LiveService {
     private readonly transcricao: TranscriptionService,
     private readonly ai: AiService,
     private readonly billing: BillingService,
+    /**
+     * Só para `invalidarBasesDaSessao`: toda edição de produto ou FAQ precisa
+     * derrubar a base em memória das runs ATIVAS desta sessão, senão a
+     * correção feita no meio da live só vale na live seguinte.
+     */
+    private readonly replies: LiveReplyService,
   ) {}
 
   // ---------------------------------------------------------------- sessões
@@ -737,6 +744,7 @@ export class LiveService {
     ignoradas: Array<{ linha: number; motivo: string }>;
   }> {
     await this.acharSessao(userId, sessionId);
+    this.replies.invalidarBasesDaSessao(sessionId);
 
     const { produtos, ignoradas } = lerCatalogo(
       conteudo.toString('utf8'),
@@ -817,6 +825,9 @@ export class LiveService {
 
   async criarProduto(userId: string, sessionId: string, dto: CriarProdutoDto) {
     await this.acharSessao(userId, sessionId);
+    // Toda mutação de base derruba a versão em memória das runs ativas — é o
+    // que faz a edição valer na live que está no ar, não só na próxima.
+    this.replies.invalidarBasesDaSessao(sessionId);
     return this.produtos.save(
       this.produtos.create({
         userId,
@@ -857,6 +868,7 @@ export class LiveService {
     if (dto.aliases !== undefined) produto.aliases = dto.aliases;
     if (dto.active !== undefined) produto.active = dto.active;
 
+    this.replies.invalidarBasesDaSessao(produto.liveSessionId);
     return this.produtos.save(produto);
   }
 
@@ -864,6 +876,7 @@ export class LiveService {
     const produto = await this.produtos.findOneBy({ id, userId });
     if (!produto) throw new NotFoundException('Produto não encontrado.');
     await this.produtos.remove(produto);
+    this.replies.invalidarBasesDaSessao(produto.liveSessionId);
   }
 
   // -------------------------------------------------------------------- FAQ
@@ -896,6 +909,7 @@ export class LiveService {
       item.liveProductId = await this.produtoDoUsuario(userId, dto.liveProductId);
     }
 
+    this.replies.invalidarBasesDaSessao(item.liveSessionId);
     return this.faq.save(item);
   }
 
@@ -903,6 +917,7 @@ export class LiveService {
     const item = await this.faq.findOneBy({ id, userId });
     if (!item) throw new NotFoundException('Resposta não encontrada.');
     await this.faq.remove(item);
+    this.replies.invalidarBasesDaSessao(item.liveSessionId);
   }
 
   // ------------------------------------------------------------------- cron

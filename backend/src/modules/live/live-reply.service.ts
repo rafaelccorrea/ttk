@@ -297,6 +297,9 @@ export interface MensagemDoChat {
 
 /** A base de uma run, montada uma vez e mantida em memória do processo. */
 interface BaseEmMemoria {
+  /** A sessão de conhecimento de onde esta base foi montada — é a chave da
+   *  invalidação quando o vendedor edita a base NO MEIO da live. */
+  sessionId: string;
   serializada: string;
   /** Preço de cada produto, por id — a fonte da verdade do marcador. */
   precos: Map<string, string | null>;
@@ -1261,19 +1264,26 @@ export class LiveReplyService {
     const existente = await this.faqParecida(run.knowledgeSessionId, pergunta);
     if (existente) {
       /*
-       * A mesma dúvida já está na base — então o vendedor está CORRIGINDO, não
-       * acrescentando. Criar uma segunda linha deixaria duas respostas para a
-       * mesma pergunta na base, e a escolha entre elas cairia no desempate por
-       * prioridade: o copiloto poderia seguir usando a versão velha, que é
-       * justamente a que ele acabou de recusar.
+       * A mesma dúvida já está na base. Continua sendo UMA linha (duas
+       * respostas concorrentes para a mesma pergunta cairiam no desempate por
+       * prioridade), mas o conteúdo AGREGA em vez de sobrescrever: ensinar não
+       * pode apagar o que a base já sabia — o vendedor que acrescenta "tem
+       * garantia de 1 ano" não está pedindo para esquecer o prazo de entrega
+       * que estava na mesma resposta. Só não agrega o repetido: ensinar a
+       * mesma frase duas vezes não pode duplicá-la.
        */
-      existente.answer = texto;
+      const atual = existente.answer?.trim() ?? '';
+      if (normalizarTexto(atual) !== normalizarTexto(texto) && !atual.includes(texto)) {
+        existente.answer = atual ? `${atual} ${texto}` : texto;
+      }
       existente.origin = 'manual';
       existente.priority = Math.max(existente.priority, 0) + 1;
-      return this.faq.save(existente);
+      const corrigida = await this.faq.save(existente);
+      this.invalidarBasesDaSessao(run.knowledgeSessionId);
+      return corrigida;
     }
 
-    return this.faq.save(
+    const criada = await this.faq.save(
       this.faq.create({
         liveSessionId: run.knowledgeSessionId,
         userId,
@@ -1294,6 +1304,27 @@ export class LiveReplyService {
         priority: 1,
       }),
     );
+    this.invalidarBasesDaSessao(run.knowledgeSessionId);
+    return criada;
+  }
+
+  /**
+   * Joga fora a base em memória de toda run que bebe desta sessão.
+   *
+   * É o que faz o "Ensinar" valer AINDA NESTA LIVE: sem isto, a resposta
+   * salva ia para o banco e a run ativa continuava respondendo com a base
+   * serializada de quando conectou — o vendedor ensinava e via a mesma
+   * pergunta escalar de novo, como se o ensino não tivesse pegado (só pegava
+   * na live seguinte). O próximo lote remonta a base do banco.
+   *
+   * O custo assumido: invalidar quebra o prefixo do cache da OpenAI e o lote
+   * seguinte paga a base cheia UMA vez. É o preço de a correção valer agora —
+   * e edição de base no meio da live é evento raro, não rotina de 800ms.
+   */
+  invalidarBasesDaSessao(knowledgeSessionId: string): void {
+    for (const [runId, base] of this.bases) {
+      if (base.sessionId === knowledgeSessionId) this.bases.delete(runId);
+    }
   }
 
   /**
@@ -2140,6 +2171,7 @@ export class LiveReplyService {
     });
 
     const base: BaseEmMemoria = {
+      sessionId: run.knowledgeSessionId,
       serializada,
       precos: new Map(produtos.map((p) => [p.id, p.priceBrl])),
       produtos: new Set(produtos.map((p) => p.id)),

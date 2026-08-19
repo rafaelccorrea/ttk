@@ -41,6 +41,7 @@ describe('LiveService.gravarBase', () => {
       undefined as never, // transcricao
       undefined as never, // ai
       undefined as never, // billing
+      { invalidarBasesDaSessao: () => undefined } as never, // replies
     );
 
     return { service, salvos };
