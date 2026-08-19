@@ -540,6 +540,7 @@ const copiloto = new Copiloto(
   },
   (estado) => foco.definirConexao(estado),
   (usuario) => aoVivoNoTikTok(usuario),
+  (item) => foco.publicarNoChatSimulado(item),
 );
 
 /**

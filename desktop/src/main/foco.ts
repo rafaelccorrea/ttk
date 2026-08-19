@@ -139,14 +139,12 @@ export class ModoFoco {
     /*
      * Em simulação não existe live no tiktok.com para mostrar: navegar para
      * `/@live.simulada/live` pintava a página "Sem LIVE" do TikTok — que
-     * parece um erro nosso. A esquerda fica na tela do PikPok, dizendo o que
-     * está acontecendo.
+     * parece um erro nosso. No lugar entra o NOSSO chat: as perguntas dos
+     * espectadores fictícios e as respostas da IA, correndo como numa live —
+     * é onde se VÊ o copiloto trabalhando (`publicarNoChatSimulado`).
      */
     if (modo === 'live' && MODO_SIMULACAO) {
-      return paginaDeEspera(
-        'Live simulada em andamento — o chat de mentira está alimentando o painel ao lado.',
-        this.deps.logo,
-      );
+      return paginaDeChatSimulado(this.deps.logo);
     }
     if (modo === 'live') {
       const nome = (this.conexao.tiktokUsername ?? this.usuario ?? '')
@@ -193,6 +191,23 @@ export class ModoFoco {
       if (!alvo.startsWith('data:') && atual === alvo) return;
     }
     void view.loadURL(alvo).catch(() => undefined);
+  }
+
+  /**
+   * Empurra uma linha para o chat simulado da esquerda — pergunta de
+   * espectador ou resposta da IA. Só faz algo quando a página do chat está de
+   * fato na tela; fora dela (espera, login, live real) a chamada é descartada
+   * em silêncio, porque não há onde desenhar.
+   */
+  publicarNoChatSimulado(item: { autor: string; texto: string; ia: boolean }): void {
+    if (!MODO_SIMULACAO || this.modo() !== 'live') return;
+    const view = this.deps.view();
+    if (!view || view.isDestroyed()) return;
+    void view
+      .executeJavaScript(
+        `window.__pikpokChat && window.__pikpokChat(${JSON.stringify(item)})`,
+      )
+      .catch(() => undefined);
   }
 
   /**
@@ -301,6 +316,75 @@ function paginaDeEspera(aviso: string | null, logo: string | null): string {
     ${recado}
     <div class="vigia"></div>
   </div></body></html>`;
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+/**
+ * O chat da live simulada: uma coluna de mensagens no estilo do chat do
+ * TikTok, alimentada pelo processo principal via `window.__pikpokChat`.
+ *
+ * As respostas da IA entram NO MEIO das perguntas, destacadas com a marca —
+ * é a cena que a simulação existe para mostrar: o copiloto respondendo o chat
+ * em tempo real. Tudo num data URL, com o script embutido; nenhuma rede.
+ */
+function paginaDeChatSimulado(logo: string | null): string {
+  const marca = logo
+    ? `<img class="logo" src="${logo}" alt="" draggable="false">`
+    : '<div class="logo fallback">P</div>';
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>PikPok</title><style>
+  html,body{margin:0;height:100%;background:#0a0a0e;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;
+    -webkit-user-select:none;overflow:hidden}
+  .topo{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.03)}
+  .logo{width:30px;height:30px;border-radius:9px;object-fit:cover}
+  .logo.fallback{display:flex;align-items:center;justify-content:center;font-weight:800;
+    background:linear-gradient(135deg,#FE2C55,#00C2BB)}
+  .aovivo{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:#FE2C55;
+    text-transform:uppercase;letter-spacing:.06em}
+  .aovivo::before{content:'';width:8px;height:8px;border-radius:50%;background:#FE2C55;
+    animation:piscar 1.4s ease-in-out infinite}
+  @keyframes piscar{0%,100%{opacity:1}50%{opacity:.25}}
+  .rotulo{font-size:12px;color:rgba(255,255,255,.5);margin-left:auto}
+  #chat{position:absolute;top:55px;bottom:0;left:0;right:0;overflow-y:auto;padding:14px 16px 18px;
+    display:flex;flex-direction:column;gap:10px}
+  #chat::-webkit-scrollbar{width:0}
+  .msg{display:flex;gap:9px;align-items:flex-start;animation:entrar .3s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes entrar{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .avatar{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
+    justify-content:center;font-size:13px;font-weight:800;color:#fff}
+  .corpo{min-width:0}
+  .autor{font-size:12px;color:rgba(255,255,255,.5);margin-bottom:2px}
+  .texto{font-size:14px;line-height:1.45;word-wrap:break-word}
+  .msg.ia .avatar{border-radius:9px;background:linear-gradient(135deg,#FE2C55,#00C2BB)}
+  .msg.ia .corpo{background:linear-gradient(#101018,#101018) padding-box,
+    linear-gradient(135deg,#FE2C55,#00C2BB) border-box;border:1px solid transparent;
+    border-radius:12px;padding:8px 12px}
+  .msg.ia .autor{background:linear-gradient(90deg,#FE2C55,#00C2BB);-webkit-background-clip:text;
+    color:transparent;font-weight:800}
+  </style></head><body>
+  <div class="topo">${marca}<span class="aovivo">ao vivo</span><span class="rotulo">live simulada · o chat é de mentira, a IA é de verdade</span></div>
+  <div id="chat"></div>
+  <script>
+  (function(){
+    var chat=document.getElementById('chat');
+    function corDe(nome){var h=0;for(var i=0;i<nome.length;i++){h=(h*31+nome.charCodeAt(i))%360}
+      return 'hsl('+h+',55%,42%)'}
+    window.__pikpokChat=function(item){
+      var linha=document.createElement('div');linha.className='msg'+(item.ia?' ia':'');
+      var av=document.createElement('div');av.className='avatar';
+      av.textContent=item.ia?'IA':(item.autor||'?').charAt(0).toUpperCase();
+      if(!item.ia)av.style.background=corDe(item.autor||'?');
+      var corpo=document.createElement('div');corpo.className='corpo';
+      var autor=document.createElement('div');autor.className='autor';
+      autor.textContent=item.ia?'PikPok IA':item.autor;
+      var texto=document.createElement('div');texto.className='texto';texto.textContent=item.texto;
+      corpo.appendChild(autor);corpo.appendChild(texto);
+      linha.appendChild(av);linha.appendChild(corpo);chat.appendChild(linha);
+      while(chat.children.length>80)chat.removeChild(chat.firstChild);
+      chat.scrollTop=chat.scrollHeight;
+    };
+  })();
+  </script></body></html>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 

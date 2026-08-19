@@ -149,6 +149,16 @@ export class Copiloto {
      */
     private readonly estaAoVivo: (usuario: string) => Promise<boolean | null> = () =>
       Promise.resolve(null),
+    /**
+     * O palco da simulação: recebe cada pergunta fictícia e cada resposta da
+     * IA para o chat da esquerda desenhar. Só é chamado em MODO_SIMULACAO —
+     * numa live real o nome do espectador NUNCA sai por aqui.
+     */
+    private readonly aoAtividadeSimulada: (item: {
+      autor: string;
+      texto: string;
+      ia: boolean;
+    }) => void = () => {},
   ) {
     this.enviador = new EnviadorDeComentarios({
       webContents: () => this.viewDoTikTok(),
@@ -319,6 +329,15 @@ export class Copiloto {
         this.mesmoAutor(mensagem.username, alvo),
       );
 
+      // Antes de qualquer filtro, como num chat de verdade: até o "kkkk" que o
+      // limiar vai descartar aparece na tela — descartá-lo é parte do show.
+      if (MODO_SIMULACAO) {
+        this.aoAtividadeSimulada({
+          autor: mensagem.username,
+          texto: mensagem.text,
+          ia: false,
+        });
+      }
       if (this.pausado || !this.anonimizador || !this.acumulador) return;
       if (this.filtrada(mensagem.text)) return;
       // A anonimização acontece AQUI, antes do acumulador: assim nenhuma
@@ -509,11 +528,21 @@ export class Copiloto {
       const fila = await this.api.filaDeEnvio();
       for (const item of fila) {
         if (!this.podeEnviar()) break;
-        const resultado = await this.enviador.enviar({
-          replyId: item.id,
-          texto: item.text,
-          authorHash: item.authorHash,
-        });
+        /*
+         * Em simulação não há campo de comentário onde digitar — a esquerda é
+         * a NOSSA página. Tentar o enviador real terminava em "não achei o
+         * campo", derrubava o automático e ainda reportava falha de seletor ao
+         * backend, sujando a telemetria da frota com um erro de mentira. A
+         * entrega simulada posta no chat fake e confirma como enviada — o
+         * ciclo completo do automático, visível, sem tocar o TikTok.
+         */
+        const resultado = MODO_SIMULACAO
+          ? await this.entregarSimulado(item.id, item.text)
+          : await this.enviador.enviar({
+              replyId: item.id,
+              texto: item.text,
+              authorHash: item.authorHash,
+            });
         if (resultado.status !== 'enviada') break;
       }
     } catch {
@@ -522,6 +551,20 @@ export class Copiloto {
     } finally {
       this.rodandoFila = false;
     }
+  }
+
+  /**
+   * A entrega do modo automático quando a live é simulada: a resposta aparece
+   * no chat fake como postada pela loja e o backend a marca como enviada — o
+   * mesmo desfecho contábil do envio real, sem DOM nenhum no caminho.
+   */
+  private async entregarSimulado(
+    replyId: string,
+    texto: string,
+  ): Promise<{ status: 'enviada' }> {
+    this.aoAtividadeSimulada({ autor: 'live.simulada (você)', texto, ia: true });
+    await this.api.confirmarEntrega(replyId, 'enviada').catch(() => undefined);
+    return { status: 'enviada' };
   }
 
   /** As travas locais, todas juntas: run de pé, modo automático, sem pausa. */
@@ -585,6 +628,15 @@ export class Copiloto {
     if (evento.type === 'reply') {
       const { limiarDescarte } = this.lerConfiguracoes();
       if (evento.data.confidence < limiarDescarte) return;
+      // A resposta entra no chat simulado da esquerda, no meio das perguntas:
+      // é a cena de "a IA respondendo ao vivo" que a simulação existe para dar.
+      if (MODO_SIMULACAO) {
+        this.aoAtividadeSimulada({
+          autor: 'PikPok IA',
+          texto: evento.data.text,
+          ia: true,
+        });
+      }
     }
 
     if (evento.type === 'mode') {
