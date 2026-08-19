@@ -1139,46 +1139,65 @@ function Storyboard({
                           Baixar
                         </Button>
                       </Tooltip>
-                      {/* Redublar é só para cena de PRODUTO: no apresentador a
-                          voz nasce sincronizada com os lábios no próprio vídeo,
-                          e trocá-la por TTS dessincroniza a boca. O backend
-                          recusa; aqui o botão nem aparece. */}
-                      {cena.tipo === 'produto' && Boolean(cena.fala?.trim()) && (
-                        <Tooltip title="Regrava só a voz em português. Não consome créditos — o vídeo final é remontado com o novo áudio.">
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="inherit"
-                            startIcon={
-                              redublando === cena.id ? (
-                                <CircularProgress size={14} color="inherit" />
-                              ) : (
-                                <AutoAwesomeRoundedIcon />
-                              )
+                      {/* Redublar só FUNCIONA em cena de produto (no
+                          apresentador a voz nasce sincronizada com os lábios;
+                          TTS dessincronizaria a boca). Antes o botão sumia
+                          nas demais e parecia bug — agora aparece sempre,
+                          desabilitado com o motivo no tooltip. */}
+                      {(() => {
+                        const motivo =
+                          cena.tipo !== 'produto'
+                            ? 'Indisponível em cena de apresentador: a voz nasce sincronizada com os lábios no próprio vídeo — regravar por cima dessincronizaria a boca.'
+                            : !cena.fala?.trim()
+                              ? 'Esta cena não tem fala para regravar.'
+                              : null;
+                        return (
+                          <Tooltip
+                            title={
+                              motivo ??
+                              'Regrava só a voz em português. Não consome créditos — o vídeo final é remontado com o novo áudio.'
                             }
-                            disabled={ocupado}
-                            onClick={async () => {
-                              setRedublando(cena.id);
-                              try {
-                                await acao(() => campaignsService.redubScene(cena.id));
-                                // O servidor regrava em background; a
-                                // verificação agendada fecha o ciclo com
-                                // sucesso ou com o motivo da falha.
-                                setRedubStatus({
-                                  id: cena.id,
-                                  msg: 'Regravando a voz em português — o vídeo atualiza sozinho em instantes.',
-                                  tipo: 'info',
-                                });
-                                setTimeout(() => void verificarRedub(cena.id), 15000);
-                              } finally {
-                                setRedublando(null);
-                              }
-                            }}
                           >
-                            {redublando === cena.id ? 'Redublando...' : 'Redublar · grátis'}
-                          </Button>
-                        </Tooltip>
-                      )}
+                            {/* span: Tooltip não dispara em botão desabilitado. */}
+                            <span>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="inherit"
+                                startIcon={
+                                  redublando === cena.id ? (
+                                    <CircularProgress size={14} color="inherit" />
+                                  ) : (
+                                    <AutoAwesomeRoundedIcon />
+                                  )
+                                }
+                                disabled={ocupado || Boolean(motivo)}
+                                onClick={async () => {
+                                  setRedublando(cena.id);
+                                  try {
+                                    await acao(() => campaignsService.redubScene(cena.id));
+                                    // O servidor regrava em background; a
+                                    // verificação agendada fecha o ciclo com
+                                    // sucesso ou com o motivo da falha.
+                                    setRedubStatus({
+                                      id: cena.id,
+                                      msg: 'Regravando a voz em português — o vídeo atualiza sozinho em instantes.',
+                                      tipo: 'info',
+                                    });
+                                    setTimeout(() => void verificarRedub(cena.id), 15000);
+                                  } finally {
+                                    setRedublando(null);
+                                  }
+                                }}
+                              >
+                                {redublando === cena.id
+                                  ? 'Redublando...'
+                                  : 'Redublar · grátis'}
+                              </Button>
+                            </span>
+                          </Tooltip>
+                        );
+                      })()}
                     </>
                   )}
                   {/* Trocar a foto é grátis e só faz sentido antes de

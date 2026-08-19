@@ -30,6 +30,7 @@ import { CampaignScene } from './entities/campaign-scene.entity';
 import { Persona } from './entities/persona.entity';
 import { UserProduct } from './entities/user-product.entity';
 import { VideoAssemblyService } from './video-assembly.service';
+import { precosPorExtensoNoTexto } from '../../common/preco-por-extenso';
 import {
   PERSONA_GROUPS,
   PersonaAttributes,
@@ -124,12 +125,15 @@ function vozDeNarrador(attrs: Partial<PersonaAttributes> | null | undefined): st
 }
 
 /**
- * "R$ 10" sai FALADO como dólar: o símbolo antes do número induz o modelo.
- * Aqui a moeda vira palavra depois do número ("10 reais") — vale para roteiro
- * antigo e para fala editada à mão; o roteirista novo já escreve assim.
+ * O texto que o modelo NARRA, com preço inteiro por extenso.
+ *
+ * "R$ 10" saiu como dólar; "99,89 reais" saiu com o número lido errado — o
+ * modelo tropeça em algarismo. "noventa e nove reais e oitenta e nove
+ * centavos" não tem como errar. A fala ORIGINAL (com dígitos) continua sendo
+ * o que vai para a legenda queimada, onde dígito lê melhor.
  */
 function falaParaAudio(fala: string): string {
-  return fala.replace(/R\$\s*([\d.,]+)/g, '$1 reais');
+  return precosPorExtensoNoTexto(fala);
 }
 
 /**
@@ -1559,7 +1563,7 @@ export class CampaignsService {
     if (!video) return falhar('o clipe da cena não pôde ser lido do armazenamento.');
 
     const narracao = await this.ai.narrar(
-      cena.fala ?? '',
+      falaParaAudio(cena.fala ?? ''),
       await this.vozTtsDaCampanha(cena.campaignId),
     );
     if (!narracao) {
@@ -1633,7 +1637,7 @@ export class CampaignsService {
       const [video, narracao] = await Promise.all([
         this.lerCena(cena.outputUrl),
         this.vozTtsDaCampanha(cena.campaignId).then((voz) =>
-          this.ai.narrar(cena.fala!, voz),
+          this.ai.narrar(falaParaAudio(cena.fala!), voz),
         ),
       ]);
       if (!video || !narracao) return null;
