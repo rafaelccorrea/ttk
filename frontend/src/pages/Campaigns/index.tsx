@@ -217,7 +217,7 @@ function PersonasTab({
       await campaignsService.updatePersona(id, patch);
       onChange();
     } catch (error) {
-      setErro(mensagemDeErro(error, 'Falha ao editar o apresentador'));
+      setErro(mensagemDeErro(error));
     }
   }
   const { confirmar, dialogo } = useConfirmarGasto();
