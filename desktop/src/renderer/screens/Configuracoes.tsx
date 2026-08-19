@@ -15,6 +15,7 @@ import { Aviso, Carregando } from '../components/Estados';
 import { mensagemDeErro } from '../erros';
 import { cores } from '../theme/theme';
 import { SEM_PONTE, obterPonte } from '../ponte';
+import { useEstadoAtualizacao } from '../hooks/useEstadoAtualizacao';
 
 /**
  * Tela 4 — ajustes do copiloto.
