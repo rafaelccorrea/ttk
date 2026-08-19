@@ -38,7 +38,8 @@ export type PersonaAttributeKey =
   | 'corpo'
   | 'figurino'
   | 'cenario'
-  | 'energia';
+  | 'energia'
+  | 'voz';
 
 export const PERSONA_GROUPS: AttributeGroup[] = [
   {
@@ -132,9 +133,87 @@ export const PERSONA_GROUPS: AttributeGroup[] = [
       { id: 'surpresa', label: 'Surpresa / reação', fragment: 'surprised delighted expression' },
     ],
   },
+  {
+    // A voz era FIXA no código (feminina) e homem saía falando com voz de
+    // mulher. Aqui ela vira escolha — o fragment vai ao prompt do modelo de
+    // vídeo; o timbre do TTS da dublagem sai de TTS_POR_VOZ.
+    key: 'voz',
+    label: 'Voz',
+    options: [
+      { id: 'feminina-jovem', label: 'Feminina jovem', fragment: 'natural young Brazilian female voice' },
+      { id: 'feminina-madura', label: 'Feminina madura', fragment: 'warm mature Brazilian female voice' },
+      { id: 'masculina-jovem', label: 'Masculina jovem', fragment: 'natural young Brazilian male voice' },
+      { id: 'masculina-grave', label: 'Masculina grave', fragment: 'deep calm Brazilian male voice' },
+      { id: 'androgina', label: 'Neutra / andrógina', fragment: 'natural androgynous Brazilian voice' },
+    ],
+  },
 ];
 
+/** Timbre do TTS (OpenAI) correspondente a cada voz do catálogo. */
+export const TTS_POR_VOZ: Record<string, string> = {
+  'feminina-jovem': 'coral',
+  'feminina-madura': 'sage',
+  'masculina-jovem': 'echo',
+  'masculina-grave': 'onyx',
+  androgina: 'alloy',
+};
+
+/** Persona antiga (sem `voz` gravada): o timbre segue o gênero. */
+export function vozPadraoPorGenero(genero: string | undefined): string {
+  if (genero === 'homem') return 'masculina-jovem';
+  if (genero === 'androgino') return 'androgina';
+  return 'feminina-jovem';
+}
+
+/**
+ * Como a pessoa FALA, derivado da energia escolhida — o "tom de voz" não é um
+ * seletor à parte de propósito: energia da apresentação e tom da fala
+ * divergentes (rosto animado, voz fúnebre) saem esquisitos no vídeo.
+ */
+export const TOM_POR_ENERGIA: Record<string, { video: string; tts: string }> = {
+  animada: {
+    video: 'upbeat lively delivery, but never shouting',
+    tts: 'Tom animado e vivo, mas sem gritar.',
+  },
+  amiga: {
+    video: 'calm warm delivery, like talking to a close friend',
+    tts: 'Tom calmo e próximo, como quem conversa com alguém querido.',
+  },
+  seria: {
+    video: 'confident measured delivery, serious but approachable',
+    tts: 'Tom seguro e pausado, sério mas acessível.',
+  },
+  surpresa: {
+    video: 'genuinely surprised excited delivery',
+    tts: 'Tom de surpresa genuína, empolgado.',
+  },
+};
+
 export type PersonaAttributes = Record<PersonaAttributeKey, string>;
+
+/**
+ * Fragmento de voz para o prompt de vídeo. `Partial` de propósito: persona
+ * gravada antes do atributo existir cai no padrão do gênero.
+ */
+export function fragmentoDeVoz(attrs: Partial<PersonaAttributes>): string {
+  const id = attrs.voz ?? vozPadraoPorGenero(attrs.genero);
+  const grupo = PERSONA_GROUPS.find((g) => g.key === 'voz')!;
+  return (
+    grupo.options.find((o) => o.id === id)?.fragment ?? 'natural Brazilian voice'
+  );
+}
+
+/** Timbre do TTS da dublagem para esta persona. */
+export function timbreTts(attrs: Partial<PersonaAttributes>): string {
+  return TTS_POR_VOZ[attrs.voz ?? vozPadraoPorGenero(attrs.genero)] ?? 'coral';
+}
+
+/** Tom de fala (vídeo e TTS) desta persona — sai da energia escolhida. */
+export function tomDaPersona(
+  attrs: Partial<PersonaAttributes>,
+): { video: string; tts: string } {
+  return TOM_POR_ENERGIA[attrs.energia ?? 'amiga'] ?? TOM_POR_ENERGIA.amiga;
+}
 
 /**
  * Traço fixo que vale para toda persona, em qualquer cena.

@@ -77,6 +77,7 @@ export class CreatePersonaDto {
       figurino: 'vestido-vermelho',
       cenario: 'cozinha',
       energia: 'animada',
+      voz: 'feminina-jovem',
     },
   })
   @IsObject()

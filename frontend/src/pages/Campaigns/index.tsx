@@ -218,6 +218,29 @@ function PersonasTab({
     setAttrs(inicial);
   }, [grupos, attrs]);
 
+  // A voz acompanha o gênero: o default é a primeira opção do catálogo
+  // (feminina), e persona "Homem" com voz feminina esquecida reproduziria o
+  // defeito que este seletor veio corrigir. Trocar o gênero realinha a voz;
+  // depois disso o vendedor ainda pode escolher qualquer uma.
+  useEffect(() => {
+    const genero = attrs.genero;
+    const voz = attrs.voz;
+    if (!genero || !voz) return;
+    const femininas = ['feminina-jovem', 'feminina-madura'];
+    const masculinas = ['masculina-jovem', 'masculina-grave'];
+    const corrigida =
+      genero === 'homem' && femininas.includes(voz)
+        ? 'masculina-jovem'
+        : genero === 'mulher' && masculinas.includes(voz)
+          ? 'feminina-jovem'
+          : genero === 'androgino' && voz !== 'androgina'
+            ? 'androgina'
+            : null;
+    if (corrigida) setAttrs((atual) => ({ ...atual, voz: corrigida }));
+    // Só quando o GÊNERO muda — reagir a attrs.voz desfaria a escolha manual.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attrs.genero]);
+
   const completo = grupos.length > 0 && grupos.every((g) => attrs[g.key]);
 
   async function criar() {

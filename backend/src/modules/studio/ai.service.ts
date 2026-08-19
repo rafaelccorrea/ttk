@@ -618,7 +618,16 @@ export class AiService {
    * Devolve null (nunca lança) sem chave ou em falha: cena com áudio ruim é
    * melhor que cena sem finalizar, e quem chama decide manter o original.
    */
-  async narrar(texto: string): Promise<Buffer | null> {
+  async narrar(
+    texto: string,
+    /**
+     * Voz da persona da campanha. Era 'coral' + "apresentadora" FIXOS no
+     * código: campanha com apresentador homem ganhava narração de mulher.
+     * `timbre` é o id de voz do provedor (vem de TTS_POR_VOZ no catálogo);
+     * `estilo` é uma frase de tom em pt-BR anexada às instruções.
+     */
+    opcoes?: { timbre?: string; estilo?: string },
+  ): Promise<Buffer | null> {
     const limpo = texto.trim();
     if (!this.apiKey || !limpo) return null;
     try {
@@ -632,17 +641,17 @@ export class AiService {
           model: 'gpt-4o-mini-tts',
           // 'coral' segura melhor o pt-BR; 'nova' escorregava para prosódia
           // de espanhol no meio da frase — saiu assim em produção.
-          voice: this.config.get<string>('TTS_VOICE') ?? 'coral',
+          voice: opcoes?.timbre ?? this.config.get<string>('TTS_VOICE') ?? 'coral',
           input: limpo,
           // A instrução é o que garante idioma E naturalidade — e precisa ser
           // dura: "fale em português" solto não impedia o deslize de sotaque.
           instructions:
-            this.config.get<string>('TTS_INSTRUCOES') ??
-            'Você é uma apresentadora brasileira de São Paulo gravando um vídeo ' +
-              'curto de vendas. Fale EXCLUSIVAMENTE em português do Brasil — ' +
-              'nunca espanhol, nunca inglês. Sotaque paulistano natural, ritmo ' +
-              'de conversa (não de locutora), entusiasmo genuíno mas contido, ' +
-              'pausas naturais, como quem fala com uma amiga.',
+            (this.config.get<string>('TTS_INSTRUCOES') ??
+              'Você apresenta um vídeo curto de vendas, gravado em São Paulo. ' +
+                'Fale EXCLUSIVAMENTE em português do Brasil — nunca espanhol, ' +
+                'nunca inglês. Sotaque paulistano natural, ritmo de conversa ' +
+                '(não de locutor), pausas naturais.') +
+            (opcoes?.estilo ? ` ${opcoes.estilo}` : ''),
           response_format: 'mp3',
         }),
       });
@@ -932,7 +941,7 @@ export class AiService {
       },
       {
         fala: `Quem comprou já entendeu. Acho que vale a pena pra você também.`,
-        acaoVisual: 'segura o produto com as duas mãos junto ao peito, olhando tranquila para a câmera',
+        acaoVisual: 'segura o produto com as duas mãos junto ao peito, com o olhar tranquilo para a câmera',
         seguraProduto: true,
       },
     ];

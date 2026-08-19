@@ -31,8 +31,12 @@ import { UserProduct } from './entities/user-product.entity';
 import { VideoAssemblyService } from './video-assembly.service';
 import {
   PERSONA_GROUPS,
+  PersonaAttributes,
+  fragmentoDeVoz,
   montarFragmento,
   rotularPersona,
+  timbreTts,
+  tomDaPersona,
   validarAtributos,
 } from './persona-catalog';
 
@@ -94,6 +98,29 @@ function gestoDaCena(ordem: number): string {
  * real, porque quem estoura por 3 caracteres estoura de novo amanhã.
  */
 const PROMPT_MAX = 2400;
+
+/**
+ * Voz coerente com a persona — e amarrada à pessoa EM QUADRO.
+ *
+ * O default antigo era "voice of a young Brazilian woman" fixo: persona homem
+ * saiu com voz de mulher em produção, e com a voz descolada do rosto o modelo
+ * tratava a fala como narração em off — o apresentador nem abria a boca.
+ * Dizer que é a pessoa NA TELA que fala é o que liga o áudio ao lip-sync.
+ * Timbre e tom saem do catálogo da persona (atributos `voz` e `energia`).
+ */
+function vozDaPersona(attrs: Partial<PersonaAttributes> | null | undefined): string {
+  const a = attrs ?? {};
+  return (
+    'the ON-SCREEN presenter speaks this line on camera — ' +
+    `${fragmentoDeVoz(a)}, ${tomDaPersona(a).video}`
+  );
+}
+
+/** Voz do narrador em off das cenas de produto — a MESMA voz da persona. */
+function vozDeNarrador(attrs: Partial<PersonaAttributes> | null | undefined): string {
+  const a = attrs ?? {};
+  return `off-screen narrator — ${fragmentoDeVoz(a)}, ${tomDaPersona(a).video}`;
+}
 
 /**
  * "R$ 10" sai FALADO como dólar: o símbolo antes do número induz o modelo.
@@ -160,17 +187,19 @@ function montarPromptDeCena(opts: {
       // Cada frase abaixo cobre um defeito que JÁ saiu em produção: espanhol,
       // palavra flexionada, preço em dólar, clipe abrindo com risada e fala
       // cortada no fim dos 5s. Compacto de propósito — ver PROMPT_MAX.
-      `Audio: ${opts.vozDescricao ?? 'voice of a young Brazilian woman'}, natural pt-BR accent, ` +
-        'calm warm conversational tone — never shouting, never a radio announcer. ' +
+      // O TOM não é mais fixo aqui: vem no `vozDescricao` (persona), senão o
+      // tom fixo "calmo" brigava com a energia "animada" escolhida na persona.
+      `Audio: ${opts.vozDescricao ?? 'natural Brazilian voice, calm conversational tone'} — ` +
+        'never shouting, never a radio announcer. ' +
         'Brazilian Portuguese ONLY (never Spanish or English). ' +
         // O exemplo literal pesa mais que a regra abstrata: "verbatim" sozinho
         // não impediu a voz feminina de flexionar "todo" para "toda".
-        'Say every word EXACTLY as written — a word or its ending NEVER changes ("todo" never becomes "toda"); ' +
+        'Every word EXACTLY as written — endings NEVER change ("todo" never becomes "toda"); ' +
         'prices are Brazilian reais, never dollars. ' +
         // Sorriso é expressão; risada é SOM — e o som é o defeito. Separar os
         // dois evita que o modelo troque o sorriso por cara fechada.
-        'NO laughing or giggling SOUNDS — a smile is fine, laughter audio is not. ' +
-        'Speech starts at the very first frame and the full line ends within the 5-second clip at a calm pace. ' +
+        'NO laughing or giggling sounds (smiling is fine). ' +
+        'Speech starts at the first frame and ends within the 5-second clip, natural pace. ' +
         'Word-by-word lip-sync. No music.',
     );
   } else {
@@ -940,6 +969,12 @@ export class CampaignsService {
     const produtoDaCena = await this.produtos.findOneBy({
       id: campanha.userProductId,
     });
+    // A persona também vale para a cena de produto: a voz do narrador em off
+    // é a MESMA da apresentadora — narração feminina fixa numa campanha com
+    // homem denunciava a montagem.
+    const personaDaCampanha = await this.personas.findOneBy({
+      id: campanha.personaId,
+    });
 
     if (cena.tipo === 'produto') {
       imagemBase = cena.baseImageUrl;
@@ -970,11 +1005,11 @@ export class CampaignsService {
           'Never a generic "hold and rotate" when it has a natural use gesture.',
         acaoVisual: cena.acaoVisual,
         fala: cena.fala,
-        vozDescricao: 'female voiceover (narrator, off-screen)',
+        vozDescricao: vozDeNarrador(personaDaCampanha?.attrs),
         semPessoa: true,
       });
     } else {
-      const persona = await this.personas.findOneBy({ id: campanha.personaId });
+      const persona = personaDaCampanha;
       if (!persona?.seedImageUrl || persona.status !== 'pronta') {
         throw new ConflictException(
           'O retrato do apresentador ainda não está pronto. Aguarde antes de renderizar.',
@@ -1047,6 +1082,7 @@ export class CampaignsService {
               CAMERAS_POR_CENA[(cena.ordem - 1) % CAMERAS_POR_CENA.length],
             ],
             fala: cena.fala,
+            vozDescricao: vozDaPersona(persona.attrs),
           });
           const mediaComposta = await this.dispararGeracao(cena.id, () =>
             this.videogen.generateComposedVideo(userId, {
@@ -1082,6 +1118,7 @@ export class CampaignsService {
           CAMERAS_POR_CENA[(cena.ordem - 1) % CAMERAS_POR_CENA.length],
         ],
         fala: cena.fala,
+        vozDescricao: vozDaPersona(persona.attrs),
       });
     }
 
@@ -1474,7 +1511,10 @@ export class CampaignsService {
     const video = await this.lerCena(cena.outputUrl);
     if (!video) return falhar('o clipe da cena não pôde ser lido do armazenamento.');
 
-    const narracao = await this.ai.narrar(cena.fala ?? '');
+    const narracao = await this.ai.narrar(
+      cena.fala ?? '',
+      await this.vozTtsDaCampanha(cena.campaignId),
+    );
     if (!narracao) {
       return falhar('a voz não pôde ser gerada (TTS indisponível ou sem chave).');
     }
@@ -1508,6 +1548,27 @@ export class CampaignsService {
   }
 
   /**
+   * Timbre e tom do TTS conforme a persona da campanha. Nunca lança: sem
+   * persona (apagada?) o TTS cai nos defaults — dublagem com voz padrão é
+   * melhor que dublagem nenhuma.
+   */
+  private async vozTtsDaCampanha(
+    campaignId: string,
+  ): Promise<{ timbre: string; estilo: string } | undefined> {
+    try {
+      const campanha = await this.campanhas.findOneByOrFail({ id: campaignId });
+      const persona = await this.personas.findOneBy({ id: campanha.personaId });
+      if (!persona) return undefined;
+      return {
+        timbre: timbreTts(persona.attrs),
+        estilo: tomDaPersona(persona.attrs).tts,
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Gera a narração da fala e devolve a URL do clipe dublado — ou null para
    * manter o original. Só toca no S3 quando TODA a cadeia deu certo.
    */
@@ -1524,7 +1585,9 @@ export class CampaignsService {
     try {
       const [video, narracao] = await Promise.all([
         this.lerCena(cena.outputUrl),
-        this.ai.narrar(cena.fala),
+        this.vozTtsDaCampanha(cena.campaignId).then((voz) =>
+          this.ai.narrar(cena.fala!, voz),
+        ),
       ]);
       if (!video || !narracao) return null;
       const dublado = await this.assembly.dublar(video, narracao);
