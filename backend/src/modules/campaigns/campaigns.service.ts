@@ -1163,7 +1163,11 @@ export class CampaignsService {
           const promptVideo = montarPromptDeCena({
             sujeito:
               `${persona.promptFragment}. ` +
-              'The person keeps holding the same product clearly visible in hand.',
+              // Nomear o produto: "the same product" sozinho deixava o modelo
+              // largar ou trocar o objeto no meio do clipe.
+              `The person keeps holding the same product ("${produtoDaCena.name}") ` +
+              'clearly visible in hand for the ENTIRE clip — it is never put down, ' +
+              'never swapped and never disappears.',
             acaoVisual: cena.acaoVisual,
             extras: [
               gestoDaCena(cena.ordem),
@@ -1196,10 +1200,14 @@ export class CampaignsService {
         );
       }
       promptFinal = montarPromptDeCena({
-        sujeito: persona.promptFragment,
+        // O produto entra no SUJEITO, não nos extras: extras são os primeiros
+        // cortados no teto de PROMPT_MAX, e era justamente a instrução do
+        // produto que sumia — e com ela o produto da mão do apresentador.
+        sujeito: promptExtra
+          ? `${persona.promptFragment}. ${promptExtra.trim()}`
+          : persona.promptFragment,
         acaoVisual: cena.acaoVisual,
         extras: [
-          ...(promptExtra ? [promptExtra.trim()] : []),
           // Variação determinística por cena: a instrução FIXA de "gestos
           // naturais" fazia o modelo repetir o mesmo gesto em todas as cenas.
           gestoDaCena(cena.ordem),

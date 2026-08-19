@@ -338,7 +338,7 @@ export class VideoAssemblyService {
        * a voz que o vendedor pagou.
        */
       const sonda = await this.ffmpeg.inspecionar(entrada);
-      const pareceMudo = sonda !== '' && !/:s*Audio:/i.test(sonda);
+      const pareceMudo = sonda !== '' && !/Stream #\d+:\d+.*:\s*Audio:/i.test(sonda);
       if (!pareceMudo) {
         try {
           return await this.codificar(entrada, saida, largura, altura, legenda, false);

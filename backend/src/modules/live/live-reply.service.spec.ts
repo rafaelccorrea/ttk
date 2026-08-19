@@ -646,18 +646,27 @@ describe('realimentação da base', () => {
     );
   });
 
-  it('corrige a entrada existente em vez de criar uma concorrente', async () => {
-    // Duas respostas para a mesma pergunta deixam o desempate por prioridade
-    // decidir — e o copiloto poderia seguir usando justamente a versão que o
-    // vendedor acabou de recusar.
+  it('agrega na entrada existente em vez de criar concorrente ou sobrescrever', async () => {
+    // Uma linha só (duas respostas para a mesma pergunta deixariam o desempate
+    // por prioridade decidir), mas o conteúdo SOMA: ensinar não pode apagar o
+    // que a base já sabia — quem acrescenta a garantia não pediu para esquecer
+    // o prazo que estava na mesma resposta.
     const { servico, faqRepo, salvos } = servicoParaPromocao({
       faqExistente: { id: 'f1', question: 'chega quando?', answer: 'velha', priority: 0, origin: 'ia' },
     });
     await servico.promoverParaBase('u1', 'r1', 'nova resposta');
     expect(faqRepo.create).not.toHaveBeenCalled();
     expect((salvos.faq[0] as { id: string }).id).toBe('f1');
-    expect((salvos.faq[0] as { answer: string }).answer).toBe('nova resposta');
+    expect((salvos.faq[0] as { answer: string }).answer).toBe('velha nova resposta');
     expect((salvos.faq[0] as { origin: string }).origin).toBe('manual');
+  });
+
+  it('ensinar a mesma frase duas vezes não a duplica', async () => {
+    const { servico, salvos } = servicoParaPromocao({
+      faqExistente: { id: 'f1', question: 'chega quando?', answer: 'Em 7 dias úteis.', priority: 0, origin: 'manual' },
+    });
+    await servico.promoverParaBase('u1', 'r1', 'Em 7 dias úteis.');
+    expect((salvos.faq[0] as { answer: string }).answer).toBe('Em 7 dias úteis.');
   });
 
   it('só amarra ao produto quando a resposta se apoiou em um só', async () => {
