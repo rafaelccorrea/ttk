@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   BrowserView,
@@ -48,6 +49,19 @@ const FRACAO_TIKTOK = 0.6;
 const CAMINHO_ICONE = app.isPackaged
   ? join(process.resourcesPath, 'icon.png')
   : join(__dirname, '../../resources/icon.png');
+
+/**
+ * A mesma logo, como data URL, para a tela de espera do modo foco — que é um
+ * data URL inteiro e não enxerga `file://`. Falhar aqui não quebra nada: a
+ * espera tem um tile com a inicial como fallback.
+ */
+function logoParaEspera(): string | null {
+  try {
+    return `data:image/png;base64,${readFileSync(CAMINHO_ICONE).toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Identidade do app para o Windows.
@@ -444,6 +458,7 @@ const foco = new ModoFoco({
       return null;
     }
   },
+  logo: logoParaEspera(),
 });
 
 const copiloto = new Copiloto(
