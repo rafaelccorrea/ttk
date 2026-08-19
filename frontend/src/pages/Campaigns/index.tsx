@@ -890,9 +890,25 @@ function Storyboard({
                     label={
                       cena.tipo === 'produto'
                         ? 'Demonstração · parte da sua foto'
-                        : 'Apresentador · parte do retrato'
+                        : // O MESMO teste do backend: quando a ação manda
+                          // segurar o produto, o frame é composto com a SUA
+                          // foto — e o selo precisa dizer isso, senão a cena
+                          // mais cara do roteiro passa por uma cena comum.
+                          /segur|na m[ãa]o|em m[ãa]os|mostra o produto/i.test(
+                              cena.acaoVisual ?? '',
+                            )
+                          ? 'Apresentador · com o SEU produto na mão'
+                          : 'Apresentador · parte do retrato'
                     }
-                    color={cena.tipo === 'produto' ? 'primary' : 'default'}
+                    color={
+                      cena.tipo === 'produto' ||
+                      (cena.tipo === 'apresentador' &&
+                        /segur|na m[ãa]o|em m[ãa]os|mostra o produto/i.test(
+                          cena.acaoVisual ?? '',
+                        ))
+                        ? 'primary'
+                        : 'default'
+                    }
                     sx={{ alignSelf: 'flex-start', fontWeight: 700 }}
                   />
                   <CampoDeCena
