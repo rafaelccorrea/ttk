@@ -28,6 +28,7 @@ import {
 } from '../billing/plan-feature.guard';
 import { CombinationsService } from './combinations.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
+import { UpdateClipDto } from './dto/update-clip.dto';
 import { FolderDto, MoveVideosDto } from './dto/folder.dto';
 import { BulkVideoResultDto, VideoResultDto } from './dto/video-result.dto';
 
@@ -59,6 +60,7 @@ export class CombinationsController {
   uploadClip(
     @CurrentUser() user: AuthUser,
     @Query('role') role: string,
+    @Query('produto') produto: string | undefined,
     @UploadedFile(
       new ParseFilePipe({
         validators: [new MaxFileSizeValidator({ maxSize: 40 * 1024 * 1024 })],
@@ -77,7 +79,18 @@ export class CombinationsController {
       role as ClipRole,
       file.originalname ?? 'clipe.mp4',
       file.buffer,
+      produto,
     );
+  }
+
+  @Patch('clips/:id')
+  @ApiOperation({ summary: 'Edita a etiqueta de produto do clipe' })
+  updateClip(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateClipDto,
+  ) {
+    return this.combinationsService.updateClip(user.id, id, dto.produto);
   }
 
   @Get('clips')

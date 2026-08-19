@@ -272,6 +272,8 @@ interface ClipDropzoneProps {
   onToggle?: (ligado: boolean) => void;
   onUpload: (files: FileList | null) => void;
   onRemove: (id: string) => void;
+  /** Grava a etiqueta de produto do clipe. Vazio limpa. */
+  onSetProduto: (id: string, produto: string) => void;
 }
 
 /**
@@ -293,8 +295,12 @@ function ClipDropzone({
   onToggle,
   onUpload,
   onRemove,
+  onSetProduto,
 }: ClipDropzoneProps) {
   const [arrastando, setArrastando] = useState(false);
+  // Edição inline da etiqueta de produto — um clipe por vez.
+  const [editandoProduto, setEditandoProduto] = useState<string | null>(null);
+  const [produtoRascunho, setProdutoRascunho] = useState('');
   const cheio = clips.length >= bloco.max;
 
   return (
@@ -401,6 +407,63 @@ function ClipDropzone({
                   {clip.label}
                 </Typography>
               </Tooltip>
+              {/* Etiqueta de produto: a lista de clipes é global e o nome do
+                  arquivo raramente diz o produto — sem isto não dava para
+                  saber qual produto aparece com o apresentador em cada
+                  clipe. */}
+              {editandoProduto === clip.id ? (
+                <TextField
+                  size="small"
+                  autoFocus
+                  value={produtoRascunho}
+                  placeholder="Produto"
+                  onChange={(e) => setProdutoRascunho(e.target.value)}
+                  onBlur={() => {
+                    onSetProduto(clip.id, produtoRascunho);
+                    setEditandoProduto(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      onSetProduto(clip.id, produtoRascunho);
+                      setEditandoProduto(null);
+                    }
+                    if (e.key === 'Escape') setEditandoProduto(null);
+                  }}
+                  inputProps={{
+                    maxLength: 60,
+                    style: { fontSize: 11, padding: '2px 6px' },
+                    'aria-label': `Produto do clipe ${clip.label}`,
+                  }}
+                  sx={{ width: 96, flexShrink: 0 }}
+                />
+              ) : (
+                <Tooltip
+                  title={
+                    clip.produto
+                      ? `Produto: ${clip.produto}. Clique para editar.`
+                      : 'Sem etiqueta de produto — clique para dizer de qual produto é este clipe.'
+                  }
+                >
+                  <Chip
+                    size="small"
+                    label={clip.produto ?? 'produto?'}
+                    variant={clip.produto ? 'filled' : 'outlined'}
+                    color={clip.produto ? 'default' : 'warning'}
+                    onClick={() => {
+                      setProdutoRascunho(clip.produto ?? '');
+                      setEditandoProduto(clip.id);
+                    }}
+                    sx={{
+                      height: 17,
+                      maxWidth: 96,
+                      flexShrink: 0,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      '& .MuiChip-label': { px: 0.6 },
+                    }}
+                  />
+                </Tooltip>
+              )}
               {/* O selo de duração fica ao lado do código da peça porque é
                   exatamente aí que a decisão acontece: este G2 de 11s vai
                   entrar em 15 vídeos, e é agora — não depois de montar — que
@@ -2061,13 +2124,30 @@ export function MultiplierPage() {
       // Um por vez: são arquivos grandes, e em paralelo o navegador estrangula
       // a banda e o servidor recebe vários multipart de 40 MB de uma só vez.
       for (const arquivo of lista) {
-        const clip = await combinationsService.uploadClip(role, arquivo);
+        // A sigla do passo 1 etiqueta o clipe: é o que diz, na lista global,
+        // qual produto aparece com o apresentador em cada vídeo.
+        const clip = await combinationsService.uploadClip(role, arquivo, sigla);
         setClips((prev) => [...prev, clip]);
       }
     } catch (err) {
       setError(mensagemDeErro(err, 'Falha ao enviar o vídeo'));
     } finally {
       setEnviando(null);
+    }
+  }
+
+  async function handleSetProduto(id: string, produto: string) {
+    const atual = clips.find((c) => c.id === id);
+    const nova = produto.trim() || null;
+    if (!atual || atual.produto === nova) return;
+    // Otimista: o chip muda na hora e volta se o servidor recusar.
+    const anterior = clips;
+    setClips((prev) => prev.map((c) => (c.id === id ? { ...c, produto: nova } : c)));
+    try {
+      await combinationsService.updateClip(id, produto.trim());
+    } catch (err) {
+      setClips(anterior);
+      setError(mensagemDeErro(err, 'Falha ao etiquetar o clipe'));
     }
   }
 
@@ -2418,6 +2498,9 @@ export function MultiplierPage() {
                         }
                         onUpload={(files) => void handleUpload(bloco.role, files)}
                         onRemove={(id) => void handleRemoveClip(id)}
+                        onSetProduto={(id, produto) =>
+                          void handleSetProduto(id, produto)
+                        }
                       />
                     </Grid>
                   ))}

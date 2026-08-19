@@ -72,6 +72,8 @@ export interface CombinationClip {
   id: string;
   role: ClipRole;
   label: string;
+  /** De qual produto é o clipe — `null` nos antigos e nos genéricos. */
+  produto: string | null;
   url: string;
   sizeBytes: number;
   /** Duração medida no upload. `0` é "não medido" — nunca "vazio". */
@@ -226,13 +228,27 @@ export const combinationsService = {
 
   // ----------------------------------------------------------- clipes
 
-  async uploadClip(role: ClipRole, file: File): Promise<CombinationClip> {
+  async uploadClip(
+    role: ClipRole,
+    file: File,
+    produto?: string,
+  ): Promise<CombinationClip> {
     const form = new FormData();
     form.append('file', file);
     const { data } = await api.post<CombinationClip>('/combinations/clips', form, {
-      params: { role },
+      // `produto` etiqueta o clipe já no upload — a sigla digitada no passo 1.
+      params: produto?.trim() ? { role, produto: produto.trim() } : { role },
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    return data;
+  },
+
+  /** Edita a etiqueta de produto do clipe. String vazia limpa. */
+  async updateClip(id: string, produto: string): Promise<CombinationClip> {
+    const { data } = await api.patch<CombinationClip>(
+      `/combinations/clips/${id}`,
+      { produto },
+    );
     return data;
   },
 

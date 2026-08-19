@@ -562,6 +562,7 @@ export class CombinationsService implements OnApplicationBootstrap {
     role: ClipRole,
     label: string,
     buffer: Buffer,
+    produto?: string,
   ): Promise<CombinationClip> {
     const jaTem = await this.clips.count({ where: { userId, role } });
     if (jaTem >= LIMITES[role]) {
@@ -609,6 +610,7 @@ export class CombinationsService implements OnApplicationBootstrap {
         userId,
         role,
         label: label.slice(0, 120) || 'clipe.mp4',
+        produto: produto?.trim().slice(0, 60) || null,
         url,
         sizeBytes: buffer.byteLength,
         durationMs: segundos ? Math.round(segundos * 1000) : 0,
@@ -618,6 +620,20 @@ export class CombinationsService implements OnApplicationBootstrap {
 
   listClips(userId: string): Promise<CombinationClip[]> {
     return this.clips.find({ where: { userId }, order: { createdAt: 'ASC' } });
+  }
+
+  /** Edita a etiqueta de produto do clipe. Vazio limpa (`null`). */
+  async updateClip(
+    userId: string,
+    id: string,
+    produto: string | undefined,
+  ): Promise<CombinationClip> {
+    const clip = await this.clips.findOneBy({ id, userId });
+    if (!clip) throw new NotFoundException(`Clipe ${id} não encontrado`);
+    if (produto !== undefined) {
+      clip.produto = produto.trim().slice(0, 60) || null;
+    }
+    return this.clips.save(clip);
   }
 
   async deleteClip(userId: string, id: string): Promise<void> {

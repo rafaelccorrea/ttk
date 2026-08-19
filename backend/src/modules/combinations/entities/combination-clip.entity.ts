@@ -35,6 +35,17 @@ export class CombinationClip {
   @Column()
   label: string;
 
+  /**
+   * De qual produto é o clipe ("CINTA", "BATOM VERMELHO") — texto livre.
+   *
+   * A lista de clipes é global e o nome do arquivo raramente diz o produto:
+   * quem tem dois produtos olhava "IMG_2041.mp4" sem saber qual apresentador
+   * ia aparecer com o quê. `null` nos clipes antigos e nos genéricos (o mesmo
+   * gancho serve a vários produtos de propósito).
+   */
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  produto: string | null;
+
   /** URL no nosso bucket (rota `/media/s3/...`). */
   @Column('text')
   url: string;
