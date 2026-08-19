@@ -579,7 +579,7 @@ export class Copiloto {
     replyId: string,
     texto: string,
   ): Promise<{ status: 'enviada' }> {
-    this.aoAtividadeSimulada({ autor: 'live.simulada (você)', texto, ia: true });
+    this.aoAtividadeSimulada({ autor: 'PikPok IA · pela sua conta', texto, ia: true });
     await this.api.confirmarEntrega(replyId, 'enviada').catch(() => undefined);
     return { status: 'enviada' };
   }
@@ -648,15 +648,13 @@ export class Copiloto {
     if (evento.type === 'reply') {
       const { limiarDescarte } = this.lerConfiguracoes();
       if (evento.data.confidence < limiarDescarte) return;
-      // A resposta entra no chat simulado da esquerda, no meio das perguntas:
-      // é a cena de "a IA respondendo ao vivo" que a simulação existe para dar.
-      if (MODO_SIMULACAO) {
-        this.aoAtividadeSimulada({
-          autor: 'PikPok IA',
-          texto: evento.data.text,
-          ia: true,
-        });
-      }
+      /*
+       * A resposta NÃO entra no chat simulado aqui: quem a põe lá é a entrega
+       * (`entregarSimulado`), como numa live real — o rascunho mora no painel,
+       * e o chat só mostra o que foi postado. Publicar nos dois momentos
+       * duplicava a mesma frase na tela, uma como "gerada" e outra como
+       * "enviada", parecendo eco.
+       */
     }
 
     if (evento.type === 'mode') {

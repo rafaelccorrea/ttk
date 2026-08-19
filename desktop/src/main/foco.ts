@@ -381,7 +381,7 @@ function paginaDeChatSimulado(logo: string | null): string {
       if(!item.ia)av.style.background=corDe(item.autor||'?');
       var corpo=document.createElement('div');corpo.className='corpo';
       var autor=document.createElement('div');autor.className='autor';
-      autor.textContent=item.ia?'PikPok IA':item.autor;
+      autor.textContent=item.autor||'PikPok IA';
       var texto=document.createElement('div');texto.className='texto';texto.textContent=item.texto;
       corpo.appendChild(autor);corpo.appendChild(texto);
       linha.appendChild(av);linha.appendChild(corpo);chat.appendChild(linha);
