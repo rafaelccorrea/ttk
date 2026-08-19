@@ -30,8 +30,19 @@ export interface GeradorDeMidia {
   /** false quando falta credencial: a rota inteira se desliga em vez de errar. */
   readonly isConfigured: boolean;
 
-  /** Texto → imagem. É o frame base de tudo, inclusive dos vídeos. */
-  submitImage(prompt: string, aspectRatio: string): Promise<SubmitResult>;
+  /**
+   * Texto → imagem. É o frame base de tudo, inclusive dos vídeos.
+   *
+   * `referencias` são imagens REAIS que o modelo deve reproduzir na
+   * composição (retrato da persona, foto do produto). É o que permite a
+   * apresentadora segurar o produto EXATO do vendedor em vez de um objeto
+   * inventado parecido.
+   */
+  submitImage(
+    prompt: string,
+    aspectRatio: string,
+    referencias?: Buffer[],
+  ): Promise<SubmitResult>;
 
   /**
    * Imagem → vídeo. Recebe o que `submitImage` produziu, já pronto.

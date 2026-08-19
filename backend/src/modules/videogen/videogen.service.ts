@@ -91,6 +91,46 @@ export class VideogenService {
    * Cobra como vídeo, porque é exatamente o mesmo custo de DoP; o que se
    * economiza é a chamada de imagem, não a de vídeo.
    */
+  /**
+   * Compõe o frame com imagens REAIS de referência e depois anima.
+   *
+   * É o caminho da cena "apresentadora com o produto na mão": o frame nasce
+   * do editor de imagem com o retrato E a foto do produto como referência —
+   * réplica exata, não um objeto inventado — e o refresh dispara a animação
+   * quando o frame fica pronto (mesmo encadeamento de fases do `generate`).
+   *
+   * Cobra como vídeo (60cr). O custo real soma a imagem de composição
+   * (~R$ 0,60) ao vídeo (~R$ 3,60): R$ 4,20 contra R$ 6,00 de face — margem
+   * 1,43×, ainda acima do piso de 1,4. É a cena mais cara do catálogo, e uma
+   * por campanha.
+   */
+  async generateComposedVideo(
+    userId: string,
+    pedido: {
+      framePrompt: string;
+      referencias: Buffer[];
+      videoPrompt: string;
+    },
+  ): Promise<GeneratedMedia> {
+    const submitted = await this.billing.withCharge(userId, 'video', () =>
+      this.higgsfield.submitImage(pedido.framePrompt, '9:16', pedido.referencias),
+    );
+    this.registrarCusto(userId, 'image');
+    this.registrarCusto(userId, 'video');
+    return this.media.save(
+      this.media.create({
+        userId,
+        kind: 'video',
+        // O prompt guardado é o DO VÍDEO: é ele que a fase 2 usa ao animar.
+        prompt: pedido.videoPrompt,
+        aspectRatio: '9:16',
+        status: (submitted.status as GeneratedMedia['status']) ?? 'queued',
+        phase: 'image',
+        requestId: submitted.requestId,
+      }),
+    );
+  }
+
   async generateFromImage(
     userId: string,
     imageUrl: string,

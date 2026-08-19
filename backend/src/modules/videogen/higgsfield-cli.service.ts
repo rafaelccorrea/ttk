@@ -564,8 +564,12 @@ export class HiggsfieldCliService implements GeradorDeMidia {
     return { requestId: id, status: 'queued' };
   }
 
-  async submitImage(prompt: string, aspectRatio: string): Promise<SubmitResult> {
-    return this.submeter([
+  async submitImage(
+    prompt: string,
+    aspectRatio: string,
+    referencias?: Buffer[],
+  ): Promise<SubmitResult> {
+    const args = [
       'generate',
       'create',
       this.modeloImagem,
@@ -573,7 +577,22 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       HiggsfieldCliService.citar(prompt),
       '--aspect_ratio',
       HiggsfieldCliService.citar(aspectRatio),
-    ]);
+    ];
+    if (!referencias?.length) return this.submeter(args);
+
+    // Cada referência vira um arquivo tmp e um --image-references; a CLI
+    // sobe sozinha. O nano banana aceita até 14 — aqui vão 2 ou 3.
+    const pasta = await mkdtemp(join(tmpdir(), 'pikpok-hf-ref-'));
+    try {
+      for (const ref of referencias) {
+        const arquivo = join(pasta, `${randomUUID()}.png`);
+        await writeFile(arquivo, ref);
+        args.push('--image-references', HiggsfieldCliService.citar(arquivo));
+      }
+      return await this.submeter(args);
+    } finally {
+      await rm(pasta, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 
   /**

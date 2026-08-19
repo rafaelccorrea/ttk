@@ -726,6 +726,61 @@ export class CampaignsService {
           (produtoDaCena.benefit ? ` (${produtoDaCena.benefit})` : '') +
           '. If the action mentions holding or showing the product, the person holds it clearly visible in hand. ';
       }
+
+      /**
+       * Cena "com o produto na mão": o frame é COMPOSTO com as duas imagens
+       * reais — retrato da persona + foto do produto — e só então animado.
+       *
+       * Sem isso, o modelo de vídeo partia do retrato (onde produto nenhum
+       * existe) e desenhava um objeto inventado parecido. Com as referências,
+       * o que aparece na mão é a réplica da foto que o vendedor subiu. Custa
+       * uma geração de imagem a mais dentro dos mesmos 60 créditos (margem
+       * documentada no `generateComposedVideo`).
+       */
+      const seguraProduto = /segur|na m[ãa]o|em m[ãa]os|mostra o produto/i.test(
+        cena.acaoVisual ?? '',
+      );
+      if (seguraProduto && produtoDaCena?.images.length) {
+        const [retrato, fotoProduto] = await Promise.all([
+          this.lerCena(persona.seedImageUrl),
+          this.lerCena(produtoDaCena.images[0]),
+        ]);
+        if (retrato && fotoProduto) {
+          const framePrompt =
+            'Compose a photorealistic vertical 9:16 frame: the EXACT person from the first ' +
+            'reference image, same face, hair and outfit, holding the EXACT product from the ' +
+            `second reference image ("${produtoDaCena.name}") in hand, close to the face, ` +
+            `label facing the camera. Scene: ${cena.acaoVisual}. ` +
+            'Do not redesign or restyle the product — reproduce it faithfully.';
+          const promptVideo =
+            `${persona.promptFragment}. Action: ${cena.acaoVisual}. ` +
+            'The person keeps holding the same product visible in hand. ' +
+            'Natural expressive hand gestures, subtle camera movement. ' +
+            (cena.fala
+              ? `The person speaks in BRAZILIAN PORTUGUESE (pt-BR), lip-synced, saying exactly: "${cena.fala}". ` +
+                'All speech must be in Brazilian Portuguese — never English.'
+              : 'No speech.');
+          const mediaComposta = await this.videogen.generateComposedVideo(userId, {
+            framePrompt,
+            referencias: [retrato, fotoProduto],
+            videoPrompt: promptVideo,
+          });
+          cena.promptFinal = promptVideo;
+          cena.generatedMediaId = mediaComposta.id;
+          cena.status = 'renderizando';
+          cena.error = null;
+          await this.cenas.save(cena);
+          campanha.creditsSpent += ACTION_PRICES.video.credits;
+          campanha.status = 'renderizando';
+          await this.campanhas.save(campanha);
+          return cena;
+        }
+        // Referência ilegível: segue o caminho normal — cena sem a réplica é
+        // melhor que cena nenhuma, e o log diz por quê.
+        this.logger.warn(
+          `Cena ${cena.id}: composição com referências indisponível (retrato ou foto ilegível).`,
+        );
+      }
       promptFinal =
         `${persona.promptFragment}. Action: ${cena.acaoVisual}. ` +
         promptExtra +

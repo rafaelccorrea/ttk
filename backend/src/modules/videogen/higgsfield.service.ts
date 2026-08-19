@@ -85,7 +85,16 @@ export class HiggsfieldService implements GeradorDeMidia {
   }
 
   /** Soul: texto → imagem (frame base ou imagem final). */
-  async submitImage(prompt: string, aspectRatio: string): Promise<SubmitResult> {
+  async submitImage(
+    prompt: string,
+    aspectRatio: string,
+    referencias?: Buffer[],
+  ): Promise<SubmitResult> {
+    if (referencias?.length) {
+      throw new ServiceUnavailableException(
+        'Composição com imagens de referência exige o driver de CLI da Higgsfield.',
+      );
+    }
     const body = await this.request('/higgsfield-ai/soul/standard', {
       method: 'POST',
       body: JSON.stringify({
