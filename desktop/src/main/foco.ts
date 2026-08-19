@@ -186,10 +186,15 @@ export class ModoFoco {
     if (!view || view.isDestroyed()) return;
     const alvo = this.alvo();
     const atual = view.getURL();
-    if (!forcar) {
-      if (alvo.startsWith('data:') && atual.startsWith('data:')) return;
-      if (!alvo.startsWith('data:') && atual === alvo) return;
-    }
+    /*
+     * Igualdade EXATA, inclusive para data URLs. A versão anterior tratava
+     * "estou em qualquer data:" como "estou na página certa" — e a espera e o
+     * chat simulado são ambos data URLs, então a troca entre eles nunca
+     * acontecia: conectava a live e a esquerda ficava presa no "aguardando".
+     * `aplicar` só roda em mudança de estado, então recarregar no falso
+     * negativo da comparação custa um load raro, não um loop.
+     */
+    if (!forcar && atual === alvo) return;
     void view.loadURL(alvo).catch(() => undefined);
   }
 

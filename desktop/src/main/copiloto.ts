@@ -251,7 +251,24 @@ export class Copiloto {
       );
       this.metricas.iniciar();
       this.acumulador = new AcumuladorDeLote<ChatMessageAnonima>(
-        (lote) => this.api.enviarLote(lote),
+        async (lote) => {
+          /*
+           * O acumulador descarta erro de entrega por decisão (repetir chat de
+           * live é responder pergunta velha) — mas descartar SEM CONTAR virou
+           * um painel mudo sem pista nenhuma: lote falhando em silêncio tem o
+           * mesmo sintoma de live parada. O erro vira o `motivo` da tela, e a
+           * mensagem em si continua perdida, como antes.
+           */
+          try {
+            await this.api.enviarLote(lote);
+            if (MODO_SIMULACAO) {
+              console.log(`[sim] lote de ${lote.length} mensagem(ns) aceito pelo backend`);
+            }
+          } catch (erro) {
+            console.warn(`[chat] lote de ${lote.length} falhou: ${(erro as Error).message}`);
+            this.avisarErro((erro as Error).message);
+          }
+        },
         JANELA_LOTE_MS,
         this.lerConfiguracoes().tamanhoDoLote,
       );
@@ -625,6 +642,9 @@ export class Copiloto {
    * importa.
    */
   private repassarEvento(evento: LiveEvent): void {
+    // Na simulação o terminal é o raio-X: cada evento do SSE aparece, e a
+    // ausência deles aponta o lado do fio em que o silêncio nasce.
+    if (MODO_SIMULACAO) console.log(`[sim] SSE: ${evento.type}`);
     if (evento.type === 'reply') {
       const { limiarDescarte } = this.lerConfiguracoes();
       if (evento.data.confidence < limiarDescarte) return;
