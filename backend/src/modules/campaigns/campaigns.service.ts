@@ -81,11 +81,19 @@ const GESTOS_POR_CENA = [
  */
 function gestoDaCena(ordem: number): string {
   return (
-    'Gesture (ONLY if the scene action above does not already describe one; otherwise ignore this line): ' +
+    'Fallback gesture (use ONLY if the scene action lacks one): ' +
     GESTOS_POR_CENA[(ordem - 1) % GESTOS_POR_CENA.length] +
-    '. One single gesture in the whole clip, performed once, slowly.'
+    '. One gesture total, performed once, slowly.'
   );
 }
+
+/**
+ * Teto da Higgsfield para prompt de image-to-video. Passou disso, a geração é
+ * recusada na hora ("prompt must be at most 2500 characters") — aconteceu em
+ * produção quando os blocos fixos engordaram. Margem de 100 sobre o limite
+ * real, porque quem estoura por 3 caracteres estoura de novo amanhã.
+ */
+const PROMPT_MAX = 2400;
 
 /**
  * Prompt de renderização em BLOCOS rotulados, num idioma só por bloco.
@@ -99,6 +107,10 @@ function gestoDaCena(ordem: number): string {
  * "No on-screen text" não é preciosismo: o modelo às vezes inventa legenda
  * própria queimada no quadro — que depois briga com a NOSSA legenda na
  * montagem.
+ *
+ * Cada bloco fixo é escrito CURTO de propósito: o total compete com o teto de
+ * caracteres da fornecedora (`PROMPT_MAX`), e o que passa do teto é cortado
+ * começando pelos extras.
  */
 function montarPromptDeCena(opts: {
   sujeito: string;
@@ -113,53 +125,58 @@ function montarPromptDeCena(opts: {
     // ------------------------------------------------------------- SUJEITO
     opts.sujeito,
     // --------------------------------------------------------------- CENA
-    `Scene action (described in Portuguese): ${opts.acaoVisual}`,
+    `Scene action (in Portuguese): ${opts.acaoVisual}`,
     ...(opts.extras ?? []),
     // ------------------------------------------------------- CONTINUIDADE
     // O clipe parte de um frame real: o modelo tende a "recriar" o sujeito
     // no meio do movimento. Travar identidade e cenário é o que impede o
     // rosto (ou o produto) de trocar entre o primeiro e o último segundo.
-    'Continuity: single continuous shot, no cuts, no scene transitions. ' +
-      'Keep EXACTLY the same appearance as the starting frame from beginning to end — ' +
-      'same face, same hair, same outfit, same background, same lighting. ' +
-      'Do not morph, do not change identity, do not add or remove people or objects.',
+    'Continuity: one continuous shot, no cuts. Keep the subject EXACTLY as in the starting frame — ' +
+      'same face, hair, outfit, background, lighting. No morphing, no people or objects added or removed.',
     // ------------------------------------------------------------ ESTÉTICA
-    'Look: realistic UGC smartphone video, vertical 9:16, natural daylight or soft indoor light, ' +
-      'natural skin texture (not airbrushed), shallow depth of field, steady but slightly handheld.',
-    'Motion: natural human timing, no slow motion, no time-lapse, no speed ramps. ' +
-      'Every gesture happens ONCE — never repeat or loop the same movement within the shot. ' +
-      'Movements are calm and unhurried, like a real person talking to a friend.',
+    'Look: realistic UGC smartphone video, vertical 9:16, soft natural light, real skin texture, slightly handheld.',
+    'Motion: natural timing, no slow motion. Each gesture happens ONCE — never loop a movement. Calm, unhurried.',
     // A montagem corta seco de uma cena para a outra: clipe que termina "em
     // repouso" denuncia a emenda. Terminar em movimento suave faz uma cena
     // parecer continuação da anterior.
-    'Flow: the shot begins mid-motion and ends mid-motion (never frozen or posed), ' +
-      'so consecutive scenes cut together seamlessly, as if each scene flows out of the previous one.',
+    'Flow: start and end mid-motion (never frozen), so consecutive scenes cut together seamlessly.',
   ];
 
   // ----------------------------------------------------------------- ÁUDIO
   if (opts.fala?.trim()) {
     partes.push(
-      `Dialogue — the exact line, spoken in BRAZILIAN PORTUGUESE (pt-BR): "${opts.fala.trim()}"`,
-      `Audio: ${opts.vozDescricao ?? 'voice of a young Brazilian woman'}, natural Brazilian Portuguese accent and prosody, ` +
-        'calm, warm, conversational tone — like recommending something to a close friend. ' +
-        'Relaxed pace with natural micro-pauses; the voice NEVER shouts, never rushes, never sounds like a radio announcer or an aggressive ad. ' +
-        'The ONLY spoken language is Brazilian Portuguese — never Spanish, never English, never any other language. ' +
-        'Lip movements match the dialogue word by word. No background music.',
+      `Dialogue — the exact line, in BRAZILIAN PORTUGUESE (pt-BR): "${opts.fala.trim()}"`,
+      `Audio: ${opts.vozDescricao ?? 'voice of a young Brazilian woman'}, natural pt-BR accent, ` +
+        'calm warm conversational tone, relaxed pace with natural pauses — never shouting, never a radio announcer. ' +
+        'Spoken language is Brazilian Portuguese ONLY — never Spanish or English. ' +
+        'Lip-sync matches the dialogue word by word. No music.',
     );
   } else {
-    partes.push('Audio: no speech, no narration, no music — subtle ambient sound only.');
+    partes.push('Audio: no speech, no music — subtle ambient sound only.');
   }
 
   // -------------------------------------------------------------- PROIBIDO
   partes.push(
-    'Strictly forbidden: on-screen text, captions, subtitles, logos, watermarks, emojis, UI elements; ' +
-      'extra people entering the frame; deformed or extra fingers; ' +
-      'flickering, frame jumps, glitches; ' +
+    'Strictly forbidden: on-screen text, captions, logos, watermarks, UI; extra people; ' +
+      'deformed or extra fingers; flicker, glitches; ' +
       (opts.semPessoa
-        ? 'faces or full people in frame (hands and forearms are allowed when the action needs them).'
-        : 'changing the presenter\'s face, age, hair or clothes.'),
+        ? 'faces or full people in frame (hands and forearms allowed).'
+        : "changing the presenter's face, age, hair or clothes."),
   );
-  return partes.join('\n');
+
+  /*
+   * Trava do teto da fornecedora: se mesmo compacto o total passar, os EXTRAS
+   * caem primeiro (gesto de fallback e câmera são os únicos dispensáveis — o
+   * resto é identidade, idioma e proibições). Só então, em último caso, o
+   * texto é cortado no limite: prompt truncado gera um vídeo pior; prompt
+   * estourado não gera vídeo nenhum.
+   */
+  let prompt = partes.join('\n');
+  const extras = opts.extras ?? [];
+  for (let i = extras.length - 1; i >= 0 && prompt.length > PROMPT_MAX; i--) {
+    prompt = partes.filter((p) => !extras.slice(i).includes(p)).join('\n');
+  }
+  return prompt.length > PROMPT_MAX ? prompt.slice(0, PROMPT_MAX) : prompt;
 }
 
 const CAMERAS_POR_CENA = [
@@ -918,17 +935,15 @@ export class CampaignsService {
         // "No people" seco brigava com ações como "mão abre, aplica nos
         // lábios" — o proibido agora permite mãos e barra só rosto/pessoa.
         sujeito:
-          'Close-up product demonstration of the exact product shown in the starting frame' +
-          (produtoDaCena ? ` — the product is "${produtoDaCena.name}"` : '') +
-          '. The product is the hero: keep its shape, colors, label and packaging IDENTICAL to the starting frame — never redesign it. ' +
+          'Close-up demonstration of the exact product in the starting frame' +
+          (produtoDaCena ? ` — "${produtoDaCena.name}"` : '') +
+          '. Keep its shape, colors, label and packaging IDENTICAL — never redesign it. ' +
           // O gesto vem do roteirista, que conhece o produto; os exemplos são
           // só a rede para roteiro antigo/fallback sem `comoUsa`.
           (campanha.comoUsa
-            ? `Demonstrate the product being used for real — how it is used (described in Portuguese): ${campanha.comoUsa}. `
-            : 'Demonstrate the product the way THIS specific type of product is actually used in real life: ' +
-              'a pen writes on paper, a lipstick is applied to lips, a garment is worn or held against the body, ' +
-              'a cream is spread on skin, a kitchen tool is used with food. ') +
-          'Never a generic "hold and rotate" when the product has a natural use gesture.',
+            ? `Show the product actually being used — how (in Portuguese): ${campanha.comoUsa}. `
+            : 'Show the product the way THIS type of product is used in real life (a pen writes, a lipstick is applied, a garment is worn). ') +
+          'Never a generic "hold and rotate" when it has a natural use gesture.',
         acaoVisual: cena.acaoVisual,
         fala: cena.fala,
         vozDescricao: 'female voiceover (narrator, off-screen)',
@@ -954,11 +969,11 @@ export class CampaignsService {
         // português no meio do bloco inglês — não descreve nada visual e
         // ainda desestabilizava o idioma do áudio.
         promptExtra =
-          `The product being presented is "${produtoDaCena.name}". ` +
+          `The product is "${produtoDaCena.name}". ` +
           (campanha.comoUsa
-            ? `How this product is used (described in Portuguese): ${campanha.comoUsa}. `
+            ? `How it is used (in Portuguese): ${campanha.comoUsa}. `
             : '') +
-          'If the action mentions holding, showing or using the product, the person handles it clearly visible in hand.';
+          'When the action involves the product, it stays clearly visible in hand.';
       }
 
       /**
