@@ -921,21 +921,40 @@ export class CampaignsService {
       throw new ConflictException('A dublagem não está disponível neste servidor (ffmpeg ausente).');
     }
 
+    /*
+     * O trabalho pesado (TTS + ffmpeg + S3) roda FORA do request.
+     *
+     * Dentro dele, o proxy da hospedagem derrubava a conexão antes da
+     * resposta: o navegador via um erro de rede genérico, o usuário lia
+     * "não redublou" — e às vezes o servidor até terminava o serviço depois,
+     * sem ninguém ficar sabendo. Responder já e processar em background é a
+     * única forma de conviver com o timeout do proxy sem fila externa.
+     */
+    void this.processarRedublagem(cena.id).catch((error) =>
+      this.logger.warn(`Redublagem em background falhou (${cena.id}): ${error}`),
+    );
+    return { ...cena, redublagem: 'processando' as const };
+  }
+
+  /** A parte demorada da redublagem — SEMPRE fora do ciclo de request. */
+  private async processarRedublagem(sceneId: string): Promise<void> {
+    const cena = await this.cenas.findOneByOrFail({ id: sceneId });
     const dublada = await this.dublarCena(cena);
     if (!dublada) {
-      throw new ConflictException(
-        'A narração não pôde ser gerada agora. Tente de novo em instantes.',
-      );
+      this.logger.warn(`Redublagem da cena ${sceneId}: narração não gerada.`);
+      return;
     }
     cena.outputUrl = dublada;
     await this.cenas.save(cena);
 
+    // O vídeo final montado carrega o áudio antigo: descartar aqui faz a
+    // montagem automática refazer com a voz nova no próximo refresh.
     const campanha = await this.campanhas.findOneByOrFail({ id: cena.campaignId });
     if (campanha.finalVideoUrl) {
       campanha.finalVideoUrl = null;
       await this.campanhas.save(campanha);
     }
-    return cena;
+    this.logger.log(`Cena ${sceneId} redublada em pt-BR.`);
   }
 
   /**

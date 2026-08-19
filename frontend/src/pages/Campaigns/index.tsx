@@ -441,6 +441,7 @@ function Storyboard({
   // operação por vez), mas o spinner tem que aparecer só no botão clicado:
   // três botões girando juntos liam como "redublou as três".
   const [redublando, setRedublando] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
   const [confirmarTudo, setConfirmarTudo] = useState(false);
   const { saldo, ilimitado } = useSaldo('video');
   const { confirmar, dialogo } = useConfirmarGasto();
@@ -503,6 +504,11 @@ function Storyboard({
       </Box>
 
       {erro && <Alert severity="error">{erro}</Alert>}
+      {aviso && (
+        <Alert severity="info" onClose={() => setAviso(null)}>
+          {aviso}
+        </Alert>
+      )}
 
       {/* A fala não entra no prompt do vídeo (só a ação visual entra), então o
           clipe sai sem narração automática. Prometer implicitamente o
@@ -828,6 +834,17 @@ function Storyboard({
                               setRedublando(cena.id);
                               try {
                                 await acao(() => campaignsService.redubScene(cena.id));
+                                // O servidor regrava em background (o proxy da
+                                // hospedagem não sobrevive à espera). A recarga
+                                // programada busca o resultado sem o usuário
+                                // precisar adivinhar quando ficou pronto.
+                                setAviso(
+                                  `Regravando a voz da cena ${cena.ordem} em português — o vídeo atualiza sozinho em instantes.`,
+                                );
+                                setTimeout(() => {
+                                  setAviso(null);
+                                  onChange();
+                                }, 15000);
                               } finally {
                                 setRedublando(null);
                               }
