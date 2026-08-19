@@ -107,14 +107,19 @@ export class FfmpegRunner {
   async inspecionar(arquivo: string): Promise<string> {
     if (!ffmpegPath) return '';
     await this.garantirExecutavel();
-    try {
-      const { stderr } = await execFileAsync(ffmpegPath as string, [
-        '-i', arquivo, '-hide_banner',
-      ]);
-      return stderr ?? '';
-    } catch (error) {
-      return (error as { stderr?: string }).stderr ?? '';
-    }
+    // Passa pela fila como qualquer outro ffmpeg: rodando em paralelo com uma
+    // extração, o LVE matava a sondagem sem stderr e o arquivo bom era
+    // diagnosticado como ilegível.
+    return this.enfileirar(async () => {
+      try {
+        const { stderr } = await execFileAsync(ffmpegPath as string, [
+          '-i', arquivo, '-hide_banner',
+        ]);
+        return stderr ?? '';
+      } catch (error) {
+        return (error as { stderr?: string }).stderr ?? '';
+      }
+    });
   }
 
   /**
