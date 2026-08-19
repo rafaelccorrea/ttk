@@ -128,9 +128,7 @@ export function HistoricoDeLives() {
                     </Stack>
                   </TableCell>
                   <TableCell align="right">
-                    <Tooltip title="Pico de pessoas assistindo. Vazio em lives de antes da captura de audiência.">
-                      <span>{run.peakViewers > 0 ? run.peakViewers : '—'}</span>
-                    </Tooltip>
+                    {run.peakViewers > 0 ? run.peakViewers : '—'}
                   </TableCell>
                   <TableCell align="right">
                     {run.totalLikes > 0 ? run.totalLikes : '—'}
@@ -150,11 +148,7 @@ export function HistoricoDeLives() {
                       </Box>
                     </Tooltip>
                   </TableCell>
-                  <TableCell align="right">
-                    <Tooltip title="Perguntas que o copiloto não sustentou e passou para você. Muitas indicam buracos na base.">
-                      <span>{run.escalations}</span>
-                    </Tooltip>
-                  </TableCell>
+                  <TableCell align="right">{run.escalations}</TableCell>
                   <TableCell align="right">{latencia(run.latencyP50Ms)}</TableCell>
                   <TableCell align="right">{run.minutesCharged}</TableCell>
                 </TableRow>

@@ -413,7 +413,7 @@ export class EnviadorDeComentarios {
     }
 
     const confirmou = await this.aguardarEco(texto, inicio);
-    this.registrarEnvio(pedido, texto);
+    this.registrarEnvio(pedido);
 
     if (!confirmou) {
       /*
@@ -431,7 +431,7 @@ export class EnviadorDeComentarios {
     return { status: 'enviada' };
   }
 
-  private registrarEnvio(pedido: PedidoDeEnvio, texto: string): void {
+  private registrarEnvio(pedido: PedidoDeEnvio): void {
     const agora = Date.now();
     // Conta mesmo quando o eco não veio: a mensagem PODE ter saído, e a dúvida
     // se resolve a favor do freio — cooldown a mais custa uma resposta, cooldown
