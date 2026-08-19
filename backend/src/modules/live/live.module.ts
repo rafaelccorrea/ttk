@@ -12,6 +12,7 @@ import { LiveFaq } from './entities/live-faq.entity';
 import { LiveProduct } from './entities/live-product.entity';
 import { LiveReply } from './entities/live-reply.entity';
 import { LiveRun } from './entities/live-run.entity';
+import { LiveRunMetric } from './entities/live-run-metric.entity';
 import { LiveSession } from './entities/live-session.entity';
 import { LiveSelectorFailure } from './entities/live-selector-failure.entity';
 import { LiveController } from './live.controller';
@@ -49,6 +50,7 @@ import { LiveService } from './live.service';
       LiveProduct,
       LiveFaq,
       LiveRun,
+      LiveRunMetric,
       LiveChatMessage,
       LiveReply,
       // A telemetria de seletor quebrado — o sinal de que o TikTok mudou o HTML

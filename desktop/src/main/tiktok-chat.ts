@@ -48,12 +48,30 @@ export interface RawChatMessage {
 }
 
 /**
+ * Um evento de audiência da sala — tudo que o webcast conta sobre a live e que
+ * NÃO é mensagem de chat. Nenhum deles carrega identidade de espectador: são
+ * números da sala, e é por isso que passam direto pela fronteira de LGPD sem
+ * precisar do anonimizador.
+ *
+ *  - `viewers` é LEITURA DE NÍVEL (quantos assistem agora), não contagem;
+ *  - os demais são ocorrências, que o agregador soma por janela.
+ */
+export type AudienceEvent =
+  | { kind: 'viewers'; value: number }
+  | { kind: 'likes'; value: number }
+  | { kind: 'gift'; count: number; diamonds: number }
+  | { kind: 'follow' }
+  | { kind: 'share' }
+  | { kind: 'join' };
+
+/**
  * O contrato que o resto do app enxerga. Trocar a fonte (webcast hoje, DOM
  * degradado na fase 2, um mock nos testes) é trocar a implementação disto.
  */
 export interface ChatSource {
   connect(roomIdOuUsername: string): Promise<void>;
   on(evt: 'message', cb: (m: RawChatMessage) => void): void;
+  on(evt: 'audience', cb: (a: AudienceEvent) => void): void;
   on(evt: 'disconnect' | 'error', cb: (e: Error) => void): void;
   disconnect(): void;
 }

@@ -25,6 +25,7 @@ import {
   ConfirmarEntregaDto,
   EncerrarLiveRunDto,
   LoteDeChatDto,
+  LoteDeMetricasDto,
   SalvarNaBaseDto,
   TrocarModoDaRunDto,
 } from './dto/live.dto';
@@ -286,6 +287,39 @@ export class LiveRunController {
   })
   listarRuns(@CurrentUser() user: AuthUser) {
     return this.replies.listarRuns(user.id);
+  }
+
+  /**
+   * A live inteira, para a página do copiloto na web: resumo, série de
+   * audiência e as perguntas com as respostas que o copiloto deu.
+   */
+  @Get('runs/:id')
+  @ApiOperation({
+    summary: 'Detalhe de uma transmissão: métricas, perguntas e respostas',
+  })
+  detalhe(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.replies.detalharRun(user.id, id);
+  }
+
+  /**
+   * O lote de instantâneos de audiência do desktop (viewers, curtidas,
+   * presentes). Deltas por janela de ~30s — ver `LiveRunMetric` para o porquê.
+   */
+  @Post('runs/:id/metrics')
+  @ApiOperation({ summary: 'Recebe instantâneos de audiência da transmissão' })
+  async receberMetricas(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: LoteDeMetricasDto,
+  ) {
+    return this.replies.registrarMetricas(
+      user.id,
+      id,
+      dto.metrics.map((m) => ({ ...m, capturedAt: new Date(m.capturedAt) })),
+    );
   }
 
   @Get('runs/:id/queue')
