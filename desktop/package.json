@@ -11,7 +11,8 @@
     "dev:sim:prod": "cross-env PIKPOK_SIMULAR_LIVE=1 PIKPOK_SIM_VIDEO=c:\\Users\\rafae\\Downloads\\videoplayback.mp4 PIKPOK_API_URL=https://ivory-spider-116452.hostingersite.com/api/v1 electron-vite dev",
     "build": "tsc --noEmit && electron-vite build",
     "test": "vitest run",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm version patch --no-git-tag-version && npm run build && electron-builder",
+    "dist:atual": "npm run build && electron-builder"
   },
   "dependencies": {
     "electron-store": "^8.2.0",

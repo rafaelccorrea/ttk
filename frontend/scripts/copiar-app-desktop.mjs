@@ -46,7 +46,18 @@ function main() {
   const candidatos = readdirSync(origem).filter(
     (nome) => ehInstalador(nome) || ehManifesto(nome),
   );
-  const instalador = candidatos.find(ehInstalador);
+  /*
+   * O MAIS RECENTE, não o primeiro em ordem alfabética: `desktop/release` guarda
+   * os instaladores das versões anteriores, e alfabeticamente `0.2.0` vem antes
+   * de `0.2.1` — o site publicaria o `.exe` velho junto do `latest.yml` novo,
+   * que é exatamente o descompasso que este script existe para impedir.
+   */
+  const instalador = candidatos
+    .filter(ehInstalador)
+    .sort(
+      (a, b) =>
+        statSync(join(origem, b)).mtimeMs - statSync(join(origem, a)).mtimeMs,
+    )[0];
   const manifesto = candidatos.find(ehManifesto);
 
   /*
