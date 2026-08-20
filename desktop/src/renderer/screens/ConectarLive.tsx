@@ -7,7 +7,7 @@ import {
   Typography,
   alpha,
 } from '@mui/material';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BaseDeConhecimento, CarteiraLive } from '@shared/desktop-api';
 import { MINIMO_SEGUIDORES_LIVE } from '@shared/desktop-api';
 import { BlocoDaConta } from '../components/BlocoDaConta';
@@ -24,6 +24,15 @@ const PASSOS_DA_CONEXAO = [
   'Ligando a leitura do chat…',
   'Preparando as respostas…',
 ];
+
+/**
+ * De quanto em quanto tempo a espera guiada confere se a live entrou no ar.
+ *
+ * Mais curto que os 30s do modo foco de propósito: aqui o vendedor acabou de
+ * clicar em "Entrar na live" e está com o celular na mão — cada segundo de
+ * atraso entre "fui ao vivo" e "o copiloto conectou" parece falha do app.
+ */
+const INTERVALO_ESPERA_MS = 15_000;
 
 /**
  * Tela 2 — escolher a base e entrar na live.
@@ -68,6 +77,19 @@ export function ConectarLive({
   const [seguidores, setSeguidores] = useState<number | null>(null);
   /** A leitura do @ terminou (com ou sem nome) — separa "lendo" de "falhou". */
   const [leuUsuario, setLeuUsuario] = useState(false);
+  /**
+   * A espera guiada: o vendedor clicou em entrar, mas a live ainda não está no
+   * ar. Em vez de um erro ("comece a transmissão primeiro") a tela vira um
+   * passo a passo de como abrir a live no TikTok, e o app conecta SOZINHO
+   * assim que detectar a transmissão — ninguém precisa voltar e clicar de novo.
+   */
+  const [aguardando, setAguardando] = useState(false);
+  /**
+   * O `conectar` desta renderização, para a espera chamar sem fechar sobre uma
+   * versão velha de `baseId`/`usuario`. A função é declarada mais abaixo
+   * (depois dos retornos condicionais), então ela chega aqui por ref.
+   */
+  const conectarRef = useRef<(() => Promise<void>) | null>(null);
 
   /*
    * O @ NÃO é digitável: é a conta logada na view ao lado, lida pelo app.
@@ -152,6 +174,33 @@ export function ConectarLive({
     );
     return () => window.clearInterval(id);
   }, [conectando]);
+
+  /*
+   * A vigia da espera guiada: enquanto o passo a passo está na tela, o app
+   * confere de tempos em tempos se a live entrou no ar e, quando entrar,
+   * dispara a MESMA conexão do botão — com a mesma validação e a mesma
+   * cobrança. A primeira conferência já aconteceu no clique (é ela que abre a
+   * espera), então aqui só o intervalo trabalha. `null` da leitura é "não
+   * sei", e não conecta: conectar no palpite abriria uma run que cobra minuto.
+   */
+  useEffect(() => {
+    if (!ponte || !aguardando) return undefined;
+    const alvo = usuario.trim();
+    if (!alvo) return undefined;
+    let valendo = true;
+    const id = window.setInterval(() => {
+      void ponte
+        .aoVivoNoTikTok(alvo)
+        .then((noAr) => {
+          if (valendo && noAr === true) void conectarRef.current?.();
+        })
+        .catch(() => undefined);
+    }, INTERVALO_ESPERA_MS);
+    return () => {
+      valendo = false;
+      window.clearInterval(id);
+    };
+  }, [ponte, aguardando, usuario]);
 
   const carregar = useCallback(async (): Promise<void> => {
     if (!ponte) return;
@@ -262,9 +311,26 @@ export function ConectarLive({
   const precisaAtualizar = atualizacao?.situacao === 'pronta';
 
   const conectar = async (simulada = false): Promise<void> => {
+    if (conectando) return;
     setConectando(true);
     setErroConexao(null);
     try {
+      /*
+       * A live ainda não está no ar? Então o clique não vira erro: vira a
+       * espera guiada — o passo a passo de como abrir a transmissão, com o
+       * app vigiando para conectar sozinho. Só o `false` explícito abre a
+       * espera; `null` ("não consegui ler") segue para o conectar, onde o
+       * processo principal repete a mesma conferência antes de cobrar.
+       */
+      if (!simulada) {
+        const aoVivo = await ponte
+          .aoVivoNoTikTok(usuario.trim())
+          .catch(() => null);
+        if (aoVivo === false) {
+          setAguardando(true);
+          return;
+        }
+      }
       await ponte.conectar({
         knowledgeSessionId: baseId,
         // Na simulação não há transmissão de verdade: o @ é decorativo e o
@@ -272,13 +338,27 @@ export function ConectarLive({
         tiktokUsername: usuario.trim() || '@live.simulada',
         simulada,
       });
+      setAguardando(false);
       aoConectar();
     } catch (e) {
-      setErroConexao(mensagemDeErro(e));
+      const mensagem = mensagemDeErro(e);
+      /*
+       * A corrida perdida: entre a conferência acima e a abertura da run, a
+       * live pode ter caído (ou a leitura de lá enxergou o que a daqui não
+       * viu). O texto vem do processo principal e é a única marca disponível —
+       * se ele mudar, o pior caso é a espera virar o erro antigo de novo.
+       */
+      if (!simulada && /ainda não está no ar/i.test(mensagem)) {
+        setAguardando(true);
+        return;
+      }
+      setAguardando(false);
+      setErroConexao(mensagem);
     } finally {
       setConectando(false);
     }
   };
+  conectarRef.current = () => conectar();
 
 
   return (
@@ -443,28 +523,36 @@ export function ConectarLive({
           />
         </Stack>
 
-        <Button
-          fullWidth
-          size="large"
-          variant="contained"
-          disabled={
-            !baseId ||
-            usuario.trim().length === 0 ||
-            conectando ||
-            semSaldo ||
-            semTikTok ||
-            precisaAtualizar
-          }
-          onClick={() => void conectar()}
-        >
-          {conectando
-            ? PASSOS_DA_CONEXAO[passoConexao]
-            : precisaAtualizar
-              ? 'Atualize para entrar na live'
-              : semTikTok
-                ? 'Entre no TikTok para continuar'
-                : 'Entrar na live'}
-        </Button>
+        {aguardando ? (
+          <EsperaGuiada
+            conectando={conectando}
+            passo={PASSOS_DA_CONEXAO[passoConexao] ?? PASSOS_DA_CONEXAO[0]!}
+            aoCancelar={() => setAguardando(false)}
+          />
+        ) : (
+          <Button
+            fullWidth
+            size="large"
+            variant="contained"
+            disabled={
+              !baseId ||
+              usuario.trim().length === 0 ||
+              conectando ||
+              semSaldo ||
+              semTikTok ||
+              precisaAtualizar
+            }
+            onClick={() => void conectar()}
+          >
+            {conectando
+              ? PASSOS_DA_CONEXAO[passoConexao]
+              : precisaAtualizar
+                ? 'Atualize para entrar na live'
+                : semTikTok
+                  ? 'Entre no TikTok para continuar'
+                  : 'Entrar na live'}
+          </Button>
+        )}
 
         <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
           {/*
@@ -488,6 +576,92 @@ export function ConectarLive({
         </Stack>
       </Stack>
     </Moldura>
+  );
+}
+
+/**
+ * O passo a passo de entrar ao vivo, no lugar do botão de conectar.
+ *
+ * É a resposta ao maior tropeço do app: o vendedor clicava em "Entrar na
+ * live", recebia "comece a transmissão no TikTok primeiro" e ficava perdido —
+ * o app nunca dizia COMO começar, nem percebia quando ele começava. Aqui a
+ * tela ensina o caminho (celular, que é o comum, e LIVE Studio para quem
+ * transmite do computador) e promete o que a vigia acima cumpre: detectou a
+ * live no ar → conecta sozinho, sem clique nenhum.
+ *
+ * Iniciar a transmissão DE DENTRO do app não existe por limite do TikTok, não
+ * nosso: não há API pública para abrir uma live, e a criação só acontece no
+ * app do celular ou no LIVE Studio (um programa próprio deles).
+ */
+function EsperaGuiada({
+  conectando,
+  passo,
+  aoCancelar,
+}: {
+  readonly conectando: boolean;
+  readonly passo: string;
+  readonly aoCancelar: () => void;
+}): JSX.Element {
+  const passos = [
+    'Pegue o celular e abra o TikTok.',
+    'Toque no ＋ (criar) e deslize até LIVE.',
+    'Dê um título e toque em "Iniciar transmissão".',
+  ];
+  return (
+    <Box
+      sx={{
+        p: 2.25,
+        borderRadius: 3.5,
+        bgcolor: cores.superficieAlta,
+        border: '1px solid',
+        borderColor: alpha(cores.ciano, 0.35),
+      }}
+    >
+      <Stack spacing={1.5}>
+        <Typography variant="subtitle1" fontWeight={800}>
+          Tudo pronto por aqui — agora é só entrar ao vivo
+        </Typography>
+        <Stack spacing={0.75}>
+          {passos.map((texto, i) => (
+            <Stack key={texto} direction="row" spacing={1} alignItems="flex-start">
+              <Typography
+                variant="caption"
+                fontWeight={800}
+                sx={{
+                  width: 20,
+                  height: 20,
+                  flexShrink: 0,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: alpha(cores.ciano, 0.15),
+                  color: cores.ciano,
+                }}
+              >
+                {i + 1}
+              </Typography>
+              <Typography variant="body2">{texto}</Typography>
+            </Stack>
+          ))}
+        </Stack>
+        <Typography variant="caption" color="text.secondary">
+          Transmite pelo computador? Abra o TikTok LIVE Studio e inicie por lá —
+          funciona do mesmo jeito.
+        </Typography>
+        <Typography
+          variant="body2"
+          sx={{ color: cores.ciano, fontWeight: 700 }}
+        >
+          {conectando
+            ? passo
+            : 'Estou de olho: assim que a sua live entrar no ar, eu conecto sozinho. Pode deixar esta tela aberta.'}
+        </Typography>
+        <Button size="small" color="inherit" onClick={aoCancelar} sx={{ alignSelf: 'flex-start' }}>
+          Cancelar e voltar
+        </Button>
+      </Stack>
+    </Box>
   );
 }
 

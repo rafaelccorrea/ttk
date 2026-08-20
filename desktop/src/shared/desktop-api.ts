@@ -245,6 +245,16 @@ export interface PikPokDesktopApi {
    * `null` só significa que o vendedor digita como sempre digitou.
    */
   readonly usuarioDoTikTok: () => Promise<string | null>;
+  /**
+   * A transmissão do @ está no ar agora? `null` quando não deu para ler.
+   *
+   * É a mesma leitura que protege a cobrança no processo principal, exposta
+   * para a tela de conectar poder ESPERAR a live começar em vez de devolver um
+   * erro: quem clica antes de entrar no ar vê um passo a passo e o app conecta
+   * sozinho quando detectar a transmissão. `null` é "não sei" — a tela trata
+   * como o processo principal trata: não barra ninguém.
+   */
+  readonly aoVivoNoTikTok: (usuario: string) => Promise<boolean | null>;
 
   // ------------------------------------------------------------- ativação
   /** Pede um código novo e começa o polling no processo principal. */

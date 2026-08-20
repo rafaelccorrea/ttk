@@ -80,6 +80,8 @@ const api: PikPokDesktopApi = {
     ipcRenderer.invoke('tiktok:seguidores', usuario) as Promise<number | null>,
   usuarioDoTikTok: () =>
     ipcRenderer.invoke('tiktok:usuario') as Promise<string | null>,
+  aoVivoNoTikTok: (usuario) =>
+    ipcRenderer.invoke('tiktok:aoVivo', usuario) as Promise<boolean | null>,
 
   iniciarAtivacao: () =>
     ipcRenderer.invoke('ativacao:iniciar') as Promise<EstadoAtivacao>,

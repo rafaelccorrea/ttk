@@ -583,6 +583,9 @@ function registrarIpc(): void {
     seguidoresDe(usuario),
   );
   ipcMain.handle('tiktok:usuario', () => usuarioDoTikTok());
+  ipcMain.handle('tiktok:aoVivo', (_evento, usuario: string) =>
+    aoVivoNoTikTok(usuario),
+  );
   ipcMain.handle('ativacao:iniciar', () => copiloto.iniciarAtivacao());
   ipcMain.handle('sessao:obter', () => copiloto.obterSessao());
   // A ordem importa: o copiloto encerra a run com o token ainda válido, e só
