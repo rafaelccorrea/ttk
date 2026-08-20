@@ -35,6 +35,13 @@ const PASSOS_DA_CONEXAO = [
 const INTERVALO_ESPERA_MS = 15_000;
 
 /**
+ * A página oficial de download do TikTok LIVE Studio — o único jeito de abrir
+ * uma live pelo computador. Conferida em 2026-08: é o domínio do TikTok, não um
+ * espelho de terceiro.
+ */
+const URL_LIVE_STUDIO = 'https://www.tiktok.com/studio/download';
+
+/**
  * Tela 2 — escolher a base e entrar na live.
  *
  * São duas decisões e nada mais: SOBRE O QUE o copiloto responde e QUAL live
@@ -528,6 +535,9 @@ export function ConectarLive({
             conectando={conectando}
             passo={PASSOS_DA_CONEXAO[passoConexao] ?? PASSOS_DA_CONEXAO[0]!}
             aoCancelar={() => setAguardando(false)}
+            aoBaixarLiveStudio={() =>
+              void ponte.abrirNoNavegador(URL_LIVE_STUDIO)
+            }
           />
         ) : (
           <Button
@@ -597,16 +607,33 @@ function EsperaGuiada({
   conectando,
   passo,
   aoCancelar,
+  aoBaixarLiveStudio,
 }: {
   readonly conectando: boolean;
   readonly passo: string;
   readonly aoCancelar: () => void;
+  /** Abre a página oficial do TikTok LIVE Studio no navegador do sistema. */
+  readonly aoBaixarLiveStudio: () => void;
 }): JSX.Element {
-  const passos = [
-    'Pegue o celular e abra o TikTok.',
-    'Toque no ＋ (criar) e deslize até LIVE.',
-    'Dê um título e toque em "Iniciar transmissão".',
-  ];
+  /*
+   * Celular e computador são caminhos IGUAIS, escolhidos por abas — não um
+   * caminho principal com o outro de rodapé. Quem transmite do PC (LIVE
+   * Studio) é justamente o perfil que mais usa este app, e a primeira versão
+   * desta tela o tratava como exceção. Celular abre primeiro por ser o comum.
+   */
+  const [meio, setMeio] = useState<'celular' | 'computador'>('celular');
+  const passos =
+    meio === 'celular'
+      ? [
+          'Pegue o celular e abra o TikTok.',
+          'Toque no ＋ (criar) e deslize até LIVE.',
+          'Dê um título e toque em "Iniciar transmissão".',
+        ]
+      : [
+          'Instale o TikTok LIVE Studio (botão abaixo) — é o programa oficial do TikTok para transmitir do computador.',
+          'Entre nele com a MESMA conta logada aqui do lado.',
+          'Escolha câmera ou tela, dê um título e clique em "Go LIVE".',
+        ];
   return (
     <Box
       sx={{
@@ -621,6 +648,25 @@ function EsperaGuiada({
         <Typography variant="subtitle1" fontWeight={800}>
           Tudo pronto por aqui — agora é só entrar ao vivo
         </Typography>
+        <Stack direction="row" spacing={1}>
+          {(
+            [
+              ['celular', 'Pelo celular'],
+              ['computador', 'Pelo computador'],
+            ] as const
+          ).map(([valor, rotulo]) => (
+            <Button
+              key={valor}
+              size="small"
+              variant={meio === valor ? 'contained' : 'outlined'}
+              color={meio === valor ? 'primary' : 'inherit'}
+              onClick={() => setMeio(valor)}
+              sx={{ borderRadius: 999, px: 1.75 }}
+            >
+              {rotulo}
+            </Button>
+          ))}
+        </Stack>
         <Stack spacing={0.75}>
           {passos.map((texto, i) => (
             <Stack key={texto} direction="row" spacing={1} alignItems="flex-start">
@@ -645,10 +691,23 @@ function EsperaGuiada({
             </Stack>
           ))}
         </Stack>
-        <Typography variant="caption" color="text.secondary">
-          Transmite pelo computador? Abra o TikTok LIVE Studio e inicie por lá —
-          funciona do mesmo jeito.
-        </Typography>
+        {meio === 'computador' ? (
+          <>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={aoBaixarLiveStudio}
+              sx={{ alignSelf: 'flex-start' }}
+            >
+              Baixar o TikTok LIVE Studio
+            </Button>
+            <Typography variant="caption" color="text.secondary">
+              Já tem o LIVE Studio instalado? Pule o passo 1 e só entre ao vivo
+              por ele. O TikTok costuma pedir 1.000 seguidores para liberar a
+              live pelo computador — quem decide é ele.
+            </Typography>
+          </>
+        ) : null}
         <Typography
           variant="body2"
           sx={{ color: cores.ciano, fontWeight: 700 }}
