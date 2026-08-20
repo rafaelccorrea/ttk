@@ -286,6 +286,15 @@ Também aberto:
   mesma aprovação de seller (ver §1).
 
 Fechado desde a última revisão:
+- ~~Usuário perdido antes de conectar~~. Clicar "Entrar na live" com a live fora
+  do ar devolvia só o erro "comece a transmissão no TikTok primeiro" — sem dizer
+  como, nem perceber quando ela começava. Agora a tela vira uma **espera
+  guiada**: passo a passo de como abrir a live (celular; LIVE Studio para quem
+  transmite do computador) e conexão automática assim que a transmissão for
+  detectada no ar (mesma leitura `"status":2`, conferida a cada 15s pela tela de
+  conectar — `ConectarLive.tsx` + IPC `tiktok:aoVivo`). Iniciar a live de dentro
+  do app continua impossível por limite do TikTok: não há API pública para abrir
+  transmissão.
 - ~~Janela entre o débito e o marcador de pendência~~. `charge` agora aceita um
   `EntityManager`, e o pipeline põe débito e marcador na mesma transação: ou os
   dois acontecem, ou nenhum. Antes, um restart na janela errada sumia com o
