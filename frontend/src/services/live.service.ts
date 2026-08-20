@@ -368,7 +368,11 @@ export const liveService = {
    * (e em dev, onde o `dist/app` não existe): vira "em breve" no card.
    */
   getDownload: (): Promise<DownloadDoApp> =>
-    fetch('/app/download.json')
+    // `no-store` porque este arquivo MUDA a cada release mantendo a mesma URL:
+    // sem isso o navegador reusa o JSON em cache e o site anuncia (e baixa) a
+    // versão anterior até o cache expirar. O `.exe` não precisa disso — o nome
+    // dele carrega a versão, então cada release é uma URL nova.
+    fetch('/app/download.json', { cache: 'no-store' })
       .then((r) => {
         if (!r.ok) throw new Error(`download.json: ${r.status}`);
         return r.json() as Promise<DownloadDoApp>;
