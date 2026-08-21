@@ -693,7 +693,9 @@ function Storyboard({
 
       {/* Legenda é escolha: quem usa a legenda automática do TikTok acabava
           com duas sobrepostas. Mudar com o final pronto descarta o arquivo e a
-          montagem automática refaz com a escolha nova. */}
+          montagem automática refaz com a escolha nova. Campanha muda não tem
+          fala nenhuma — não há o que legendar. */}
+      {detalhe.vozNarrador !== SEM_NARRACAO && (
       <FormControlLabel
         sx={{ alignSelf: 'flex-start', ml: 0 }}
         control={
@@ -713,6 +715,7 @@ function Storyboard({
           </Typography>
         }
       />
+      )}
 
       {/* A fala não entra no prompt do vídeo (só a ação visual entra), então o
           clipe sai sem narração automática. Prometer implicitamente o
@@ -1291,6 +1294,9 @@ function Storyboard({
                         <MenuItem value="unboxing">Unboxing da embalagem</MenuItem>
                         <MenuItem value="produto_close">Produto em close</MenuItem>
                       </TextField>
+                      {/* Campanha muda: toda cena é "sem fala" por definição —
+                          um select de opção única só levantaria dúvida. */}
+                      {detalhe.vozNarrador !== SEM_NARRACAO && (
                       <TextField
                         select
                         size="small"
@@ -1321,19 +1327,24 @@ function Storyboard({
                           ))}
                         <MenuItem value="sem_fala">Sem fala · só a cena</MenuItem>
                       </TextField>
+                      )}
                     </Stack>
                   )}
-                  <CampoDeCena
-                    rotulo={`Cena ${cena.ordem} — fala`}
-                    valorSalvo={cena.fala}
-                    bloqueado={cena.status === 'pronta'}
-                    validar={validarFala}
-                    aviso={avisoFalaLonga}
-                    limite={LIMITES.fala}
-                    salvar={(valor) =>
-                      acao(() => campaignsService.updateScene(cena.id, { fala: valor }))
-                    }
-                  />
+                  {/* Campanha muda não tem fala em cena nenhuma — o campo só
+                      confundiria ("fala de quê, se não tem voz?"). */}
+                  {detalhe.vozNarrador !== SEM_NARRACAO && (
+                    <CampoDeCena
+                      rotulo={`Cena ${cena.ordem} — fala`}
+                      valorSalvo={cena.fala}
+                      bloqueado={cena.status === 'pronta'}
+                      validar={validarFala}
+                      aviso={avisoFalaLonga}
+                      limite={LIMITES.fala}
+                      salvar={(valor) =>
+                        acao(() => campaignsService.updateScene(cena.id, { fala: valor }))
+                      }
+                    />
+                  )}
                   <CampoDeCena
                     rotulo="O que aparece na tela"
                     valorSalvo={cena.acaoVisual}

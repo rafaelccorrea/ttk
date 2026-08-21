@@ -807,7 +807,10 @@ export class CampaignsService {
       priceBrl: produto.priceBrl === null ? null : Number(produto.priceBrl),
       cenas: this.cenasPara(campanha.durationSeconds),
       persona:
-        persona?.label ?? 'ninguém — vídeo sem apresentador, só narração em off',
+        persona?.label ??
+        (campanha.vozNarrador === SEM_NARRACAO
+          ? 'ninguém — vídeo sem apresentador e sem voz nenhuma'
+          : 'ninguém — vídeo sem apresentador, só narração em off'),
       temFotoDoProduto: produto.images.length > 0,
       // Quantas fotos existem, não só se existe alguma: com cinco ângulos dá
       // para planejar mais de uma demonstração, e o roteiro deixava esse
@@ -815,6 +818,7 @@ export class CampaignsService {
       fotosDoProduto: produto.images.length,
       referencias: await this.ganchosDaCategoria(produto),
       estilo: campanha.estilo,
+      semNarracao: campanha.vozNarrador === SEM_NARRACAO,
     };
 
     const run = () => this.ai.generateCampaign(pedido);

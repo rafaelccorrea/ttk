@@ -226,6 +226,11 @@ export interface CampanhaRequest {
    * roteirista decidir cena a cena.
    */
   estilo?: CampaignStyle;
+  /**
+   * Vídeo mudo: o vendedor criou a campanha sem narração nenhuma. O roteiro
+   * não escreve fala — a história inteira precisa caber na ação visual.
+   */
+  semNarracao?: boolean;
 }
 
 const LIVE_SYSTEM = `Você é um roteirista especialista em lives de vendas no TikTok Shop Brasil.
@@ -868,6 +873,7 @@ export class AiService {
         request.cenas,
         Boolean(request.temFotoDoProduto),
         request.estilo,
+        request.semNarracao,
       );
       if (!cenas.length) {
         this.logger.warn('Resposta sem cenas utilizáveis; usando template.');
@@ -908,6 +914,7 @@ export class AiService {
     esperadas: number,
     permitirProduto: boolean,
     estilo?: CampaignStyle,
+    semNarracao?: boolean,
   ): CenaGerada[] {
     const inicio = texto.indexOf('[');
     const fim = texto.lastIndexOf(']');
@@ -931,15 +938,17 @@ export class AiService {
           estilo,
         });
         return {
+          // Vídeo mudo não tem fala nenhuma — mesmo que o modelo escreva uma,
+          // ela viraria legenda órfã de um áudio que não existe.
           // 90 e não 400: é o que cabe FALADO em 5s (mesmo teto do UpdateSceneDto).
-          fala: c.fala.trim().slice(0, 90),
+          fala: semNarracao ? '' : c.fala.trim().slice(0, 90),
           acaoVisual: c.acaoVisual.trim().slice(0, 400),
           comoUsa:
             typeof c.comoUsa === 'string'
               ? c.comoUsa.trim().slice(0, 120) || undefined
               : undefined,
           tipoCena,
-          modoAudio,
+          modoAudio: semNarracao ? ('sem_fala' as const) : modoAudio,
           // Campos legados derivados, para quem ainda lê o formato antigo.
           seguraProduto: tipoCena === 'apresentador_produto',
           mostraProduto: cenaSemPessoa(tipoCena),
@@ -951,7 +960,8 @@ export class AiService {
     const linhas = [`# Roteiro — ${produto}`, ''];
     cenas.forEach((cena, i) => {
       linhas.push(`**Cena ${i + 1}** _[${cena.acaoVisual}]_`);
-      linhas.push(`"${cena.fala}"`);
+      // Campanha muda: a cena não tem fala — aspas vazias leriam como erro.
+      if (cena.fala.trim()) linhas.push(`"${cena.fala}"`);
       linhas.push('');
     });
     return linhas.join('\n');
@@ -975,6 +985,9 @@ export class AiService {
         : r.estilo === 'sem_apresentador'
           ? 'Estilo escolhido pelo vendedor: SEM apresentador. NENHUMA cena tem pessoa ou rosto em quadro — use apenas "mao_produto", "unboxing" e "produto_close", com "modoAudio": "narracao" (ou "sem_fala"). O gancho é o close mais impactante do produto com a promessa narrada.'
           : null,
+      r.semNarracao
+        ? 'O vídeo é MUDO: sem narração e sem voz nenhuma. Em TODAS as cenas use "modoAudio": "sem_fala" e "fala": "" (string vazia) — a história inteira precisa estar na "acaoVisual", contada só com imagem, gesto e movimento de câmera.'
+        : null,
     ].filter(Boolean) as string[];
 
     if (r.referencias?.length) {
@@ -1053,8 +1066,10 @@ export class AiService {
       });
       return {
         ...cena,
+        // Vídeo mudo: o template também sai sem fala nenhuma.
+        fala: r.semNarracao ? '' : cena.fala,
         tipoCena,
-        modoAudio,
+        modoAudio: r.semNarracao ? ('sem_fala' as const) : modoAudio,
         seguraProduto: tipoCena === 'apresentador_produto',
         mostraProduto: cenaSemPessoa(tipoCena),
       };
