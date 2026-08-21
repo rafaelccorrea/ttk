@@ -2,6 +2,12 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiCostService } from '../telemetry/ai-cost.service';
 import { CostFeature } from '../telemetry/entities/ai-cost-event.entity';
+import {
+  SceneAudioMode,
+  SceneKind,
+  cenaSemPessoa,
+} from '../campaigns/entities/campaign-scene.entity';
+import { CampaignStyle } from '../campaigns/entities/campaign.entity';
 
 export interface ScriptRequest {
   type: 'live' | 'video';
@@ -60,13 +66,21 @@ export interface CenaGerada {
   fala: string;
   acaoVisual: string;
   /**
-   * Cena de demonstração, animada a partir da FOTO REAL do produto em vez do
-   * retrato do apresentador. Só é pedida quando o vendedor subiu fotos.
+   * Formato da cena — o mesmo enum de `campaign_scenes.tipo`. Sempre presente
+   * nas cenas normalizadas por `extrairCenas` e no fallback; opcional só para
+   * quem constrói o objeto à mão (testes, mocks) com os campos legados.
+   */
+  tipoCena?: SceneKind;
+  /** Como a fala vira áudio; normalizado junto com `tipoCena`. */
+  modoAudio?: SceneAudioMode;
+  /**
+   * LEGADO (mantido para roteiros antigos e mocks): cena de demonstração,
+   * animada a partir da FOTO REAL do produto. Hoje é derivado de `tipoCena`.
    */
   mostraProduto?: boolean;
   /**
-   * Cena de apresentador em que a pessoa manuseia/usa o produto — quem
-   * renderiza usa isso para compor retrato+foto real no frame base.
+   * LEGADO: apresentador que manuseia/usa o produto — hoje é
+   * `tipoCena = 'apresentador_produto'`.
    */
   seguraProduto?: boolean;
   /**
@@ -81,6 +95,60 @@ export interface CampanhaResult extends ScriptResult {
   cenas: CenaGerada[];
   /** Gesto de uso real do produto ("escreve no papel") — um por roteiro. */
   comoUsa?: string | null;
+}
+
+const TIPOS_DE_CENA: SceneKind[] = [
+  'apresentador',
+  'apresentador_produto',
+  'mao_produto',
+  'unboxing',
+  'produto_close',
+];
+
+const MODOS_DE_AUDIO: SceneAudioMode[] = ['fala', 'narracao', 'sem_fala'];
+
+/**
+ * Trava a saída do modelo nas regras que não são negociáveis, na ordem em que
+ * elas mandam: valor desconhecido cai no formato derivável dos campos legados;
+ * sem foto não existe cena sem pessoa (é a foto que a cena anima); o estilo
+ * escolhido pelo vendedor vence o modelo; o gancho é com rosto (abrir num
+ * close de objeto não segura o scroll), exceto no vídeo sem apresentador; e o
+ * áudio segue o tipo — cena sem pessoa nunca "fala" (não há lábios para
+ * sincronizar) e cena de apresentador nunca "narracao" (TTS por cima do rosto
+ * dessincroniza a boca — defeito visto em produção).
+ */
+function normalizarTipoDaCena(
+  c: CenaGerada,
+  ordem: number,
+  regras: { permitirProduto: boolean; estilo?: CampaignStyle },
+): { tipoCena: SceneKind; modoAudio: SceneAudioMode } {
+  const { permitirProduto, estilo } = regras;
+  let tipo: SceneKind = TIPOS_DE_CENA.includes(c.tipoCena as SceneKind)
+    ? (c.tipoCena as SceneKind)
+    : c.mostraProduto === true
+      ? 'produto_close'
+      : c.seguraProduto === true
+        ? 'apresentador_produto'
+        : 'apresentador';
+  if (cenaSemPessoa(tipo) && !permitirProduto) tipo = 'apresentador';
+  if (estilo === 'ugc' && cenaSemPessoa(tipo)) {
+    tipo = permitirProduto ? 'apresentador_produto' : 'apresentador';
+  }
+  if (estilo === 'sem_apresentador' && permitirProduto && !cenaSemPessoa(tipo)) {
+    tipo = 'produto_close';
+  }
+  if (ordem === 0 && estilo !== 'sem_apresentador' && cenaSemPessoa(tipo)) {
+    tipo = 'apresentador';
+  }
+
+  let modo: SceneAudioMode = MODOS_DE_AUDIO.includes(c.modoAudio as SceneAudioMode)
+    ? (c.modoAudio as SceneAudioMode)
+    : cenaSemPessoa(tipo)
+      ? 'narracao'
+      : 'fala';
+  if (cenaSemPessoa(tipo) && modo === 'fala') modo = 'narracao';
+  if (!cenaSemPessoa(tipo) && modo === 'narracao') modo = 'fala';
+  return { tipoCena: tipo, modoAudio: modo };
 }
 
 /** Um anúncio real usado como matéria-prima para destilar o formato. */
@@ -152,6 +220,12 @@ export interface CampanhaRequest {
   fotosDoProduto?: number;
   /** Ganchos que estão performando na categoria, se houver. */
   referencias?: string[];
+  /**
+   * Estilo escolhido na campanha: `ugc` trava tudo com apresentador,
+   * `sem_apresentador` proíbe rosto em quadro, `misto` (default) deixa o
+   * roteirista decidir cena a cena.
+   */
+  estilo?: CampaignStyle;
 }
 
 const LIVE_SYSTEM = `Você é um roteirista especialista em lives de vendas no TikTok Shop Brasil.
@@ -193,21 +267,27 @@ O que separa um roteiro que vende de um que enfeita (siga TUDO):
 - O PRODUTO dita a ação: a demonstração usa o produto do jeito que ele é usado na vida real. Caneta ESCREVE no papel; batom PASSA nos lábios; camiseta é VESTIDA ou mostrada no corpo; creme é ESPALHADO na pele; fone vai ao OUVIDO; utensílio de cozinha é usado COZINHANDO. Nunca descreva um gesto genérico ("segura e mostra") quando existe o gesto natural daquele tipo de produto.
 - Varie o enquadramento e o gesto em CADA cena de apresentador ("inclina para a câmera", "mostra com as mãos", "aponta para baixo") — duas cenas com a mesma pose parecem foto repetida. E dentro de UMA cena, um gesto só acontece UMA vez: nada de repetir o mesmo movimento no mesmo clipe.
 - "acaoVisual" rica em detalhes concretos: o que a mão faz, para onde o olhar vai, o que entra ou sai do quadro, em que superfície a ação acontece — detalhe suficiente para filmar sem adivinhar nada.
-- OBRIGATÓRIO, sem exceção: a SEGUNDA cena de apresentador do roteiro (contando o gancho como a primeira) mostra a pessoa SEGURANDO O PRODUTO na mão, perto do rosto, enquanto fala dele — escreva isso explicitamente em "acaoVisual" ("segura o [produto] na mão, perto do rosto") e marque "seguraProduto": true. É cena de apresentador ("mostraProduto": false — a pessoa continua em quadro). Roteiro sem essa cena está ERRADO.
+- OBRIGATÓRIO quando o roteiro tem cenas de apresentador: a SEGUNDA cena de apresentador (contando o gancho como a primeira) mostra a pessoa SEGURANDO O PRODUTO na mão, perto do rosto, enquanto fala dele — escreva isso explicitamente em "acaoVisual" ("segura o [produto] na mão, perto do rosto") e marque "tipoCena": "apresentador_produto". Roteiro com apresentador e sem essa cena está ERRADO.
 - As cenas se emendam: cada fala puxa a seguinte (pergunta → resposta, problema → virada, prova → oferta). Lidas em sequência, formam UMA conversa, não slides soltos.
 - As IMAGENS também se emendam: o fim de uma "acaoVisual" prepara o começo da seguinte, como se uma cena fizesse parte da outra — a mão que pega o produto no fim de uma cena é a mão que já o usa na próxima; o olhar que desce para o objeto vira o close desse objeto. Transição limpa e sutil, nunca um salto de contexto (cozinha → banheiro sem motivo).
 
 Responda APENAS com um array JSON, sem texto antes ou depois, no formato:
-[{"fala": "...", "acaoVisual": "...", "mostraProduto": false, "seguraProduto": false, "comoUsa": "..."}]
+[{"fala": "...", "acaoVisual": "...", "tipoCena": "apresentador", "modoAudio": "fala", "comoUsa": "..."}]
 
 Regras para cada campo:
 - "fala": português do Brasil falado, no máximo 12 palavras E 90 caracteres — dita COM CALMA, é o que cabe em 5 segundos sem atropelar o final. Escreva como se FALA, não como se escreve: ritmo de conversa, vírgula onde a pessoa respira;
 - "acaoVisual": o que a câmera mostra — AÇÃO e ENQUADRAMENTO apenas;
 - "comoUsa": o gesto de uso REAL deste produto, em 3 a 8 palavras no infinitivo ("escrever no papel", "passar nos lábios", "vestir e mostrar no corpo"). Deduza do tipo do produto e repita a MESMA frase em todas as cenas;
-- "seguraProduto": true quando a cena é de apresentador ("mostraProduto": false) e a pessoa segura, mostra ou USA o produto em quadro; false nas demais e em toda cena de produto;
-- "mostraProduto": true quando a cena é uma demonstração em close do produto, sem a pessoa em quadro. Nessas cenas a imagem parte de uma FOTO REAL do produto, então "acaoVisual" deve descrever só movimento de câmera e do objeto — de preferência mãos USANDO o produto do jeito real dele (caneta escrevendo, batom passando, creme espalhando); girar o produto no ar é o último recurso, só para produto sem gesto de uso. Nunca a pessoa em quadro.
+- "tipoCena": o formato da cena, um destes cinco valores:
+  - "apresentador": a pessoa falando para a câmera, sem o produto em mãos;
+  - "apresentador_produto": a pessoa em quadro segurando, mostrando ou USANDO o produto;
+  - "mao_produto": SÓ as mãos manuseando/aplicando o produto, sem rosto nem corpo em quadro;
+  - "unboxing": mãos abrindo a caixa/embalagem do produto e revelando o que vem dentro, sem rosto;
+  - "produto_close": close do produto sozinho, movimento de câmera e do objeto, sem pessoa.
+  Nas três últimas a imagem parte de uma FOTO REAL do produto, então "acaoVisual" descreve só o movimento de câmera, do objeto e das mãos — de preferência mãos USANDO o produto do jeito real dele (caneta escrevendo, batom passando, creme espalhando); girar o produto no ar é o último recurso, só para produto sem gesto de uso. Use "unboxing" apenas se a embalagem for parte do apelo (presente, kit, lacre) — e no máximo UMA vez por roteiro;
+- "modoAudio": como a fala vira áudio — "fala" (a pessoa em quadro diz a frase; só faz sentido em cena de apresentador), "narracao" (voz em off narra a frase; é o padrão das cenas sem pessoa) ou "sem_fala" (cena só visual, deixe "fala" com uma frase curta que vira legenda). Cena sem pessoa NUNCA usa "fala".
 
-A primeira cena é SEMPRE da pessoa falando ("mostraProduto": false): gancho precisa de rosto. O CTA final normalmente também converte melhor com rosto — mas se o produto em close com a oferta narrada contar melhor a história (ex.: unboxing, resultado final), a última cena pode ser de produto.
+A primeira cena é SEMPRE da pessoa falando ("tipoCena": "apresentador"): gancho precisa de rosto — exceto se o pedido disser que o vídeo é SEM apresentador; nesse caso o gancho é o close mais impactante do produto com a promessa narrada. O CTA final normalmente também converte melhor com rosto — mas se o produto em close com a oferta narrada contar melhor a história (ex.: unboxing, resultado final), a última cena pode ser sem pessoa.
 
 Antes de responder, releia cada fala e pergunte: "eu pararia o scroll por isso?". Se alguma resposta for não, reescreva essa fala — a resposta final já vem revisada.
 
@@ -787,6 +867,7 @@ export class AiService {
         texto,
         request.cenas,
         Boolean(request.temFotoDoProduto),
+        request.estilo,
       );
       if (!cenas.length) {
         this.logger.warn('Resposta sem cenas utilizáveis; usando template.');
@@ -826,6 +907,7 @@ export class AiService {
     texto: string,
     esperadas: number,
     permitirProduto: boolean,
+    estilo?: CampaignStyle,
   ): CenaGerada[] {
     const inicio = texto.indexOf('[');
     const fim = texto.lastIndexOf(']');
@@ -843,24 +925,26 @@ export class AiService {
           typeof c?.fala === 'string' && typeof c?.acaoVisual === 'string',
       )
       .slice(0, esperadas)
-      .map((c, i) => ({
-        // 90 e não 400: é o que cabe FALADO em 5s (mesmo teto do UpdateSceneDto).
-        fala: c.fala.trim().slice(0, 90),
-        acaoVisual: c.acaoVisual.trim().slice(0, 400),
-        comoUsa:
-          typeof c.comoUsa === 'string'
-            ? c.comoUsa.trim().slice(0, 120) || undefined
-            : undefined,
-        // Só vale em cena de apresentador: em cena de produto a pessoa nem
-        // aparece, não há o que compor.
-        seguraProduto: c.seguraProduto === true && c.mostraProduto !== true,
-        // O gancho é sempre com rosto, mesmo se o modelo marcar diferente:
-        // abrir num close de objeto não segura o scroll. A última cena ficou
-        // por conta do modelo — travá-la em rosto deixava um único slot de
-        // demonstração no vídeo de 15s, e o vendedor via as cinco fotos dele
-        // viraram uma.
-        mostraProduto: permitirProduto && i !== 0 && c.mostraProduto === true,
-      }));
+      .map((c, i) => {
+        const { tipoCena, modoAudio } = normalizarTipoDaCena(c, i, {
+          permitirProduto,
+          estilo,
+        });
+        return {
+          // 90 e não 400: é o que cabe FALADO em 5s (mesmo teto do UpdateSceneDto).
+          fala: c.fala.trim().slice(0, 90),
+          acaoVisual: c.acaoVisual.trim().slice(0, 400),
+          comoUsa:
+            typeof c.comoUsa === 'string'
+              ? c.comoUsa.trim().slice(0, 120) || undefined
+              : undefined,
+          tipoCena,
+          modoAudio,
+          // Campos legados derivados, para quem ainda lê o formato antigo.
+          seguraProduto: tipoCena === 'apresentador_produto',
+          mostraProduto: cenaSemPessoa(tipoCena),
+        };
+      });
   }
 
   private cenasParaMarkdown(produto: string, cenas: CenaGerada[]): string {
@@ -882,11 +966,15 @@ export class AiService {
       `Quem apresenta: ${r.persona}`,
       `Número de cenas: ${r.cenas} (cada uma com ~5 segundos de fala)`,
       r.temFotoDoProduto
-        ? `O vendedor tem ${r.fotosDoProduto ?? 1} foto(s) real(is) do produto: use "mostraProduto": true nas cenas de demonstração. ` +
+        ? `O vendedor tem ${r.fotosDoProduto ?? 1} foto(s) real(is) do produto: use os tipos sem pessoa ("mao_produto", "unboxing", "produto_close") nas cenas de demonstração. ` +
           'Cada cena de demonstração parte de uma foto DIFERENTE, então aproveite o material — ' +
-          'com mais de uma foto, marque mais de uma cena do miolo como demonstração. ' +
-          'A primeira e a última cena são sempre com a pessoa em quadro (gancho e CTA).'
-        : 'Não há foto do produto: use "mostraProduto": false em TODAS as cenas.',
+          'com mais de uma foto, marque mais de uma cena do miolo como demonstração.'
+        : 'Não há foto do produto: TODAS as cenas são de apresentador ("apresentador" ou "apresentador_produto").',
+      r.estilo === 'ugc'
+        ? 'Estilo escolhido pelo vendedor: COM apresentador. Toda cena tem a pessoa em quadro — use apenas "apresentador" e "apresentador_produto".'
+        : r.estilo === 'sem_apresentador'
+          ? 'Estilo escolhido pelo vendedor: SEM apresentador. NENHUMA cena tem pessoa ou rosto em quadro — use apenas "mao_produto", "unboxing" e "produto_close", com "modoAudio": "narracao" (ou "sem_fala"). O gancho é o close mais impactante do produto com a promessa narrada.'
+          : null,
     ].filter(Boolean) as string[];
 
     if (r.referencias?.length) {
@@ -957,12 +1045,20 @@ export class AiService {
     ];
 
     // Mesmas travas da saída do modelo: sem foto não existe cena de produto,
-    // e o gancho é sempre com rosto.
-    const cenas = base.slice(0, r.cenas).map((cena, i) => ({
-      ...cena,
-      mostraProduto:
-        Boolean(r.temFotoDoProduto) && i !== 0 && cena.mostraProduto === true,
-    }));
+    // o gancho é sempre com rosto e o estilo escolhido vence o template.
+    const cenas = base.slice(0, r.cenas).map((cena, i) => {
+      const { tipoCena, modoAudio } = normalizarTipoDaCena(cena, i, {
+        permitirProduto: Boolean(r.temFotoDoProduto),
+        estilo: r.estilo,
+      });
+      return {
+        ...cena,
+        tipoCena,
+        modoAudio,
+        seguraProduto: tipoCena === 'apresentador_produto',
+        mostraProduto: cenaSemPessoa(tipoCena),
+      };
+    });
     return {
       content: this.cenasParaMarkdown(r.productName, cenas),
       cenas,

@@ -110,9 +110,11 @@ export class CreateCampaignDto {
   @IsUUID()
   userProductId: string;
 
-  @ApiProperty()
+  /** Obrigatória, EXCETO quando `estilo = 'sem_apresentador'`. */
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsUUID()
-  personaId: string;
+  personaId?: string;
 
   /**
    * 15s era o único formato "curto", e é o pior para vender: com a regra de
@@ -123,6 +125,22 @@ export class CreateCampaignDto {
   @IsOptional()
   @IsIn([15, 30, 45, 60])
   durationSeconds?: number;
+
+  /** Com apresentador, sem apresentador, ou a IA decide (default). */
+  @ApiPropertyOptional({ enum: ['ugc', 'sem_apresentador', 'misto'], default: 'misto' })
+  @IsOptional()
+  @IsIn(['ugc', 'sem_apresentador', 'misto'])
+  estilo?: 'ugc' | 'sem_apresentador' | 'misto';
+
+  /**
+   * Voz do narrador (id do grupo `voz` do catálogo) — obrigatória quando o
+   * estilo é `sem_apresentador`, ignorada nos demais (a voz vem da persona).
+   */
+  @ApiPropertyOptional({ example: 'feminina-jovem' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  vozNarrador?: string;
 }
 
 export class UpdateCampaignDto {
@@ -163,4 +181,18 @@ export class UpdateSceneDto {
   @IsString()
   @MaxLength(2048)
   baseImageUrl?: string;
+
+  /** Formato da cena — trocar invalida o render pendente e refaz o prompt. */
+  @ApiPropertyOptional({
+    enum: ['apresentador', 'apresentador_produto', 'mao_produto', 'unboxing', 'produto_close'],
+  })
+  @IsOptional()
+  @IsIn(['apresentador', 'apresentador_produto', 'mao_produto', 'unboxing', 'produto_close'])
+  tipoCena?: 'apresentador' | 'apresentador_produto' | 'mao_produto' | 'unboxing' | 'produto_close';
+
+  /** Como a fala vira áudio; "fala" só é aceita em cena com apresentador. */
+  @ApiPropertyOptional({ enum: ['fala', 'narracao', 'sem_fala'] })
+  @IsOptional()
+  @IsIn(['fala', 'narracao', 'sem_fala'])
+  modoAudio?: 'fala' | 'narracao' | 'sem_fala';
 }

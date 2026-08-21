@@ -26,7 +26,12 @@ import {
   UpdateSceneDto,
 } from './dto/campaigns.dto';
 import { Campaign } from './entities/campaign.entity';
-import { CampaignScene } from './entities/campaign-scene.entity';
+import {
+  CampaignScene,
+  SceneKind,
+  cenaComApresentador,
+  cenaSemPessoa,
+} from './entities/campaign-scene.entity';
 import { Persona } from './entities/persona.entity';
 import { UserProduct } from './entities/user-product.entity';
 import { VideoAssemblyService } from './video-assembly.service';
@@ -34,6 +39,7 @@ import { precosPorExtensoNoTexto } from '../../common/preco-por-extenso';
 import {
   PERSONA_GROUPS,
   PersonaAttributes,
+  TTS_POR_VOZ,
   fragmentoDeVoz,
   montarFragmento,
   rotularPersona,
@@ -122,6 +128,50 @@ function vozDaPersona(attrs: Partial<PersonaAttributes> | null | undefined): str
 function vozDeNarrador(attrs: Partial<PersonaAttributes> | null | undefined): string {
   const a = attrs ?? {};
   return `off-screen narrator — ${fragmentoDeVoz(a)}, ${tomDaPersona(a).video}`;
+}
+
+/**
+ * O SUJEITO das cenas sem pessoa, por formato. Os três partem da mesma foto
+ * real e da mesma trava de identidade do produto; o que muda é quem "atua":
+ * a câmera (close), as mãos usando, ou as mãos abrindo a embalagem.
+ */
+function sujeitoSemPessoa(
+  tipo: SceneKind,
+  nomeProduto: string | undefined,
+  comoUsa: string | null,
+): string {
+  const nome = nomeProduto ? ` — "${nomeProduto}"` : '';
+  const identidade =
+    '. Keep its shape, colors, label and packaging IDENTICAL — never redesign it. ';
+  if (tipo === 'unboxing') {
+    return (
+      `Close-up of a pair of hands unboxing the exact product in the starting frame${nome}` +
+      identidade +
+      'Hands open the box or packaging naturally and reveal the product to the camera — ' +
+      'peel, lift the lid or slide it out, one step at a time, as in a real unboxing video. ' +
+      'The reveal is the moment: the product ends the clip clearly visible.'
+    );
+  }
+  if (tipo === 'mao_produto') {
+    return (
+      `Close-up of a pair of hands using the exact product in the starting frame${nome}` +
+      identidade +
+      (comoUsa
+        ? `The hands actually USE it — how (in Portuguese): ${comoUsa}. `
+        : 'The hands use it the way THIS type of product is used in real life (a pen writes, a lipstick is applied, a cream is spread). ') +
+      'Natural, unhurried handling — never a generic "hold and rotate".'
+    );
+  }
+  return (
+    `Close-up demonstration of the exact product in the starting frame${nome}` +
+    identidade +
+    // O gesto vem do roteirista, que conhece o produto; os exemplos são
+    // só a rede para roteiro antigo/fallback sem `comoUsa`.
+    (comoUsa
+      ? `Show the product actually being used — how (in Portuguese): ${comoUsa}. `
+      : 'Show the product the way THIS type of product is used in real life (a pen writes, a lipstick is applied, a garment is worn). ') +
+    'Never a generic "hold and rotate" when it has a natural use gesture.'
+  );
 }
 
 /**
@@ -572,14 +622,34 @@ export class CampaignsService {
         `Envie ao menos ${MIN_FOTOS} fotos do produto para criar a campanha (há ${produto.images.length}).`,
       );
     }
-    const persona = await this.personas.findOneBy({ id: dto.personaId, userId });
-    if (!persona) throw new NotFoundException('Persona não encontrada.');
+    const estilo = dto.estilo ?? 'misto';
+    let personaId: string | null = null;
+    let vozNarrador: string | null = null;
+    if (estilo === 'sem_apresentador') {
+      // Sem persona a única fonte de voz é a escolha explícita — e barrar um
+      // id inventado aqui evita um TTS mudo lá na frente.
+      if (!dto.vozNarrador || !TTS_POR_VOZ[dto.vozNarrador]) {
+        throw new BadRequestException(
+          'Escolha a voz do narrador para uma campanha sem apresentador.',
+        );
+      }
+      vozNarrador = dto.vozNarrador;
+    } else {
+      if (!dto.personaId) {
+        throw new BadRequestException('Escolha quem apresenta a campanha.');
+      }
+      const persona = await this.personas.findOneBy({ id: dto.personaId, userId });
+      if (!persona) throw new NotFoundException('Persona não encontrada.');
+      personaId = persona.id;
+    }
 
     return this.campanhas.save(
       this.campanhas.create({
         userId,
         userProductId: produto.id,
-        personaId: persona.id,
+        personaId,
+        estilo,
+        vozNarrador,
         title: produto.name,
         durationSeconds: dto.durationSeconds ?? 15,
         status: 'rascunho',
@@ -696,7 +766,7 @@ export class CampaignsService {
     if (!campanha) throw new NotFoundException('Campanha não encontrada.');
     const [produto, persona, cenas] = await Promise.all([
       this.produtos.findOneBy({ id: campanha.userProductId }),
-      this.personas.findOneBy({ id: campanha.personaId }),
+      this.personaDaCampanha(campanha),
       this.cenas.find({ where: { campaignId: id }, order: { ordem: 'ASC' } }),
     ]);
     return { ...campanha, produto, persona, cenas };
@@ -721,8 +791,8 @@ export class CampaignsService {
     }
 
     const produto = await this.produtos.findOneBy({ id: campanha.userProductId });
-    const persona = await this.personas.findOneBy({ id: campanha.personaId });
-    if (!produto || !persona) {
+    const persona = await this.personaDaCampanha(campanha);
+    if (!produto || (!persona && campanha.estilo !== 'sem_apresentador')) {
       throw new NotFoundException('Produto ou persona da campanha não existe mais.');
     }
 
@@ -732,13 +802,15 @@ export class CampaignsService {
       problemSolved: produto.problemSolved,
       priceBrl: produto.priceBrl === null ? null : Number(produto.priceBrl),
       cenas: this.cenasPara(campanha.durationSeconds),
-      persona: persona.label,
+      persona:
+        persona?.label ?? 'ninguém — vídeo sem apresentador, só narração em off',
       temFotoDoProduto: produto.images.length > 0,
       // Quantas fotos existem, não só se existe alguma: com cinco ângulos dá
       // para planejar mais de uma demonstração, e o roteiro deixava esse
       // material parado.
       fotosDoProduto: produto.images.length,
       referencias: await this.ganchosDaCategoria(produto),
+      estilo: campanha.estilo,
     };
 
     const run = () => this.ai.generateCampaign(pedido);
@@ -763,8 +835,17 @@ export class CampaignsService {
     let demonstracao = 0;
     await this.cenas.save(
       resultado.cenas.map((cena, i) => {
-        const mostraProduto = cena.mostraProduto && produto.images.length > 0;
-        const foto = mostraProduto
+        // O tipo vem normalizado do roteirista; a derivação dos campos
+        // legados fica de rede para mocks e roteiros antigos.
+        const tipo: SceneKind =
+          cena.tipoCena ??
+          (cena.mostraProduto
+            ? 'produto_close'
+            : cena.seguraProduto === true
+              ? 'apresentador_produto'
+              : 'apresentador');
+        const semPessoa = cenaSemPessoa(tipo) && produto.images.length > 0;
+        const foto = semPessoa
           ? produto.images[demonstracao++ % produto.images.length]
           : null;
         return this.cenas.create({
@@ -772,8 +853,13 @@ export class CampaignsService {
           ordem: i + 1,
           fala: cena.fala,
           acaoVisual: cena.acaoVisual,
-          tipo: mostraProduto ? 'produto' : 'apresentador',
-          seguraProduto: !mostraProduto && cena.seguraProduto === true,
+          // Sem foto a cena sem pessoa não tem de onde partir: cai para
+          // apresentador — a mesma trava que o normalizador do roteirista já
+          // aplica; aqui é só o cinto de segurança dos caminhos legados.
+          tipo: cenaSemPessoa(tipo) && !semPessoa ? 'apresentador' : tipo,
+          modoAudio:
+            cena.modoAudio ?? (semPessoa ? 'narracao' : 'fala'),
+          seguraProduto: tipo === 'apresentador_produto',
           // Alterna entre as fotos disponíveis para não repetir o mesmo
           // enquadramento em duas demonstrações seguidas.
           baseImageUrl: foto,
@@ -923,6 +1009,50 @@ export class CampaignsService {
     if (dto.fala !== undefined) cena.fala = dto.fala;
     if (dto.acaoVisual !== undefined) cena.acaoVisual = dto.acaoVisual;
 
+    if (dto.tipoCena !== undefined && dto.tipoCena !== cena.tipo) {
+      const campanha = await this.campanhas.findOneByOrFail({ id: cena.campaignId });
+      if (cenaComApresentador(dto.tipoCena)) {
+        // O estilo escolhido na criação continua valendo no storyboard.
+        if (campanha.estilo === 'sem_apresentador' || !campanha.personaId) {
+          throw new ConflictException(
+            'Esta campanha foi criada sem apresentador — só cabem cenas de produto, mãos e unboxing.',
+          );
+        }
+      } else if (!cena.baseImageUrl) {
+        // Cena sem pessoa parte de uma foto real; a capa entra como default e
+        // "Trocar foto" muda depois.
+        const produto = await this.produtos.findOneBy({ id: campanha.userProductId });
+        if (!produto?.images.length) {
+          throw new ConflictException(
+            'Este formato de cena parte de uma foto real do produto. Envie uma foto antes.',
+          );
+        }
+        cena.baseImageUrl = produto.images[0];
+      }
+      cena.tipo = dto.tipoCena;
+      cena.seguraProduto = dto.tipoCena === 'apresentador_produto';
+      // O modo de áudio acompanha o formato quando o pedido não o trouxe.
+      if (dto.modoAudio === undefined && cena.modoAudio !== 'sem_fala') {
+        cena.modoAudio = cenaSemPessoa(dto.tipoCena) ? 'narracao' : 'fala';
+      }
+      // O prompt gravado descreve o formato antigo; a renderização refaz.
+      cena.promptFinal = null;
+    }
+
+    if (dto.modoAudio !== undefined) {
+      if (dto.modoAudio === 'fala' && cenaSemPessoa(cena.tipo)) {
+        throw new ConflictException(
+          'Cena sem pessoa em quadro não tem lábios para sincronizar — use narração ou sem fala.',
+        );
+      }
+      if (dto.modoAudio === 'narracao' && cenaComApresentador(cena.tipo)) {
+        throw new ConflictException(
+          'Na cena de apresentador a voz nasce sincronizada com os lábios — narração por cima dessincronizaria a boca.',
+        );
+      }
+      cena.modoAudio = dto.modoAudio;
+    }
+
     if (dto.baseImageUrl !== undefined) {
       // Vale para a demonstração (a foto É o frame) e para a cena do
       // apresentador com o produto na mão (a foto entra como referência da
@@ -985,8 +1115,8 @@ export class CampaignsService {
 
     // O retrato é pré-requisito das cenas de apresentador. Falhar ANTES de
     // disparar qualquer uma evita cobrar metade e travar na outra metade.
-    if (pendentes.some((c) => c.tipo === 'apresentador')) {
-      const persona = await this.personas.findOneBy({ id: campanha.personaId });
+    if (pendentes.some((c) => cenaComApresentador(c.tipo))) {
+      const persona = await this.personaDaCampanha(campanha);
       if (!persona?.seedImageUrl || persona.status !== 'pronta') {
         throw new ConflictException(
           'O retrato do apresentador ainda não está pronto. Aguarde alguns segundos e tente de novo.',
@@ -1060,11 +1190,9 @@ export class CampaignsService {
     // A persona também vale para a cena de produto: a voz do narrador em off
     // é a MESMA da apresentadora — narração feminina fixa numa campanha com
     // homem denunciava a montagem.
-    const personaDaCampanha = await this.personas.findOneBy({
-      id: campanha.personaId,
-    });
+    const personaDaCampanha = await this.personaDaCampanha(campanha);
 
-    if (cena.tipo === 'produto') {
+    if (cenaSemPessoa(cena.tipo)) {
       imagemBase = cena.baseImageUrl;
       if (!imagemBase) {
         throw new ConflictException(
@@ -1081,19 +1209,16 @@ export class CampaignsService {
       promptFinal = montarPromptDeCena({
         // "No people" seco brigava com ações como "mão abre, aplica nos
         // lábios" — o proibido agora permite mãos e barra só rosto/pessoa.
-        sujeito:
-          'Close-up demonstration of the exact product in the starting frame' +
-          (produtoDaCena ? ` — "${produtoDaCena.name}"` : '') +
-          '. Keep its shape, colors, label and packaging IDENTICAL — never redesign it. ' +
-          // O gesto vem do roteirista, que conhece o produto; os exemplos são
-          // só a rede para roteiro antigo/fallback sem `comoUsa`.
-          (campanha.comoUsa
-            ? `Show the product actually being used — how (in Portuguese): ${campanha.comoUsa}. `
-            : 'Show the product the way THIS type of product is used in real life (a pen writes, a lipstick is applied, a garment is worn). ') +
-          'Never a generic "hold and rotate" when it has a natural use gesture.',
+        sujeito: sujeitoSemPessoa(cena.tipo, produtoDaCena?.name, campanha.comoUsa),
         acaoVisual: cena.acaoVisual,
-        fala: cena.fala,
-        vozDescricao: vozDeNarrador(personaDaCampanha?.attrs),
+        // Sem fala a cena é só visual — o modelo não narra, e a dublagem TTS
+        // também é pulada na colheita.
+        fala: cena.modoAudio === 'sem_fala' ? null : cena.fala,
+        vozDescricao: vozDeNarrador(
+          campanha.vozNarrador
+            ? { voz: campanha.vozNarrador }
+            : personaDaCampanha?.attrs,
+        ),
         semPessoa: true,
       });
     } else {
@@ -1133,10 +1258,11 @@ export class CampaignsService {
        * uma geração de imagem a mais dentro dos mesmos 60 créditos (margem
        * documentada no `generateComposedVideo`).
        */
-      // A flag do roteiro é a fonte; a regex fica de fallback para cenas
-      // gravadas antes dela existir (não pegava "passa o batom" nem "veste a
-      // camiseta", justamente as ações de uso real).
+      // O tipo da cena é a fonte; a flag e a regex ficam de fallback para
+      // cenas gravadas antes dele existir (a regex não pegava "passa o batom"
+      // nem "veste a camiseta", justamente as ações de uso real).
       const seguraProduto =
+        cena.tipo === 'apresentador_produto' ||
         cena.seguraProduto ||
         /segur|na m[ãa]o|em m[ãa]os|mostra o produto/i.test(cena.acaoVisual ?? '');
       if (seguraProduto && produtoDaCena?.images.length) {
@@ -1173,7 +1299,7 @@ export class CampaignsService {
               gestoDaCena(cena.ordem),
               CAMERAS_POR_CENA[(cena.ordem - 1) % CAMERAS_POR_CENA.length],
             ],
-            fala: cena.fala,
+            fala: cena.modoAudio === 'sem_fala' ? null : cena.fala,
             vozDescricao: vozDaPersona(persona.attrs),
           });
           const mediaComposta = await this.dispararGeracao(cena.id, () =>
@@ -1213,7 +1339,7 @@ export class CampaignsService {
           gestoDaCena(cena.ordem),
           CAMERAS_POR_CENA[(cena.ordem - 1) % CAMERAS_POR_CENA.length],
         ],
-        fala: cena.fala,
+        fala: cena.modoAudio === 'sem_fala' ? null : cena.fala,
         vozDescricao: vozDaPersona(persona.attrs),
       });
     }
@@ -1559,10 +1685,15 @@ export class CampaignsService {
     }
     // Mesma regra da dublagem automática: TTS sobre o apresentador dessincroniza
     // os lábios — a voz dele já nasce sincronizada no próprio vídeo.
-    if (cena.tipo !== 'produto') {
+    if (!cenaSemPessoa(cena.tipo)) {
       throw new ConflictException(
         'A cena do apresentador mantém a voz original, sincronizada com os lábios. ' +
-          'A regravação por narração vale só para cenas de produto.',
+          'A regravação por narração vale só para cenas sem pessoa em quadro.',
+      );
+    }
+    if (cena.modoAudio === 'sem_fala') {
+      throw new ConflictException(
+        'Esta cena foi gerada sem fala. Mude o áudio dela para narração e renderize de novo para ter voz.',
       );
     }
     if (!cena.fala?.trim()) {
@@ -1648,12 +1779,24 @@ export class CampaignsService {
    * persona (apagada?) o TTS cai nos defaults — dublagem com voz padrão é
    * melhor que dublagem nenhuma.
    */
+  /** Persona da campanha — null no estilo `sem_apresentador`. */
+  private async personaDaCampanha(campanha: Campaign): Promise<Persona | null> {
+    if (!campanha.personaId) return null;
+    return this.personas.findOneBy({ id: campanha.personaId });
+  }
+
   private async vozTtsDaCampanha(
     campaignId: string,
   ): Promise<{ timbre: string; estilo: string } | undefined> {
     try {
       const campanha = await this.campanhas.findOneByOrFail({ id: campaignId });
-      const persona = await this.personas.findOneBy({ id: campanha.personaId });
+      // A voz escolhida na criação (campanha sem apresentador) vence a da
+      // persona — é a única fonte de voz que esse estilo tem.
+      if (campanha.vozNarrador) {
+        const attrs = { voz: campanha.vozNarrador };
+        return { timbre: timbreTts(attrs), estilo: tomDaPersona(attrs).tts };
+      }
+      const persona = await this.personaDaCampanha(campanha);
       if (!persona) return undefined;
       return {
         timbre: timbreTts(persona.attrs),
@@ -1676,7 +1819,10 @@ export class CampaignsService {
      * cena para a seguinte (defeito grave visto em uso real). Na cena de
      * produto não há rosto na tela, então a narração TTS limpa só melhora.
      */
-    if (cena.tipo !== 'produto') return null;
+    if (!cenaSemPessoa(cena.tipo)) return null;
+    // `sem_fala` fica com o áudio ambiente que o modelo gerou — dublar uma
+    // cena muda deixaria narração órfã sobre um clipe que não a pediu.
+    if (cena.modoAudio !== 'narracao') return null;
     if (!cena.fala?.trim() || !this.assembly.enabled) return null;
     try {
       const [video, narracao] = await Promise.all([

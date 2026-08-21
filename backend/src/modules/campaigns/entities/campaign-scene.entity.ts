@@ -13,17 +13,49 @@ import { Campaign } from './campaign.entity';
 export type SceneStatus = 'pendente' | 'renderizando' | 'pronta' | 'falhou';
 
 /**
- * De qual imagem a cena é animada — é o que decide o que aparece na tela.
+ * O formato da cena — decide de qual imagem ela é animada e o que aparece.
  *
- *  - `apresentador`: parte do retrato-semente da persona (mesmo rosto sempre);
- *  - `produto`: parte de uma FOTO REAL do produto do vendedor.
+ *  - `apresentador`: pessoa falando para a câmera; parte do retrato-semente
+ *    da persona (mesmo rosto sempre);
+ *  - `apresentador_produto`: apresentador segurando/usando o produto — o
+ *    frame é COMPOSTO retrato+foto real (antes era `seguraProduto=true`);
+ *  - `mao_produto`: só as mãos manuseando/aplicando o produto, sem rosto;
+ *  - `unboxing`: mãos abrindo a caixa/embalagem, sem rosto;
+ *  - `produto_close`: close do produto, sem pessoa (antes era `produto`).
  *
- * O segundo tipo existe porque a IA não sabe como é o produto dele. Uma cena
- * de demonstração gerada só por texto inventa um objeto parecido, e o cliente
- * recebe um anúncio de um produto que não é o que ele vende. Animar a foto
- * verdadeira resolve isso e, de quebra, é a cena mais barata de acertar.
+ * Os três últimos partem de uma FOTO REAL do produto do vendedor: uma cena
+ * gerada só por texto inventa um objeto parecido, e o cliente recebe um
+ * anúncio de um produto que não é o que ele vende. Animar a foto verdadeira
+ * resolve isso e, de quebra, é a cena mais barata de acertar.
  */
-export type SceneKind = 'apresentador' | 'produto';
+export type SceneKind =
+  | 'apresentador'
+  | 'apresentador_produto'
+  | 'mao_produto'
+  | 'unboxing'
+  | 'produto_close';
+
+/** Cenas em que ninguém aparece em quadro — partem da foto do produto. */
+const SEM_PESSOA: SceneKind[] = ['mao_produto', 'unboxing', 'produto_close'];
+
+export function cenaSemPessoa(tipo: SceneKind): boolean {
+  return SEM_PESSOA.includes(tipo);
+}
+
+export function cenaComApresentador(tipo: SceneKind): boolean {
+  return !cenaSemPessoa(tipo);
+}
+
+/**
+ * Como a fala da cena vira áudio.
+ *
+ *  - `fala`: o próprio modelo de vídeo gera a voz, sincronizada com os
+ *    lábios — só faz sentido com apresentador em quadro;
+ *  - `narracao`: voz em off por TTS, dublada após a renderização — o padrão
+ *    das cenas sem pessoa;
+ *  - `sem_fala`: só a ação visual; música/legenda cobrem o resto.
+ */
+export type SceneAudioMode = 'fala' | 'narracao' | 'sem_fala';
 
 /** Uma cena = uma geração de vídeo de ~5s. */
 @Entity('campaign_scenes')
@@ -55,7 +87,14 @@ export class CampaignScene {
   tipo: SceneKind;
 
   /**
-   * Foto do produto usada como frame base, quando `tipo = 'produto'`.
+   * Como a fala vira áudio. Gravado pelo roteiro (`fala` para apresentador,
+   * `narracao` para cena sem pessoa) e editável pelo vendedor no storyboard.
+   */
+  @Column({ default: 'fala' })
+  modoAudio: SceneAudioMode;
+
+  /**
+   * Foto do produto usada como frame base, quando a cena é sem pessoa.
    * Guardada na cena (e não lida do produto na hora) para o vídeo continuar
    * explicável mesmo se o vendedor trocar as fotos depois.
    */
@@ -75,10 +114,9 @@ export class CampaignScene {
   acaoVisual: string;
 
   /**
-   * Cena de apresentador em que a pessoa manuseia/usa o produto — dispara a
-   * composição retrato+foto do produto na renderização. Marcado pelo roteiro;
-   * a regex sobre `acaoVisual` ("segura", "na mão"...) vira só fallback, porque
-   * não pegava ações de uso real ("passa o batom", "veste a camiseta").
+   * LEGADO: substituído por `tipo = 'apresentador_produto'`. Mantido porque
+   * cenas antigas ainda dependem dele (e da regex sobre `acaoVisual`) como
+   * fallback na renderização; some quando essas campanhas saírem do ar.
    */
   @Column({ type: 'boolean', default: false })
   seguraProduto: boolean;

@@ -25,6 +25,17 @@ export type CampaignStatus =
   | 'renderizando'
   | 'pronta';
 
+/**
+ * Estilo do criativo, escolhido na criação da campanha:
+ *
+ *  - `misto`: a IA decide cena a cena (comportamento original — é o default
+ *    para as campanhas antigas);
+ *  - `ugc`: sempre com apresentador em quadro;
+ *  - `sem_apresentador`: só produto (mãos, unboxing, closes) — o passo de
+ *    persona sai do fluxo e a narração usa a voz de `vozNarrador`.
+ */
+export type CampaignStyle = 'ugc' | 'sem_apresentador' | 'misto';
+
 /** A campanha amarra produto + persona + roteiro + cenas. É a unidade de venda. */
 @Entity('campaigns')
 export class Campaign {
@@ -38,8 +49,9 @@ export class Campaign {
   @Column('uuid')
   userProductId: string;
 
-  @Column('uuid')
-  personaId: string;
+  /** Null apenas no estilo `sem_apresentador`, que dispensa persona. */
+  @Column('uuid', { nullable: true })
+  personaId: string | null;
 
   /**
    * Relações declaradas só para o banco: nada no código carrega a campanha
@@ -68,6 +80,16 @@ export class Campaign {
   /** 15s (3 cenas) é o padrão; 30s (6 cenas) dobra o custo. */
   @Column({ type: 'int', default: 15 })
   durationSeconds: number;
+
+  @Column({ default: 'misto' })
+  estilo: CampaignStyle;
+
+  /**
+   * Voz do narrador escolhida na criação, quando o estilo dispensa persona
+   * (id do grupo `voz` do catálogo). Null = usa a voz da persona, como hoje.
+   */
+  @Column({ type: 'text', nullable: true })
+  vozNarrador: string | null;
 
   @Column({ default: 'rascunho' })
   status: CampaignStatus;

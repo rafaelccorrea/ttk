@@ -170,7 +170,7 @@ describe('gerarRoteiro — rotação de fotos', () => {
     });
 
     await service.gerarRoteiro('u1', 'c1');
-    const demos = gravadas.filter((c) => c.tipo === 'produto');
+    const demos = gravadas.filter((c) => c.tipo === 'produto_close');
     expect(demos).toHaveLength(2);
     expect(demos[0].baseImageUrl).toBe(FOTOS[0]);
     expect(demos[1].baseImageUrl).toBe(FOTOS[1]); // não repete a primeira
@@ -211,9 +211,9 @@ describe('renderizarTudo — fila de renderização', () => {
 
   it('dispara SÓ a primeira cena e liga a fila — o resto é do polling', async () => {
     const cenas = [
-      { id: 's1', ordem: 1, tipo: 'produto', status: 'pendente' },
-      { id: 's2', ordem: 2, tipo: 'produto', status: 'pendente' },
-      { id: 's3', ordem: 3, tipo: 'produto', status: 'pendente' },
+      { id: 's1', ordem: 1, tipo: 'produto_close', status: 'pendente' },
+      { id: 's2', ordem: 2, tipo: 'produto_close', status: 'pendente' },
+      { id: 's3', ordem: 3, tipo: 'produto_close', status: 'pendente' },
     ];
     const { service, espiao, campanha } = base(cenas, new Set());
     await service.renderizarTudo('u1', 'c1');
@@ -224,8 +224,8 @@ describe('renderizarTudo — fila de renderização', () => {
 
   it('com cena já em voo, arma a fila sem disparar outra (uma por vez)', async () => {
     const cenas = [
-      { id: 's1', ordem: 1, tipo: 'produto', status: 'renderizando' },
-      { id: 's2', ordem: 2, tipo: 'produto', status: 'pendente' },
+      { id: 's1', ordem: 1, tipo: 'produto_close', status: 'renderizando' },
+      { id: 's2', ordem: 2, tipo: 'produto_close', status: 'pendente' },
     ];
     const { service, espiao, campanha } = base(cenas, new Set());
     await service.renderizarTudo('u1', 'c1');
@@ -235,7 +235,7 @@ describe('renderizarTudo — fila de renderização', () => {
 
   it('cena falhada volta para a fila como pendente (o clique é o retry)', async () => {
     const cenas = [
-      { id: 's1', ordem: 1, tipo: 'produto', status: 'falhou', error: 'x' },
+      { id: 's1', ordem: 1, tipo: 'produto_close', status: 'falhou', error: 'x' },
     ];
     const { service, espiao } = base(cenas, new Set());
     await service.renderizarTudo('u1', 'c1');
@@ -245,7 +245,7 @@ describe('renderizarTudo — fila de renderização', () => {
   });
 
   it('se a primeira nem dispara, a exceção sobe e a fila desliga', async () => {
-    const cenas = [{ id: 's1', ordem: 1, tipo: 'produto', status: 'pendente' }];
+    const cenas = [{ id: 's1', ordem: 1, tipo: 'produto_close', status: 'pendente' }];
     const { service, campanhas } = base(cenas, new Set(['s1']));
     await expect(service.renderizarTudo('u1', 'c1')).rejects.toThrow(
       ConflictException,
@@ -350,7 +350,7 @@ describe('moderação nos pontos de entrada', () => {
   it('editarCena recusa fala proibida antes de salvar', async () => {
     const { service } = servico({
       cenas: repo({
-        findOneBy: jest.fn(async () => ({ id: 's1', status: 'pendente', tipo: 'produto' })),
+        findOneBy: jest.fn(async () => ({ id: 's1', status: 'pendente', tipo: 'produto_close' })),
       }),
       campanhas: repo({
         find: jest.fn(async () => [{ id: 'c1' }]),
@@ -359,7 +359,7 @@ describe('moderação nos pontos de entrada', () => {
     // cenaDoUsuario resolve via campanhas do usuário; dublamos o próprio método
     jest
       .spyOn(service as never as { cenaDoUsuario: (u: string, s: string) => unknown }, 'cenaDoUsuario')
-      .mockResolvedValue({ id: 's1', status: 'pendente', tipo: 'produto' } as never);
+      .mockResolvedValue({ id: 's1', status: 'pendente', tipo: 'produto_close' } as never);
     await expect(
       service.editarCena('u1', 's1', { fala: 'compre cocaína aqui' } as never),
     ).rejects.toThrow(BadRequestException);

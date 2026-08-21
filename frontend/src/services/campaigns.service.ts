@@ -31,15 +31,34 @@ export interface Persona {
   createdAt: string;
 }
 
+/**
+ * Formato da cena — o mesmo enum do backend. As três últimas animam a foto
+ * real do produto (sem pessoa em quadro); as duas primeiras partem do retrato
+ * da persona.
+ */
+export type SceneKind =
+  | 'apresentador'
+  | 'apresentador_produto'
+  | 'mao_produto'
+  | 'unboxing'
+  | 'produto_close';
+
+/** Cenas em que ninguém aparece em quadro — partem da foto do produto. */
+export function cenaSemPessoa(tipo: SceneKind): boolean {
+  return tipo === 'mao_produto' || tipo === 'unboxing' || tipo === 'produto_close';
+}
+
+/** Como a fala vira áudio: lip-sync do modelo, TTS em off, ou nada. */
+export type SceneAudioMode = 'fala' | 'narracao' | 'sem_fala';
+
 export interface CampaignScene {
   id: string;
   ordem: number;
-  /** `produto` anima a foto real; `apresentador` anima o retrato da persona. */
-  tipo: 'apresentador' | 'produto';
+  tipo: SceneKind;
+  modoAudio: SceneAudioMode;
   /**
-   * Cena de apresentador que segura/usa o produto — o frame é composto com a
-   * foto real. Marcado pelo roteiro; `false` nas cenas antigas (a tela ainda
-   * cai numa regex de fallback para elas).
+   * LEGADO: substituído por `tipo = 'apresentador_produto'`; ainda vem `true`
+   * em cenas antigas (a tela cai numa regex de fallback para elas).
    */
   seguraProduto: boolean;
   baseImageUrl: string | null;
@@ -50,10 +69,16 @@ export interface CampaignScene {
   error: string | null;
 }
 
+/** Estilo do criativo: com apresentador, só produto, ou a IA decide. */
+export type CampaignStyle = 'ugc' | 'sem_apresentador' | 'misto';
+
 export interface Campaign {
   id: string;
   title: string;
   durationSeconds: number;
+  estilo: CampaignStyle;
+  /** Voz do narrador (id do catálogo) — só no estilo sem apresentador. */
+  vozNarrador: string | null;
   status: 'rascunho' | 'roteiro' | 'storyboard' | 'renderizando' | 'pronta';
   script: string | null;
   /** Vídeo montado a partir das cenas — é o entregável da campanha. */
@@ -181,8 +206,12 @@ export const campaignsService = {
 
   async create(input: {
     userProductId: string;
-    personaId: string;
+    /** Obrigatória, exceto no estilo `sem_apresentador`. */
+    personaId?: string;
     durationSeconds?: number;
+    estilo?: CampaignStyle;
+    /** Voz do narrador — obrigatória quando `estilo = 'sem_apresentador'`. */
+    vozNarrador?: string;
   }): Promise<Campaign> {
     const { data } = await api.post<Campaign>('/campaigns', input);
     return data;
@@ -261,8 +290,15 @@ export const campaignsService = {
   async updateScene(
     sceneId: string,
     // `baseImageUrl` só vale para cena de produto, e o servidor confere que a
-    // URL é uma das fotos cadastradas — aqui é só o transporte.
-    input: { fala?: string; acaoVisual?: string; baseImageUrl?: string },
+    // URL é uma das fotos cadastradas — aqui é só o transporte. Trocar
+    // `tipoCena` invalida o render pendente e refaz o prompt no servidor.
+    input: {
+      fala?: string;
+      acaoVisual?: string;
+      baseImageUrl?: string;
+      tipoCena?: SceneKind;
+      modoAudio?: SceneAudioMode;
+    },
   ): Promise<CampaignScene> {
     const { data } = await api.patch<CampaignScene>(
       `/campaigns/scenes/${sceneId}`,

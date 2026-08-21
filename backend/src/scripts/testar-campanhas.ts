@@ -20,7 +20,11 @@ import {
   validarAtributos,
 } from '../modules/campaigns/persona-catalog';
 import { Campaign } from '../modules/campaigns/entities/campaign.entity';
-import { CampaignScene } from '../modules/campaigns/entities/campaign-scene.entity';
+import {
+  CampaignScene,
+  cenaComApresentador,
+  cenaSemPessoa,
+} from '../modules/campaigns/entities/campaign-scene.entity';
 import { Persona } from '../modules/campaigns/entities/persona.entity';
 import { UserProduct } from '../modules/campaigns/entities/user-product.entity';
 import { AiService } from '../modules/studio/ai.service';
@@ -270,11 +274,11 @@ async function main() {
       'toda cena tem fala',
     );
     checar(
-      comRoteiro.cenas[0].tipo === 'apresentador' &&
-        comRoteiro.cenas[comRoteiro.cenas.length - 1].tipo === 'apresentador',
+      cenaComApresentador(comRoteiro.cenas[0].tipo) &&
+        cenaComApresentador(comRoteiro.cenas[comRoteiro.cenas.length - 1].tipo),
       'gancho e CTA são com rosto',
     );
-    const cenasDeProduto = comRoteiro.cenas.filter((c) => c.tipo === 'produto');
+    const cenasDeProduto = comRoteiro.cenas.filter((c) => cenaSemPessoa(c.tipo));
     checar(
       cenasDeProduto.every((c) => Boolean(c.baseImageUrl)),
       'toda cena de produto aponta para uma foto real',
@@ -427,7 +431,7 @@ async function main() {
     // recusar em vez de gerar um vídeo do produto errado.
     const cenaProduto = (
       await repoCenas.find({ where: { campaignId: campanha.id } })
-    ).find((c) => c.tipo === 'produto');
+    ).find((c) => cenaSemPessoa(c.tipo));
     if (cenaProduto) {
       cenaProduto.baseImageUrl = null;
       await repoCenas.save(cenaProduto);

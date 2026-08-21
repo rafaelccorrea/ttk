@@ -72,12 +72,16 @@ import {
   AttributeGroup,
   Campaign,
   CampaignDetail,
+  CampaignStyle,
   CampaignList,
   CampaignPricing,
   CampaignScene,
   Persona,
+  SceneAudioMode,
+  SceneKind,
   UserProduct,
   campaignsService,
+  cenaSemPessoa,
 } from '@/services/campaigns.service';
 
 /**
@@ -87,7 +91,8 @@ import {
  */
 function cenaUsaProduto(cena: CampaignScene): boolean {
   return (
-    cena.tipo === 'produto' ||
+    cenaSemPessoa(cena.tipo) ||
+    cena.tipo === 'apresentador_produto' ||
     cena.seguraProduto ||
     /segur|na m[ãa]o|em m[ãa]os|mostra o produto/i.test(cena.acaoVisual ?? '')
   );
@@ -1022,7 +1027,7 @@ function Storyboard({
                     <Typography variant="body2" color="text.secondary" px={2} textAlign="center">
                       {cena.error ?? 'A cena falhou.'} Os créditos foram estornados.
                     </Typography>
-                  ) : cena.tipo === 'produto' && cena.baseImageUrl ? (
+                  ) : cenaSemPessoa(cena.tipo) && cena.baseImageUrl ? (
                     // Pré-visualização honesta: é literalmente o frame de onde
                     // a cena vai partir. SÓ na demonstração — na cena de
                     // apresentador o frame parte do retrato e a foto escolhida
@@ -1049,7 +1054,7 @@ function Storyboard({
                       sem escolha o servidor usa a capa em silêncio. A
                       miniatura mostra a MESMA foto que a renderização vai
                       compor; "Trocar foto" muda as duas. */}
-                  {cena.tipo === 'apresentador' &&
+                  {!cenaSemPessoa(cena.tipo) &&
                     cenaUsaProduto(cena) &&
                     !(cena.status === 'pronta' && cena.outputUrl) &&
                     fotoCompostaDa(cena) && (
@@ -1148,7 +1153,7 @@ function Storyboard({
                           desabilitado com o motivo no tooltip. */}
                       {(() => {
                         const motivo =
-                          cena.tipo !== 'produto'
+                          !cenaSemPessoa(cena.tipo)
                             ? 'Indisponível em cena de apresentador: a voz nasce sincronizada com os lábios no próprio vídeo — regravar por cima dessincronizaria a boca.'
                             : !cena.fala?.trim()
                               ? 'Esta cena não tem fala para regravar.'
@@ -1228,18 +1233,91 @@ function Storyboard({
                   <Chip
                     size="small"
                     label={
-                      cena.tipo === 'produto'
-                        ? 'Demonstração · parte da sua foto'
-                        : // Quando a cena compõe o produto no frame, o selo
-                          // precisa dizer isso — senão a cena mais cara do
-                          // roteiro passa por uma cena comum.
-                          cenaUsaProduto(cena)
-                          ? 'Apresentador · com o SEU produto na mão'
-                          : 'Apresentador · parte do retrato'
+                      cena.tipo === 'mao_produto'
+                        ? 'Só as mãos · parte da sua foto'
+                        : cena.tipo === 'unboxing'
+                          ? 'Unboxing · parte da sua foto'
+                          : cenaSemPessoa(cena.tipo)
+                            ? 'Demonstração · parte da sua foto'
+                            : // Quando a cena compõe o produto no frame, o selo
+                              // precisa dizer isso — senão a cena mais cara do
+                              // roteiro passa por uma cena comum.
+                              cenaUsaProduto(cena)
+                              ? 'Apresentador · com o SEU produto na mão'
+                              : 'Apresentador · parte do retrato'
                     }
                     color={cenaUsaProduto(cena) ? 'primary' : 'default'}
                     sx={{ alignSelf: 'flex-start', fontWeight: 700 }}
                   />
+                  {/* O formato e o áudio são escolha do vendedor, não só da
+                      IA. Cena pronta não muda mais: trocar o formato invalida
+                      o render, e o vídeo já foi pago. */}
+                  {cena.status !== 'pronta' && (
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      <TextField
+                        select
+                        size="small"
+                        label="Tipo de cena"
+                        value={cena.tipo}
+                        disabled={cena.status === 'renderizando'}
+                        sx={{ minWidth: 230 }}
+                        onChange={(e) =>
+                          acao(() =>
+                            campaignsService.updateScene(cena.id, {
+                              tipoCena: e.target.value as SceneKind,
+                            }),
+                          )
+                        }
+                      >
+                        {/* Campanha sem apresentador não tem retrato: as duas
+                            opções com pessoa ficam fora da lista. */}
+                        {detalhe.estilo !== 'sem_apresentador' && [
+                          <MenuItem key="apresentador" value="apresentador">
+                            Apresentador falando
+                          </MenuItem>,
+                          <MenuItem
+                            key="apresentador_produto"
+                            value="apresentador_produto"
+                          >
+                            Apresentador com o produto na mão
+                          </MenuItem>,
+                        ]}
+                        <MenuItem value="mao_produto">
+                          Só as mãos usando o produto
+                        </MenuItem>
+                        <MenuItem value="unboxing">Unboxing da embalagem</MenuItem>
+                        <MenuItem value="produto_close">Produto em close</MenuItem>
+                      </TextField>
+                      <TextField
+                        select
+                        size="small"
+                        label="Áudio"
+                        value={
+                          cena.modoAudio ??
+                          (cenaSemPessoa(cena.tipo) ? 'narracao' : 'fala')
+                        }
+                        disabled={cena.status === 'renderizando'}
+                        sx={{ minWidth: 170 }}
+                        onChange={(e) =>
+                          acao(() =>
+                            campaignsService.updateScene(cena.id, {
+                              modoAudio: e.target.value as SceneAudioMode,
+                            }),
+                          )
+                        }
+                      >
+                        {/* Fala é lip-sync: só existe com apresentador. E o
+                            apresentador não aceita narração por cima — a boca
+                            dessincronizaria. */}
+                        {cenaSemPessoa(cena.tipo) ? (
+                          <MenuItem value="narracao">Narração em off</MenuItem>
+                        ) : (
+                          <MenuItem value="fala">Fala (lábios sincronizados)</MenuItem>
+                        )}
+                        <MenuItem value="sem_fala">Sem fala · só a cena</MenuItem>
+                      </TextField>
+                    </Stack>
+                  )}
                   <CampoDeCena
                     rotulo={`Cena ${cena.ordem} — fala`}
                     valorSalvo={cena.fala}
@@ -1258,7 +1336,7 @@ function Storyboard({
                     validar={validarAcaoVisual}
                     limite={LIMITES.acaoVisual}
                     ajuda={
-                      cena.tipo === 'produto'
+                      cenaSemPessoa(cena.tipo)
                         ? 'Só o movimento de câmera e do objeto — nesta cena a pessoa não entra em quadro.'
                         : 'Descreva a ação. A aparência do apresentador já está definida.'
                     }
@@ -1280,7 +1358,7 @@ function Storyboard({
                         // Com a fila ligada é o servidor quem dispara: o
                         // clique aqui duplicaria o pedido da mesma cena.
                         detalhe.renderQueue ||
-                        (cena.tipo === 'apresentador' && !personaPronta)
+                        (!cenaSemPessoa(cena.tipo) && !personaPronta)
                       }
                       onClick={() =>
                         acao(() => campaignsService.renderScene(cena.id), {
@@ -1326,6 +1404,7 @@ function CampanhasTab({
   onEtapa,
   produtos,
   personas,
+  grupos,
   campanhas,
   pagina,
   paginas,
@@ -1341,6 +1420,8 @@ function CampanhasTab({
   onEtapa: (etapa: number) => void;
   produtos: UserProduct[];
   personas: Persona[];
+  /** Catálogo de atributos — daqui sai a lista de vozes do narrador. */
+  grupos: AttributeGroup[];
   /** Só a página atual — quem pagina é o servidor. */
   campanhas: Campaign[];
   pagina: number;
@@ -1355,6 +1436,8 @@ function CampanhasTab({
   const [userProductId, setUserProductId] = useState('');
   const [personaId, setPersonaId] = useState('');
   const [durationSeconds, setDuration] = useState(15);
+  const [estilo, setEstilo] = useState<CampaignStyle>('misto');
+  const [vozNarrador, setVozNarrador] = useState('');
   // Excluir campanha descarta roteiro e cenas já PAGAS — clique acidental na
   // lixeira da lista não pode custar créditos.
   const { confirmar, dialogoDeConfirmacao } = useConfirmacao();
@@ -1451,8 +1534,13 @@ function CampanhasTab({
     try {
       const nova = await campaignsService.create({
         userProductId,
-        personaId,
         durationSeconds,
+        estilo,
+        // Sem apresentador a voz é a única fonte de áudio; nos demais estilos
+        // a voz vem da persona e o campo nem é enviado.
+        ...(estilo === 'sem_apresentador'
+          ? { vozNarrador }
+          : { personaId }),
       });
       onChange();
       setAberta(nova.id);
@@ -1484,7 +1572,14 @@ function CampanhasTab({
   const fotosFaltando = produtoEscolhido
     ? Math.max(0, LIMITES.fotosMinimasPorProduto - produtoEscolhido.images.length)
     : 0;
-  const podeCriar = Boolean(userProductId && personaId) && !fotosFaltando && !criando;
+  const podeCriar =
+    Boolean(
+      userProductId &&
+        (estilo === 'sem_apresentador' ? vozNarrador : personaId),
+    ) &&
+    !fotosFaltando &&
+    !criando;
+  const vozes = grupos.find((g) => g.key === 'voz')?.options ?? [];
 
   return (
     <Grid container spacing={3}>
@@ -1515,20 +1610,57 @@ function CampanhasTab({
                       : (p.benefit ?? undefined),
                 }))}
               />
-              <SearchableSelect
-                label="Quem apresenta"
-                placeholder="Buscar apresentador…"
-                value={personaId}
-                onChange={setPersonaId}
+              <TextField
+                select
+                label="Estilo do criativo"
+                value={estilo}
+                onChange={(e) => setEstilo(e.target.value as CampaignStyle)}
                 fullWidth
-                helperText={!personas.length ? 'Monte um apresentador primeiro.' : ' '}
-                options={personas.map((p) => ({
-                  value: p.id,
-                  label: p.label,
-                  imageUrl: p.seedImageUrl,
-                  caption: p.status !== 'pronta' ? 'retrato em preparo' : undefined,
-                }))}
-              />
+                helperText={
+                  estilo === 'sem_apresentador'
+                    ? 'Só o produto em quadro: mãos usando, unboxing e closes, com narração em off.'
+                    : estilo === 'ugc'
+                      ? 'Todas as cenas com a pessoa em quadro, estilo UGC.'
+                      : 'A IA mistura apresentador e demonstrações do produto.'
+                }
+              >
+                <MenuItem value="misto">Misto · a IA decide cena a cena</MenuItem>
+                <MenuItem value="ugc">Com apresentador (UGC)</MenuItem>
+                <MenuItem value="sem_apresentador">
+                  Sem apresentador · só produto
+                </MenuItem>
+              </TextField>
+              {estilo === 'sem_apresentador' ? (
+                <TextField
+                  select
+                  label="Voz do narrador"
+                  value={vozNarrador}
+                  onChange={(e) => setVozNarrador(e.target.value)}
+                  fullWidth
+                  helperText="É a voz que narra as cenas em off."
+                >
+                  {vozes.map((v) => (
+                    <MenuItem key={v.id} value={v.id}>
+                      {v.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              ) : (
+                <SearchableSelect
+                  label="Quem apresenta"
+                  placeholder="Buscar apresentador…"
+                  value={personaId}
+                  onChange={setPersonaId}
+                  fullWidth
+                  helperText={!personas.length ? 'Monte um apresentador primeiro.' : ' '}
+                  options={personas.map((p) => ({
+                    value: p.id,
+                    label: p.label,
+                    imageUrl: p.seedImageUrl,
+                    caption: p.status !== 'pronta' ? 'retrato em preparo' : undefined,
+                  }))}
+                />
+              )}
               <TextField
                 select
                 label="Duração"
@@ -1796,7 +1928,7 @@ export function CampaignsPage() {
       : 'Cadastre o produto que você vende.',
     personas.length
       ? 'Aguarde o retrato do apresentador ficar pronto.'
-      : 'Monte quem vai apresentar o vídeo.',
+      : 'Monte quem apresenta — ou continue para criar um vídeo sem apresentador.',
     null,
     null,
   ][passo];
@@ -1855,6 +1987,7 @@ export function CampaignsPage() {
           onEtapa={setPasso}
           produtos={produtos}
           personas={personas}
+          grupos={grupos}
           campanhas={campanhas.items}
           pagina={campanhas.page}
           paginas={campanhas.pageCount}
@@ -1887,8 +2020,9 @@ export function CampaignsPage() {
             variant="contained"
             endIcon={<ArrowForwardRoundedIcon />}
             // Trava com a razão à mostra ao lado — botão cinza mudo é o que
-            // fazia a tela parecer quebrada.
-            disabled={!cumprido[passo]}
+            // fazia a tela parecer quebrada. O passo do apresentador não
+            // trava: o estilo "sem apresentador" dispensa persona.
+            disabled={!cumprido[passo] && passo !== 1}
             onClick={() => setPasso((p) => p + 1)}
           >
             Continuar
