@@ -77,6 +77,7 @@ import {
   CampaignPricing,
   CampaignScene,
   Persona,
+  SEM_NARRACAO,
   SceneAudioMode,
   SceneKind,
   UserProduct,
@@ -1155,9 +1156,11 @@ function Storyboard({
                         const motivo =
                           !cenaSemPessoa(cena.tipo)
                             ? 'Indisponível em cena de apresentador: a voz nasce sincronizada com os lábios no próprio vídeo — regravar por cima dessincronizaria a boca.'
-                            : !cena.fala?.trim()
-                              ? 'Esta cena não tem fala para regravar.'
-                              : null;
+                            : cena.modoAudio === 'sem_fala'
+                              ? 'Esta cena foi gerada sem fala — só o som ambiente.'
+                              : !cena.fala?.trim()
+                                ? 'Esta cena não tem fala para regravar.'
+                                : null;
                         return (
                           <Tooltip
                             title={
@@ -1308,12 +1311,14 @@ function Storyboard({
                       >
                         {/* Fala é lip-sync: só existe com apresentador. E o
                             apresentador não aceita narração por cima — a boca
-                            dessincronizaria. */}
-                        {cenaSemPessoa(cena.tipo) ? (
-                          <MenuItem value="narracao">Narração em off</MenuItem>
-                        ) : (
-                          <MenuItem value="fala">Fala (lábios sincronizados)</MenuItem>
-                        )}
+                            dessincronizaria. Campanha criada sem narração não
+                            tem voz nenhuma: sobra só o "sem fala". */}
+                        {detalhe.vozNarrador !== SEM_NARRACAO &&
+                          (cenaSemPessoa(cena.tipo) ? (
+                            <MenuItem value="narracao">Narração em off</MenuItem>
+                          ) : (
+                            <MenuItem value="fala">Fala (lábios sincronizados)</MenuItem>
+                          ))}
                         <MenuItem value="sem_fala">Sem fala · só a cena</MenuItem>
                       </TextField>
                     </Stack>
@@ -1438,6 +1443,16 @@ function CampanhasTab({
   const [durationSeconds, setDuration] = useState(15);
   const [estilo, setEstilo] = useState<CampaignStyle>('misto');
   const [vozNarrador, setVozNarrador] = useState('');
+  // Sem apresentador a voz é obrigatória na API; sem um default o botão de
+  // criar ficava travado sem explicar. A primeira voz do catálogo já vem
+  // selecionada — dá para trocar, mas nunca ficar sem.
+  const vozesDoCatalogo = grupos.find((g) => g.key === 'voz')?.options ?? [];
+  const primeiraVoz = vozesDoCatalogo[0]?.id ?? '';
+  useEffect(() => {
+    if (estilo === 'sem_apresentador' && !vozNarrador && primeiraVoz) {
+      setVozNarrador(primeiraVoz);
+    }
+  }, [estilo, vozNarrador, primeiraVoz]);
   // Excluir campanha descarta roteiro e cenas já PAGAS — clique acidental na
   // lixeira da lista não pode custar créditos.
   const { confirmar, dialogoDeConfirmacao } = useConfirmacao();
@@ -1579,7 +1594,7 @@ function CampanhasTab({
     ) &&
     !fotosFaltando &&
     !criando;
-  const vozes = grupos.find((g) => g.key === 'voz')?.options ?? [];
+  const vozes = vozesDoCatalogo;
 
   return (
     <Grid container spacing={3}>
@@ -1637,13 +1652,20 @@ function CampanhasTab({
                   value={vozNarrador}
                   onChange={(e) => setVozNarrador(e.target.value)}
                   fullWidth
-                  helperText="É a voz que narra as cenas em off."
+                  helperText={
+                    vozNarrador === SEM_NARRACAO
+                      ? 'O vídeo sai mudo: só o som ambiente das cenas, sem voz.'
+                      : 'É a voz que narra as cenas em off.'
+                  }
                 >
                   {vozes.map((v) => (
                     <MenuItem key={v.id} value={v.id}>
                       {v.label}
                     </MenuItem>
                   ))}
+                  <MenuItem value={SEM_NARRACAO}>
+                    Sem narração · vídeo sem voz
+                  </MenuItem>
                 </TextField>
               ) : (
                 <SearchableSelect

@@ -25,7 +25,7 @@ import {
   UpdatePersonaDto,
   UpdateSceneDto,
 } from './dto/campaigns.dto';
-import { Campaign } from './entities/campaign.entity';
+import { Campaign, SEM_NARRACAO } from './entities/campaign.entity';
 import {
   CampaignScene,
   SceneKind,
@@ -627,8 +627,12 @@ export class CampaignsService {
     let vozNarrador: string | null = null;
     if (estilo === 'sem_apresentador') {
       // Sem persona a única fonte de voz é a escolha explícita — e barrar um
-      // id inventado aqui evita um TTS mudo lá na frente.
-      if (!dto.vozNarrador || !TTS_POR_VOZ[dto.vozNarrador]) {
+      // id inventado aqui evita um TTS mudo lá na frente. `sem_narracao` é a
+      // escolha deliberada de vídeo mudo: passa, e o roteiro nasce sem fala.
+      if (
+        !dto.vozNarrador ||
+        (dto.vozNarrador !== SEM_NARRACAO && !TTS_POR_VOZ[dto.vozNarrador])
+      ) {
         throw new BadRequestException(
           'Escolha a voz do narrador para uma campanha sem apresentador.',
         );
@@ -857,8 +861,12 @@ export class CampaignsService {
           // apresentador — a mesma trava que o normalizador do roteirista já
           // aplica; aqui é só o cinto de segurança dos caminhos legados.
           tipo: cenaSemPessoa(tipo) && !semPessoa ? 'apresentador' : tipo,
+          // Campanha criada sem narração: toda cena nasce muda, decida o que
+          // o roteirista decidir — a escolha do vendedor vence a da IA.
           modoAudio:
-            cena.modoAudio ?? (semPessoa ? 'narracao' : 'fala'),
+            campanha.vozNarrador === SEM_NARRACAO
+              ? 'sem_fala'
+              : (cena.modoAudio ?? (semPessoa ? 'narracao' : 'fala')),
           seguraProduto: tipo === 'apresentador_produto',
           // Alterna entre as fotos disponíveis para não repetir o mesmo
           // enquadramento em duas demonstrações seguidas.
@@ -1050,6 +1058,18 @@ export class CampaignsService {
           'Na cena de apresentador a voz nasce sincronizada com os lábios — narração por cima dessincronizaria a boca.',
         );
       }
+      if (dto.modoAudio !== 'sem_fala') {
+        // Campanha criada sem narração não tem voz de narrador nem persona
+        // para emprestar a dela — não há de onde tirar o áudio.
+        const campanha = await this.campanhas.findOneByOrFail({
+          id: cena.campaignId,
+        });
+        if (campanha.vozNarrador === SEM_NARRACAO) {
+          throw new ConflictException(
+            'Esta campanha foi criada sem narração — as cenas ficam só com o som ambiente.',
+          );
+        }
+      }
       cena.modoAudio = dto.modoAudio;
     }
 
@@ -1215,7 +1235,7 @@ export class CampaignsService {
         // também é pulada na colheita.
         fala: cena.modoAudio === 'sem_fala' ? null : cena.fala,
         vozDescricao: vozDeNarrador(
-          campanha.vozNarrador
+          campanha.vozNarrador && campanha.vozNarrador !== SEM_NARRACAO
             ? { voz: campanha.vozNarrador }
             : personaDaCampanha?.attrs,
         ),
@@ -1792,6 +1812,7 @@ export class CampaignsService {
       const campanha = await this.campanhas.findOneByOrFail({ id: campaignId });
       // A voz escolhida na criação (campanha sem apresentador) vence a da
       // persona — é a única fonte de voz que esse estilo tem.
+      if (campanha.vozNarrador === SEM_NARRACAO) return undefined;
       if (campanha.vozNarrador) {
         const attrs = { voz: campanha.vozNarrador };
         return { timbre: timbreTts(attrs), estilo: tomDaPersona(attrs).tts };

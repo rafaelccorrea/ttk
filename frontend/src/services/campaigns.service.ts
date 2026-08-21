@@ -72,6 +72,12 @@ export interface CampaignScene {
 /** Estilo do criativo: com apresentador, só produto, ou a IA decide. */
 export type CampaignStyle = 'ugc' | 'sem_apresentador' | 'misto';
 
+/**
+ * Sentinela em `vozNarrador` (o mesmo valor do backend): campanha sem
+ * narração nenhuma — toda cena nasce `sem_fala`, só com o som ambiente.
+ */
+export const SEM_NARRACAO = 'sem_narracao';
+
 export interface Campaign {
   id: string;
   title: string;

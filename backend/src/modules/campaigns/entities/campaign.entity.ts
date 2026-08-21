@@ -36,6 +36,14 @@ export type CampaignStatus =
  */
 export type CampaignStyle = 'ugc' | 'sem_apresentador' | 'misto';
 
+/**
+ * Sentinela em `vozNarrador`: campanha SEM narração nenhuma — todas as cenas
+ * nascem com `modoAudio = 'sem_fala'` (só o som ambiente do modelo) e a
+ * dublagem TTS não roda. Não é um id do catálogo de vozes de propósito: o
+ * catálogo é dinâmico e este valor precisa nunca colidir com uma voz real.
+ */
+export const SEM_NARRACAO = 'sem_narracao';
+
 /** A campanha amarra produto + persona + roteiro + cenas. É a unidade de venda. */
 @Entity('campaigns')
 export class Campaign {
