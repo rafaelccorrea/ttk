@@ -56,7 +56,16 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (error.response?.status === 401 && window.location.pathname !== '/login') {
+    // Rotas /dev/* (só existem no build de dev) renderizam telas sem sessão
+    // para inspecionar layout — o 401 esperado delas não pode expulsar para o
+    // login.
+    const emRotaDev =
+      import.meta.env.DEV && window.location.pathname.startsWith('/dev/');
+    if (
+      error.response?.status === 401 &&
+      window.location.pathname !== '/login' &&
+      !emRotaDev
+    ) {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
       window.location.href = '/login';
     }

@@ -11,7 +11,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   FormControlLabel,
   Grid,
   IconButton,
@@ -103,6 +102,9 @@ const BLOCOS = [
     emoji: '🎣',
     max: 10,
     cor: '#fe2c55',
+    // Cor do texto sobre `cor`: o vermelho aguenta branco; ciano e âmbar são
+    // claros e precisam de texto escuro para ter contraste.
+    texto: '#fff',
     ajuda: 'Os 3 primeiros segundos. É o bloco que decide o scroll.',
   },
   {
@@ -112,6 +114,7 @@ const BLOCOS = [
     emoji: '📝',
     max: 5,
     cor: '#25f4ee',
+    texto: '#161823',
     ajuda: 'Demonstração e prova — o miolo do vídeo.',
   },
   {
@@ -121,6 +124,7 @@ const BLOCOS = [
     emoji: '🎯',
     max: 3,
     cor: '#ffb020',
+    texto: '#161823',
     ajuda: 'O comando final para tocar no carrinho.',
   },
 ];
@@ -330,7 +334,7 @@ function ClipDropzone({
           px: 1.25,
           py: 0.75,
           bgcolor: disabled ? 'action.disabledBackground' : bloco.cor,
-          color: disabled ? 'text.disabled' : '#fff',
+          color: disabled ? 'text.disabled' : bloco.texto,
         }}
       >
         <Typography variant="subtitle2" fontWeight={700} sx={{ flexGrow: 1 }}>
@@ -342,7 +346,10 @@ function ClipDropzone({
             borderRadius: 5,
             fontSize: 11,
             fontWeight: 700,
-            bgcolor: 'rgba(255,255,255,0.25)',
+            bgcolor:
+              bloco.texto === '#fff'
+                ? 'rgba(255,255,255,0.25)'
+                : 'rgba(22,24,35,0.12)',
           }}
         >
           {clips.length}/{bloco.max}
@@ -390,7 +397,7 @@ function ClipDropzone({
                   fontSize: 10,
                   fontWeight: 700,
                   fontFamily: 'monospace',
-                  color: '#fff',
+                  color: bloco.texto,
                   bgcolor: bloco.cor,
                   flexShrink: 0,
                 }}
@@ -789,7 +796,7 @@ function RankingDePecas({
                   fontSize: 11,
                   fontWeight: 700,
                   fontFamily: 'monospace',
-                  color: '#fff',
+                  color: BLOCOS[0].texto,
                   bgcolor: BLOCOS[0].cor,
                 }}
               >
@@ -1253,7 +1260,7 @@ function CodigoChip({ code }: { code: string }) {
               fontSize: 11,
               fontWeight: 700,
               fontFamily: 'monospace',
-              color: '#fff',
+              color: bloco?.texto ?? '#fff',
               bgcolor: bloco?.cor ?? 'text.disabled',
             }}
           >
@@ -1979,6 +1986,22 @@ function GrupoDeProduto({
 /** As quatro etapas do fluxo, na ordem em que acontecem. */
 const ETAPAS = ['Produto', 'Clipes', 'Matriz', 'Vídeos'] as const;
 
+/**
+ * Entrada animada da etapa visível.
+ *
+ * As etapas alternam por `display`, e uma animação CSS reinicia sempre que o
+ * elemento volta de `none` — então cada troca de etapa ganha um fade+slide sem
+ * remontar componente nenhum (o que perderia uploads em andamento).
+ */
+const ENTRADA_DE_ETAPA = {
+  '@keyframes etapaEntra': {
+    from: { opacity: 0, transform: 'translateY(10px)' },
+    to: { opacity: 1, transform: 'translateY(0)' },
+  },
+  animation: 'etapaEntra .3s ease',
+  '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+} as const;
+
 /** A etapa da galeria — sempre alcançável, porque é só leitura. */
 const ETAPA_VIDEOS = 3;
 
@@ -2383,15 +2406,77 @@ export function MultiplierPage() {
   }
 
   return (
-    <>
-      <Typography variant="h5" gutterBottom>
-        Multiplicador de Vídeos
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        A fórmula dos criativos vencedores: GANCHO + CORPO + CTA. Suba seus
-        clipes de cada bloco e a gente combina tudo em vídeos prontos para
-        postar, com nomenclatura padronizada para teste A/B.
-      </Typography>
+    // Sem teto de largura: o resto do app cola nas margens do AppLayout, e um
+    // container mais estreito aqui deixava faixas vazias dos dois lados.
+    <Box>
+      <Stack
+        direction="row"
+        spacing={1.75}
+        alignItems="center"
+        sx={{ mb: 3, flexWrap: 'wrap', rowGap: 1.5 }}
+      >
+        <Box
+          sx={{
+            width: 46,
+            height: 46,
+            flexShrink: 0,
+            borderRadius: 3,
+            display: 'grid',
+            placeItems: 'center',
+            color: '#fff',
+            background: 'linear-gradient(135deg, #fe2c55 0%, #7c4dff 100%)',
+            boxShadow: '0 8px 22px rgba(254,44,85,0.35)',
+          }}
+        >
+          <DynamicFeedRoundedIcon />
+        </Box>
+        <Box sx={{ minWidth: 240, flex: 1 }}>
+          <Typography variant="h5">Multiplicador de Vídeos</Typography>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            component="div"
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              columnGap: 0.75,
+              rowGap: 0.5,
+            }}
+          >
+            A fórmula dos criativos vencedores:
+            {BLOCOS.map((bloco, i) => (
+              <Box
+                key={bloco.role}
+                component="span"
+                sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}
+              >
+                {i > 0 && <Box component="span">+</Box>}
+                {/* Pílula com fundo na cor do bloco: texto colorido direto no
+                    branco (ciano, âmbar) não tem contraste — a mesma cor que
+                    funciona como FUNDO nos cabeçalhos dos blocos. */}
+                <Box
+                  component="span"
+                  sx={{
+                    px: 0.9,
+                    py: 0.1,
+                    borderRadius: 1,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: bloco.texto,
+                    bgcolor: bloco.cor,
+                  }}
+                >
+                  {bloco.titulo.toUpperCase().replace(/S$/, '')}
+                </Box>
+              </Box>
+            ))}
+            <Box component="span">
+              — suba seus clipes e a gente monta os vídeos prontos para postar.
+            </Box>
+          </Typography>
+        </Box>
+      </Stack>
 
       <form onSubmit={handleSubmit}>
         {/*
@@ -2407,7 +2492,27 @@ export function MultiplierPage() {
           nonLinear
           activeStep={etapa}
           alternativeLabel
-          sx={{ mb: 3, '& .MuiStepLabel-label': { fontWeight: 600 } }}
+          sx={{
+            mb: 3,
+            '& .MuiStepLabel-label': {
+              fontWeight: 600,
+              transition: 'color .2s',
+              '&.Mui-active': { fontWeight: 800 },
+            },
+            '& .MuiStepIcon-root': {
+              transition: 'transform .2s, color .2s',
+              '&.Mui-active': {
+                transform: 'scale(1.25)',
+                filter: 'drop-shadow(0 3px 8px rgba(254,44,85,0.4))',
+              },
+              '&.Mui-completed': { color: 'success.main' },
+            },
+            '& .MuiStepConnector-line': { borderTopWidth: 2 },
+            '& .Mui-completed + * .MuiStepConnector-line, & .Mui-active .MuiStepConnector-line':
+              {
+                borderColor: 'primary.main',
+              },
+          }}
         >
           {ETAPAS.map((rotulo, i) => (
             <Step key={rotulo} completed={i < etapa && etapaConcluida(i)}>
@@ -2427,7 +2532,7 @@ export function MultiplierPage() {
           ))}
         </Stepper>
 
-        <Card sx={{ mb: 2, display: etapa === 0 ? 'block' : 'none' }}>
+        <Card sx={{ mb: 2, display: etapa === 0 ? 'block' : 'none', ...ENTRADA_DE_ETAPA }}>
           <CardContent>
             <Passo
               numero={1}
@@ -2435,22 +2540,52 @@ export function MultiplierPage() {
               descricao="A sigla nomeia todos os arquivos gerados."
               concluido={Boolean(sigla.trim())}
             />
+            {/* As duas colunas seguem a MESMA anatomia — rótulo em cima, campo
+                embaixo, legenda no pé — para os campos ficarem na mesma linha
+                de base. O nome do arquivo era `helperText` só do TextField, o
+                que empurrava a altura de uma coluna e desalinhava a outra. */}
             <Grid container spacing={2} alignItems="flex-start">
               <Grid item xs={12} sm={5}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                  mb={0.5}
+                  fontWeight={600}
+                >
+                  Sigla do produto
+                </Typography>
                 <TextField
                   fullWidth
                   required
                   size="small"
-                  label="Sigla do produto"
                   placeholder="Ex.: CINTA"
                   value={sigla}
-                  inputProps={{ maxLength: 10, style: { textTransform: 'uppercase' } }}
+                  inputProps={{
+                    maxLength: 10,
+                    style: { textTransform: 'uppercase' },
+                    'aria-label': 'Sigla do produto',
+                  }}
                   onChange={(e) => setSigla(e.target.value)}
-                  helperText={`Arquivos: ${sigla.trim().toUpperCase() || '[SIGLA]'}_G1C2A3_DDMM.mp4`}
                 />
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                  mt={0.5}
+                  sx={{ fontFamily: 'monospace', fontSize: 11 }}
+                >
+                  {sigla.trim().toUpperCase() || '[SIGLA]'}_G1C2A3_DDMM.mp4
+                </Typography>
               </Grid>
               <Grid item xs={12} sm={7}>
-                <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                  mb={0.5}
+                  fontWeight={600}
+                >
                   Formato de saída
                 </Typography>
                 <ToggleButtonGroup
@@ -2469,7 +2604,7 @@ export function MultiplierPage() {
           </CardContent>
         </Card>
 
-        <Card sx={{ mb: 2, display: etapa === 1 ? 'block' : 'none' }}>
+        <Card sx={{ mb: 2, display: etapa === 1 ? 'block' : 'none', ...ENTRADA_DE_ETAPA }}>
           <CardContent>
             <Passo
               numero={2}
@@ -2511,7 +2646,7 @@ export function MultiplierPage() {
         <Grid
           container
           spacing={3}
-          sx={{ display: etapa >= 2 ? 'flex' : 'none' }}
+          sx={{ display: etapa >= 2 ? 'flex' : 'none', ...ENTRADA_DE_ETAPA }}
         >
           <Grid item xs={12} md={5} sx={{ display: etapa === 2 ? 'block' : 'none' }}>
             <Card>
@@ -2530,7 +2665,14 @@ export function MultiplierPage() {
                   alignItems="center"
                   justifyContent="center"
                   spacing={1}
-                  sx={{ mb: 2 }}
+                  sx={{
+                    mb: 2,
+                    p: 2,
+                    borderRadius: 3,
+                    bgcolor: 'action.hover',
+                    border: '1px dashed',
+                    borderColor: 'divider',
+                  }}
                 >
                   {BLOCOS.map((bloco, i) => (
                     <Stack key={bloco.role} direction="row" alignItems="center" spacing={1}>
@@ -2569,7 +2711,17 @@ export function MultiplierPage() {
                     <Typography
                       variant="h4"
                       fontWeight={800}
-                      color={total > 0 ? 'text.primary' : 'text.disabled'}
+                      sx={
+                        total > 0
+                          ? {
+                              background:
+                                'linear-gradient(135deg, #fe2c55 0%, #7c4dff 100%)',
+                              backgroundClip: 'text',
+                              WebkitBackgroundClip: 'text',
+                              color: 'transparent',
+                            }
+                          : { color: 'text.disabled' }
+                      }
                     >
                       {total}
                     </Typography>
@@ -2735,7 +2887,19 @@ export function MultiplierPage() {
           spacing={1}
           justifyContent="space-between"
           alignItems="center"
-          sx={{ mt: 1 }}
+          sx={{
+            mt: 2,
+            px: 2,
+            py: 1,
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+            position: 'sticky',
+            bottom: 12,
+            zIndex: 2,
+            boxShadow: '0 6px 24px rgba(22,24,35,0.10)',
+          }}
         >
           <Button
             disabled={etapa === 0}
@@ -2743,7 +2907,11 @@ export function MultiplierPage() {
           >
             Voltar
           </Button>
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ textAlign: 'center', flex: 1, px: 1 }}
+          >
             {DICA_DA_ETAPA[etapa]}
           </Typography>
           <Button
@@ -2756,102 +2924,179 @@ export function MultiplierPage() {
         </Stack>
       </form>
 
-      <Box sx={{ mt: 3, display: etapa === 3 ? 'block' : 'none' }}>
+      <Box sx={{ mt: 3, display: etapa === 3 ? 'block' : 'none', ...ENTRADA_DE_ETAPA }}>
         <Galeria grupos={galeria} onRecarregar={recarregarGaleria} />
       </Box>
 
       <Card sx={{ mt: 3 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Planos salvos
+        <CardContent>
+          <Stack direction="row" alignItems="baseline" spacing={1} sx={{ mb: 1.5 }}>
+            <Typography variant="h6">Planos salvos</Typography>
+            {plans.length > 0 && (
+              <Typography variant="caption" color="text.secondary">
+                {plans.length} {plural(plans.length, 'plano', 'planos')}
               </Typography>
-              {plans.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  Nenhum plano salvo ainda. Gere sua primeira matriz de combinações!
-                </Typography>
-              ) : (
-                <Stack divider={<Divider />} spacing={1}>
-                  {plans.map((plan) => (
-                    <Box key={plan.id}>
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                          <Typography variant="subtitle2">
-                            {plan.sigla}{' '}
-                            <Chip
-                              size="small"
-                              variant="outlined"
-                              label={plan.format}
-                              sx={{ ml: 0.5 }}
-                            />
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {plan.hooks.length} ganchos × {plan.bodies.length} corpos ×{' '}
-                            {plan.ctas.length} CTAs = {plan.total} vídeos ·{' '}
-                            {new Date(plan.createdAt).toLocaleDateString('pt-BR')}
-                          </Typography>
-                        </Box>
-                        <IconButton
-                          size="small"
-                          aria-label="Ver combinações"
-                          onClick={() => handleToggleExpand(plan.id)}
-                        >
-                          {expanded === plan.id ? (
-                            <ExpandLessRoundedIcon fontSize="small" />
-                          ) : (
-                            <ExpandMoreRoundedIcon fontSize="small" />
-                          )}
-                        </IconButton>
+            )}
+          </Stack>
+          {plans.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Nenhum plano salvo ainda. Gere sua primeira matriz de combinações!
+            </Typography>
+          ) : (
+            <Stack spacing={1}>
+              {plans.map((plan) => {
+                const aberto = expanded === plan.id;
+                const contagens = [
+                  { bloco: BLOCOS[0], n: plan.hooks.length },
+                  { bloco: BLOCOS[1], n: plan.bodies.length },
+                  { bloco: BLOCOS[2], n: plan.ctas.length },
+                ];
+                return (
+                  <Box
+                    key={plan.id}
+                    sx={{
+                      border: '1px solid',
+                      borderColor: aberto ? 'primary.main' : 'divider',
+                      borderRadius: 2,
+                      transition: 'border-color .15s, background-color .15s',
+                      '&:hover': { bgcolor: aberto ? 'transparent' : 'action.hover' },
+                    }}
+                  >
+                    {/* A linha inteira abre o plano — o alvo de clique deixa
+                        de ser um ícone de 30px no canto. */}
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      spacing={1.5}
+                      onClick={() => void handleToggleExpand(plan.id)}
+                      sx={{
+                        px: 1.5,
+                        py: 1,
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        flexWrap: 'wrap',
+                        rowGap: 0.5,
+                      }}
+                    >
+                      <Typography sx={{ fontWeight: 700 }}>{plan.sigla}</Typography>
+                      <Chip size="small" variant="outlined" label={plan.format} />
+                      {/* A fórmula do plano nas cores dos blocos — a mesma
+                          linguagem do resto da tela, em vez de uma frase. */}
+                      <Stack direction="row" alignItems="center" spacing={0.5}>
+                        {contagens.map(({ bloco, n }, i) => (
+                          <Stack
+                            key={bloco.role}
+                            direction="row"
+                            alignItems="center"
+                            spacing={0.5}
+                          >
+                            {i > 0 && (
+                              <Typography variant="caption" color="text.disabled">
+                                ×
+                              </Typography>
+                            )}
+                            <Box
+                              sx={{
+                                px: 0.6,
+                                py: 0.1,
+                                borderRadius: 0.75,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                fontFamily: 'monospace',
+                                color: bloco.texto,
+                                bgcolor: bloco.cor,
+                              }}
+                            >
+                              {n}
+                              {bloco.letra}
+                            </Box>
+                          </Stack>
+                        ))}
+                        <Typography variant="caption" color="text.secondary">
+                          = {plan.total} {plural(plan.total, 'vídeo', 'vídeos')}
+                        </Typography>
+                      </Stack>
+                      <Box sx={{ flexGrow: 1 }} />
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(plan.createdAt).toLocaleDateString('pt-BR')}
+                      </Typography>
+                      <Tooltip title="Excluir plano — os vídeos já montados continuam na galeria">
                         <IconButton
                           size="small"
                           aria-label="Excluir plano"
-                          onClick={() => handleDeletePlan(plan.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDeletePlan(plan.id);
+                          }}
+                          sx={{ color: 'text.disabled', '&:hover': { color: 'error.main' } }}
                         >
                           <DeleteOutlineRoundedIcon fontSize="small" />
                         </IconButton>
-                      </Stack>
-                      <Collapse in={expanded === plan.id} unmountOnExit>
-                        <Box sx={{ mt: 1 }}>
-                          {expandedDetail && expandedDetail.id === plan.id ? (
-                            <>
-                              <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
-                                <Button
-                                  size="small"
-                                  startIcon={<ContentCopyRoundedIcon />}
-                                  onClick={() => handleCopy(expandedDetail.combinations)}
-                                >
-                                  Copiar lista
-                                </Button>
-                                <Button
-                                  size="small"
-                                  startIcon={<DownloadRoundedIcon />}
-                                  onClick={() => handleDownloadCsv(expandedDetail)}
-                                >
-                                  Baixar CSV
-                                </Button>
-                                <Button
-                                  size="small"
-                                  startIcon={<MovieFilterRoundedIcon />}
-                                  onClick={() => void handleRender(plan.id)}
-                                >
-                                  Montar vídeos
-                                </Button>
-                              </Stack>
-                              {renderCombinationsTable(expandedDetail.combinations)}
-                            </>
-                          ) : (
+                      </Tooltip>
+                      <IconButton size="small" aria-label="Ver combinações">
+                        {aberto ? (
+                          <ExpandLessRoundedIcon fontSize="small" />
+                        ) : (
+                          <ExpandMoreRoundedIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Stack>
+                    <Collapse in={aberto} unmountOnExit>
+                      <Box sx={{ px: 1.5, pb: 1.5 }}>
+                        {expandedDetail && expandedDetail.id === plan.id ? (
+                          <>
+                            <Stack
+                              direction="row"
+                              spacing={1}
+                              flexWrap="wrap"
+                              useFlexGap
+                              sx={{ mb: 1 }}
+                            >
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<ContentCopyRoundedIcon />}
+                                onClick={() => handleCopy(expandedDetail.combinations)}
+                              >
+                                Copiar lista
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<DownloadRoundedIcon />}
+                                onClick={() => handleDownloadCsv(expandedDetail)}
+                              >
+                                Baixar CSV
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="contained"
+                                startIcon={<MovieFilterRoundedIcon />}
+                                onClick={() => void handleRender(plan.id)}
+                              >
+                                Montar vídeos
+                              </Button>
+                            </Stack>
+                            {renderCombinationsTable(expandedDetail.combinations)}
+                          </>
+                        ) : (
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <CircularProgress size={14} />
                             <Typography variant="caption" color="text.secondary">
                               Carregando…
                             </Typography>
-                          )}
-                        </Box>
-                      </Collapse>
-                    </Box>
-                  ))}
-                </Stack>
-              )}
-            </CardContent>
+                          </Stack>
+                        )}
+                      </Box>
+                    </Collapse>
+                  </Box>
+                );
+              })}
+            </Stack>
+          )}
+        </CardContent>
       </Card>
       {dialogo}
-    </>
+    </Box>
   );
 }

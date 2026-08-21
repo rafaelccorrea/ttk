@@ -51,6 +51,9 @@ export function AppRoutes() {
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
+      {import.meta.env.DEV && (
+        <Route path="/dev/multiplicador" element={<MultiplierPage />} />
+      )}
       <Route path="/confirmar-email" element={<ConfirmEmailPage />} />
       <Route path="/esqueci-a-senha" element={<ForgotPasswordPage />} />
       <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
