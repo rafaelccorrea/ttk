@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { DevLoginDto } from './dto/dev-login.dto';
 import {
   ForgotPasswordDto,
+  GoogleLoginDto,
   LoginDto,
   RegisterDto,
   ResendDto,
@@ -41,6 +42,16 @@ export class AuthController {
   @ApiOperation({ summary: 'Login por e-mail e senha (exige confirmação)' })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto.email, dto.password);
+  }
+
+  // Mesmo limite do login por senha: é a mesma porta, só muda a chave.
+  @Throttle({ default: { ttl: 300000, limit: 10 } })
+  @Post('google')
+  @ApiOperation({
+    summary: 'Login/cadastro com Google (valida o id_token no backend)',
+  })
+  googleLogin(@Body() dto: GoogleLoginDto) {
+    return this.authService.loginWithGoogle(dto.credential, dto.ref);
   }
 
   @Throttle({ default: { ttl: 60000, limit: 10 } })

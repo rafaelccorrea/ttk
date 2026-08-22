@@ -9,7 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { compare, hash } from 'bcryptjs';
 import { createHash, randomBytes, randomUUID } from 'crypto';
-import { sign } from 'jsonwebtoken';
+import { decode, JwtPayload, sign, verify } from 'jsonwebtoken';
+import { JwksClient } from 'jwks-rsa';
 import { IsNull, Not, Repository } from 'typeorm';
 import { AppUser } from '../users/entities/app-user.entity';
 import { MailService } from './mail.service';
@@ -19,6 +20,16 @@ const RESET_TOKEN_TTL_MS = 60 * 60_000; // 1 hora
 
 @Injectable()
 export class AuthService {
+  /*
+   * Chaves públicas do Google para validar o id_token do login social.
+   * Cacheadas: o Google rotaciona as chaves, mas não a cada requisição.
+   */
+  private readonly googleJwks = new JwksClient({
+    jwksUri: 'https://www.googleapis.com/oauth2/v3/certs',
+    cache: true,
+    cacheMaxAge: 10 * 60 * 1000,
+  });
+
   constructor(
     private readonly config: ConfigService,
     private readonly mailService: MailService,
@@ -181,7 +192,105 @@ export class AuthService {
 
   /** Config que o frontend pode ler sem autenticar. */
   publicConfig() {
-    return { waitlist: this.waitlistMode };
+    return {
+      waitlist: this.waitlistMode,
+      // O client ID do Google não é segredo (vai no HTML de qualquer site que
+      // usa o botão). Servir daqui evita duplicar o valor num env do frontend
+      // — e sem ele configurado o botão simplesmente não aparece.
+      googleClientId: this.config.get<string>('GOOGLE_CLIENT_ID') || null,
+    };
+  }
+
+  /**
+   * Login/cadastro com Google. Recebe o `credential` (id_token JWT) que o
+   * Google Identity Services entrega no navegador e valida do nosso lado:
+   * assinatura via JWKS do Google, `aud` igual ao nosso client ID e `iss` do
+   * Google. Confiar no payload sem validar seria aceitar qualquer JWT forjado.
+   */
+  private async verifyGoogleIdToken(credential: string): Promise<JwtPayload> {
+    const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
+    if (!clientId) {
+      throw new BadRequestException('Login com Google não está habilitado.');
+    }
+    const decoded = decode(credential, { complete: true });
+    const kid = decoded?.header?.kid;
+    if (!kid) {
+      throw new UnauthorizedException('Token do Google inválido.');
+    }
+    try {
+      const key = await this.googleJwks.getSigningKey(kid);
+      return verify(credential, key.getPublicKey(), {
+        algorithms: ['RS256'],
+        audience: clientId,
+        issuer: ['accounts.google.com', 'https://accounts.google.com'],
+      }) as JwtPayload;
+    } catch {
+      throw new UnauthorizedException('Token do Google inválido ou expirado.');
+    }
+  }
+
+  async loginWithGoogle(credential: string, ref?: string) {
+    const payload = await this.verifyGoogleIdToken(credential);
+    const googleId = String(payload.sub);
+    const email = String(payload.email ?? '')
+      .toLowerCase()
+      .trim();
+    // Sem e-mail verificado não dá para vincular por e-mail: alguém criaria
+    // uma conta Google com o e-mail de outra pessoa e entraria na conta dela.
+    if (!email || payload.email_verified !== true) {
+      throw new UnauthorizedException(
+        'Sua conta Google não tem e-mail verificado.',
+      );
+    }
+
+    // Primeiro pelo vínculo estável (sub), depois pelo e-mail — que cobre
+    // tanto quem já tinha conta por senha quanto o primeiro login social.
+    let user = await this.users.findOneBy({ googleId });
+    user ??= await this.users.findOneBy({ email });
+
+    const isNew = !user;
+    user ??= this.users.create({ id: randomUUID(), email });
+    user.googleId ??= googleId;
+    if (!user.displayName && payload.name) {
+      user.displayName = String(payload.name);
+    }
+    if (!user.avatarUrl && payload.picture) {
+      user.avatarUrl = String(payload.picture);
+    }
+
+    // Mesmas regras do register(): só grava indicação quando ainda não há
+    // uma, e auto-indicação é recusada.
+    if (ref && !user.referredBy && ref !== user.id) {
+      const indicador = await this.users.findOneBy({ id: ref });
+      if (indicador) user.referredBy = indicador.id;
+    }
+
+    // Soft launch: conta NOVA via Google entra na fila como qualquer outra —
+    // o botão do Google não pode ser a porta que fura a lista de espera.
+    // Quem já estava na fila também não entra por aqui antes da vez chegar.
+    // Importante: sem confirmar o e-mail aqui, senão o login por senha
+    // deixaria de barrar essa conta enquanto ela espera.
+    if (this.waitlistMode && (isNew || user.waitlistedAt)) {
+      user.waitlistedAt ??= new Date();
+      await this.users.save(user);
+      return {
+        message: 'Você entrou na lista de espera!',
+        waitlisted: true as const,
+        position: await this.waitlistPosition(user),
+        total: await this.users.count({ where: { waitlistedAt: Not(IsNull()) } }),
+      };
+    }
+
+    // Google já verificou o e-mail — o fluxo de confirmação nosso seria
+    // pedir para provar de novo o que acabou de ser provado.
+    user.emailConfirmedAt ??= new Date();
+    user.confirmationToken = null as unknown as string;
+
+    await this.users.save(user);
+    return {
+      accessToken: this.issueToken(user),
+      user: { id: user.id, email: user.email, displayName: user.displayName },
+    };
   }
 
   /** Contagens da fila, para o script de gestão. */

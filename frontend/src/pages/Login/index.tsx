@@ -16,6 +16,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Divider,
   IconButton,
   InputAdornment,
   Stack,
@@ -24,6 +25,7 @@ import {
 } from '@mui/material';
 import { FormEvent, useEffect, useState } from 'react';
 import { Link as RouterLink, Navigate, useNavigate } from 'react-router-dom';
+import { GoogleLoginButton } from '@/components/ui/GoogleLoginButton';
 import { apiErrorMessage, useAuth } from '@/contexts/AuthContext';
 import { authService } from '@/services/auth.service';
 
@@ -54,7 +56,8 @@ const BRAND_POINTS = [
 ];
 
 export function LoginPage() {
-  const { isAuthenticated, isDemoMode, signIn, signUp } = useAuth();
+  const { isAuthenticated, isDemoMode, signIn, signInWithGoogle, signUp } =
+    useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -73,11 +76,17 @@ export function LoginPage() {
   // Modo lista de espera vindo do backend, para a tela avisar ANTES do envio
   // em vez de prometer "conta grátis" e entregar uma fila.
   const [waitlistMode, setWaitlistMode] = useState(false);
+  // Client ID do Google vindo do backend. Nulo = botão não aparece (o login
+  // com Google não está configurado neste ambiente).
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
 
   useEffect(() => {
     authService
       .config()
-      .then((c) => setWaitlistMode(c.waitlist))
+      .then((c) => {
+        setWaitlistMode(c.waitlist);
+        setGoogleClientId(c.googleClientId ?? null);
+      })
       // Config indisponível não pode travar o login: segue no fluxo normal.
       .catch(() => undefined);
   }, []);
@@ -107,6 +116,25 @@ export function LoginPage() {
         await signIn(email, password);
         navigate('/dashboard');
       }
+    } catch (err) {
+      setError(translateAuthError(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleGoogleCredential(credential: string) {
+    setError(null);
+    setInfo(null);
+    setBusy(true);
+    try {
+      const result = await signInWithGoogle(credential);
+      if (result?.waitlisted) {
+        // Soft launch: conta nova via Google também cai na fila.
+        setWaitlist({ position: result.position, total: result.total });
+        return;
+      }
+      navigate('/dashboard');
     } catch (err) {
       setError(translateAuthError(err));
     } finally {
@@ -377,6 +405,18 @@ export function LoginPage() {
                     : 'Criar conta'
                   : 'Entrar'}
             </Button>
+            {googleClientId && (
+              <>
+                <Divider sx={{ my: 2.5, fontSize: 13, color: 'text.secondary' }}>
+                  ou
+                </Divider>
+                <GoogleLoginButton
+                  clientId={googleClientId}
+                  onCredential={handleGoogleCredential}
+                  onError={(message) => setError(message)}
+                />
+              </>
+            )}
             {!isDemoMode && (
               <Typography textAlign="center" fontSize={14} color="text.secondary" mt={2.5}>
                 {isSignUp ? 'Já tem conta?' : 'Ainda não tem conta?'}{' '}

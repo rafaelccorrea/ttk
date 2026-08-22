@@ -34,6 +34,23 @@ export class RegisterDto {
   ref?: string;
 }
 
+export class GoogleLoginDto {
+  /*
+   * O `credential` que o Google Identity Services entrega no navegador: um
+   * id_token JWT assinado pelo Google. O backend valida assinatura, `aud` e
+   * `iss` — o conteúdo só vale depois disso.
+   */
+  @ApiProperty({ description: 'id_token (credential) do Google Identity Services' })
+  @IsString()
+  @MaxLength(4096)
+  credential: string;
+
+  @ApiProperty({ required: false, description: 'Id de quem indicou (?ref=)' })
+  @IsOptional()
+  @IsUUID()
+  ref?: string;
+}
+
 export class LoginDto {
   @ApiProperty({ example: 'voce@email.com' })
   @IsEmail()

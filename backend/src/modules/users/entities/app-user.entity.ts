@@ -51,6 +51,15 @@ export class AppUser {
   @Column({ nullable: true })
   passwordHash: string;
 
+  /*
+   * `sub` do id_token do Google (login social). É o identificador estável da
+   * conta Google — o e-mail pode mudar lá, e o vínculo precisa sobreviver.
+   * Nulo para quem só usa senha. O índice único (parcial, no banco) garante
+   * que uma conta Google não abre duas contas aqui.
+   */
+  @Column({ type: 'text', nullable: true })
+  googleId: string | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   emailConfirmedAt: Date;
 

@@ -31,6 +31,11 @@ interface AuthContextValue {
   /** Mantido por compatibilidade — auth agora é sempre do backend. */
   isDemoMode: boolean;
   signIn(email: string, password: string): Promise<void>;
+  /**
+   * Login/cadastro com o credential do Google. Retorna o resultado de fila
+   * quando o soft launch segura a conta nova; senão autentica direto.
+   */
+  signInWithGoogle(credential: string): Promise<SignUpResult | null>;
   signUp(email: string, password: string): Promise<SignUpResult>;
   /** Autentica com um token já emitido (ex.: após confirmar o e-mail). */
   acceptSession(accessToken: string, email: string): void;
@@ -66,6 +71,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (mail: string, password: string) => {
       const { accessToken, user } = await authService.login(mail, password);
       persist(accessToken, user.email);
+    },
+    [persist],
+  );
+
+  const signInWithGoogle = useCallback(
+    async (credential: string): Promise<SignUpResult | null> => {
+      // O ref segue junto como no cadastro por senha: se a conta nascer
+      // agora, é o único momento de gravar quem indicou.
+      const result = await authService.googleLogin(credential, getReferral());
+      clearReferral();
+      if (result.waitlisted) {
+        return {
+          needsConfirmation: false,
+          message: result.message ?? 'Você entrou na lista de espera!',
+          waitlisted: true,
+          position: result.position,
+          total: result.total,
+        };
+      }
+      if (result.accessToken && result.user) {
+        persist(result.accessToken, result.user.email);
+      }
+      return null;
     },
     [persist],
   );
@@ -112,11 +140,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       isDemoMode: false,
       signIn,
+      signInWithGoogle,
       signUp,
       acceptSession,
       signOut,
     }),
-    [token, email, signIn, signUp, acceptSession, signOut],
+    [token, email, signIn, signInWithGoogle, signUp, acceptSession, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

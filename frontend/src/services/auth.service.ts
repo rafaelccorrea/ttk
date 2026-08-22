@@ -19,9 +19,29 @@ export interface RegisterResult {
 }
 
 export const authService = {
-  /** Config pública: hoje só diz se o cadastro está em lista de espera. */
-  async config(): Promise<{ waitlist: boolean }> {
-    const { data } = await api.get<{ waitlist: boolean }>('/auth/config');
+  /** Config pública: lista de espera e client ID do Google (se habilitado). */
+  async config(): Promise<{ waitlist: boolean; googleClientId: string | null }> {
+    const { data } = await api.get<{
+      waitlist: boolean;
+      googleClientId: string | null;
+    }>('/auth/config');
+    return data;
+  },
+
+  /**
+   * Login/cadastro com Google. `credential` é o id_token que o Google
+   * Identity Services entrega; a validação acontece toda no backend.
+   * Em soft launch, conta nova cai na fila (waitlisted, sem token).
+   */
+  async googleLogin(credential: string, ref?: string) {
+    const { data } = await api.post<{
+      accessToken?: string;
+      user?: AuthUserInfo;
+      message?: string;
+      waitlisted?: boolean;
+      position?: number;
+      total?: number;
+    }>('/auth/google', { credential, ...(ref ? { ref } : {}) });
     return data;
   },
 
