@@ -12,6 +12,8 @@ export interface AdminOverview {
     comPlanoLiberado: number;
     pendentes: number;
     novos30Dias: number;
+    /** Contas com Google vinculado (login social). */
+    viaGoogle: number;
     conversaoPct: number;
   };
   porPlano: Array<{
@@ -42,6 +44,8 @@ export interface AdminUser {
   credits: number;
   isAdmin: boolean;
   emailConfirmed: boolean;
+  /** Conta com Google vinculado (cadastro ou vínculo pelo login social). */
+  viaGoogle: boolean;
   naFila: boolean;
   temAssinaturaStripe: boolean;
   createdAt: string;

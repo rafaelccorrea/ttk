@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -19,6 +20,7 @@ const RESEND_COOLDOWN_MS = 60_000;
 const RESET_TOKEN_TTL_MS = 60 * 60_000; // 1 hora
 
 @Injectable()
+  private readonly logger = new Logger(AuthService.name);
 export class AuthService {
   /*
    * Chaves públicas do Google para validar o id_token do login social.
@@ -283,14 +285,30 @@ export class AuthService {
 
     // Google já verificou o e-mail — o fluxo de confirmação nosso seria
     // pedir para provar de novo o que acabou de ser provado.
+    const primeiraAtivacao = !user.emailConfirmedAt;
     user.emailConfirmedAt ??= new Date();
     user.confirmationToken = null as unknown as string;
 
     await this.users.save(user);
+    if (primeiraAtivacao) this.sendWelcome(user);
     return {
       accessToken: this.issueToken(user),
       user: { id: user.id, email: user.email, displayName: user.displayName },
     };
+  }
+
+  /**
+   * Boas-vindas em segundo plano: falha no SMTP não pode derrubar a ativação
+   * da conta, então só registra no log.
+   */
+  private sendWelcome(user: { email: string; displayName?: string }): void {
+    void this.mailService
+      .sendWelcomeEmail(user.email, user.displayName)
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `Falha ao enviar boas-vindas para ${user.email}: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
   }
 
   /** Contagens da fila, para o script de gestão. */
@@ -394,6 +412,7 @@ export class AuthService {
     user.emailConfirmedAt = new Date();
     user.confirmationToken = null as unknown as string;
     await this.users.save(user);
+    this.sendWelcome(user);
     return {
       message: 'E-mail confirmado! Você já pode entrar.',
       accessToken: this.issueToken(user),

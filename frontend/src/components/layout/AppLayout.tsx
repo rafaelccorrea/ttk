@@ -1,5 +1,6 @@
 import ArrowOutwardRoundedIcon from '@mui/icons-material/ArrowOutwardRounded';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
+import InstagramIcon from '@mui/icons-material/Instagram';
 import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded';
 import AutoFixHighRoundedIcon from '@mui/icons-material/AutoFixHighRounded';
 import CardGiftcardRoundedIcon from '@mui/icons-material/CardGiftcardRounded';
@@ -178,6 +179,21 @@ const ADMIN_SECTION: NavSection = {
 const GRUPO_WHATSAPP = (
   import.meta.env.VITE_WHATSAPP_GROUP_URL as string | undefined
 )?.trim();
+
+/** Perfil oficial no TikTok. Fixo: diferente do convite do grupo, a URL não expira. */
+const TIKTOK_URL = 'https://www.tiktok.com/@pikpok.viral';
+
+/** Perfil oficial no Instagram (sem os parâmetros de rastreio do QR). */
+const INSTAGRAM_URL = 'https://www.instagram.com/pikpokofc';
+
+/** O MUI não traz ícone do TikTok; é a marca oficial em SVG, na cor do texto. */
+function TikTokIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M16.6 5.82A4.28 4.28 0 0 1 15.54 3h-3.09v12.4a2.59 2.59 0 0 1-2.59 2.5 2.6 2.6 0 0 1-2.6-2.6c0-1.72 1.66-3.01 3.37-2.48V9.66c-3.45-.46-6.47 2.22-6.47 5.64 0 3.33 2.76 5.7 5.69 5.7 3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 0 0 4.3 1.38V7.3s-1.88.09-3.24-1.48z" />
+    </svg>
+  );
+}
 
 const NAV = [...NAV_SECTIONS, ADMIN_SECTION].flatMap(
   (section) => section.items,
@@ -687,6 +703,113 @@ export function AppLayout() {
                   )}
                 </ListItemButton>
               </span>
+            </Tooltip>
+            <Tooltip
+              title={collapsed ? 'Seguir no TikTok' : ''}
+              placement="right"
+            >
+              <ListItemButton
+                component="a"
+                href={TIKTOK_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  mt: 0.6,
+                  borderRadius: 2.5,
+                  py: 0.65,
+                  px: collapsed ? 1 : 1.1,
+                  justifyContent: collapsed ? 'center' : undefined,
+                  color: '#fff',
+                  border: '1px solid rgba(255,255,255,0.10)',
+                  background: 'rgba(255,255,255,0.03)',
+                  transition:
+                    'transform .2s ease, border-color .2s ease, background .3s ease',
+                  '&:hover': {
+                    borderColor: 'rgba(105,201,208,0.6)',
+                    transform: 'translateY(-1px)',
+                    background: 'rgba(255,255,255,0.07)',
+                  },
+                }}
+              >
+                <ListItemIcon
+                  sx={{
+                    minWidth: collapsed ? 0 : 38,
+                    color: '#fff',
+                    filter:
+                      'drop-shadow(-1px 0 0 #69c9d0) drop-shadow(1px 0 0 #ee1d52)',
+                  }}
+                >
+                  <TikTokIcon />
+                </ListItemIcon>
+                {!collapsed && (
+                  <ListItemText
+                    primary="Siga no TikTok"
+                    primaryTypographyProps={{
+                      fontWeight: 600,
+                      fontSize: 14.5,
+                      noWrap: true,
+                    }}
+                  />
+                )}
+                {!collapsed && (
+                  <ArrowOutwardRoundedIcon
+                    sx={{ fontSize: 15, color: 'rgba(255,255,255,0.5)' }}
+                  />
+                )}
+              </ListItemButton>
+            </Tooltip>
+            <Tooltip
+              title={collapsed ? 'Seguir no Instagram' : ''}
+              placement="right"
+            >
+              <ListItemButton
+                component="a"
+                href={INSTAGRAM_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  mt: 0.6,
+                  borderRadius: 2.5,
+                  py: 0.65,
+                  px: collapsed ? 1 : 1.1,
+                  justifyContent: collapsed ? 'center' : undefined,
+                  color: '#fff',
+                  border: '1px solid rgba(255,255,255,0.10)',
+                  background: 'rgba(255,255,255,0.03)',
+                  transition:
+                    'transform .2s ease, border-color .2s ease, background .3s ease',
+                  '&:hover': {
+                    borderColor: 'rgba(225,48,108,0.6)',
+                    transform: 'translateY(-1px)',
+                    background: 'rgba(255,255,255,0.07)',
+                  },
+                }}
+              >
+                <ListItemIcon
+                  sx={{
+                    minWidth: collapsed ? 0 : 38,
+                    color: '#e1306c',
+                    filter: 'drop-shadow(0 0 6px rgba(225,48,108,0.55))',
+                  }}
+                >
+                  <InstagramIcon />
+                </ListItemIcon>
+                {!collapsed && (
+                  <ListItemText
+                    primary="Siga no Instagram"
+                    primaryTypographyProps={{
+                      fontWeight: 600,
+                      fontSize: 14.5,
+                      noWrap: true,
+                    }}
+                  />
+                )}
+                {!collapsed && (
+                  <ArrowOutwardRoundedIcon
+                    sx={{ fontSize: 15, color: 'rgba(255,255,255,0.5)' }}
+                  />
+                )}
+              </ListItemButton>
             </Tooltip>
           </Box>
         </Box>

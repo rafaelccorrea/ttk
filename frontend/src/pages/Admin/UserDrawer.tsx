@@ -134,6 +134,9 @@ export function UserDrawer({
               <Chip label={user.plan} size="small" color="primary" />
               <Chip label={`${user.credits} créditos`} size="small" />
               {user.isAdmin && <Chip label="admin" size="small" color="secondary" />}
+              {user.viaGoogle && (
+                <Chip label="Google" size="small" variant="outlined" color="info" />
+              )}
               {!user.emailConfirmed && (
                 <Chip label="e-mail não confirmado" size="small" variant="outlined" />
               )}

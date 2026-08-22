@@ -28,6 +28,8 @@ export interface AdminUserRow {
   credits: number;
   isAdmin: boolean;
   emailConfirmed: boolean;
+  /** Conta com Google vinculado (cadastro ou vínculo posterior pelo login social). */
+  viaGoogle: boolean;
   naFila: boolean;
   temAssinaturaStripe: boolean;
   createdAt: Date;
@@ -152,6 +154,13 @@ export class AdminService {
       .andWhere("t.createdAt > now() - interval '30 days'")
       .getRawOne<{ total: number }>();
 
+    // Quantas contas têm Google vinculado — mede a adesão ao login social.
+    const viaGoogle = await this.users
+      .createQueryBuilder('u')
+      .select('COUNT(*)::int', 'total')
+      .where('u.googleId IS NOT NULL')
+      .getRawOne<{ total: number }>();
+
     const novos30 = await this.users
       .createQueryBuilder('u')
       .select('COUNT(*)::int', 'total')
@@ -175,6 +184,7 @@ export class AdminService {
           .reduce((s, p) => s + p.total, 0),
         pendentes: porPlano.find((p) => p.plan === 'free')?.total ?? 0,
         novos30Dias: novos30?.total ?? 0,
+        viaGoogle: viaGoogle?.total ?? 0,
         conversaoPct:
           externas > 0
             ? Math.round((receita.assinaturasAtivas / externas) * 100)
@@ -295,6 +305,7 @@ export class AdminService {
         credits: u.credits,
         isAdmin: isAdmin(u.email),
         emailConfirmed: Boolean(u.emailConfirmedAt),
+        viaGoogle: Boolean(u.googleId),
         naFila: Boolean(u.waitlistedAt),
         temAssinaturaStripe: Boolean(u.stripeCustomerId),
         createdAt: u.createdAt,
@@ -323,6 +334,7 @@ export class AdminService {
       credits: user.credits,
       isAdmin: isAdmin(user.email),
       emailConfirmed: Boolean(user.emailConfirmedAt),
+      viaGoogle: Boolean(user.googleId),
       naFila: Boolean(user.waitlistedAt),
       stripeCustomerId: user.stripeCustomerId ?? null,
       createdAt: user.createdAt,

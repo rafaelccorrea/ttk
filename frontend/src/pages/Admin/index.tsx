@@ -178,6 +178,11 @@ export function AdminPage() {
               valor={String(overview.contas.novos30Dias)}
             />
             <Metric
+              titulo="Com Google"
+              valor={String(overview.contas.viaGoogle)}
+              nota="contas com login social vinculado"
+            />
+            <Metric
               titulo="Acesso de cortesia"
               valor={String(overview.contas.cortesia)}
               nota="equipe — não conta como venda"
@@ -294,6 +299,14 @@ export function AdminPage() {
                         </Box>
                         {u.isAdmin && (
                           <Chip label="admin" size="small" color="secondary" />
+                        )}
+                        {u.viaGoogle && (
+                          <Chip
+                            label="Google"
+                            size="small"
+                            variant="outlined"
+                            color="info"
+                          />
                         )}
                         {!u.emailConfirmed && (
                           <Chip
