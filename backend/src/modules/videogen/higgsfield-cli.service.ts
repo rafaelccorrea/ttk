@@ -24,6 +24,7 @@ import type {
   StatusResult,
   SubmitResult,
 } from './gerador-de-midia';
+import { promptTemFala } from './gerador-de-midia';
 
 const execAsync = promisify(exec);
 
@@ -49,6 +50,7 @@ export class HiggsfieldCliService implements GeradorDeMidia {
   private readonly credenciais: string | null;
   private readonly modeloImagem: string;
   private readonly modeloVideo: string;
+  private readonly modeloVideoComFala: string;
   /** undefined = ainda não perguntei; null = perguntei e não há. */
   private workspace: string | null | undefined;
 
@@ -73,6 +75,44 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       this.config.get<string>('HIGGSFIELD_CLI_IMAGE_MODEL') ?? 'nano_banana_2';
     this.modeloVideo =
       this.config.get<string>('HIGGSFIELD_CLI_VIDEO_MODEL') ?? 'kling3_0_turbo';
+    /*
+     * Cena com alguém FALANDO em quadro vai para outro modelo. O Kling 3.0 só
+     * fala inglês, chinês, japonês, coreano e espanhol: a ordem "pt-BR" no
+     * prompt era ignorada e a apresentadora saía falando INGLÊS (produção,
+     * 2026-08-22). O Seedance 2.0 tem áudio nativo com lip-sync em português.
+     * Cena muda (close de produto, mãos) continua no modelo barato/rápido.
+     */
+    this.modeloVideoComFala =
+      this.config.get<string>('HIGGSFIELD_CLI_SPEECH_VIDEO_MODEL') ?? 'seedance_2_0';
+  }
+
+  /**
+   * Argumentos do job de vídeo, escolhendo o modelo pela presença de fala no
+   * prompt. O Seedance precisa dos parâmetros explícitos: sem `--generate_audio`
+   * não há voz, e sem `--aspect_ratio` o default é 16:9 — o frame 9:16 viraria
+   * barra preta dos dois lados.
+   */
+  private argsDeVideo(prompt: string, startImage: string): string[] {
+    const comFala = promptTemFala(prompt);
+    const modelo = comFala ? this.modeloVideoComFala : this.modeloVideo;
+    const args = [
+      'generate',
+      'create',
+      modelo,
+      '--prompt',
+      HiggsfieldCliService.citar(prompt),
+      '--start-image',
+      startImage,
+    ];
+    if (comFala && modelo.startsWith('seedance')) {
+      args.push(
+        '--aspect_ratio', '9:16',
+        '--duration', '5',
+        '--resolution', '720p',
+        '--generate_audio', 'true',
+      );
+    }
+    return args;
   }
 
   /**
@@ -618,30 +658,14 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       try {
         const arquivo = join(pasta, `${randomUUID()}.png`);
         await writeFile(arquivo, imagem);
-        return await this.submeter([
-          'generate',
-          'create',
-          this.modeloVideo,
-          '--prompt',
-          HiggsfieldCliService.citar(prompt),
-          '--start-image',
-          HiggsfieldCliService.citar(arquivo),
-        ]);
+        return await this.submeter(this.argsDeVideo(prompt, HiggsfieldCliService.citar(arquivo)));
       } finally {
         await rm(pasta, { recursive: true, force: true }).catch(() => undefined);
       }
     }
 
     if (ehIdDeJob.test(imageUrl)) {
-      return this.submeter([
-        'generate',
-        'create',
-        this.modeloVideo,
-        '--prompt',
-        HiggsfieldCliService.citar(prompt),
-        '--start-image',
-        imageUrl,
-      ]);
+      return this.submeter(this.argsDeVideo(prompt, imageUrl));
     }
 
     const pasta = await mkdtemp(join(tmpdir(), 'pikpok-hf-'));
@@ -654,15 +678,7 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       }
       const arquivo = join(pasta, `${randomUUID()}.png`);
       await writeFile(arquivo, Buffer.from(await resposta.arrayBuffer()));
-      return await this.submeter([
-        'generate',
-        'create',
-        this.modeloVideo,
-        '--prompt',
-        HiggsfieldCliService.citar(prompt),
-        '--start-image',
-        HiggsfieldCliService.citar(arquivo),
-      ]);
+      return await this.submeter(this.argsDeVideo(prompt, HiggsfieldCliService.citar(arquivo)));
     } finally {
       await rm(pasta, { recursive: true, force: true }).catch(() => undefined);
     }

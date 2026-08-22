@@ -17,6 +17,7 @@ import { Product } from '../products/entities/product.entity';
 import { AiService } from '../studio/ai.service';
 import { Video } from '../videos/entities/video.entity';
 import { VideogenService } from '../videogen/videogen.service';
+import { MARCADOR_DE_FALA } from '../videogen/gerador-de-midia';
 import {
   CreateCampaignDto,
   CreatePersonaDto,
@@ -239,7 +240,7 @@ function montarPromptDeCena(opts: {
     partes.push(
       // "VERBATIM": o modelo "corrigia" a concordância sozinho ("o dia todo"
       // saiu "o dia toda" em produção).
-      `Dialogue — say VERBATIM, word for word, in BRAZILIAN PORTUGUESE (pt-BR): "${falaParaAudio(opts.fala.trim())}"`,
+      `${MARCADOR_DE_FALA}, word for word, in BRAZILIAN PORTUGUESE (pt-BR): "${falaParaAudio(opts.fala.trim())}"`,
       // Cada frase abaixo cobre um defeito que JÁ saiu em produção: espanhol,
       // palavra flexionada, preço em dólar, clipe abrindo com risada e fala
       // cortada no fim dos 5s. Compacto de propósito — ver PROMPT_MAX.

@@ -68,3 +68,17 @@ export interface GeradorDeMidia {
  * módulo resolve para a implementação da carteira que estiver valendo.
  */
 export const GERADOR_DE_MIDIA = Symbol('GERADOR_DE_MIDIA');
+
+/**
+ * Trecho que abre a ordem de fala no prompt de vídeo (ver `montarPromptDeCena`
+ * em campaigns). O driver o usa para saber se a cena tem alguém FALANDO em
+ * quadro — e escolher um modelo que fale português: o Kling 3.0 gera áudio
+ * nativo só em inglês, chinês, japonês, coreano e espanhol, e uma fala em
+ * pt-BR saía em INGLÊS (aconteceu em produção). Marcador no prompt, e não um
+ * campo novo, porque a fase 2 da composição reanima a partir do prompt gravado.
+ */
+export const MARCADOR_DE_FALA = 'Dialogue — say VERBATIM';
+
+export function promptTemFala(prompt: string): boolean {
+  return prompt.includes(MARCADOR_DE_FALA);
+}
