@@ -562,8 +562,11 @@ export class HiggsfieldCliService implements GeradorDeMidia {
     // CommandLineToArgv — aspa interna é `\"`, NÃO `""` (o dobrar do cmd).
     // Com `""` um prompt contendo "PikPok Sistema" virava vários argumentos
     // posicionais ("Too many positional args") e nada gerava no Windows.
+    // E o cmd.exe encerra o comando numa quebra de linha mesmo dentro de
+    // aspas: o `> saida 2> erro` que vem depois nunca era aplicado e a CLI
+    // "terminava sem saída". O prompt tem um bloco por linha — vira espaço.
     return process.platform === 'win32'
-      ? `"${valor.replace(/(\\*)"/g, '$1$1\\"')}"`
+      ? `"${valor.replace(/\r?\n/g, ' ').replace(/(\\*)"/g, '$1$1\\"')}"`
       : `'${valor.replace(/'/g, `'\\''`)}'`;
   }
 

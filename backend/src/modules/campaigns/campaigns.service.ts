@@ -143,6 +143,42 @@ function vozDeNarrador(attrs: Partial<PersonaAttributes> | null | undefined): st
  * real e da mesma trava de identidade do produto; o que muda é quem "atua":
  * a câmera (close), as mãos usando, ou as mãos abrindo a embalagem.
  */
+/** Aparelho das cenas de tela — o que aparece nas mãos com o print na tela. */
+const DISPOSITIVO_DA_TELA =
+  'Samsung Galaxy S24 Ultra (flat display, thin symmetric bezels, titanium frame, held vertically)';
+
+/**
+ * Frame composto da cena de tela: mãos reais segurando o celular e, na tela,
+ * o print do sistema — pixel a pixel. É a mesma ideia da cena "apresentador
+ * com o produto": animar o print cru em tela cheia fazia o modelo tratar a
+ * interface como objeto e redesenhá-la (botões e textos inventados); com o
+ * print dentro de um aparelho, o que se anima é a mão e a câmera.
+ */
+function framePromptDeTela(nomeProduto: string | undefined, acaoVisual: string): string {
+  const nome = nomeProduto ? ` ("${nomeProduto}")` : '';
+  return (
+    "Compose a photorealistic vertical 9:16 POV photo: a person's two hands holding a " +
+    `${DISPOSITIVO_DA_TELA}${nome}, seen from the user's own point of view, slightly from above. ` +
+    'The phone screen displays EXACTLY the reference image — pixel-accurate, same layout, same text, ' +
+    'same colors, nothing added, removed, cropped or redesigned; the screenshot fills the whole display ' +
+    'edge to edge like a real app open on the phone. Thumb resting near the screen, natural grip. ' +
+    'Casual indoor setting, soft daylight, shallow depth of field on the background. ' +
+    `Context of the scene (in Portuguese, direction only): ${acaoVisual}. ` +
+    'No other screens, no text overlays, no watermark.'
+  );
+}
+
+function sujeitoDeTela(nomeProduto: string | undefined): string {
+  const nome = nomeProduto ? ` ("${nomeProduto}")` : '';
+  return (
+    `Close-up POV of two hands holding a ${DISPOSITIVO_DA_TELA} exactly as in the starting frame${nome}. ` +
+    'The app on the screen is the SAME as in the starting frame: keep every pixel of the interface — ' +
+    'layout, text, colors, buttons — unchanged; never redraw, scroll-generate or invent UI elements. ' +
+    'Only the thumb and the camera move: a small natural thumb gesture on the glass, slight handheld drift. ' +
+    'Realistic phone recording of a phone, screen glare subtle, no reflections of faces.'
+  );
+}
+
 function sujeitoSemPessoa(
   tipo: SceneKind,
   nomeProduto: string | undefined,
@@ -1399,6 +1435,53 @@ export class CampaignsService {
         );
       }
       /*
+       * Cena de TELA (o produto é um app/sistema): o frame é COMPOSTO antes —
+       * mãos + celular + print na tela — e só então animado. Ver
+       * `framePromptDeTela`. Cai no caminho simples se o print não puder ser
+       * lido; cena sem o aparelho é melhor que cena nenhuma.
+       */
+      const perfil = perfilDaCena({
+        tipo: cena.tipo,
+        modoAudio: cena.modoAudio,
+        comoUsa: campanha.comoUsa,
+      });
+      if (perfil === 'tela') {
+        const print = await this.lerCena(imagemBase);
+        if (print) {
+          const framePrompt = framePromptDeTela(produtoDaCena?.name, cena.acaoVisual);
+          const promptVideo = montarPromptDeCena({
+            sujeito: sujeitoDeTela(produtoDaCena?.name),
+            acaoVisual: cena.acaoVisual,
+            fala: null,
+            vozDescricao: vozDeNarrador(
+              campanha.vozNarrador && campanha.vozNarrador !== SEM_NARRACAO
+                ? { voz: campanha.vozNarrador }
+                : personaDaCampanha?.attrs,
+            ),
+            semPessoa: true,
+          });
+          const mediaComposta = await this.dispararGeracao(cena.id, () =>
+            this.videogen.generateComposedVideo(userId, {
+              framePrompt,
+              referencias: [print],
+              videoPrompt: promptVideo,
+              opcoes: opcoesDeVideo,
+            }),
+          );
+          cena.promptFinal = promptVideo;
+          cena.generatedMediaId = mediaComposta.id;
+          cena.status = 'renderizando';
+          cena.error = null;
+          await this.cenas.save(cena);
+          campanha.creditsSpent += ACTION_PRICES.video.credits;
+          campanha.status = 'renderizando';
+          await this.campanhas.save(campanha);
+          return cena;
+        }
+        this.logger.warn(`Cena ${cena.id}: print da tela ilegível — animando o print cru.`);
+      }
+
+      /*
        * O idioma vai NO PROMPT porque o modelo de vídeo gera áudio sozinho:
        * sem instrução, ele improvisa narração em inglês — saiu exatamente
        * assim em produção. A fala da cena entra como o texto a narrar, e o
@@ -1481,11 +1564,16 @@ export class CampaignsService {
           this.lerCena(fotoEscolhida),
         ]);
         if (retrato && fotoProduto) {
+          // A identidade é o ponto: o editor de imagem tende a "embelezar" a
+          // pessoa ao compor, e o rosto da cena saía diferente do das outras
+          // (aconteceu na cena de fechamento). O retrato é trava, não sugestão.
           const framePrompt =
-            'Compose a photorealistic vertical 9:16 frame: the EXACT person from the first ' +
-            'reference image, same face, hair and outfit, holding the EXACT product from the ' +
-            `second reference image ("${produtoDaCena.name}") in hand, close to the face, ` +
-            `label facing the camera. Scene: ${cena.acaoVisual}. ` +
+            'Compose a photorealistic vertical 9:16 frame. IDENTITY LOCK: the person is the EXACT ' +
+            'individual from the first reference image — same face geometry, eyes, nose, mouth, ' +
+            'skin tone and texture, hair, age, body and outfit; do not beautify, slim, retouch, ' +
+            'change expression style or age them. Keep the same framing and lighting as the portrait. ' +
+            `They hold the EXACT product from the second reference image ("${produtoDaCena.name}") ` +
+            `in hand, close to the face, label facing the camera. Scene: ${semAspas(cena.acaoVisual)}. ` +
             (campanha.comoUsa
               ? `The person is about to use the product (how it is used, in Portuguese: ${campanha.comoUsa}). `
               : '') +
