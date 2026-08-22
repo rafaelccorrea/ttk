@@ -143,8 +143,13 @@ function vozDeNarrador(attrs: Partial<PersonaAttributes> | null | undefined): st
  * real e da mesma trava de identidade do produto; o que muda é quem "atua":
  * a câmera (close), as mãos usando, ou as mãos abrindo a embalagem.
  */
-/** Aparelho das cenas de tela — o que aparece nas mãos com o print na tela. */
+/**
+ * Aparelho das cenas de tela — o que aparece nas mãos com o print na tela.
+ * `CAMPAIGN_SCREEN_DEVICE` troca sem deploy (ex.: "iPhone 15 Pro, titanium
+ * frame, held vertically"); o default é o aparelho usado nas capturas.
+ */
 const DISPOSITIVO_DA_TELA =
+  process.env.CAMPAIGN_SCREEN_DEVICE?.trim() ||
   'Samsung Galaxy S24 Ultra (flat display, thin symmetric bezels, titanium frame, held vertically)';
 
 /**
