@@ -57,7 +57,8 @@ import { resolveApiUrl } from '@/services/api';
 import { formatMoney } from '@/utils/format';
 import {
   LIMITES,
-  avisoFalaLonga,
+  avisoFalaNoLimite,
+  indicadorDeFala,
   contador,
   perigoNoContador,
   validarAcaoVisual,
@@ -264,6 +265,39 @@ function PersonasTab({
 
   const completo = grupos.length > 0 && grupos.every((g) => attrs[g.key]);
 
+  // Foto de referência: vira o retrato direto, sem gerar imagem nem cobrar.
+  const [foto, setFoto] = useState<File | null>(null);
+  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const inputFoto = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!foto) {
+      setFotoPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(foto);
+    setFotoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [foto]);
+
+  async function criarComFoto() {
+    if (!foto) return;
+    setGerando(true);
+    setErro(null);
+    try {
+      await campaignsService.createPersonaFromPhoto(foto, {
+        label: label.trim() || undefined,
+        attrs,
+      });
+      setLabel('');
+      setFoto(null);
+      onChange();
+    } catch (error) {
+      setErro(mensagemDeErro(error));
+    } finally {
+      setGerando(false);
+    }
+  }
+
   async function criar() {
     const autorizado = await confirmar({
       acao: 'image',
@@ -327,12 +361,72 @@ function PersonasTab({
                 </TextField>
               ))}
               {erro && <Alert severity="error">{erro}</Alert>}
+
+              {/* Foto de referência: o rosto vem da foto, os atributos acima
+                  só descrevem voz/energia/cenário para o roteiro. Grátis. */}
+              <input
+                ref={inputFoto}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+                onChange={(e) => setFoto(e.target.files?.[0] ?? null)}
+              />
+              {fotoPreview && (
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Box
+                    component="img"
+                    src={fotoPreview}
+                    alt="Foto de referência"
+                    sx={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: 2,
+                      objectFit: 'cover',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  />
+                  <Typography variant="body2" sx={{ flex: 1 }} noWrap>
+                    {foto?.name}
+                  </Typography>
+                  <IconButton size="small" onClick={() => setFoto(null)} aria-label="Remover foto">
+                    <CloseRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+              )}
+              {foto ? (
+                <Button
+                  variant="contained"
+                  fullWidth
+                  startIcon={<AddPhotoAlternateRoundedIcon />}
+                  onClick={criarComFoto}
+                  disabled={!completo || gerando || Boolean(validarRotuloPersona(label))}
+                >
+                  {gerando ? 'Salvando apresentador...' : 'Usar esta foto como retrato · grátis'}
+                </Button>
+              ) : (
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={<AddPhotoAlternateRoundedIcon />}
+                  onClick={() => inputFoto.current?.click()}
+                  disabled={gerando}
+                >
+                  Usar minha foto de referência
+                </Button>
+              )}
+              <Divider>
+                <Typography variant="caption" color="text.secondary">
+                  ou
+                </Typography>
+              </Divider>
+
               {/* Sem saldo o botão trava aqui, e não no 402 depois de a pessoa
                   ter montado a persona inteira escolhendo oito atributos. */}
               <Tooltip title={saldoImagem.motivo}>
                 <span>
                   <Button
-                    variant="contained"
+                    variant={foto ? 'outlined' : 'contained'}
                     fullWidth
                     startIcon={<AutoAwesomeRoundedIcon />}
                     onClick={criar}
@@ -347,7 +441,7 @@ function PersonasTab({
                       ? 'Gerando retrato...'
                       : saldoImagem.insuficiente
                         ? 'Créditos insuficientes'
-                        : `Gerar retrato${precos ? ` · ${precos.persona} créditos` : ''}`}
+                        : `Gerar retrato com IA${precos ? ` · ${precos.persona} créditos` : ''}`}
                   </Button>
                 </span>
               </Tooltip>
@@ -513,7 +607,8 @@ function CampoDeCena({
   valorSalvo: string;
   bloqueado: boolean;
   limite: number;
-  ajuda?: string;
+  /** Texto fixo ou calculado a partir do valor digitado (ex.: duração). */
+  ajuda?: string | ((valor: string) => string);
   validar: (valor: string) => string | null;
   aviso?: (valor: string) => string | null;
   salvar: (valor: string) => void;
@@ -549,7 +644,9 @@ function CampoDeCena({
             : undefined,
       }}
       helperText={
-        erro ?? alerta ?? `${ajuda ? `${ajuda} ` : ''}${contador(valor, limite)}`
+        erro ??
+        alerta ??
+        `${ajuda ? `${typeof ajuda === 'function' ? ajuda(valor) : ajuda} ` : ''}${contador(valor, limite)}`
       }
     />
   );
@@ -615,6 +712,10 @@ function Storyboard({
   const [confirmarTudo, setConfirmarTudo] = useState(false);
   const { saldo, ilimitado } = useSaldo('video');
   const { confirmar, dialogo } = useConfirmarGasto();
+  // Refazer cena: reabrir é grátis, mas invalida o vídeo final e o render
+  // novo cobra — merece uma confirmação própria, sem ser a de gasto.
+  const { confirmar: confirmarRefazer, dialogoDeConfirmacao: dialogoRefazer } =
+    useConfirmacao();
 
   const personaPronta = detalhe.persona?.status === 'pronta';
   const todasProntas =
@@ -1136,6 +1237,34 @@ function Storyboard({
                 <Stack direction="row" spacing={1} mt={1} flexWrap="wrap" useFlexGap>
                   {cena.status === 'pronta' && cena.outputUrl && (
                     <>
+                      {/* Refazer só ESTA cena: reabre para edição e o render
+                          novo substitui o vídeo atual. As outras cenas ficam
+                          como estão — não é preciso regenerar a campanha. */}
+                      <Tooltip title="Reabre a cena para editar fala, ação ou foto e renderizar de novo. Só a nova renderização cobra créditos; as outras cenas não mudam.">
+                        <span>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="inherit"
+                            startIcon={<PlayArrowRoundedIcon />}
+                            disabled={ocupado || detalhe.renderQueue}
+                            onClick={async () => {
+                              const ok = await confirmarRefazer({
+                                titulo: `Refazer a cena ${cena.ordem}?`,
+                                mensagem: `A cena volta para edição e o vídeo atual dela é substituído quando você renderizar de novo${
+                                  precos ? ` (${precos.cena} créditos)` : ''
+                                }. O vídeo final será remontado com a cena nova.`,
+                                textoConfirmar: 'Refazer cena',
+                                destrutivo: false,
+                              });
+                              if (!ok) return;
+                              await acao(() => campaignsService.reopenScene(cena.id));
+                            }}
+                          >
+                            Refazer cena
+                          </Button>
+                        </span>
+                      </Tooltip>
                       <Tooltip title="Baixar o MP4 desta cena">
                         <Button
                           size="small"
@@ -1338,7 +1467,8 @@ function Storyboard({
                       valorSalvo={cena.fala}
                       bloqueado={cena.status === 'pronta'}
                       validar={validarFala}
-                      aviso={avisoFalaLonga}
+                      aviso={avisoFalaNoLimite}
+                      ajuda={indicadorDeFala}
                       limite={LIMITES.fala}
                       salvar={(valor) =>
                         acao(() => campaignsService.updateScene(cena.id, { fala: valor }))
@@ -1410,6 +1540,7 @@ function Storyboard({
         }}
       />
       {dialogo}
+      {dialogoRefazer}
     </Stack>
   );
 }

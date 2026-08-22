@@ -31,10 +31,8 @@ export const LIMITES = {
   fotosMinimasPorProduto: 3,
 } as const;
 
-/** Quantas palavras cabem nos ~5 segundos de uma cena. */
-// 12, não 15: no ritmo calmo que o prompt pede, 15 palavras atropelavam o
-// final da fala (ou o clipe cortava no meio).
-const PALAVRAS_POR_CENA = 12;
+/** Duração de uma cena renderizada. */
+const SEGUNDOS_POR_CENA = 5;
 
 export type Erro = string | null;
 
@@ -77,11 +75,6 @@ export function validarFala(valor: string): Erro {
 }
 
 /**
- * Aviso, não erro: fala longa demais não quebra a geração, mas a cena tem ~5
- * segundos e o final é cortado. Bloquear seria pior — às vezes o vendedor sabe
- * o que está fazendo.
- */
-/**
  * Menor lado aceitável de uma foto de produto, em pixels.
  *
  * A cena é renderizada em 1080×1920 A PARTIR desta foto: uma miniatura de
@@ -121,10 +114,32 @@ export async function validarDimensoesDaFoto(arquivo: File): Promise<Erro> {
   }
 }
 
-export function avisoFalaLonga(valor: string): Erro {
-  const palavras = valor.trim().split(/\s+/).filter(Boolean).length;
-  if (palavras > PALAVRAS_POR_CENA)
-    return `${palavras} palavras — acima de ${PALAVRAS_POR_CENA} a fala não cabe nos 5 segundos da cena.`;
+/**
+ * Quanto tempo a fala leva para ser dita, estimado por caracteres.
+ *
+ * Caracteres aproximam sílabas — e sílaba é o que consome tempo — muito
+ * melhor que contagem de palavras: "pra", "o", "e" não custam nada, e um
+ * aviso por palavras marcava como longa uma fala de 4 segundos. O teto de
+ * 90 caracteres (`LIMITES.fala`) É a regra de duração; aqui ela vira número.
+ */
+export function estimarSegundosDeFala(valor: string): number {
+  return (valor.trim().length / LIMITES.fala) * SEGUNDOS_POR_CENA;
+}
+
+/** "~4,2 s de 5 s" — informa a duração sem contradizer o limite do campo. */
+export function indicadorDeFala(valor: string): string {
+  const s = estimarSegundosDeFala(valor);
+  return `~${s.toFixed(1).replace('.', ',')} s de ${SEGUNDOS_POR_CENA} s`;
+}
+
+/**
+ * Aviso, não erro: perto do teto a fala ainda cabe, mas sai corrida. Acima do
+ * teto o campo já bloqueia — este é o último degrau antes dele.
+ */
+export function avisoFalaNoLimite(valor: string): Erro {
+  if (valor.trim().length > LIMITES.fala * 0.9) {
+    return `${indicadorDeFala(valor)} — no limite: o final pode sair corrido.`;
+  }
   return null;
 }
 

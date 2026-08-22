@@ -117,6 +117,30 @@ const MODOS_DE_AUDIO: SceneAudioMode[] = ['fala', 'narracao', 'sem_fala'];
  * sincronizar) e cena de apresentador nunca "narracao" (TTS por cima do rosto
  * dessincroniza a boca — defeito visto em produção).
  */
+/** Teto de caracteres por fala — o mesmo de `UpdateSceneDto` e do front. */
+const FALA_MAX = 90;
+
+/**
+ * Garante o teto sem deixar a fala pela metade: corta no fim da última frase
+ * que cabe; sem frase inteira, na última palavra — nunca no meio de uma.
+ * Um `slice(0, 90)` cego entregava "...e leva segundos pra us" ao vídeo.
+ */
+export function limitarFala(fala: string): string {
+  const limpa = fala.trim().replace(/\s+/g, ' ');
+  if (limpa.length <= FALA_MAX) return limpa;
+  const janela = limpa.slice(0, FALA_MAX);
+  const fimDeFrase = Math.max(
+    janela.lastIndexOf('. '),
+    janela.lastIndexOf('! '),
+    janela.lastIndexOf('? '),
+    /[.!?]$/.test(janela) ? janela.length - 1 : -1,
+  );
+  if (fimDeFrase >= FALA_MAX * 0.5) return janela.slice(0, fimDeFrase + 1).trim();
+  const ultimoEspaco = janela.lastIndexOf(' ');
+  const corte = ultimoEspaco > 0 ? janela.slice(0, ultimoEspaco) : janela;
+  return corte.replace(/[,;:\-–—]+$/, '').trim();
+}
+
 function normalizarTipoDaCena(
   c: CenaGerada,
   ordem: number,
@@ -280,7 +304,7 @@ Responda APENAS com um array JSON, sem texto antes ou depois, no formato:
 [{"fala": "...", "acaoVisual": "...", "tipoCena": "apresentador", "modoAudio": "fala", "comoUsa": "..."}]
 
 Regras para cada campo:
-- "fala": português do Brasil falado, no máximo 12 palavras E 90 caracteres — dita COM CALMA, é o que cabe em 5 segundos sem atropelar o final. Escreva como se FALA, não como se escreve: ritmo de conversa, vírgula onde a pessoa respira;
+- "fala": português do Brasil falado, no máximo 90 caracteres (contando espaços) — dita COM CALMA, é o que cabe em 5 segundos sem atropelar o final; passou de 90, corte uma ideia, não uma palavra. Escreva como se FALA, não como se escreve: ritmo de conversa, vírgula onde a pessoa respira;
 - "acaoVisual": o que a câmera mostra — AÇÃO e ENQUADRAMENTO apenas;
 - "comoUsa": o gesto de uso REAL deste produto, em 3 a 8 palavras no infinitivo ("escrever no papel", "passar nos lábios", "vestir e mostrar no corpo"). Deduza do tipo do produto e repita a MESMA frase em todas as cenas;
 - "tipoCena": o formato da cena, um destes cinco valores:
@@ -941,7 +965,7 @@ export class AiService {
           // Vídeo mudo não tem fala nenhuma — mesmo que o modelo escreva uma,
           // ela viraria legenda órfã de um áudio que não existe.
           // 90 e não 400: é o que cabe FALADO em 5s (mesmo teto do UpdateSceneDto).
-          fala: semNarracao ? '' : c.fala.trim().slice(0, 90),
+          fala: semNarracao ? '' : limitarFala(c.fala),
           acaoVisual: c.acaoVisual.trim().slice(0, 400),
           comoUsa:
             typeof c.comoUsa === 'string'
@@ -1067,7 +1091,7 @@ export class AiService {
       return {
         ...cena,
         // Vídeo mudo: o template também sai sem fala nenhuma.
-        fala: r.semNarracao ? '' : cena.fala,
+        fala: r.semNarracao ? '' : limitarFala(cena.fala),
         tipoCena,
         modoAudio: r.semNarracao ? ('sem_fala' as const) : modoAudio,
         seguraProduto: tipoCena === 'apresentador_produto',

@@ -279,6 +279,42 @@ export class MediaMirrorService {
    * Como espelhamos uma única vez, o custo do processamento não se repete.
    * Se algo falhar, devolve `null` e o original é guardado como veio.
    */
+  /**
+   * Enquadra uma foto de pessoa no 9:16 SEM cortar o rosto.
+   *
+   * Foto de referência costuma ser quadrada ou horizontal (selfie, avatar).
+   * O `cover` 9:16 leva metade da largura embora — e, num rosto, isso é
+   * metade da cara. Aqui a foto inteira é centralizada sobre um fundo feito
+   * dela mesma, ampliada e desfocada: o retrato fica vertical, sem faixas
+   * brancas e sem perder o sujeito. Fotos já verticais passam direto.
+   */
+  async enquadrarRetrato(original: Buffer): Promise<Buffer | null> {
+    try {
+      const base = sharp(original).rotate();
+      const meta = await base.metadata();
+      if (!meta.width || !meta.height) return null;
+      if (meta.width / meta.height <= IMAGE_WIDTH / IMAGE_HEIGHT) {
+        return base.toBuffer();
+      }
+      const normalizada = await base.toBuffer();
+      const fundo = await sharp(normalizada)
+        .resize(IMAGE_WIDTH, IMAGE_HEIGHT, { fit: 'cover' })
+        .blur(40)
+        .modulate({ brightness: 0.7 })
+        .toBuffer();
+      const frente = await sharp(normalizada)
+        .resize(IMAGE_WIDTH, IMAGE_HEIGHT, { fit: 'inside' })
+        .toBuffer();
+      return sharp(fundo)
+        .composite([{ input: frente, gravity: 'centre' }])
+        .png()
+        .toBuffer();
+    } catch (error) {
+      this.logger.warn(`Enquadramento do retrato falhou: ${error}`);
+      return null;
+    }
+  }
+
   private async normalizarImagem(
     original: Buffer,
     ajuste: AjusteDeImagem = 'cover',

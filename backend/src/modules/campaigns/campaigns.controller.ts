@@ -30,6 +30,7 @@ import { CampaignsService } from './campaigns.service';
 import {
   CreateCampaignDto,
   CreatePersonaDto,
+  CreatePersonaFromPhotoDto,
   CreateUserProductDto,
   UpdateCampaignDto,
   UpdatePersonaDto,
@@ -136,6 +137,28 @@ export class CampaignsController {
   @ApiOperation({ summary: 'Cria a persona e gera o retrato-semente (cobra créditos)' })
   createPersona(@CurrentUser() user: AuthUser, @Body() dto: CreatePersonaDto) {
     return this.campaigns.criarPersona(user.id, dto);
+  }
+
+  @Post('personas/from-photo')
+  @RequiresPlanFeature('uploads')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary: 'Cria a persona a partir de uma foto de referência (sem cobrar retrato)',
+  })
+  createPersonaFromPhoto(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreatePersonaFromPhotoDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: 8 * 1024 * 1024 })],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Envie a foto de referência do apresentador.');
+    }
+    return this.campaigns.criarPersonaComFoto(user.id, dto, file.buffer);
   }
 
   @Get('personas')
@@ -269,6 +292,17 @@ export class CampaignsController {
     @Param('sceneId', ParseUUIDPipe) sceneId: string,
   ) {
     return this.campaigns.redublarCena(user.id, sceneId);
+  }
+
+  @Post('scenes/:sceneId/reopen')
+  @ApiOperation({
+    summary: 'Reabre uma cena pronta para editar e renderizar de novo (não cobra)',
+  })
+  reopenScene(
+    @CurrentUser() user: AuthUser,
+    @Param('sceneId', ParseUUIDPipe) sceneId: string,
+  ) {
+    return this.campaigns.reabrirCena(user.id, sceneId);
   }
 
   @Post('scenes/:sceneId/render')

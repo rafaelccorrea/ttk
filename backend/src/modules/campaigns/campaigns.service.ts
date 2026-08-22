@@ -20,6 +20,7 @@ import { VideogenService } from '../videogen/videogen.service';
 import {
   CreateCampaignDto,
   CreatePersonaDto,
+  CreatePersonaFromPhotoDto,
   CreateUserProductDto,
   UpdateCampaignDto,
   UpdatePersonaDto,
@@ -534,6 +535,62 @@ export class CampaignsService {
         status: 'gerando',
         seedMediaId: media.id,
         seedImageUrl: null,
+      }),
+    );
+  }
+
+  /**
+   * Persona a partir de uma foto de referência do próprio vendedor.
+   *
+   * A foto entra no lugar do retrato gerado: vira o `seedImageUrl` direto, já
+   * espelhada no S3, e a persona nasce `pronta` — sem chamada à fornecedora e
+   * sem cobrança. Os atributos continuam obrigatórios porque o
+   * `promptFragment` é a única descrição física que o roteiro e as cenas
+   * recebem; o vendedor escolhe os que batem com a foto (voz, energia,
+   * cenário...) e a imagem garante o rosto.
+   */
+  async criarPersonaComFoto(
+    userId: string,
+    dto: CreatePersonaFromPhotoDto,
+    foto: Buffer,
+  ): Promise<Persona> {
+    garantirConteudoPermitido({ label: dto.label });
+    let attrs;
+    try {
+      attrs = validarAtributos(JSON.parse(dto.attrs) as never);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof SyntaxError
+          ? 'Atributos inválidos: envie um JSON com os ids do catálogo.'
+          : (error as Error).message,
+      );
+    }
+
+    const id = randomUUID();
+    // O retrato-semente precisa ter o MESMO enquadramento 9:16 dos gerados,
+    // porque é a imagem de entrada de toda cena com apresentador. Selfie
+    // quadrada é enquadrada (fundo desfocado) em vez de recortada: `cover`
+    // direto cortaria o rosto ao meio.
+    const enquadrada = await this.mirror.enquadrarRetrato(foto);
+    const seedImageUrl = enquadrada
+      ? await this.mirror.putImage(enquadrada, 'personas', id, 'cover')
+      : null;
+    if (!seedImageUrl) {
+      throw new BadRequestException(
+        'Não foi possível ler a foto. Envie um JPG, PNG ou WebP.',
+      );
+    }
+
+    return this.personas.save(
+      this.personas.create({
+        id,
+        userId,
+        label: dto.label?.trim() || rotularPersona(attrs),
+        attrs,
+        promptFragment: montarFragmento(attrs),
+        status: 'pronta',
+        seedMediaId: null,
+        seedImageUrl,
       }),
     );
   }
@@ -1172,6 +1229,34 @@ export class CampaignsService {
     }
 
     return this.detalharCampanha(userId, campaignId);
+  }
+
+  /**
+   * Reabre uma cena já renderizada para refazê-la.
+   *
+   * Não cobra e não apaga o vídeo anterior: a cena volta a `pendente` (o que
+   * libera fala, ação e foto para edição e o botão de renderizar), e o
+   * `outputUrl` antigo só é substituído quando a nova renderização concluir.
+   * O vídeo final montado passa a estar desatualizado, então é descartado —
+   * a montagem refaz quando todas as cenas estiverem prontas de novo.
+   */
+  async reabrirCena(userId: string, sceneId: string) {
+    const cena = await this.cenaDoUsuario(userId, sceneId);
+    if (cena.status !== 'pronta') {
+      throw new ConflictException('Só uma cena já renderizada pode ser refeita.');
+    }
+    cena.status = 'pendente';
+    cena.promptFinal = null;
+    cena.generatedMediaId = null;
+    cena.error = null;
+    await this.cenas.save(cena);
+
+    const campanha = await this.campanhas.findOneByOrFail({ id: cena.campaignId });
+    if (campanha.finalVideoUrl) {
+      campanha.finalVideoUrl = null;
+      await this.campanhas.save(campanha);
+    }
+    return cena;
   }
 
   /**

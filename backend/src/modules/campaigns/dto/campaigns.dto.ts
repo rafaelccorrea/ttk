@@ -85,6 +85,27 @@ export class CreatePersonaDto {
 }
 
 /**
+ * Persona a partir de uma foto de referência. Vem em multipart junto com o
+ * arquivo, então `attrs` chega como JSON em string — o servidor faz o parse e
+ * valida contra o catálogo do mesmo jeito que em `CreatePersonaDto`.
+ */
+export class CreatePersonaFromPhotoDto {
+  @ApiPropertyOptional({ example: 'Rafael do PikPok' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  label?: string;
+
+  @ApiProperty({
+    description: 'JSON com os ids do catálogo (mesmo formato de CreatePersonaDto.attrs)',
+    example: '{"genero":"homem","idade":"25-34",...}',
+  })
+  @IsString()
+  @IsNotEmpty()
+  attrs: string;
+}
+
+/**
  * Edição de persona SEM novo retrato: apelido e voz não entram no prompt de
  * imagem, então mudar aqui é grátis e vale já para a próxima renderização.
  * Atributos visuais (cabelo, figurino...) ficam de fora de propósito — mudar

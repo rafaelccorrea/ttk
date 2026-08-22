@@ -187,6 +187,22 @@ export const campaignsService = {
     return data;
   },
 
+  /**
+   * Apresentador a partir de uma foto de referência — a foto vira o retrato
+   * direto, sem gerar imagem e sem cobrar créditos.
+   */
+  async createPersonaFromPhoto(
+    file: File,
+    input: { label?: string; attrs: Record<string, string> },
+  ): Promise<Persona> {
+    const form = new FormData();
+    form.append('file', file);
+    if (input.label) form.append('label', input.label);
+    form.append('attrs', JSON.stringify(input.attrs));
+    const { data } = await api.post<Persona>('/campaigns/personas/from-photo', form);
+    return data;
+  },
+
   async listPersonas(): Promise<Persona[]> {
     const { data } = await api.get<Persona[]>('/campaigns/personas');
     return data;
@@ -317,6 +333,14 @@ export const campaignsService = {
   async redubScene(sceneId: string): Promise<CampaignScene> {
     const { data } = await api.post<CampaignScene>(
       `/campaigns/scenes/${sceneId}/redub`,
+    );
+    return data;
+  },
+
+  /** Reabre uma cena pronta para refazer — grátis; o render novo é que cobra. */
+  async reopenScene(sceneId: string): Promise<CampaignScene> {
+    const { data } = await api.post<CampaignScene>(
+      `/campaigns/scenes/${sceneId}/reopen`,
     );
     return data;
   },
