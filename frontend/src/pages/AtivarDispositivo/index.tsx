@@ -271,7 +271,9 @@ export function AtivarDispositivoPage() {
                 inputProps={{
                   style: {
                     letterSpacing: '0.22em',
-                    fontSize: 24,
+                    // 24px com letter-spacing não cabe em 360px de largura;
+                    // a fonte acompanha a tela (clamp) sem perder o destaque.
+                    fontSize: 'clamp(18px, 5.5vw, 24px)',
                     fontWeight: 700,
                     textAlign: 'center',
                     // Monoespaçada: este código é comparado caractere a
@@ -305,16 +307,16 @@ export function AtivarDispositivoPage() {
                     Aplicativo
                   </Typography>
                   <Box sx={{ flex: 1 }} />
-                  <Typography variant="body2" fontWeight={700} noWrap>
+                  <Typography variant="body2" fontWeight={700} noWrap sx={{ minWidth: 0, maxWidth: '60%' }}>
                     {info.deviceName}
                   </Typography>
                 </Stack>
               )}
 
-              {erro && <Alert severity="error">{erro}</Alert>}
+              {erro && <Alert severity="error" sx={{ wordBreak: 'break-word' }}>{erro}</Alert>}
 
               {info?.status === 'pendente' ? (
-                <Stack direction="row" spacing={1.5}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                   <Button
                     variant="contained"
                     fullWidth

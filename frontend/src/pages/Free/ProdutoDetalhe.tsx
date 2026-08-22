@@ -84,7 +84,7 @@ export function FreeProdutoDetalhePage() {
           Sua conta vê uma seleção fixa de produtos. Com um plano você abre o
           catálogo inteiro, com busca, filtros e o histórico de cada produto.
         </Typography>
-        <Stack direction="row" spacing={1.5} justifyContent="center">
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="center">
           <Button component={Link} to="/produtos" variant="outlined">
             Voltar à amostra
           </Button>
@@ -127,7 +127,7 @@ export function FreeProdutoDetalhePage() {
 
         <Grid item xs={12} md={7}>
           <Chip label={produto.category} size="small" sx={{ mb: 1.5 }} />
-          <Typography variant="h5" fontWeight={800} mb={1}>
+          <Typography variant="h5" fontWeight={800} mb={1} sx={{ overflowWrap: 'anywhere' }}>
             {produto.title}
           </Typography>
           <Typography variant="h6" fontWeight={800} mb={2}>
@@ -137,7 +137,7 @@ export function FreeProdutoDetalhePage() {
             })}
           </Typography>
 
-          <Stack direction="row" spacing={3} mb={3}>
+          <Stack direction="row" spacing={3} mb={3} flexWrap="wrap" useFlexGap>
             <Box>
               <Typography variant="body2" color="text.secondary">
                 Vendas em 30 dias

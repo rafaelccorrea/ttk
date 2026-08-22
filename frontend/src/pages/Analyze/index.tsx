@@ -183,7 +183,7 @@ export function AnalyzePage() {
                     variant="outlined"
                     startIcon={<UploadFileRoundedIcon />}
                     disabled={transcribing || saldoTranscricao.insuficiente}
-                    sx={{ my: 1.5, py: 1.5 }}
+                    sx={{ my: 1.5, py: 1.5, wordBreak: 'break-word', overflowWrap: 'anywhere', textAlign: 'center' }}
                   >
                     {transcribing
                       ? 'Transcrevendo com Whisper...'
@@ -299,14 +299,15 @@ export function AnalyzePage() {
           {result && !analyzing && (
             <Card>
               <CardContent>
-                <Box display="flex" justifyContent="space-between">
-                  <Typography variant="h6">{result.productName}</Typography>
+                <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={1}>
+                  <Typography variant="h6" sx={{ minWidth: 0, wordBreak: 'break-word' }}>{result.productName}</Typography>
                   <IconButton
                     size="small"
                     onClick={() =>
                       navigator.clipboard.writeText(result.content)
                     }
                     aria-label="copiar"
+                    sx={{ flexShrink: 0 }}
                   >
                     <ContentCopyIcon fontSize="small" />
                   </IconButton>
@@ -314,7 +315,7 @@ export function AnalyzePage() {
                 <Typography
                   component="pre"
                   variant="body2"
-                  sx={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}
+                  sx={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', wordBreak: 'break-word' }}
                 >
                   {result.content}
                 </Typography>
@@ -329,7 +330,7 @@ export function AnalyzePage() {
               sx={{
                 border: '1px dashed rgba(22,24,35,0.12)',
                 borderRadius: 3,
-                p: 6,
+                p: { xs: 3, md: 6 },
                 textAlign: 'center',
                 color: 'text.secondary',
               }}

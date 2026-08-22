@@ -612,9 +612,10 @@ export function VideosPage() {
               display="flex"
               alignItems="baseline"
               justifyContent="space-between"
+              gap={1}
               mb={1.5}
             >
-              <Typography variant="h6" fontWeight={800}>
+              <Typography variant="h6" fontWeight={800} minWidth={0}>
                 {section.category}
                 <Typography
                   component="span"
@@ -630,6 +631,7 @@ export function VideosPage() {
                 <Button
                   size="small"
                   onClick={() => (setCategory(section.category), setPage(1))}
+                  sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                 >
                   Ver todos
                 </Button>
@@ -718,7 +720,7 @@ export function VideosPage() {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle sx={{ fontWeight: 800 }}>
+        <DialogTitle sx={{ fontWeight: 800, wordBreak: 'break-word' }}>
           Transcrição · {transcriptVideo?.creatorHandle}
         </DialogTitle>
         <DialogContent>

@@ -89,7 +89,7 @@ function FeatureCard({ icon, tag, title, desc, big = false }: { icon: ReactNode;
         </Box>
         <Chip size="small" label={tag} sx={{ bgcolor: 'rgba(11,12,18,0.05)', color: textDim, fontWeight: 700, height: 22, fontSize: 11 }} />
       </Stack>
-      <Typography fontWeight={700} fontSize={big ? 22 : 17} mb={1} letterSpacing="-0.01em">{title}</Typography>
+      <Typography fontWeight={700} fontSize={big ? { xs: 20, md: 22 } : 17} mb={1} letterSpacing="-0.01em" sx={{ overflowWrap: 'anywhere' }}>{title}</Typography>
       <Typography fontSize={big ? 15.5 : 14.5} color={textDim} lineHeight={1.65}>{desc}</Typography>
     </Box>
   );
@@ -268,7 +268,7 @@ export function HowItWorks() {
               <Reveal delay={i * 150}>
                 <Box
                   sx={{
-                    ...glass, p: 3.5, height: '100%', position: 'relative',
+                    ...glass, p: { xs: 2.75, md: 3.5 }, height: '100%', position: 'relative',
                     transition: 'border-color .25s ease, transform .25s ease',
                     '&:hover': { borderColor: `${cyanDeep}55`, transform: 'translateY(-4px)' },
                   }}
@@ -327,18 +327,18 @@ export function Comparison() {
                 sx={{ borderBottom: i === COMPARISON.length - 1 ? 'none' : `1px solid ${line}`, alignItems: 'stretch' }}
               >
                 <Grid item xs={12} sm={4} sx={{ p: 2 }}>
-                  <Typography fontSize={14.5} fontWeight={700}>{row.label}</Typography>
+                  <Typography fontSize={14.5} fontWeight={700} sx={{ overflowWrap: 'anywhere' }}>{row.label}</Typography>
                 </Grid>
-                <Grid item xs={6} sm={4} sx={{ p: 2 }}>
+                <Grid item xs={6} sm={4} sx={{ p: { xs: 1.5, sm: 2 }, minWidth: 0 }}>
                   <Stack direction="row" spacing={1} alignItems="flex-start">
-                    <CloseRounded sx={{ fontSize: 16, color: 'rgba(11,12,18,0.28)', mt: '2px' }} />
-                    <Typography fontSize={13.5} color={textFaint}>{row.without}</Typography>
+                    <CloseRounded sx={{ fontSize: 16, color: 'rgba(11,12,18,0.28)', mt: '2px', flexShrink: 0 }} />
+                    <Typography fontSize={13.5} color={textFaint} sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{row.without}</Typography>
                   </Stack>
                 </Grid>
-                <Grid item xs={6} sm={4} sx={{ p: 2, bgcolor: `${cyan}1c` }}>
+                <Grid item xs={6} sm={4} sx={{ p: { xs: 1.5, sm: 2 }, bgcolor: `${cyan}1c`, minWidth: 0 }}>
                   <Stack direction="row" spacing={1} alignItems="flex-start">
-                    <CheckRounded sx={{ fontSize: 16, color: cyanDeep, mt: '2px' }} />
-                    <Typography fontSize={13.5}>{row.with}</Typography>
+                    <CheckRounded sx={{ fontSize: 16, color: cyanDeep, mt: '2px', flexShrink: 0 }} />
+                    <Typography fontSize={13.5} sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{row.with}</Typography>
                   </Stack>
                 </Grid>
               </Grid>
@@ -437,16 +437,17 @@ export function Pricing() {
                       }}
                     />
                   )}
-                  <Typography fontSize={15} fontWeight={800} letterSpacing="0.02em">{p.name}</Typography>
+                  {/* Reserva espaço à direita para o chip absoluto não cobrir o nome do plano */}
+                  <Typography fontSize={15} fontWeight={800} letterSpacing="0.02em" sx={{ pr: (p.offerLabel || p.highlight) ? 12 : 0 }}>{p.name}</Typography>
                   <Typography fontSize={12.5} color={textFaint} mb={2}>{p.tagline}</Typography>
-                  <Stack direction="row" alignItems="baseline" spacing={0.75}>
+                  <Stack direction="row" alignItems="baseline" spacing={0.75} flexWrap="wrap" useFlexGap>
                     {/* Preço de tabela riscado quando há oferta em vigor */}
                     {p.listPrice && (
                       <Typography fontSize={17} color={textFaint} sx={{ textDecoration: 'line-through' }}>
                         {brl(p.listPrice)}
                       </Typography>
                     )}
-                    <Typography fontSize={34} fontWeight={800} letterSpacing="-0.03em">{brl(p.price)}</Typography>
+                    <Typography fontSize={{ xs: 30, md: 34 }} fontWeight={800} letterSpacing="-0.03em" whiteSpace="nowrap">{brl(p.price)}</Typography>
                     {p.price > 0 && <Typography fontSize={13} color={textDim}>/mês</Typography>}
                   </Stack>
                   {p.annual && (
@@ -482,9 +483,9 @@ export function Pricing() {
           ))}
         </Grid>
         <Reveal>
-          <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" mt={4} color={textFaint}>
-            <FavoriteRounded sx={{ fontSize: 15, color: red }} />
-            <Typography fontSize={13.5}>
+          <Stack direction="row" spacing={1} alignItems="flex-start" justifyContent="center" mt={4} color={textFaint} sx={{ maxWidth: 560, mx: 'auto' }}>
+            <FavoriteRounded sx={{ fontSize: 15, color: red, flexShrink: 0, mt: '2px' }} />
+            <Typography fontSize={13.5} sx={{ minWidth: 0, textAlign: { xs: 'left', sm: 'center' } }}>
               Sem fidelidade · cancele quando quiser · pacotes de crédito avulsos disponíveis
             </Typography>
           </Stack>
@@ -569,12 +570,12 @@ export function Faq() {
           <Grid item xs={12} md={4}>
             <Reveal>
               <Box sx={{ position: { md: 'sticky' }, top: { md: 110 } }}>
-                <Typography sx={{ color: cyanDeep, fontWeight: 700, letterSpacing: '0.14em', fontSize: 13 }}>
+                <Typography sx={{ color: cyanDeep, fontWeight: 700, letterSpacing: '0.14em', fontSize: 13, overflowWrap: 'anywhere' }}>
                   DÚVIDAS FREQUENTES
                 </Typography>
                 <Typography
                   component="h2"
-                  sx={{ fontSize: { xs: 30, md: 40 }, fontWeight: 800, letterSpacing: '-0.025em', mt: 1.5, lineHeight: 1.15 }}
+                  sx={{ fontSize: { xs: 28, sm: 30, md: 40 }, fontWeight: 800, letterSpacing: '-0.025em', mt: 1.5, lineHeight: 1.15, overflowWrap: 'anywhere' }}
                 >
                   Perguntas que <Box component="span" sx={gradientText}>todo mundo faz</Box>
                 </Typography>
@@ -632,14 +633,14 @@ export function FinalCta() {
           <Box aria-hidden sx={{ position: 'absolute', top: -160, left: '15%', width: 380, height: 380, borderRadius: '50%', filter: 'blur(120px)', background: `${red}2e`, animation: 'lpBlob 18s ease-in-out infinite', pointerEvents: 'none' }} />
           <Box aria-hidden sx={{ position: 'absolute', bottom: -180, right: '10%', width: 360, height: 360, borderRadius: '50%', filter: 'blur(120px)', background: `${cyan}3d`, animation: 'lpBlob 22s ease-in-out infinite reverse', pointerEvents: 'none' }} />
           <Box position="relative">
-            <Typography sx={{ fontSize: { xs: 30, md: 46 }, fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+            <Typography sx={{ fontSize: { xs: 28, sm: 30, md: 46 }, fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.1, overflowWrap: 'anywhere' }}>
               Pronto para vender <Box component="span" sx={gradientText}>antes da tendência</Box>?
             </Typography>
-            <Typography color={textDim} fontSize={17.5} mt={2.5} maxWidth={560} mx="auto" lineHeight={1.65}>
+            <Typography color={textDim} fontSize={{ xs: 15.5, md: 17.5 }} mt={2.5} maxWidth={560} mx="auto" lineHeight={1.65}>
               Crie sua conta em menos de um minuto, ganhe 30 créditos de boas-vindas e descubra hoje
               mesmo o que já está bombando no seu nicho.
             </Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" mt={4.5}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" alignItems={{ xs: 'stretch', sm: 'center' }} mt={4.5} sx={{ maxWidth: { xs: 360, sm: 'none' }, mx: 'auto' }}>
               <Button
                 component={RouterLink}
                 to="/login"
@@ -696,8 +697,8 @@ const FOOTER_COLS = [
 export function Footer() {
   return (
     <Box component="footer" sx={{ borderTop: `1px solid ${line}`, bgcolor: ink }}>
-      <Container maxWidth={false} sx={{ ...page, pt: 7, pb: 4 }}>
-        <Grid container spacing={5}>
+      <Container maxWidth={false} sx={{ ...page, pt: { xs: 5, md: 7 }, pb: 4 }}>
+        <Grid container spacing={{ xs: 4, md: 5 }}>
           <Grid item xs={12} md={5}>
             <Stack direction="row" spacing={1.25} alignItems="center" mb={2}>
               <Box component="img" src="/icon-192.png" alt="PikPok" sx={{ width: 32, height: 32, borderRadius: 1.5 }} />
@@ -760,10 +761,10 @@ export function Footer() {
           pt={3}
           borderTop={`1px solid ${line}`}
         >
-          <Typography fontSize={13} color={textFaint}>
+          <Typography fontSize={13} color={textFaint} textAlign={{ xs: 'center', sm: 'left' }}>
             © {new Date().getFullYear()} PikPok — inteligência de produtos para o TikTok Shop
           </Typography>
-          <Typography fontSize={13} color={textFaint}>
+          <Typography fontSize={13} color={textFaint} textAlign={{ xs: 'center', sm: 'right' }}>
             Não afiliado ao TikTok · dados públicos consolidados
           </Typography>
         </Stack>

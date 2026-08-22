@@ -315,6 +315,30 @@ export class MediaMirrorService {
     }
   }
 
+  /**
+   * Print de tela na proporção de um celular em pé (9:19,5).
+   *
+   * Print de layout desktop é largo; posto como "a tela do celular", o editor
+   * de imagem deitava o aparelho e o esticava até caber — saía um celular que
+   * não existe. Recortar para a proporção do display, guiado pelo conteúdo,
+   * entrega ao editor exatamente o que uma tela vertical mostraria.
+   */
+  async recortarParaTelaDeCelular(original: Buffer): Promise<Buffer | null> {
+    try {
+      const base = sharp(original).rotate();
+      const meta = await base.metadata();
+      if (!meta.width || !meta.height) return null;
+      if (meta.width / meta.height <= 9 / 19.5 + 0.02) return base.png().toBuffer();
+      return base
+        .resize(1080, 2340, { fit: 'cover', position: sharp.strategy.attention })
+        .png()
+        .toBuffer();
+    } catch (error) {
+      this.logger.warn(`Recorte do print falhou: ${error}`);
+      return null;
+    }
+  }
+
   private async normalizarImagem(
     original: Buffer,
     ajuste: AjusteDeImagem = 'cover',

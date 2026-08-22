@@ -151,7 +151,9 @@ export function FreeFavoritosPage() {
                       <Stack
                         direction="row"
                         justifyContent="space-between"
-                        sx={{ mt: 1 }}
+                        flexWrap="wrap"
+                        useFlexGap
+                        sx={{ mt: 1, columnGap: 1 }}
                       >
                         <Typography fontWeight={800}>
                           {p.price.toLocaleString('pt-BR', {

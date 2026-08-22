@@ -96,11 +96,11 @@ export function LiveSample() {
             <Stack
               direction="row"
               spacing={1}
-              alignItems="center"
-              sx={{ color: textFaint }}
+              alignItems="flex-start"
+              sx={{ color: textFaint, maxWidth: 560, px: { xs: 1, sm: 0 } }}
             >
-              <LockRounded sx={{ fontSize: 16 }} />
-              <Typography fontSize={14}>
+              <LockRounded sx={{ fontSize: 16, flexShrink: 0, mt: '2px' }} />
+              <Typography fontSize={14} sx={{ minWidth: 0, textAlign: { xs: 'left', sm: 'center' } }}>
                 Loja, receita, link do TikTok, histórico diário e busca ficam
                 dentro da plataforma.
               </Typography>
@@ -110,7 +110,7 @@ export function LiveSample() {
               to="/planos"
               variant="contained"
               size="large"
-              sx={{ borderRadius: 999, px: 4, fontWeight: 800 }}
+              sx={{ borderRadius: 999, px: 4, fontWeight: 800, maxWidth: '100%', textAlign: 'center' }}
             >
               Destravar o radar completo
             </Button>
@@ -149,7 +149,7 @@ function ProductCard({
           backgroundPosition: 'center',
         }}
       />
-      <Stack spacing={1} p={1.75} flexGrow={1}>
+      <Stack spacing={1} p={{ xs: 1.25, sm: 1.75 }} flexGrow={1} sx={{ minWidth: 0 }}>
         <Typography
           fontSize={13.5}
           fontWeight={700}
@@ -159,6 +159,7 @@ function ProductCard({
             WebkitLineClamp: 2,
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
+            overflowWrap: 'anywhere',
           }}
         >
           {product.title}

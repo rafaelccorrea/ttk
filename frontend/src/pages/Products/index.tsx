@@ -846,9 +846,20 @@ export function ProductsPage() {
                   label="Só com foto"
                 />
               </Grid>
-              <Grid item xs={12} md={6} sx={{ textAlign: { md: 'right' } }}>
+              <Grid
+                item
+                xs={12}
+                md={6}
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: 1,
+                  justifyContent: { md: 'flex-end' },
+                }}
+              >
                 <TextField
-                  select size="small" label="Por página" sx={{ minWidth: 130, mr: 1 }}
+                  select size="small" label="Por página" sx={{ minWidth: 130 }}
                   value={pageSize}
                   onChange={(e) => (setPageSize(Number(e.target.value)), resetPage())}
                 >
@@ -898,9 +909,11 @@ export function ProductsPage() {
               display="flex"
               alignItems="baseline"
               justifyContent="space-between"
+              flexWrap="wrap"
+              gap={1}
               mb={1.5}
             >
-              <Typography variant="h6" fontWeight={800}>
+              <Typography variant="h6" fontWeight={800} sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                 {section.category}
                 <Typography
                   component="span"

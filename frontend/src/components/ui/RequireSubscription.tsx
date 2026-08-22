@@ -140,8 +140,8 @@ function BloqueioDePlano() {
               '&:hover': { borderColor: '#fe2c55' },
             }}
           >
-            <Box sx={{ color: '#fe2c55', display: 'flex' }}>{a.icon}</Box>
-            <Box>
+            <Box sx={{ color: '#fe2c55', display: 'flex', flexShrink: 0 }}>{a.icon}</Box>
+            <Box minWidth={0}>
               <Typography fontWeight={700}>{a.titulo}</Typography>
               <Typography variant="body2" color="text.secondary">
                 {a.texto}

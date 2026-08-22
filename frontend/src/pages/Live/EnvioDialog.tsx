@@ -11,6 +11,8 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -68,6 +70,9 @@ export function EnvioDialog({
 }) {
   const navigate = useNavigate();
   const { confirmar, dialogo } = useConfirmarGasto();
+  // Muita coisa empilhada (campo, botão, alertas, orçamento): no celular o
+  // diálogo ocupa a tela inteira para nada ficar cortado.
+  const isMobile = useMediaQuery(useTheme().breakpoints.down('sm'));
   const [titulo, setTitulo] = useState('');
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [duracao, setDuracao] = useState<number | null>(null);
@@ -206,6 +211,7 @@ export function EnvioDialog({
       onClose={enviando ? undefined : onFechar}
       fullWidth
       maxWidth="sm"
+      fullScreen={isMobile}
     >
       <DialogTitle sx={{ fontWeight: 800 }}>
         {reenvioDe ? 'Enviar a gravação de novo' : 'Nova base de conhecimento'}
@@ -235,6 +241,7 @@ export function EnvioDialog({
               variant="outlined"
               startIcon={<UploadFileRoundedIcon />}
               disabled={enviando}
+              sx={{ width: { xs: '100%', sm: 'auto' } }}
             >
               {arquivo ? 'Trocar gravação' : 'Escolher a gravação'}
               <input
@@ -250,7 +257,12 @@ export function EnvioDialog({
               por envio. Arquivo só de áudio não serve.
             </Typography>
             {arquivo && (
-              <Typography variant="body2" mt={1} fontWeight={700}>
+              <Typography
+                variant="body2"
+                mt={1}
+                fontWeight={700}
+                sx={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+              >
                 {arquivo.name} · {tamanhoLegivel(arquivo.size)}
                 {duracaoLegivel(duracao) ? ` · ${duracaoLegivel(duracao)}` : ''}
               </Typography>
@@ -276,6 +288,12 @@ export function EnvioDialog({
           {semSaldo && !lendo && !longaDemais && !curtaDemais && (
             <Alert
               severity="warning"
+              // No celular o botão cai para baixo do texto em vez de espremê-lo.
+              sx={{
+                flexWrap: 'wrap',
+                '& .MuiAlert-message': { minWidth: 0, flex: '1 1 200px' },
+                '& .MuiAlert-action': { ml: { xs: 0, sm: 'auto' }, pl: { xs: 0, sm: 2 } },
+              }}
               action={
                 <Button
                   size="small"
@@ -350,13 +368,14 @@ export function EnvioDialog({
           {erro && <Alert severity="error">{erro}</Alert>}
         </Stack>
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
         <Button onClick={onFechar} disabled={enviando}>
           Cancelar
         </Button>
         <Button
           variant="contained"
           onClick={enviar}
+          sx={{ maxWidth: '100%' }}
           disabled={
             !arquivo ||
             !tituloValido ||

@@ -176,7 +176,7 @@ export function useConfirmarGasto(): {
           />
         </Stack>
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
         <Button onClick={() => fechar(false)}>Cancelar</Button>
         <Button variant="contained" onClick={() => fechar(true)} autoFocus>
           {custo === null ? 'Continuar' : `Continuar · ${custo} créditos`}

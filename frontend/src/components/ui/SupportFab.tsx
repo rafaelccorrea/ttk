@@ -116,7 +116,7 @@ export function SupportFab() {
             <Avatar sx={{ width: 36, height: 36, background: `linear-gradient(135deg, ${red}, #ff7a9c)` }}>
               <SupportAgentRoundedIcon fontSize="small" />
             </Avatar>
-            <Box flexGrow={1}>
+            <Box flexGrow={1} minWidth={0}>
               <Typography fontWeight={700} fontSize={15} lineHeight={1.2}>
                 Suporte PikPok
               </Typography>
@@ -152,6 +152,8 @@ export function SupportFab() {
                     bgcolor: m.sender === 'user' ? red : '#fff',
                     border: m.sender === 'user' ? 'none' : '1px solid rgba(22,24,35,0.08)',
                     boxShadow: '0 1px 2px rgba(22,24,35,0.05)',
+                    // Links e palavras longas não podem alargar o balão.
+                    overflowWrap: 'anywhere',
                   }}
                 >
                   {m.text}

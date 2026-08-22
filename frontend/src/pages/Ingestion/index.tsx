@@ -141,7 +141,7 @@ export function IngestionPage() {
       </Typography>
 
       {feedback && (
-        <Alert severity={feedback.kind} sx={{ mb: 2 }} onClose={() => setFeedback(null)}>
+        <Alert severity={feedback.kind} sx={{ mb: 2, wordBreak: 'break-word' }} onClose={() => setFeedback(null)}>
           {feedback.text}
         </Alert>
       )}
@@ -158,7 +158,7 @@ export function IngestionPage() {
               <Typography variant="body2" color="text.secondary">
                 Última execução
               </Typography>
-              <Box display="flex" alignItems="center" gap={1} mb={1}>
+              <Box display="flex" alignItems="center" gap={1} mb={1} flexWrap="wrap">
                 <Typography fontWeight={700}>
                   {formatDateTime(status?.lastRun?.startedAt ?? null)}
                 </Typography>
@@ -188,7 +188,7 @@ export function IngestionPage() {
         <Grid item xs={12} md={8}>
           <Card sx={{ height: '100%' }}>
             <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between" mb={1.5}>
+              <Box display="flex" alignItems="center" justifyContent="space-between" mb={1.5} flexWrap="wrap" gap={1}>
                 <Box display="flex" alignItems="center" gap={1}>
                   <ScheduleRoundedIcon color="primary" />
                   <Typography fontWeight={700}>Agendamento automático</Typography>
@@ -202,6 +202,7 @@ export function IngestionPage() {
                     />
                   }
                   label={status?.enabled ? 'Ativo' : 'Desligado'}
+                  sx={{ mr: 0 }}
                 />
               </Box>
               <Grid container spacing={2} alignItems="center">

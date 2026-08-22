@@ -62,7 +62,7 @@ export function FreeBanner({
         size="small"
         sx={{ fontWeight: 800 }}
       />
-      <Box sx={{ flex: 1, minWidth: 240 }}>
+      <Box sx={{ flex: 1, minWidth: { xs: 0, sm: 240 }, flexBasis: { xs: '100%', sm: 'auto' } }}>
         <Typography fontWeight={700}>{descricao}</Typography>
         <Typography variant="body2" color="text.secondary">
           {dias === null
@@ -72,7 +72,12 @@ export function FreeBanner({
               : `A mesma seleção para todo mundo — troca em ${dias} ${dias === 1 ? 'dia' : 'dias'}.`}
         </Typography>
       </Box>
-      <Button component={Link} to="/planos" variant="contained">
+      <Button
+        component={Link}
+        to="/planos"
+        variant="contained"
+        sx={{ width: { xs: '100%', sm: 'auto' } }}
+      >
         Ver planos
       </Button>
     </Paper>
@@ -98,6 +103,7 @@ export function ControlesTravados({
       <Stack
         direction="row"
         spacing={1.5}
+        useFlexGap
         sx={{ mb: 3, opacity: 0.55, pointerEvents: 'none', flexWrap: 'wrap' }}
       >
         <TextField
@@ -105,7 +111,8 @@ export function ControlesTravados({
           disabled
           placeholder={placeholder}
           InputProps={{ startAdornment: <SearchRoundedIcon sx={{ mr: 1 }} /> }}
-          sx={{ minWidth: 260 }}
+          // No mobile o campo ocupa a linha inteira; a largura fixa estourava os 360px.
+          sx={{ width: { xs: '100%', sm: 'auto' }, minWidth: { xs: 0, sm: 260 } }}
         />
         <Button disabled variant="outlined" startIcon={<TuneRoundedIcon />}>
           Filtros

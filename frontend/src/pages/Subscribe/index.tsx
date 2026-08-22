@@ -124,16 +124,24 @@ export function SubscribePage() {
             </Typography>
           </Stack>
           <LockRounded sx={{ fontSize: 40, color: '#fe2c55' }} />
-          <Typography variant="h4" fontWeight={800}>
+          <Typography
+            variant="h4"
+            fontWeight={800}
+            sx={{ fontSize: { xs: 26, md: 34 } }}
+          >
             {expirou ? 'Sua assinatura terminou' : 'Escolha seu plano'}
           </Typography>
-          <Typography color="text.secondary" maxWidth={520}>
+          <Typography color="text.secondary" maxWidth={520} width="100%">
             {expirou
               ? 'O acesso ao radar de produtos e às ferramentas de IA está pausado. Reative para voltar de onde parou — seus dados e créditos continuam salvos.'
               : 'O PikPok trabalha com dados de mercado atualizados e IA — por isso o acesso é só para assinantes. Escolha um plano para começar.'}
           </Typography>
           {email && (
-            <Chip label={email} size="small" sx={{ fontWeight: 600 }} />
+            <Chip
+              label={email}
+              size="small"
+              sx={{ fontWeight: 600, maxWidth: '100%' }}
+            />
           )}
         </Stack>
 
@@ -175,7 +183,8 @@ export function SubscribePage() {
                 key={plan.id}
                 sx={{
                   flex: 1,
-                  maxWidth: 380,
+                  width: '100%',
+                  maxWidth: { xs: 'none', md: 380 },
                   borderRadius: 4,
                   border: plan.highlight
                     ? '2px solid #fe2c55'
@@ -183,11 +192,13 @@ export function SubscribePage() {
                   boxShadow: 'none',
                 }}
               >
-                <CardContent sx={{ p: 3 }}>
+                <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
                   <Stack
                     direction="row"
                     alignItems="center"
                     spacing={1}
+                    flexWrap="wrap"
+                    useFlexGap
                     mb={1}
                   >
                     <Typography variant="h6" fontWeight={800}>
@@ -212,7 +223,13 @@ export function SubscribePage() {
                       R$ {plan.offer.listPriceBrl.toFixed(2)}
                     </Typography>
                   )}
-                  <Stack direction="row" alignItems="baseline" spacing={0.5}>
+                  <Stack
+                    direction="row"
+                    alignItems="baseline"
+                    spacing={0.5}
+                    flexWrap="wrap"
+                    useFlexGap
+                  >
                     <Typography variant="h4" fontWeight={800}>
                       R$ {price.toFixed(2)}
                     </Typography>

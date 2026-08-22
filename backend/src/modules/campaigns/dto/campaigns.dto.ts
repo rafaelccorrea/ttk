@@ -164,6 +164,20 @@ export class CreateCampaignDto {
   vozNarrador?: string;
 }
 
+export class CloneCampaignDto {
+  /** Outro apresentador para a cópia; ausente = o mesmo da origem. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  personaId?: string;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  title?: string;
+}
+
 export class UpdateCampaignDto {
   /** Liga/desliga as legendas queimadas do vídeo final. */
   @ApiPropertyOptional()

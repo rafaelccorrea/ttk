@@ -29,6 +29,7 @@ import {
 import { catalogoDeModelos } from '../videogen/modelos-de-video';
 import { CampaignsService } from './campaigns.service';
 import {
+  CloneCampaignDto,
   CreateCampaignDto,
   CreatePersonaDto,
   CreatePersonaFromPhotoDto,
@@ -226,6 +227,22 @@ export class CampaignsController {
   @ApiOperation({ summary: 'Campanha com produto, persona e cenas' })
   detail(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.campaigns.detalharCampanha(user.id, id);
+  }
+
+  @Post(':id/clone')
+  @ApiOperation({ summary: 'Duplica a campanha (mesmo roteiro), opcionalmente com outro apresentador — grátis' })
+  clone(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CloneCampaignDto,
+  ) {
+    return this.campaigns.clonarCampanha(user.id, id, dto);
+  }
+
+  @Post(':id/storyboard')
+  @ApiOperation({ summary: 'Cria um storyboard em branco para escrever à mão — grátis' })
+  manualStoryboard(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.campaigns.criarStoryboardManual(user.id, id);
   }
 
   @Post(':id/script')

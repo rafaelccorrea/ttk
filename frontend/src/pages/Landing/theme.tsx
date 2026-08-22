@@ -201,7 +201,7 @@ export function BrowserFrame({
         </Box>
         <Box
           sx={{
-            flex: 1, maxWidth: 320, borderRadius: 999, px: 1.5, py: 0.4,
+            flex: 1, minWidth: 0, maxWidth: 320, borderRadius: 999, px: 1.5, py: 0.4,
             bgcolor: 'rgba(11,12,18,0.06)', fontSize: 11.5, color: textFaint,
             overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
           }}
@@ -234,7 +234,7 @@ export function SectionHeading({
   align?: 'center' | 'left';
 }) {
   return (
-    <Box textAlign={align} mb={7} maxWidth={align === 'center' ? 760 : undefined} mx={align === 'center' ? 'auto' : 0}>
+    <Box textAlign={align} mb={{ xs: 5, md: 7 }} maxWidth={align === 'center' ? 760 : undefined} mx={align === 'center' ? 'auto' : 0}>
       <Box
         component="p"
         sx={{ color: cyanDeep, fontWeight: 700, letterSpacing: '0.14em', fontSize: 13, m: 0 }}
@@ -243,12 +243,12 @@ export function SectionHeading({
       </Box>
       <Box
         component="h2"
-        sx={{ fontSize: { xs: 30, md: 42 }, fontWeight: 800, letterSpacing: '-0.025em', mt: 1.5, mb: 0, lineHeight: 1.12 }}
+        sx={{ fontSize: { xs: 28, sm: 30, md: 42 }, fontWeight: 800, letterSpacing: '-0.025em', mt: 1.5, mb: 0, lineHeight: 1.12, overflowWrap: 'anywhere' }}
       >
         {title}
       </Box>
       {subtitle && (
-        <Box component="p" sx={{ color: textDim, fontSize: 17, mt: 2, lineHeight: 1.65, mb: 0 }}>
+        <Box component="p" sx={{ color: textDim, fontSize: { xs: 15.5, md: 17 }, mt: 2, lineHeight: 1.65, mb: 0 }}>
           {subtitle}
         </Box>
       )}

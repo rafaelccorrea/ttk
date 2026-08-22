@@ -110,13 +110,13 @@ export function ReferralPage() {
           border: 'none',
         }}
       >
-        <CardContent sx={{ py: 4 }}>
+        <CardContent sx={{ py: { xs: 3, md: 4 } }}>
           <Chip
             size="small"
             label="Programa em beta"
             sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: '#fff', mb: 1.5 }}
           />
-          <Typography variant="h4">
+          <Typography variant="h4" sx={{ fontSize: { xs: 26, md: 34 } }}>
             {premio.indicador} créditos por indicação que paga
           </Typography>
           <Typography sx={{ mt: 1, opacity: 0.9 }}>
@@ -181,6 +181,7 @@ export function ReferralPage() {
             startIcon={<ContentCopyIcon />}
             onClick={copy}
             disabled={!userId}
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
           >
             {copied ? 'Copiado!' : 'Copiar'}
           </Button>

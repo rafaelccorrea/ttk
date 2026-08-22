@@ -79,7 +79,9 @@ export function GoogleLoginButton({
         gis.renderButton(containerRef.current, {
           theme: 'outline',
           size: 'large',
-          width: 400,
+          // O iframe do Google tem largura fixa: 400px num celular de 360px
+          // estourava a tela. Cabe no que o wrapper tem.
+          width: Math.min(400, containerRef.current.clientWidth || 400),
           text: 'continue_with',
           locale: 'pt-BR',
         });
@@ -101,6 +103,7 @@ export function GoogleLoginButton({
       display="flex"
       justifyContent="center"
       minHeight={44}
+      sx={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}
     />
   );
 }

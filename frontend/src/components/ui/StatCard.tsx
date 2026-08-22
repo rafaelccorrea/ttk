@@ -61,10 +61,15 @@ export function StatCard({ label, value, helper, accent, icon, trend }: StatCard
             </Box>
           )}
         </Box>
-        <Box display="flex" alignItems="baseline" gap={1} mt={icon ? 0 : 0.25}>
+        <Box display="flex" alignItems="baseline" gap={1} mt={icon ? 0 : 0.25} flexWrap="wrap">
           <Typography
             variant="h4"
-            sx={{ color: accent ? 'primary.main' : 'text.primary' }}
+            sx={(theme) => ({
+              color: accent ? 'primary.main' : 'text.primary',
+              // Valores longos (R$ 1.234.567,89) estouravam o card no mobile.
+              fontSize: { xs: '1.6rem', sm: theme.typography.h4.fontSize },
+              overflowWrap: 'anywhere',
+            })}
           >
             {value}
           </Typography>

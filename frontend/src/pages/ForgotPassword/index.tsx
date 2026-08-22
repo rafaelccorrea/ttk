@@ -47,7 +47,7 @@ export function ForgotPasswordPage() {
       sx={{ bgcolor: 'background.default' }}
     >
       <Card sx={{ width: '100%', maxWidth: 420 }}>
-        <CardContent sx={{ p: 4 }}>
+        <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           <Typography variant="h5" gutterBottom>
             Pik
             <Box component="span" sx={{ color: 'primary.main' }}>
@@ -68,7 +68,7 @@ export function ForgotPasswordPage() {
                 O link vale por 1 hora. Confira também a caixa de spam.
               </Typography>
               {previewUrl && (
-                <Alert severity="info" sx={{ mb: 2, textAlign: 'left' }}>
+                <Alert severity="info" sx={{ mb: 2, textAlign: 'left', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                   <a href={previewUrl} target="_blank" rel="noreferrer">
                     Ver e-mail de teste
                   </a>

@@ -178,7 +178,7 @@ export function CreatorsPage() {
                     >
                       {creator.name.charAt(0).toUpperCase()}
                     </Avatar>
-                    <Box>
+                    <Box minWidth={0}>
                       <Typography fontWeight={700} fontSize={14}>
                         {creator.name}
                       </Typography>

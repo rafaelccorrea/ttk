@@ -220,7 +220,7 @@ export function ProductDetailPage() {
                   />
                 )}
               </Stack>
-              <Typography variant="h5" sx={{ lineHeight: 1.25 }}>
+              <Typography variant="h5" sx={{ lineHeight: 1.25, overflowWrap: 'anywhere' }}>
                 {product.title}
               </Typography>
               <Typography color="text.secondary" mt={0.5}>
@@ -255,6 +255,7 @@ export function ProductDetailPage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   endIcon={<OpenInNewRoundedIcon sx={{ fontSize: 16 }} />}
+                  sx={{ whiteSpace: 'normal' }}
                 >
                   {product.tiktokUrl ? 'Ver no TikTok Shop' : 'Buscar no TikTok'}
                 </Button>
@@ -301,7 +302,7 @@ export function ProductDetailPage() {
       {/* Tendência */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} mb={1}>
             <Typography variant="h6">Tendência de vendas</Typography>
             <ToggleButtonGroup
               size="small"
@@ -319,7 +320,7 @@ export function ProductDetailPage() {
       </Card>
 
       {/* Vídeos do produto */}
-      <Box display="flex" alignItems="center" justifyContent="space-between" mb={1.5}>
+      <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} mb={1.5}>
         <Typography variant="h6">Vídeos deste produto</Typography>
         {videos.length > 0 && (
           <MuiLink component={Link} to="/videos" underline="hover" fontWeight={600} fontSize={14}>

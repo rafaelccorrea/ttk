@@ -61,7 +61,7 @@ export function ResetPasswordPage() {
       sx={{ bgcolor: 'background.default' }}
     >
       <Card sx={{ width: '100%', maxWidth: 420 }}>
-        <CardContent sx={{ p: 4 }}>
+        <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           <Typography variant="h5" gutterBottom>
             Pik
             <Box component="span" sx={{ color: 'primary.main' }}>

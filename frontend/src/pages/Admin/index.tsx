@@ -257,7 +257,7 @@ export function AdminPage() {
                 setPage(1);
                 setPlano(e.target.value);
               }}
-              sx={{ minWidth: 180 }}
+              sx={{ minWidth: { xs: 0, sm: 180 }, width: { xs: '100%', sm: 'auto' } }}
             >
               <MenuItem value="">Todos</MenuItem>
               <MenuItem value="free">Pagamento pendente</MenuItem>
@@ -270,7 +270,7 @@ export function AdminPage() {
           </Stack>
 
           <Box sx={{ overflowX: 'auto' }}>
-            <Table size="small">
+            <Table size="small" sx={{ minWidth: 760 }}>
               <TableHead>
                 <TableRow>
                   <TableCell>Conta</TableCell>
@@ -286,9 +286,9 @@ export function AdminPage() {
                 {users.map((u) => (
                   <TableRow key={u.id} hover>
                     <TableCell>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Box>
-                          <Typography fontSize={13.5} fontWeight={600}>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography fontSize={13.5} fontWeight={600} sx={{ wordBreak: 'break-word' }}>
                             {u.email}
                           </Typography>
                           {u.displayName && (
@@ -408,11 +408,11 @@ function Metric({
           border: destaque ? '1px solid #fe2c5566' : undefined,
         }}
       >
-        <CardContent sx={{ py: 2 }}>
+        <CardContent sx={{ py: 2, px: { xs: 1.5, sm: 2 } }}>
           <Typography fontSize={12} color="text.secondary" fontWeight={700}>
             {titulo.toUpperCase()}
           </Typography>
-          <Typography fontSize={24} fontWeight={800} lineHeight={1.3}>
+          <Typography fontSize={{ xs: 20, sm: 24 }} fontWeight={800} lineHeight={1.3} sx={{ wordBreak: 'break-word' }}>
             {valor}
           </Typography>
           {nota && (

@@ -103,6 +103,7 @@ export function TrendsPage() {
                   bgcolor: 'rgba(254,44,85,0.08)',
                   color: 'text.primary',
                   py: 2,
+                  maxWidth: '100%',
                   '&:hover': { bgcolor: 'rgba(254,44,85,0.16)' },
                 }}
               />
@@ -127,7 +128,7 @@ export function TrendsPage() {
                 <Card sx={{ height: '100%' }}>
                   <CardContent sx={{ py: 2 }}>
                     <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
-                      <Typography fontWeight={700} noWrap>
+                      <Typography fontWeight={700} noWrap sx={{ minWidth: 0 }}>
                         {c.category}
                       </Typography>
                       <GrowthChip pct={c.growthPct} />

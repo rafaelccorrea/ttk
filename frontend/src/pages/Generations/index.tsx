@@ -131,7 +131,7 @@ function MediaCard({
       </Box>
 
       <CardContent sx={{ flexGrow: 1, pt: 1.5 }}>
-        <Box display="flex" alignItems="center" gap={1} mb={1}>
+        <Box display="flex" alignItems="center" gap={1} mb={1} flexWrap="wrap">
           <Chip
             size="small"
             label={item.kind === 'video' ? 'Vídeo' : 'Imagem'}
@@ -140,9 +140,9 @@ function MediaCard({
           <Chip
             size="small"
             label={label}
-            sx={{ fontWeight: 700, bgcolor: badge.bg, color: badge.color }}
+            sx={{ fontWeight: 700, bgcolor: badge.bg, color: badge.color, maxWidth: '100%' }}
           />
-          <Box ml="auto" display="flex" gap={0.5}>
+          <Box ml="auto" display="flex" gap={0.5} flexShrink={0}>
             {item.status === 'completed' && item.outputUrl && (
               <Tooltip title="Abrir/baixar">
                 <IconButton
@@ -261,7 +261,7 @@ export function GenerationsPage() {
             variant="outlined"
             startIcon={<RefreshRoundedIcon />}
             onClick={load}
-            sx={{ flexShrink: 0 }}
+            sx={{ flexShrink: 0, width: { xs: '100%', sm: 'auto' } }}
           >
             Atualizar
           </Button>
@@ -274,8 +274,8 @@ export function GenerationsPage() {
         <Box
           sx={{
             textAlign: 'center',
-            py: 8,
-            px: 3,
+            py: { xs: 5, md: 8 },
+            px: { xs: 2, md: 3 },
             border: '1px dashed rgba(22,24,35,0.12)',
             borderRadius: 3,
           }}

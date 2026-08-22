@@ -67,7 +67,7 @@ export function FreeCriadoresPage() {
                   <Typography variant="body2" color="text.secondary" noWrap>
                     {c.handle}
                   </Typography>
-                  <Stack direction="row" spacing={1} mt={1} alignItems="center">
+                  <Stack direction="row" spacing={1} mt={1} alignItems="center" flexWrap="wrap" useFlexGap>
                     <Chip label={c.category} size="small" />
                     {/* Faixa: a ordem de grandeza sem o número exato. */}
                     <Typography variant="body2" color="text.secondary">

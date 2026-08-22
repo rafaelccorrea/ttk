@@ -150,7 +150,9 @@ function vozDeNarrador(attrs: Partial<PersonaAttributes> | null | undefined): st
  */
 const DISPOSITIVO_DA_TELA =
   process.env.CAMPAIGN_SCREEN_DEVICE?.trim() ||
-  'Samsung Galaxy S24 Ultra (flat display, thin symmetric bezels, titanium frame, held vertically)';
+  'Samsung Galaxy S24 Ultra — a real, existing phone: perfectly FLAT 6.8-inch display with SQUARED corners ' +
+    '(not rounded), ultra-thin symmetric bezels, one tiny centered hole-punch front camera at the top ' +
+    '(no notch, no island), flat matte titanium side rails, S Pen silo at the bottom edge; held vertically';
 
 /**
  * Frame composto da cena de tela: mãos reais segurando o celular e, na tela,
@@ -169,6 +171,8 @@ function framePromptDeTela(nomeProduto: string | undefined, acaoVisual: string):
     'edge to edge like a real app open on the phone. Thumb resting near the screen, natural grip. ' +
     'Casual indoor setting, soft daylight, shallow depth of field on the background. ' +
     `Context of the scene (in Portuguese, direction only): ${acaoVisual}. ` +
+    'The phone model is fixed: do NOT invent, restyle or blend phone designs — no rounded-corner screens, ' +
+    'no notch, no curved edges, no fictional brand; the same Galaxy S24 Ultra in every scene. ' +
     'No other screens, no text overlays, no watermark.'
   );
 }
@@ -942,6 +946,113 @@ export class CampaignsService {
   }
 
   /**
+   * Duplica a campanha — mesmo produto, mesmas cenas (texto, formato, foto) —
+   * opcionalmente com outro apresentador. Não cobra: o roteiro já foi pago
+   * uma vez, e reescrevê-lo por IA para trocar só a pessoa era jogar 8
+   * créditos fora. É também o jeito de comparar apresentadores (e IAs) no
+   * MESMO roteiro.
+   */
+  async clonarCampanha(
+    userId: string,
+    id: string,
+    opts: { personaId?: string | null; title?: string | null } = {},
+  ): Promise<Campaign> {
+    const origem = await this.campanhas.findOneBy({ id, userId });
+    if (!origem) throw new NotFoundException('Campanha não encontrada.');
+    const originais = await this.cenas.find({ where: { campaignId: id }, order: { ordem: 'ASC' } });
+    if (!originais.length) {
+      throw new ConflictException('Esta campanha ainda não tem roteiro para duplicar.');
+    }
+
+    let personaId = origem.personaId;
+    let rotulo: string | null = null;
+    if (opts.personaId) {
+      const persona = await this.personas.findOneBy({ id: opts.personaId, userId });
+      if (!persona) throw new NotFoundException('Persona não encontrada.');
+      if (origem.estilo === 'sem_apresentador') {
+        throw new ConflictException('Esta campanha é sem apresentador — não há quem trocar.');
+      }
+      personaId = persona.id;
+      rotulo = persona.label;
+    }
+
+    const nova = await this.campanhas.save(
+      this.campanhas.create({
+        userId,
+        userProductId: origem.userProductId,
+        personaId,
+        estilo: origem.estilo,
+        vozNarrador: origem.vozNarrador,
+        title: opts.title?.trim() || (rotulo ? `${origem.title} — ${rotulo}` : `${origem.title} (cópia)`),
+        durationSeconds: origem.durationSeconds,
+        script: origem.script,
+        comoUsa: origem.comoUsa,
+        status: 'storyboard',
+      }),
+    );
+    await this.cenas.save(
+      originais.map((c) =>
+        this.cenas.create({
+          campaignId: nova.id,
+          ordem: c.ordem,
+          tipo: c.tipo,
+          modoAudio: c.modoAudio,
+          baseImageUrl: c.baseImageUrl,
+          fala: c.fala,
+          acaoVisual: c.acaoVisual,
+          seguraProduto: c.seguraProduto,
+          modelo: c.modelo,
+          status: 'pendente',
+        }),
+      ),
+    );
+    return nova;
+  }
+
+  /**
+   * Storyboard vazio para escrever à mão — a alternativa grátis ao roteiro
+   * por IA. Cria as cenas na quantidade da duração, já no formato certo
+   * (gancho com rosto, demonstrações partindo das fotos do produto), com fala
+   * e ação em branco para o vendedor preencher. Só quando ainda não há cenas:
+   * sobrescrever um storyboard existente é trabalho do "gerar roteiro".
+   */
+  async criarStoryboardManual(userId: string, id: string) {
+    const campanha = await this.campanhas.findOneBy({ id, userId });
+    if (!campanha) throw new NotFoundException('Campanha não encontrada.');
+    const existentes = await this.cenas.count({ where: { campaignId: id } });
+    if (existentes) {
+      throw new ConflictException('Esta campanha já tem cenas — edite-as direto no storyboard.');
+    }
+    const produto = await this.produtos.findOneBy({ id: campanha.userProductId });
+    const fotos = produto?.images ?? [];
+    const semPessoa = campanha.estilo === 'sem_apresentador';
+    const total = this.cenasPara(campanha.durationSeconds);
+
+    const cenas = Array.from({ length: total }, (_, i) => {
+      // Gancho com rosto (exceto sem apresentador); o resto alterna
+      // demonstração e apresentador, como a IA faria.
+      const comRosto = !semPessoa && (i === 0 || i === total - 1 || i % 2 === 1);
+      const tipo: SceneKind = comRosto ? 'apresentador' : 'produto_close';
+      const semNarracao = campanha.vozNarrador === SEM_NARRACAO;
+      return this.cenas.create({
+        campaignId: id,
+        ordem: i + 1,
+        tipo,
+        modoAudio: semNarracao ? 'sem_fala' : comRosto ? 'fala' : 'narracao',
+        baseImageUrl: comRosto ? null : (fotos[i % Math.max(1, fotos.length)] ?? null),
+        fala: '',
+        acaoVisual: '',
+        seguraProduto: false,
+        status: 'pendente',
+      });
+    });
+    await this.cenas.save(cenas);
+    campanha.status = 'storyboard';
+    await this.campanhas.save(campanha);
+    return this.detalharCampanha(userId, id);
+  }
+
+  /**
    * Gera o roteiro e o storyboard numa cobrança só, e regrava as cenas.
    * Rodar de novo substitui o storyboard inteiro — por isso é bloqueado
    * depois que alguma cena já foi renderizada (seria jogar crédito fora).
@@ -1451,7 +1562,10 @@ export class CampaignsService {
         comoUsa: campanha.comoUsa,
       });
       if (perfil === 'tela') {
-        const print = await this.lerCena(imagemBase);
+        const printBruto = await this.lerCena(imagemBase);
+        // Print desktop (largo) vira recorte vertical antes de ir para a tela
+        // do aparelho — senão o editor deita e estica o celular.
+        const print = printBruto ? await this.mirror.recortarParaTelaDeCelular(printBruto) : null;
         if (print) {
           const framePrompt = framePromptDeTela(produtoDaCena?.name, cena.acaoVisual);
           const promptVideo = montarPromptDeCena({

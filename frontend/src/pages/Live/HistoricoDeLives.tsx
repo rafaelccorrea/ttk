@@ -117,8 +117,10 @@ export function HistoricoDeLives() {
                   sx={{ cursor: 'pointer' }}
                 >
                   <TableCell>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <span>{quando(run.startedAt)}</span>
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                      <Box component="span" sx={{ whiteSpace: 'nowrap' }}>
+                        {quando(run.startedAt)}
+                      </Box>
                       {run.status === 'erro' && (
                         <Chip size="small" color="warning" label="interrompida" />
                       )}

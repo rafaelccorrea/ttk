@@ -627,11 +627,16 @@ export function StudioPage() {
                   onChange={(_e, value) => value && setType(value)}
                   sx={{
                     mb: 2.5,
+                    // No celular os dois grupos não cabem lado a lado: cada
+                    // botão estica para dividir a linha em vez de estourar.
+                    flexWrap: 'wrap',
+                    maxWidth: '100%',
                     '& .MuiToggleButton-root': {
                       textTransform: 'none',
                       fontWeight: 700,
                       borderRadius: 2,
                       px: 2,
+                      flex: { xs: '1 1 auto', sm: '0 0 auto' },
                     },
                   }}
                 >
@@ -648,11 +653,14 @@ export function StudioPage() {
                     sx={{
                       mb: 2.5,
                       ml: { sm: 1 },
+                      flexWrap: 'wrap',
+                      maxWidth: '100%',
                       '& .MuiToggleButton-root': {
                         textTransform: 'none',
                         fontWeight: 700,
                         borderRadius: 2,
                         px: 2,
+                        flex: { xs: '1 1 auto', sm: '0 0 auto' },
                       },
                     }}
                   >
@@ -718,7 +726,11 @@ export function StudioPage() {
                 {type === 'video' && formato === 'pecas' && (
                   <Box sx={{ mt: 2.5 }}>
                     <Rotulo>Quantas peças de cada?</Rotulo>
-                    <Stack direction="row" spacing={1.5} sx={{ mt: 1 }}>
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={1.5}
+                      sx={{ mt: 1 }}
+                    >
                       {(
                         [
                           ['hooks', 'Ganchos'],
@@ -747,7 +759,7 @@ export function StudioPage() {
                             }));
                           }}
                           sx={{
-                            width: 110,
+                            width: { xs: '100%', sm: 110 },
                             '& .MuiOutlinedInput-root': { borderRadius: 2.5 },
                           }}
                         />
@@ -773,14 +785,19 @@ export function StudioPage() {
                       necessário porque botão desabilitado não dispara os
                       eventos que o Tooltip escuta. */}
                   <Tooltip title={saldo.motivo}>
-                    <span>
+                    <Box component="span" sx={{ display: 'block', width: { xs: '100%', sm: 'auto' } }}>
                       <Button
                         type="submit"
                         variant="contained"
                         size="large"
                         disabled={busy || enviandoImagem || saldo.insuficiente}
                         startIcon={<AutoAwesomeRoundedIcon />}
-                        sx={{ borderRadius: 2.5, px: 3, fontWeight: 700 }}
+                        sx={{
+                          borderRadius: 2.5,
+                          px: 3,
+                          fontWeight: 700,
+                          width: { xs: '100%', sm: 'auto' },
+                        }}
                       >
                         {busy
                           ? 'Gerando…'
@@ -788,7 +805,7 @@ export function StudioPage() {
                             ? 'Gerar peças'
                             : `Gerar roteiro ${type === 'live' ? 'de live' : 'do vídeo'}`}
                       </Button>
-                    </span>
+                    </Box>
                   </Tooltip>
                   {saldo.insuficiente && (
                     <Button
@@ -796,7 +813,11 @@ export function StudioPage() {
                       to="/planos"
                       variant="outlined"
                       size="large"
-                      sx={{ borderRadius: 2.5, fontWeight: 700 }}
+                      sx={{
+                        borderRadius: 2.5,
+                        fontWeight: 700,
+                        width: { xs: '100%', sm: 'auto' },
+                      }}
                     >
                       {saldo.semPlano ? 'Assinar um plano' : 'Comprar créditos'}
                     </Button>
@@ -840,7 +861,11 @@ export function StudioPage() {
                   alignItems="center"
                   sx={{ mb: 1 }}
                 >
-                  <Typography variant="h6" fontWeight={800}>
+                  <Typography
+                    variant="h6"
+                    fontWeight={800}
+                    sx={{ minWidth: 0, wordBreak: 'break-word' }}
+                  >
                     {result.productName}
                   </Typography>
                   <IconButton
@@ -854,7 +879,12 @@ export function StudioPage() {
                 <Typography
                   component="pre"
                   variant="body2"
-                  sx={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}
+                  sx={{
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: 'inherit',
+                    wordBreak: 'break-word',
+                    overflowWrap: 'anywhere',
+                  }}
                 >
                   {result.content}
                 </Typography>

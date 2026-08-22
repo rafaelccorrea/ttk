@@ -387,7 +387,13 @@ export function PlansPage() {
         action={
           // Só faz sentido oferecer o toggle se algum plano tem opção anual.
           temAnual ? (
-            <Stack direction="row" spacing={1} alignItems="center">
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              flexWrap="wrap"
+              useFlexGap
+            >
               {economiaAnual > 0 && cycle === 'month' && (
                 <Chip
                   size="small"
@@ -648,6 +654,8 @@ export function PlansPage() {
                         direction="row"
                         spacing={1}
                         alignItems="center"
+                        flexWrap="wrap"
+                        useFlexGap
                         mb={0.25}
                       >
                         <Typography variant="h5">{pack.hours}h</Typography>
@@ -723,7 +731,13 @@ export function PlansPage() {
               >
                 <Box flexGrow={1} minWidth={0}>
                   <Typography fontWeight={700}>{pack.name}</Typography>
-                  <Stack direction="row" spacing={1} alignItems="baseline">
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="baseline"
+                    flexWrap="wrap"
+                    useFlexGap
+                  >
                     <Typography variant="h6" fontWeight={800}>
                       {brl(pack.priceBrl)}
                     </Typography>
@@ -745,7 +759,7 @@ export function PlansPage() {
                   {/* <span> porque botão desabilitado não emite os eventos que
                       o Tooltip escuta — sem ele, a explicação não aparece
                       justamente para quem precisa dela. */}
-                  <span>
+                  <span style={{ flexShrink: 0 }}>
                     <Button
                       variant="outlined"
                       disabled={busy === pack.id || semPlano}
@@ -840,7 +854,15 @@ export function PlansPage() {
               labelDisplayedRows={({ from, to, count }) =>
                 `${from}–${to} de ${count}`
               }
-              sx={{ borderTop: '1px solid rgba(22,24,35,0.08)' }}
+              sx={{
+                borderTop: '1px solid rgba(22,24,35,0.08)',
+                // Em 360px a barra (seletor + "1–10 de 40" + setas) não cabe
+                // numa linha: deixa quebrar em vez de empurrar a página.
+                '& .MuiTablePagination-toolbar': {
+                  flexWrap: 'wrap',
+                  px: { xs: 1, sm: 2 },
+                },
+              }}
             />
           </Card>
         </>

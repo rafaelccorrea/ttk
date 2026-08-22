@@ -104,7 +104,7 @@ export function FreeVideosPage() {
                   <Typography variant="body2" color="text.secondary" mt={0.5}>
                     {v.creatorHandle}
                   </Typography>
-                  <Stack direction="row" spacing={2} mt={1}>
+                  <Stack direction="row" spacing={2} mt={1} flexWrap="wrap" useFlexGap>
                     <Stack direction="row" spacing={0.5} alignItems="center">
                       <VisibilityRoundedIcon fontSize="small" color="disabled" />
                       <Typography variant="body2">{v.viewsRange}</Typography>

@@ -30,6 +30,8 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -101,6 +103,8 @@ function ProdutoDialog({
   const [apelidos, setApelidos] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // Formulário longo: no celular o diálogo ocupa a tela inteira.
+  const isMobile = useMediaQuery(useTheme().breakpoints.down('sm'));
 
   useEffect(() => {
     if (!aberto) return;
@@ -137,7 +141,13 @@ function ProdutoDialog({
   }
 
   return (
-    <Dialog open={aberto} onClose={salvando ? undefined : onFechar} fullWidth maxWidth="sm">
+    <Dialog
+      open={aberto}
+      onClose={salvando ? undefined : onFechar}
+      fullWidth
+      maxWidth="sm"
+      fullScreen={isMobile}
+    >
       <DialogTitle sx={{ fontWeight: 800 }}>
         {produto ? 'Corrigir produto' : 'Novo produto'}
       </DialogTitle>
@@ -232,6 +242,7 @@ function FaqDialog({
   const [produtoId, setProdutoId] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const isMobile = useMediaQuery(useTheme().breakpoints.down('sm'));
 
   useEffect(() => {
     if (!aberto) return;
@@ -264,7 +275,13 @@ function FaqDialog({
   }
 
   return (
-    <Dialog open={aberto} onClose={salvando ? undefined : onFechar} fullWidth maxWidth="sm">
+    <Dialog
+      open={aberto}
+      onClose={salvando ? undefined : onFechar}
+      fullWidth
+      maxWidth="sm"
+      fullScreen={isMobile}
+    >
       <DialogTitle sx={{ fontWeight: 800 }}>
         {faq ? 'Corrigir resposta' : 'Nova resposta'}
       </DialogTitle>
@@ -494,7 +511,9 @@ export function LiveDetailPage() {
       </Button>
 
       <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" useFlexGap>
-        <Typography variant="h5">{sessao.title}</Typography>
+        <Typography variant="h5" sx={{ minWidth: 0, wordBreak: 'break-word' }}>
+          {sessao.title}
+        </Typography>
         <StatusChip status={sessao.status} />
       </Stack>
       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2.5 }}>
@@ -534,7 +553,14 @@ export function LiveDetailPage() {
       {sessao.status === 'erro' && (
         <Alert
           severity="error"
-          sx={{ mb: 2.5 }}
+          // No celular o botão da ação cai para baixo do texto em vez de
+          // espremer a mensagem numa coluna estreita.
+          sx={{
+            mb: 2.5,
+            flexWrap: 'wrap',
+            '& .MuiAlert-message': { minWidth: 0, flex: '1 1 200px' },
+            '& .MuiAlert-action': { ml: { xs: 0, sm: 'auto' }, pl: { xs: 0, sm: 2 } },
+          }}
           action={
             <Button
               color="inherit"
@@ -591,7 +617,11 @@ export function LiveDetailPage() {
                   : `${sessao.produtos.length} no total · ${daIa} vieram da sua live`}
               </Typography>
             </Box>
-            <Stack direction="row" spacing={1}>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              sx={{ '& .MuiButton-root': { width: { xs: '100%', sm: 'auto' } } }}
+            >
               {/*
                * A extração só conhece o que foi FALADO na live — e o vendedor
                * mostra vinte itens numa transmissão enquanto tem duzentos na
@@ -820,6 +850,7 @@ export function LiveDetailPage() {
                 setFaqEditando(null);
                 setFaqDialogo(true);
               }}
+              sx={{ width: { xs: '100%', sm: 'auto' } }}
             >
               Adicionar resposta
             </Button>
@@ -842,9 +873,16 @@ export function LiveDetailPage() {
                       justifyContent="space-between"
                       spacing={1}
                     >
-                      <Box flexGrow={1}>
-                        <Typography fontWeight={700}>{item.question}</Typography>
-                        <Typography variant="body2" color="text.secondary" mt={0.5}>
+                      <Box flexGrow={1} minWidth={0}>
+                        <Typography fontWeight={700} sx={{ wordBreak: 'break-word' }}>
+                          {item.question}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          mt={0.5}
+                          sx={{ wordBreak: 'break-word' }}
+                        >
                           {item.answer}
                         </Typography>
                         <Stack
@@ -863,7 +901,7 @@ export function LiveDetailPage() {
                           />
                         </Stack>
                       </Box>
-                      <Box whiteSpace="nowrap">
+                      <Box whiteSpace="nowrap" flexShrink={0}>
                         <IconButton
                           size="small"
                           aria-label={`Corrigir resposta: ${item.question}`}

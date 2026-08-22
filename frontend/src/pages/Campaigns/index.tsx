@@ -388,7 +388,7 @@ function PersonasTab({
                       borderColor: 'divider',
                     }}
                   />
-                  <Typography variant="body2" sx={{ flex: 1 }} noWrap>
+                  <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>
                     {foto?.name}
                   </Typography>
                   <IconButton size="small" onClick={() => setFoto(null)} aria-label="Remover foto">
@@ -657,12 +657,20 @@ function CampoDeCena({
 function Storyboard({
   detalhe,
   precos,
+  personas = [],
   onChange,
+  onAbrir,
 }: {
   detalhe: CampaignDetail;
   precos: CampaignPricing | null;
+  /** Para duplicar a campanha com outro apresentador. */
+  personas?: Persona[];
   onChange: () => void;
+  /** Abre outra campanha (a cópia recém-criada). */
+  onAbrir?: (id: string) => void;
 }) {
+  // Duplicar com outro apresentador: mesmo roteiro, zero crédito.
+  const [duplicarCom, setDuplicarCom] = useState<string>('');
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   // Cena cuja foto está sendo trocada (null = diálogo fechado).
@@ -793,7 +801,12 @@ function Storyboard({
   return (
     <Stack spacing={2}>
       <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-        <Typography variant="h6" fontWeight={800} flexGrow={1}>
+        <Typography
+          variant="h6"
+          fontWeight={800}
+          flexGrow={1}
+          sx={{ minWidth: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+        >
           {detalhe.title}
         </Typography>
         <Chip label={`${detalhe.durationSeconds}s`} size="small" />
@@ -922,6 +935,17 @@ function Storyboard({
                   ? 'Escrevendo...'
                   : `Gerar roteiro${precos ? ` · ${precos.roteiro} créditos` : ''}`}
               </Button>
+              {/* Quem já sabe o que quer dizer não precisa pagar a IA: o
+                  storyboard nasce em branco, no formato certo, e cada cena é
+                  escrita à mão. */}
+              <Button
+                variant="text"
+                size="small"
+                disabled={ocupado}
+                onClick={() => acao(() => campaignsService.manualStoryboard(detalhe.id))}
+              >
+                Prefiro escrever o roteiro à mão · grátis
+              </Button>
             </Stack>
           </CardContent>
         </Card>
@@ -946,6 +970,49 @@ function Storyboard({
           Não gostou? Escrever outra versão
           {precos ? ` · ${precos.roteiro} créditos` : ''}
         </Button>
+      )}
+
+      {/* Mesmo roteiro, outro apresentador (ou o mesmo, para testar outra IA):
+          a cópia é grátis — reescrever por IA só para trocar a pessoa jogava
+          os créditos do roteiro fora. */}
+      {detalhe.cenas.length > 0 && (
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          {detalhe.estilo !== 'sem_apresentador' && (
+            <TextField
+              select
+              size="small"
+              label="Duplicar com"
+              value={duplicarCom}
+              onChange={(e) => setDuplicarCom(e.target.value)}
+              sx={{ minWidth: { xs: 0, sm: 220 }, width: { xs: '100%', sm: 'auto' } }}
+            >
+              <MenuItem value="">Mesmo apresentador</MenuItem>
+              {personas
+                .filter((p) => p.status === 'pronta')
+                .map((p) => (
+                  <MenuItem key={p.id} value={p.id}>
+                    {p.label}
+                  </MenuItem>
+                ))}
+            </TextField>
+          )}
+          <Button
+            variant="outlined"
+            size="small"
+            disabled={ocupado}
+            sx={{ width: { xs: '100%', sm: 'auto' } }}
+            onClick={() =>
+              acao(async () => {
+                const copia = await campaignsService.cloneCampaign(detalhe.id, {
+                  personaId: duplicarCom || undefined,
+                });
+                onAbrir?.(copia.id);
+              })
+            }
+          >
+            Duplicar campanha · grátis
+          </Button>
+        </Stack>
       )}
 
       {/* A ação que o vendedor quer é UMA: sair daqui com o vídeo. Renderizar
@@ -983,7 +1050,11 @@ function Storyboard({
                 }
                 disabled={ocupado || renderizando}
                 onClick={() => setConfirmarTudo(true)}
-                sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                sx={{
+                  flexShrink: 0,
+                  whiteSpace: { xs: 'normal', sm: 'nowrap' },
+                  width: { xs: '100%', sm: 'auto' },
+                }}
               >
                 {renderizando
                   ? 'Gerando...'
@@ -1392,7 +1463,16 @@ function Storyboard({
                               : 'Apresentador · parte do retrato'
                     }
                     color={cenaUsaProduto(cena) ? 'primary' : 'default'}
-                    sx={{ alignSelf: 'flex-start', fontWeight: 700 }}
+                    sx={{
+                      alignSelf: 'flex-start',
+                      fontWeight: 700,
+                      maxWidth: '100%',
+                      height: { xs: 'auto', sm: 24 },
+                      '& .MuiChip-label': {
+                        whiteSpace: { xs: 'normal', sm: 'nowrap' },
+                        py: { xs: 0.5, sm: 0 },
+                      },
+                    }}
                   />
                   {/* Qual IA gerou (ou vai gerar) esta cena — é o que permite
                       comparar modelo por tipo de cena olhando o resultado. */}
@@ -1403,7 +1483,7 @@ function Storyboard({
                       label={`IA: ${nomeDoModelo(cena.modeloUsado ?? cena.modelo)}${
                         cena.modelo && cena.status !== 'pronta' ? ' (forçada)' : ''
                       }`}
-                      sx={{ alignSelf: 'flex-start' }}
+                      sx={{ alignSelf: 'flex-start', maxWidth: '100%' }}
                     />
                   )}
                   {/* O formato e o áudio são escolha do vendedor, não só da
@@ -1417,7 +1497,7 @@ function Storyboard({
                         label="Tipo de cena"
                         value={cena.tipo}
                         disabled={cena.status === 'renderizando'}
-                        sx={{ minWidth: 230 }}
+                        sx={{ minWidth: { xs: 0, sm: 230 }, width: { xs: '100%', sm: 'auto' } }}
                         onChange={(e) =>
                           acao(() =>
                             campaignsService.updateScene(cena.id, {
@@ -1455,7 +1535,7 @@ function Storyboard({
                           label="IA do vídeo"
                           value={cena.modelo ?? ''}
                           disabled={cena.status === 'renderizando'}
-                          sx={{ minWidth: 260 }}
+                          sx={{ minWidth: { xs: 0, sm: 260 }, width: { xs: '100%', sm: 'auto' } }}
                           onChange={(e) =>
                             acao(() =>
                               campaignsService.updateScene(cena.id, {
@@ -1485,7 +1565,7 @@ function Storyboard({
                           (cenaSemPessoa(cena.tipo) ? 'narracao' : 'fala')
                         }
                         disabled={cena.status === 'renderizando'}
-                        sx={{ minWidth: 170 }}
+                        sx={{ minWidth: { xs: 0, sm: 170 }, width: { xs: '100%', sm: 'auto' } }}
                         onChange={(e) =>
                           acao(() =>
                             campaignsService.updateScene(cena.id, {
@@ -1781,7 +1861,12 @@ function CampanhasTab({
         <Storyboard
           detalhe={detalhe}
           precos={precos}
+          personas={personas}
           onChange={() => void carregarDetalhe(detalhe.id).then(onChange)}
+          onAbrir={(id) => {
+            onChange();
+            setAberta(id);
+          }}
         />
       </Stack>
     );
@@ -1975,7 +2060,14 @@ function CampanhasTab({
           {dialogoDeConfirmacao}
           {campanhas.map((campanha) => (
             <Card key={campanha.id}>
-              <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <CardContent
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: { xs: 1, sm: 2 },
+                  flexWrap: 'wrap',
+                }}
+              >
                 {/* A capa do produto identifica a campanha de relance — com
                     várias campanhas do mesmo vendedor, o título sozinho não
                     distingue nada. */}
@@ -1998,8 +2090,10 @@ function CampanhasTab({
                     <MovieFilterRoundedIcon color="disabled" fontSize="small" />
                   )}
                 </Box>
-                <Box flexGrow={1}>
-                  <Typography fontWeight={700}>{campanha.title}</Typography>
+                <Box flexGrow={1} sx={{ minWidth: 0, flexBasis: { xs: 160, sm: 'auto' } }}>
+                  <Typography fontWeight={700} sx={{ wordBreak: 'break-word' }}>
+                    {campanha.title}
+                  </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {campanha.durationSeconds}s · {campanha.status} ·{' '}
                     {campanha.creditsSpent} créditos
@@ -2169,7 +2263,12 @@ export function CampaignsPage() {
 
   return (
     <Box>
-      <Typography variant="h4" fontWeight={900} gutterBottom>
+      <Typography
+        variant="h4"
+        fontWeight={900}
+        gutterBottom
+        sx={{ fontSize: { xs: 26, md: '2.125rem' } }}
+      >
         Fábrica de criativos
       </Typography>
       <Typography variant="body1" color="text.secondary" mb={3}>
@@ -2184,6 +2283,9 @@ export function CampaignsPage() {
         sx={{
           mb: 3,
           '& .MuiStepConnector-line': { borderColor: 'divider' },
+          // Em 360px os quatro passos dividem ~80px cada: sem margem interna
+          // os rótulos cabem, e a ajuda (abaixo) fica só do `sm` para cima.
+          '& .MuiStep-root': { px: { xs: 0, sm: 1 } },
         }}
       >
         {PASSOS.map((p, i) => (
@@ -2191,12 +2293,20 @@ export function CampaignsPage() {
             <StepButton onClick={() => setPasso(i)}>
               <StepLabel
                 optional={
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ display: { xs: 'none', sm: 'block' } }}
+                  >
                     {p.ajuda}
                   </Typography>
                 }
               >
-                <Typography component="span" fontWeight={passo === i ? 800 : 600}>
+                <Typography
+                  component="span"
+                  fontWeight={passo === i ? 800 : 600}
+                  sx={{ fontSize: { xs: 12, sm: 'inherit' } }}
+                >
                   {p.titulo}
                 </Typography>
               </StepLabel>
@@ -2236,7 +2346,14 @@ export function CampaignsPage() {
       {/* Navegação só nos dois primeiros passos: do roteiro em diante quem
           manda no fluxo é a própria campanha (criar, gerar, renderizar). */}
       {passo <= 1 && (
-        <Stack direction="row" spacing={1.5} alignItems="center" mt={3}>
+        <Stack
+          direction="row"
+          spacing={1.5}
+          alignItems="center"
+          mt={3}
+          flexWrap="wrap"
+          useFlexGap
+        >
           <Button
             startIcon={<ArrowBackRoundedIcon />}
             disabled={passo === 0}
@@ -2246,7 +2363,13 @@ export function CampaignsPage() {
           </Button>
           <Box flexGrow={1} />
           {bloqueio && !cumprido[passo] && (
-            <Typography variant="caption" color="text.secondary">
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              // No celular o motivo ocupa a linha inteira acima dos botões,
+              // em vez de espremer "Voltar" e "Continuar" para fora da tela.
+              sx={{ flexBasis: { xs: '100%', sm: 'auto' }, order: { xs: -1, sm: 0 } }}
+            >
               {bloqueio}
             </Typography>
           )}

@@ -239,11 +239,11 @@ export function LoginPage() {
           alignItems: 'center',
           justifyContent: 'center',
           px: { xs: 3, sm: 6 },
-          py: 6,
+          py: { xs: 4, sm: 6 },
           bgcolor: 'background.default',
         }}
       >
-        <Box width="100%" maxWidth={400}>
+        <Box width="100%" maxWidth={400} sx={{ minWidth: 0 }}>
           <Button
             component={RouterLink}
             to="/"
@@ -266,7 +266,7 @@ export function LoginPage() {
                 <CelebrationRounded sx={{ fontSize: 32, color: '#fff' }} />
               </Box>
 
-              <Typography variant="h4" gutterBottom>
+              <Typography variant="h4" gutterBottom sx={{ fontSize: { xs: 26, sm: 34 } }}>
                 Você entrou na lista de espera!
               </Typography>
 
@@ -280,7 +280,7 @@ export function LoginPage() {
                 experiência desde o primeiro dia.
               </Typography>
 
-              <Alert severity="info" icon={<MarkEmailUnreadRounded />} sx={{ mb: 3 }}>
+              <Alert severity="info" icon={<MarkEmailUnreadRounded />} sx={{ mb: 3, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                 <strong>Quando chegar a sua vez</strong>, enviaremos o link de
                 confirmação para <strong>{email}</strong>. Só depois de abrir
                 esse link a sua conta fica ativa — não é preciso fazer mais nada
@@ -300,7 +300,7 @@ export function LoginPage() {
             </Box>
           ) : (
           <>
-          <Typography variant="h4" gutterBottom>
+          <Typography variant="h4" gutterBottom sx={{ fontSize: { xs: 26, sm: 34 } }}>
             {isSignUp
               ? waitlistMode
                 ? 'Entre na lista de espera'
@@ -320,7 +320,7 @@ export function LoginPage() {
               label="Modo demo — sem Supabase configurado, qualquer e-mail entra"
               color="secondary"
               size="small"
-              sx={{ mb: 2 }}
+              sx={{ mb: 2, maxWidth: '100%', height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.5 } }}
             />
           )}
 
@@ -378,7 +378,7 @@ export function LoginPage() {
               </Box>
             )}
             {info && (
-              <Alert severity="success" sx={{ mt: 1 }}>
+              <Alert severity="success" sx={{ mt: 1, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                 {info}
                 {previewUrl && (
                   <>

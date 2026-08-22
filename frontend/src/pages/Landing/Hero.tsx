@@ -50,8 +50,8 @@ function FloatingBadge({
 function HeroStat({ to, suffix, label, decimals = 0 }: { to: number; suffix: string; label: string; decimals?: number }) {
   const { ref, value } = useCountUp(to);
   return (
-    <Box>
-      <Typography ref={ref} component="span" sx={{ ...gradientText, fontSize: 28, fontWeight: 800, display: 'block' }}>
+    <Box sx={{ minWidth: 0 }}>
+      <Typography ref={ref} component="span" sx={{ ...gradientText, fontSize: { xs: 24, md: 28 }, fontWeight: 800, display: 'block' }}>
         {value.toFixed(decimals).replace('.', ',')}
         {suffix}
       </Typography>
@@ -76,7 +76,8 @@ export function Hero() {
             <Typography
               component="h1"
               sx={{
-                fontSize: { xs: 40, md: 58 }, fontWeight: 800, lineHeight: 1.08, letterSpacing: '-0.03em',
+                fontSize: { xs: 34, sm: 40, md: 58 }, fontWeight: 800, lineHeight: 1.08, letterSpacing: '-0.03em',
+                overflowWrap: 'anywhere',
                 animation: 'lpFadeUp .7s ease .1s both',
               }}
             >
@@ -94,7 +95,7 @@ export function Hero() {
               <br />
               antes de todo mundo
             </Typography>
-            <Typography sx={{ color: textDim, fontSize: 18, mt: 3, maxWidth: 540, lineHeight: 1.65, animation: 'lpFadeUp .7s ease .2s both' }}>
+            <Typography sx={{ color: textDim, fontSize: { xs: 16, md: 18 }, mt: 3, maxWidth: 540, lineHeight: 1.65, animation: 'lpFadeUp .7s ease .2s both' }}>
               O PikPok monitora produtos, vídeos e criadores do TikTok Shop todos os dias e transforma
               esses dados em roteiros prontos para gravar.
             </Typography>
@@ -140,14 +141,14 @@ export function Hero() {
               </Button>
             </Stack>
 
-            <Stack direction="row" spacing={1} alignItems="center" mt={3} sx={{ animation: 'lpFadeUp .7s ease .35s both' }}>
-              <VerifiedRounded sx={{ fontSize: 17, color: cyanDeep }} />
-              <Typography fontSize={13.5} color={textFaint}>
+            <Stack direction="row" spacing={1} alignItems="flex-start" mt={3} sx={{ animation: 'lpFadeUp .7s ease .35s both' }}>
+              <VerifiedRounded sx={{ fontSize: 17, color: cyanDeep, flexShrink: 0, mt: '1px' }} />
+              <Typography fontSize={13.5} color={textFaint} sx={{ minWidth: 0 }}>
                 Dados reais atualizados todo dia · Cancele quando quiser
               </Typography>
             </Stack>
 
-            <Stack direction="row" spacing={{ xs: 3, md: 5 }} mt={5} sx={{ animation: 'lpFadeUp .7s ease .4s both' }}>
+            <Stack direction="row" spacing={{ xs: 3, md: 5 }} mt={5} flexWrap="wrap" useFlexGap sx={{ animation: 'lpFadeUp .7s ease .4s both' }}>
               <HeroStat to={12} suffix="k+" label="produtos monitorados" />
               <HeroStat to={48} suffix="h" label="de antecedência média" />
               <HeroStat to={3} suffix="x" label="mais conversão" />

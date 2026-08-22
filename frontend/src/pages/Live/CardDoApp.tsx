@@ -137,8 +137,8 @@ export function CardDoApp({ paraQuem }: { paraQuem: 'lista' | 'detalhe' }) {
         </Box>
 
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Stack direction="row" spacing={1} alignItems="center" mb={0.5}>
-            <Typography variant="subtitle1" fontWeight={800}>
+          <Stack direction="row" spacing={1} alignItems="center" mb={0.5} flexWrap="wrap" useFlexGap>
+            <Typography variant="subtitle1" fontWeight={800} sx={{ minWidth: 0 }}>
               {paraQuem === 'detalhe'
                 ? 'Falta o app para usar esta base ao vivo'
                 : 'O copiloto que fica com você na live'}
@@ -173,7 +173,7 @@ export function CardDoApp({ paraQuem }: { paraQuem: 'lista' | 'detalhe' }) {
           // Android/iOS, e um download que não instala vira chamado de suporte.
           <Chip
             label="Baixe pelo computador"
-            sx={{ fontWeight: 700, flexShrink: 0 }}
+            sx={{ fontWeight: 700, flexShrink: 0, alignSelf: { xs: 'flex-start', md: 'center' } }}
           />
         ) : info.disponivel ? (
           <Stack spacing={1} sx={{ flexShrink: 0 }}>
@@ -205,7 +205,7 @@ export function CardDoApp({ paraQuem }: { paraQuem: 'lista' | 'detalhe' }) {
         ) : (
           <Chip
             label="Disponível em breve"
-            sx={{ fontWeight: 700, flexShrink: 0 }}
+            sx={{ fontWeight: 700, flexShrink: 0, alignSelf: { xs: 'flex-start', md: 'center' } }}
           />
         )}
       </Stack>

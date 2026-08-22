@@ -143,7 +143,7 @@ function GaleriaDialog({
       <DialogTitle sx={{ pb: 1 }}>
         <Stack direction="row" alignItems="center" gap={1}>
           <Box flexGrow={1} minWidth={0}>
-            <Typography variant="h6" fontWeight={800} noWrap>
+            <Typography variant="h6" fontWeight={800} noWrap sx={{ fontSize: { xs: 17, sm: 20 } }}>
               Fotos de {produto.name}
             </Typography>
             <Typography variant="caption" color="text.secondary">
@@ -533,7 +533,16 @@ function ProdutoCard({
             : 'linear-gradient(90deg, #fe2c55 0%, #00c2bb 100%)',
         }}
       />
-      <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1.75 }}>
+      <CardContent
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: { xs: 1.25, sm: 1.75 },
+          // No celular as ações descem para uma linha própria: capa + nome +
+          // "Enviar fotos" + lixeira lado a lado deixavam o nome com 40px.
+          flexWrap: { xs: 'wrap', sm: 'nowrap' },
+        }}
+      >
         {/* Capa: a primeira foto é a referência principal das cenas, então é
             ela que representa o produto na lista. */}
         <Box
@@ -561,9 +570,14 @@ function ProdutoCard({
           )}
         </Box>
 
-        <Box flexGrow={1} minWidth={0}>
+        <Box flexGrow={1} minWidth={0} sx={{ flexBasis: { xs: 0, sm: 'auto' } }}>
           <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-            <Typography variant="subtitle1" fontWeight={800} letterSpacing="-0.01em">
+            <Typography
+              variant="subtitle1"
+              fontWeight={800}
+              letterSpacing="-0.01em"
+              sx={{ minWidth: 0, overflowWrap: 'anywhere' }}
+            >
               {produto.name}
             </Typography>
             {/* `toFixed` devolvia "R$ 99.00", com ponto — errado em pt-BR. */}
@@ -617,6 +631,16 @@ function ProdutoCard({
           )}
         </Box>
 
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            flexShrink: 0,
+            width: { xs: '100%', sm: 'auto' },
+            justifyContent: { xs: 'flex-end', sm: 'flex-start' },
+          }}
+        >
         <Button
           variant={faltam ? 'contained' : 'outlined'}
           size="small"
@@ -661,6 +685,7 @@ function ProdutoCard({
             <DeleteOutlineRoundedIcon fontSize="small" />
           </IconButton>
         </Tooltip>
+        </Box>
       </CardContent>
 
       {erroExclusao && (

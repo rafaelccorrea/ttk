@@ -118,7 +118,7 @@ export function UserDrawer({
 
   return (
     <Drawer anchor="right" open={Boolean(userId)} onClose={onClose}>
-      <Box sx={{ width: { xs: '100vw', sm: 460 }, p: 3 }}>
+      <Box sx={{ width: { xs: '100vw', sm: 460 }, maxWidth: '100vw', p: { xs: 2, sm: 3 }, boxSizing: 'border-box' }}>
         {!user ? (
           erro ? (
             <Alert severity="error">{erro}</Alert>
@@ -127,7 +127,7 @@ export function UserDrawer({
           )
         ) : (
           <>
-            <Typography variant="h6" fontWeight={800}>
+            <Typography variant="h6" fontWeight={800} sx={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
               {user.email}
             </Typography>
             <Stack direction="row" spacing={1} mt={1} flexWrap="wrap" useFlexGap>
@@ -167,7 +167,7 @@ export function UserDrawer({
                 size="small"
                 value={novoPlano}
                 onChange={(e) => setNovoPlano(e.target.value)}
-                sx={{ flex: 1 }}
+                sx={{ flex: 1, minWidth: 0 }}
               >
                 <MenuItem value="free">Pagamento pendente (free)</MenuItem>
                 {planos.map((p) => (
@@ -180,6 +180,7 @@ export function UserDrawer({
                 variant="outlined"
                 disabled={salvando || novoPlano === user.plan}
                 onClick={() => void trocarPlano()}
+                sx={{ flexShrink: 0 }}
               >
                 Aplicar
               </Button>
@@ -231,7 +232,7 @@ export function UserDrawer({
                   alignItems="flex-start"
                   sx={{ borderBottom: '1px solid rgba(22,24,35,0.06)', pb: 0.75 }}
                 >
-                  <Box sx={{ pr: 1 }}>
+                  <Box sx={{ pr: 1, minWidth: 0, wordBreak: 'break-word' }}>
                     <Typography fontSize={13}>
                       {KIND_LABEL[t.kind] ?? t.kind}
                     </Typography>
@@ -246,6 +247,7 @@ export function UserDrawer({
                     fontSize={13}
                     fontWeight={800}
                     color={t.amount >= 0 ? '#0a9c97' : '#fe2c55'}
+                    sx={{ flexShrink: 0 }}
                   >
                     {t.amount >= 0 ? '+' : ''}
                     {t.amount}

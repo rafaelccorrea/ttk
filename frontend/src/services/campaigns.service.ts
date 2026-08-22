@@ -283,6 +283,18 @@ export const campaignsService = {
     return data;
   },
 
+  /** Cópia da campanha com o mesmo roteiro — grátis; troca o apresentador se pedido. */
+  async cloneCampaign(id: string, input: { personaId?: string; title?: string } = {}): Promise<Campaign> {
+    const { data } = await api.post<Campaign>(`/campaigns/${id}/clone`, input);
+    return data;
+  },
+
+  /** Storyboard em branco para escrever à mão — grátis. */
+  async manualStoryboard(id: string): Promise<CampaignDetail> {
+    const { data } = await api.post<CampaignDetail>(`/campaigns/${id}/storyboard`);
+    return data;
+  },
+
   async generateScript(id: string): Promise<CampaignDetail> {
     const { data } = await api.post<CampaignDetail>(`/campaigns/${id}/script`);
     return data;

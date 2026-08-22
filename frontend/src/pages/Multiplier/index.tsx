@@ -32,6 +32,8 @@ import {
   ToggleButtonGroup,
   Tooltip,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
@@ -385,7 +387,15 @@ function ClipDropzone({
               direction="row"
               spacing={0.75}
               alignItems="center"
-              sx={{ px: 0.75, py: 0.5, borderRadius: 1, bgcolor: 'action.hover' }}
+              useFlexGap
+              sx={{
+                px: 0.75,
+                py: 0.5,
+                borderRadius: 1,
+                bgcolor: 'action.hover',
+                flexWrap: 'wrap',
+                rowGap: 0.5,
+              }}
             >
               {/* A posição vira o código do arquivo (G1, C2, A3), então
                   mostrá-la aqui é o que liga esta lista aos resultados. */}
@@ -787,7 +797,14 @@ function RankingDePecas({
         </Typography>
         <Stack spacing={0.75}>
           {ganchos.map((peca) => (
-            <Stack key={peca.codigo} direction="row" alignItems="center" spacing={1}>
+            <Stack
+              key={peca.codigo}
+              direction="row"
+              alignItems="center"
+              spacing={1}
+              useFlexGap
+              sx={{ flexWrap: 'wrap', rowGap: 0.25 }}
+            >
               <Box
                 sx={{
                   px: 0.6,
@@ -1011,6 +1028,8 @@ function DialogDeLancamentoEmMassa({
     Record<string, { views: string; sales: string }>
   >({});
   const [salvando, setSalvando] = useState(false);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   // Recarrega ao trocar de produto: sem isto a planilha abriria com os números
   // do produto anterior por baixo dos campos vazios.
@@ -1069,7 +1088,7 @@ function DialogDeLancamentoEmMassa({
   }
 
   return (
-    <Dialog open onClose={onFechar} fullWidth maxWidth="sm">
+    <Dialog open onClose={onFechar} fullWidth maxWidth="sm" fullScreen={isMobile}>
       <DialogTitle>Lançar resultados · {grupo.sigla}</DialogTitle>
       <DialogContent dividers>
         <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
@@ -1107,7 +1126,7 @@ function DialogDeLancamentoEmMassa({
                     [v.id]: { ...prev[v.id], views: e.target.value },
                   }))
                 }
-                sx={{ flexGrow: 1 }}
+                sx={{ flexGrow: 1, minWidth: 0 }}
               />
               <TextField
                 size="small"
@@ -1121,7 +1140,7 @@ function DialogDeLancamentoEmMassa({
                     [v.id]: { ...prev[v.id], sales: e.target.value },
                   }))
                 }
-                sx={{ width: 110 }}
+                sx={{ width: { xs: 88, sm: 110 }, flexShrink: 0 }}
               />
             </Stack>
           ))}
@@ -1247,7 +1266,7 @@ function OriginalidadeChip({
 function CodigoChip({ code }: { code: string }) {
   const partes = code.match(/[A-Z]\d+/g) ?? [code];
   return (
-    <Stack direction="row" spacing={0.25}>
+    <Stack direction="row" spacing={0.25} useFlexGap sx={{ flexWrap: 'wrap' }}>
       {partes.map((parte) => {
         const bloco = BLOCOS.find((b) => b.letra === parte[0]);
         return (
@@ -1572,7 +1591,7 @@ function Galeria({
           spacing={1}
           sx={{ mb: 2, flexWrap: 'wrap', rowGap: 1 }}
         >
-          <Box sx={{ flexGrow: 1, minWidth: 220 }}>
+          <Box sx={{ flexGrow: 1, minWidth: { xs: '100%', sm: 220 } }}>
             <Typography variant="h6">Meus vídeos</Typography>
             <Typography variant="caption" color="text.secondary">
               {totalVisivel
@@ -1598,7 +1617,10 @@ function Galeria({
             placeholder="Buscar produto ou arquivo…"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            sx={{ width: 220, '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
+            sx={{
+              width: { xs: '100%', sm: 220 },
+              '& .MuiOutlinedInput-root': { borderRadius: 2.5 },
+            }}
           />
           <Button size="small" onClick={onRecarregar}>
             Atualizar
@@ -1817,7 +1839,13 @@ function GrupoDeProduto({
         alignItems="center"
         spacing={1}
         onClick={() => setAberto((v) => !v)}
-        sx={{ p: 1.5, cursor: 'pointer', userSelect: 'none' }}
+        sx={{
+          p: 1.5,
+          cursor: 'pointer',
+          userSelect: 'none',
+          flexWrap: 'wrap',
+          rowGap: 0.5,
+        }}
       >
         {grupo.cor && (
           <Box
@@ -1830,7 +1858,9 @@ function GrupoDeProduto({
             }}
           />
         )}
-        <Typography sx={{ fontWeight: 700 }}>{grupo.sigla}</Typography>
+        <Typography sx={{ fontWeight: 700, wordBreak: 'break-word' }}>
+          {grupo.sigla}
+        </Typography>
         {grupo.format && (
           <Chip size="small" variant="outlined" label={grupo.format} />
         )}
@@ -1914,7 +1944,14 @@ function GrupoDeProduto({
                 >
                   <PreviaDoVideo url={resolveApiUrl(v.url!)} />
                   <Box sx={{ p: 1, bgcolor: 'background.paper' }}>
-                    <Stack direction="row" alignItems="center" spacing={0.5} mb={0.5}>
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      spacing={0.5}
+                      mb={0.5}
+                      useFlexGap
+                      sx={{ flexWrap: 'wrap', rowGap: 0.25 }}
+                    >
                       {/* A ordem de postagem é o dado mais útil aqui: diz por
                           qual desses arquivos começar. */}
                       <Typography
@@ -2015,6 +2052,8 @@ const DICA_DA_ETAPA = [
 
 export function MultiplierPage() {
   const { confirmar, dialogo } = useConfirmarGasto();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [etapa, setEtapa] = useState(0);
   const [sigla, setSigla] = useState('');
   const [format, setFormat] = useState<PlanFormat>('9:16');
@@ -2592,6 +2631,7 @@ export function MultiplierPage() {
                   exclusive
                   fullWidth
                   size="small"
+                  orientation={isMobile ? 'vertical' : 'horizontal'}
                   value={format}
                   onChange={(_e, value) => value && setFormat(value)}
                 >
@@ -2618,7 +2658,7 @@ export function MultiplierPage() {
                     que escondia o passo 3 abaixo da dobra. */}
                 <Grid container spacing={1.5} alignItems="stretch">
                   {BLOCOS.map((bloco) => (
-                    <Grid item xs={12} sm={4} key={bloco.role}>
+                    <Grid item xs={12} md={4} key={bloco.role}>
                       <ClipDropzone
                         bloco={bloco}
                         clips={clips.filter((c) => c.role === bloco.role)}
@@ -2665,13 +2705,16 @@ export function MultiplierPage() {
                   alignItems="center"
                   justifyContent="center"
                   spacing={1}
+                  useFlexGap
                   sx={{
                     mb: 2,
-                    p: 2,
+                    p: { xs: 1.5, md: 2 },
                     borderRadius: 3,
                     bgcolor: 'action.hover',
                     border: '1px dashed',
                     borderColor: 'divider',
+                    flexWrap: 'wrap',
+                    rowGap: 1,
                   }}
                 >
                   {BLOCOS.map((bloco, i) => (
@@ -2790,8 +2833,8 @@ export function MultiplierPage() {
                     flexWrap="wrap"
                     sx={{ mb: 2, gap: 1 }}
                   >
-                    <Box>
-                      <Typography variant="h6">
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="h6" sx={{ wordBreak: 'break-word' }}>
                         {result.sigla} — {result.combinations.length}{' '}
                         {plural(result.combinations.length, 'combinação', 'combinações')}
                       </Typography>
@@ -2856,7 +2899,7 @@ export function MultiplierPage() {
                   )}
                 </>
               ) : (
-                <Box sx={{ textAlign: 'center', py: 6 }}>
+                <Box sx={{ textAlign: 'center', py: { xs: 3, md: 6 } }}>
                   <Typography variant="h2" sx={{ mb: 1 }}>
                     🎬
                   </Typography>
@@ -2889,7 +2932,7 @@ export function MultiplierPage() {
           alignItems="center"
           sx={{
             mt: 2,
-            px: 2,
+            px: { xs: 1, md: 2 },
             py: 1,
             borderRadius: 3,
             border: '1px solid',
@@ -2904,13 +2947,14 @@ export function MultiplierPage() {
           <Button
             disabled={etapa === 0}
             onClick={() => setEtapa((e) => Math.max(e - 1, 0))}
+            sx={{ flexShrink: 0 }}
           >
             Voltar
           </Button>
           <Typography
             variant="caption"
             color="text.secondary"
-            sx={{ textAlign: 'center', flex: 1, px: 1 }}
+            sx={{ textAlign: 'center', flex: 1, px: 1, minWidth: 0 }}
           >
             {DICA_DA_ETAPA[etapa]}
           </Typography>
@@ -2918,6 +2962,7 @@ export function MultiplierPage() {
             variant="contained"
             disabled={etapa >= ETAPAS.length - 1 || !etapaConcluida(etapa)}
             onClick={() => setEtapa((e) => Math.min(e + 1, ETAPAS.length - 1))}
+            sx={{ flexShrink: 0 }}
           >
             Continuar
           </Button>
@@ -2982,7 +3027,13 @@ export function MultiplierPage() {
                       <Chip size="small" variant="outlined" label={plan.format} />
                       {/* A fórmula do plano nas cores dos blocos — a mesma
                           linguagem do resto da tela, em vez de uma frase. */}
-                      <Stack direction="row" alignItems="center" spacing={0.5}>
+                      <Stack
+                        direction="row"
+                        alignItems="center"
+                        spacing={0.5}
+                        useFlexGap
+                        sx={{ flexWrap: 'wrap', rowGap: 0.25 }}
+                      >
                         {contagens.map(({ bloco, n }, i) => (
                           <Stack
                             key={bloco.role}

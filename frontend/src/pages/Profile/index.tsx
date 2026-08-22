@@ -134,9 +134,9 @@ export function ProfilePage() {
         <BrandLoader label="Carregando perfil..." />
       ) : (
         <Card sx={{ maxWidth: 560 }}>
-          <CardContent sx={{ p: 3 }}>
-            <Box display="flex" alignItems="center" gap={2.5} mb={3}>
-              <Box sx={{ position: 'relative' }}>
+          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Box display="flex" alignItems="center" gap={{ xs: 1.5, sm: 2.5 }} mb={3}>
+              <Box sx={{ position: 'relative', flexShrink: 0 }}>
                 <Avatar
                   component="label"
                   src={
@@ -185,11 +185,15 @@ export function ProfilePage() {
                   />
                 </Avatar>
               </Box>
-              <Box>
-                <Typography fontWeight={700} fontSize={18}>
+              <Box minWidth={0}>
+                <Typography
+                  fontWeight={700}
+                  fontSize={18}
+                  sx={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                >
                   {profile?.displayName || shownEmail}
                 </Typography>
-                <Box display="flex" alignItems="center" gap={1} mt={0.5}>
+                <Box display="flex" alignItems="center" gap={1} mt={0.5} flexWrap="wrap">
                   <Chip
                     size="small"
                     label={`Plano ${PLAN_LABELS[planKey] ?? profile?.plan ?? '—'}`}

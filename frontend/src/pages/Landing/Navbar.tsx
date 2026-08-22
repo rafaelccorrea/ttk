@@ -61,7 +61,7 @@ export function Navbar() {
       />
       <Container maxWidth={false} sx={page}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" py={1.5}>
-          <Box component={RouterLink} to="/" sx={{ textDecoration: 'none', color: 'inherit' }}>
+          <Box component={RouterLink} to="/" sx={{ textDecoration: 'none', color: 'inherit', flexShrink: 0 }}>
             {logo()}
           </Box>
 
@@ -129,7 +129,7 @@ export function Navbar() {
         anchor="right"
         open={open}
         onClose={() => setOpen(false)}
-        PaperProps={{ sx: { bgcolor: '#fff', color: textMain, width: 288, borderLeft: `1px solid ${line}` } }}
+        PaperProps={{ sx: { bgcolor: '#fff', color: textMain, width: 288, maxWidth: '100vw', borderLeft: `1px solid ${line}` } }}
       >
         <Stack direction="row" alignItems="center" justifyContent="space-between" px={2.5} py={2}>
           {logo(30)}

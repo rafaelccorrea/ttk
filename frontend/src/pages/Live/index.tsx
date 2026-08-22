@@ -188,7 +188,11 @@ export function LivePage() {
             variant="contained"
             startIcon={<AddRoundedIcon />}
             onClick={() => setDialogo(true)}
-            sx={{ flexShrink: 0, alignSelf: { xs: 'flex-start', sm: 'center' } }}
+            sx={{
+              flexShrink: 0,
+              alignSelf: { xs: 'stretch', sm: 'center' },
+              width: { xs: '100%', sm: 'auto' },
+            }}
           >
             Nova base
           </Button>
@@ -258,6 +262,7 @@ export function LivePage() {
             size="large"
             startIcon={<UploadFileRoundedIcon />}
             onClick={() => setDialogo(true)}
+            sx={{ maxWidth: '100%' }}
           >
             Enviar minha primeira live
           </Button>
@@ -304,10 +309,15 @@ export function LivePage() {
                         justifyContent="space-between"
                         spacing={1}
                       >
-                        <Typography fontWeight={800} sx={{ flexGrow: 1, lineHeight: 1.35 }}>
+                        <Typography
+                          fontWeight={800}
+                          sx={{ flexGrow: 1, minWidth: 0, lineHeight: 1.35, wordBreak: 'break-word' }}
+                        >
                           {sessao.title}
                         </Typography>
-                        <StatusChip status={sessao.status} />
+                        <Box sx={{ flexShrink: 0 }}>
+                          <StatusChip status={sessao.status} />
+                        </Box>
                       </Stack>
 
                       <Typography

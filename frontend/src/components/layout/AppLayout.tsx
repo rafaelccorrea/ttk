@@ -883,6 +883,8 @@ export function AppLayout() {
             display: 'flex',
             alignItems: 'center',
             gap: { xs: 0.75, md: 1.5 },
+            minWidth: 0,
+            overflow: 'hidden',
             borderBottom: '1px solid rgba(22,24,35,0.06)',
             bgcolor: 'rgba(250,250,250,0.85)',
             backdropFilter: 'blur(10px)',
@@ -902,7 +904,7 @@ export function AppLayout() {
             fontWeight={800}
             letterSpacing="-0.01em"
             noWrap
-            sx={{ fontSize: { xs: 15, sm: 20 }, minWidth: 0 }}
+            sx={{ fontSize: { xs: 15, sm: 20 }, minWidth: 0, flexShrink: 1 }}
           >
             {current?.label ?? 'Perfil'}
           </Typography>
@@ -976,12 +978,19 @@ export function AppLayout() {
                     }
                     sx={{
                       flexShrink: 0,
-                      mr: 1,
+                      mr: { xs: 0.5, md: 1 },
                       bgcolor: cor.fundo,
                       color: cor.tinta,
                       fontWeight: 700,
                       height: 26,
-                      '& .MuiChip-icon': { color: cor.tinta },
+                      // Em 360px os dois selos disputam a linha com o título:
+                      // sem ícone e com texto menor, sobra lugar para ele.
+                      fontSize: { xs: 11, sm: 13 },
+                      '& .MuiChip-label': { px: { xs: 0.75, sm: 1 } },
+                      '& .MuiChip-icon': {
+                        color: cor.tinta,
+                        display: { xs: 'none', sm: 'inline-flex' },
+                      },
                     }}
                   />
                 </Tooltip>
@@ -1008,7 +1017,12 @@ export function AppLayout() {
                   color: red,
                   fontWeight: 700,
                   height: 26,
-                  '& .MuiChip-icon': { color: red },
+                  fontSize: { xs: 11, sm: 13 },
+                  '& .MuiChip-label': { px: { xs: 0.75, sm: 1 } },
+                  '& .MuiChip-icon': {
+                    color: red,
+                    display: { xs: 'none', sm: 'inline-flex' },
+                  },
                 }}
               />
             </Tooltip>

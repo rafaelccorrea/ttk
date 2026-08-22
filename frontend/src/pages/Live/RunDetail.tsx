@@ -59,12 +59,16 @@ export function LiveRunPage() {
   return (
     <>
       <Stack direction="row" spacing={1.5} alignItems="center" mb={2.5}>
-        <IconButton onClick={() => navigate('/copiloto')} aria-label="Voltar">
+        <IconButton
+          onClick={() => navigate('/copiloto')}
+          aria-label="Voltar"
+          sx={{ flexShrink: 0 }}
+        >
           <ArrowBackRoundedIcon />
         </IconButton>
         <Box sx={{ minWidth: 0 }}>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Typography variant="h5" sx={{ lineHeight: 1.2 }}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Typography variant="h5" sx={{ lineHeight: 1.2, wordBreak: 'break-word' }}>
               Live de {quando(run.startedAt)}
             </Typography>
             {run.status === 'erro' && (
@@ -407,7 +411,10 @@ function LinhaDeQa({ item }: { item: LiveRunQa }) {
         <Typography variant="caption" color="text.secondary">
           {hora}
         </Typography>
-        <Typography fontWeight={700} sx={{ flex: 1, minWidth: 200 }}>
+        <Typography
+          fontWeight={700}
+          sx={{ flex: 1, minWidth: { xs: 160, sm: 200 }, wordBreak: 'break-word' }}
+        >
           {item.question}
         </Typography>
         {item.repeatCount > 1 && (
@@ -421,7 +428,7 @@ function LinhaDeQa({ item }: { item: LiveRunQa }) {
         <Typography
           variant="body2"
           color="text.secondary"
-          sx={{ mt: 0.75, lineHeight: 1.55 }}
+          sx={{ mt: 0.75, lineHeight: 1.55, wordBreak: 'break-word' }}
         >
           {item.answer}
         </Typography>

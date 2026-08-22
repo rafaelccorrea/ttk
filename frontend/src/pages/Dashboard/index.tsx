@@ -48,7 +48,7 @@ function gradientFor(category: string): string {
 
 function SectionHeader({ title, to }: { title: string; to: string }) {
   return (
-    <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ mt: 4, mb: 1.5 }}>
+    <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mt: 4, mb: 1.5 }}>
       <Typography variant="h6">{title}</Typography>
       <MuiLink component={Link} to={to} underline="hover" fontWeight={600} fontSize={14}>
         Ver todos
@@ -124,7 +124,7 @@ export function DashboardPage() {
         {overview?.topProducts.map((p, i) => (
           <Card key={p.id}>
             <CardActionArea component={Link} to={`/produtos/${p.id}`}>
-              <Box display="flex" alignItems="center" gap={2} px={2} py={1.25}>
+              <Box display="flex" alignItems="center" gap={{ xs: 1, sm: 2 }} px={{ xs: 1.5, sm: 2 }} py={1.25}>
                 <Box
                   sx={{
                     width: 28,
@@ -148,8 +148,8 @@ export function DashboardPage() {
                 <Box
                   sx={{
                     position: 'relative',
-                    width: 56,
-                    height: 56,
+                    width: { xs: 44, sm: 56 },
+                    height: { xs: 44, sm: 56 },
                     borderRadius: 2.5,
                     flexShrink: 0,
                     overflow: 'hidden',
@@ -215,7 +215,7 @@ export function DashboardPage() {
       <SectionHeader title="Vídeos em alta" to="/videos" />
       <Grid container spacing={2}>
         {overview?.topVideos.map((v) => (
-          <Grid item xs={12} sm={6} md={2.4} key={v.id}>
+          <Grid item xs={6} sm={6} md={2.4} key={v.id}>
             <Box
               // Com MP4 disponível, toca dentro da plataforma; senão abre o TikTok.
               component={v.id ? 'div' : 'a'}
@@ -311,19 +311,21 @@ export function DashboardPage() {
       <SectionHeader title="Top Criadores" to="/criadores" />
       <Grid container spacing={2}>
         {overview?.topCreators.map((c, i) => (
-          <Grid item xs={12} sm={6} md={2.4} key={c.id}>
+          <Grid item xs={6} sm={6} md={2.4} key={c.id}>
             <Card sx={{ height: '100%', '&:hover': { transform: 'translateY(-3px)' } }}>
               {/* Card inteiro abre o criador dentro do sistema */}
               <CardActionArea
                 component={Link}
                 to={`/criadores?search=${encodeURIComponent(c.handle.replace(/^@+/, ''))}`}
                 sx={{
-                  p: 2.5,
+                  p: { xs: 1.5, sm: 2.5 },
+                  pt: { xs: 2.5, sm: 2.5 },
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   textAlign: 'center',
                   position: 'relative',
+                  minWidth: 0,
                 }}
               >
                 <Chip
@@ -394,7 +396,7 @@ export function DashboardPage() {
                 <Typography fontWeight={700} mt={1.5} noWrap maxWidth="100%">
                   {c.name}
                 </Typography>
-                <Typography variant="caption" color="text.secondary" noWrap>
+                <Typography variant="caption" color="text.secondary" noWrap maxWidth="100%">
                   {displayHandle(c.handle)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" display="block">

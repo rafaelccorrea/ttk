@@ -83,7 +83,7 @@ export function ConfirmDialog({
           </DialogContentText>
         </DialogContent>
       )}
-      <DialogActions sx={{ px: 3, pb: 2.5, pt: mensagem ? 0 : 1 }}>
+      <DialogActions sx={{ px: 3, pb: 2.5, pt: mensagem ? 0 : 1, flexWrap: 'wrap', gap: 1 }}>
         <Button onClick={onCancelar} autoFocus>
           {textoCancelar}
         </Button>
