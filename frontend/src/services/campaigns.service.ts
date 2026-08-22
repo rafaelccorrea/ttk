@@ -67,6 +67,24 @@ export interface CampaignScene {
   status: 'pendente' | 'renderizando' | 'pronta' | 'falhou';
   outputUrl: string | null;
   error: string | null;
+  /** Modelo de vídeo FORÇADO nesta cena (experimento); null = padrão do perfil. */
+  modelo: string | null;
+  /** Modelo que de fato gerou o clipe atual (null até existir render). */
+  modeloUsado: string | null;
+}
+
+export interface VideoModelOption {
+  id: string;
+  label: string;
+  falaPtBr: boolean;
+  custoPlano: number;
+}
+
+export type PerfilDeCena = 'apresentador_fala' | 'apresentador_mudo' | 'tela' | 'produto';
+
+export interface VideoModelsCatalog {
+  modelos: VideoModelOption[];
+  padrao: Record<PerfilDeCena, string>;
 }
 
 /** Estilo do criativo: com apresentador, só produto, ou a IA decide. */
@@ -318,6 +336,8 @@ export const campaignsService = {
       fala?: string;
       acaoVisual?: string;
       baseImageUrl?: string;
+      /** Id do catálogo (`getVideoModels`); null volta ao padrão do perfil. */
+      modelo?: string | null;
       tipoCena?: SceneKind;
       modoAudio?: SceneAudioMode;
     },
@@ -334,6 +354,12 @@ export const campaignsService = {
     const { data } = await api.post<CampaignScene>(
       `/campaigns/scenes/${sceneId}/redub`,
     );
+    return data;
+  },
+
+  /** Modelos de vídeo disponíveis e o padrão por perfil de cena. */
+  async getVideoModels(): Promise<VideoModelsCatalog> {
+    const { data } = await api.get<VideoModelsCatalog>('/campaigns/video-models');
     return data;
   },
 

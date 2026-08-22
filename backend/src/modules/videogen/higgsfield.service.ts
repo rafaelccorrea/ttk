@@ -8,8 +8,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type {
   GeradorDeMidia,
+  OpcoesDeVideo,
   StatusResult,
-  SubmitResult,, OpcoesDeVideo } from './gerador-de-midia';
+  SubmitResult,
+} from './gerador-de-midia';
 
 const BASE_URL = 'https://platform.higgsfield.ai';
 

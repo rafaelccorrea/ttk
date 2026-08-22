@@ -79,6 +79,7 @@ import {
   CampaignPricing,
   CampaignScene,
   Persona,
+  VideoModelsCatalog,
   SEM_NARRACAO,
   SceneAudioMode,
   SceneKind,
@@ -717,6 +718,14 @@ function Storyboard({
   // novo cobra — merece uma confirmação própria, sem ser a de gasto.
   const { confirmar: confirmarRefazer, dialogoDeConfirmacao: dialogoRefazer } =
     useConfirmacao();
+  // Catálogo de IAs de vídeo: para forçar um modelo numa cena (experimento)
+  // e para dar nome ao que gerou cada clipe. Falha aqui só esconde o seletor.
+  const [modelos, setModelos] = useState<VideoModelsCatalog | null>(null);
+  useEffect(() => {
+    campaignsService.getVideoModels().then(setModelos).catch(() => setModelos(null));
+  }, []);
+  const nomeDoModelo = (id: string | null | undefined) =>
+    modelos?.modelos.find((m) => m.id === id)?.label ?? id ?? null;
 
   const personaPronta = detalhe.persona?.status === 'pronta';
   const todasProntas =
@@ -1385,6 +1394,18 @@ function Storyboard({
                     color={cenaUsaProduto(cena) ? 'primary' : 'default'}
                     sx={{ alignSelf: 'flex-start', fontWeight: 700 }}
                   />
+                  {/* Qual IA gerou (ou vai gerar) esta cena — é o que permite
+                      comparar modelo por tipo de cena olhando o resultado. */}
+                  {(cena.modeloUsado || cena.modelo) && (
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={`IA: ${nomeDoModelo(cena.modeloUsado ?? cena.modelo)}${
+                        cena.modelo && cena.status !== 'pronta' ? ' (forçada)' : ''
+                      }`}
+                      sx={{ alignSelf: 'flex-start' }}
+                    />
+                  )}
                   {/* O formato e o áudio são escolha do vendedor, não só da
                       IA. Cena pronta não muda mais: trocar o formato invalida
                       o render, e o vídeo já foi pago. */}
@@ -1424,6 +1445,34 @@ function Storyboard({
                         <MenuItem value="unboxing">Unboxing da embalagem</MenuItem>
                         <MenuItem value="produto_close">Produto em close</MenuItem>
                       </TextField>
+                      {/* IA do vídeo: por padrão o perfil da cena decide
+                          (fala → Seedance pt-BR, muda → Kling); forçar aqui é
+                          para comparar modelos no mesmo cenário. */}
+                      {modelos && (
+                        <TextField
+                          select
+                          size="small"
+                          label="IA do vídeo"
+                          value={cena.modelo ?? ''}
+                          disabled={cena.status === 'renderizando'}
+                          sx={{ minWidth: 260 }}
+                          onChange={(e) =>
+                            acao(() =>
+                              campaignsService.updateScene(cena.id, {
+                                modelo: e.target.value || null,
+                              }),
+                            )
+                          }
+                        >
+                          <MenuItem value="">Padrão do perfil da cena</MenuItem>
+                          {modelos.modelos.map((m) => (
+                            <MenuItem key={m.id} value={m.id}>
+                              {m.label} · {m.custoPlano} cr
+                              {m.falaPtBr ? ' · fala pt-BR' : ''}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      )}
                       {/* Campanha muda: toda cena é "sem fala" por definição —
                           um select de opção única só levantaria dúvida. */}
                       {detalhe.vozNarrador !== SEM_NARRACAO && (

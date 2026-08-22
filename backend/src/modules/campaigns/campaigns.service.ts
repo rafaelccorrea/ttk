@@ -18,6 +18,8 @@ import { AiService } from '../studio/ai.service';
 import { Video } from '../videos/entities/video.entity';
 import { VideogenService } from '../videogen/videogen.service';
 import { MARCADOR_DE_FALA } from '../videogen/gerador-de-midia';
+import type { OpcoesDeVideo } from '../videogen/gerador-de-midia';
+import { modeloDeVideo, modeloPadraoPorPerfil, perfilDaCena } from '../videogen/modelos-de-video';
 import {
   CreateCampaignDto,
   CreatePersonaDto,
@@ -888,7 +890,14 @@ export class CampaignsService {
       this.personaDaCampanha(campanha),
       this.cenas.find({ where: { campaignId: id }, order: { ordem: 'ASC' } }),
     ]);
-    return { ...campanha, produto, persona, cenas };
+    // Qual IA gerou cada cena — é o dado que permite comparar modelos.
+    const idsDeMidia = cenas.map((c) => c.generatedMediaId).filter((x): x is string => !!x);
+    const midias = idsDeMidia.length ? await this.videogen.modelosDasMidias(idsDeMidia) : {};
+    const cenasComModelo = cenas.map((c) => ({
+      ...c,
+      modeloUsado: c.generatedMediaId ? (midias[c.generatedMediaId] ?? null) : null,
+    }));
+    return { ...campanha, produto, persona, cenas: cenasComModelo };
   }
 
   /**
@@ -1135,6 +1144,14 @@ export class CampaignsService {
     garantirConteudoPermitido({ fala: dto.fala, acaoVisual: dto.acaoVisual });
     if (dto.fala !== undefined) cena.fala = dto.fala;
     if (dto.acaoVisual !== undefined) cena.acaoVisual = dto.acaoVisual;
+    if (dto.modelo !== undefined) {
+      // Só ids do catálogo: o valor vira argumento da CLI da fornecedora.
+      if (dto.modelo && !modeloDeVideo(dto.modelo)) {
+        throw new BadRequestException('Modelo de vídeo desconhecido.');
+      }
+      cena.modelo = dto.modelo || null;
+      cena.promptFinal = null;
+    }
 
     if (dto.tipoCena !== undefined && dto.tipoCena !== cena.tipo) {
       const campanha = await this.campanhas.findOneByOrFail({ id: cena.campaignId });
@@ -1331,6 +1348,20 @@ export class CampaignsService {
 
     const campanha = await this.campanhas.findOneByOrFail({ id: cena.campaignId });
 
+    /*
+     * Qual IA anima esta cena: a forçada na cena (experimento) ou o padrão do
+     * perfil (fala / mudo / tela / objeto). Fica gravado em generated_media
+     * para comparar modelo por tipo de cena depois.
+     */
+    const opcoesDeVideo: OpcoesDeVideo = {
+      modelo:
+        cena.modelo ??
+        modeloPadraoPorPerfil(
+          perfilDaCena({ tipo: cena.tipo, modoAudio: cena.modoAudio, comoUsa: campanha.comoUsa }),
+        ),
+      comFala: cenaComApresentador(cena.tipo) && cena.modoAudio === 'fala',
+    };
+
     /**
      * De onde a cena parte muda tudo:
      *
@@ -1480,6 +1511,7 @@ export class CampaignsService {
               framePrompt,
               referencias: [retrato, fotoProduto],
               videoPrompt: promptVideo,
+              opcoes: opcoesDeVideo,
             }),
           );
           cena.promptFinal = promptVideo;
@@ -1548,7 +1580,7 @@ export class CampaignsService {
     }
 
     const media = await this.dispararGeracao(cena.id, () =>
-      this.videogen.generateFromImage(userId, imagemBase, promptFinal, frame),
+      this.videogen.generateFromImage(userId, imagemBase, promptFinal, frame, opcoesDeVideo),
     );
 
     cena.promptFinal = promptFinal;

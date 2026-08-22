@@ -1,13 +1,13 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { BillingService } from '../billing/billing.service';
 import { ACTION_PRICES } from '../billing/billing.config';
 import { AiCostService } from '../telemetry/ai-cost.service';
 import { GenerateMediaDto } from './dto/generate-media.dto';
 import { GeneratedMedia } from './entities/generated-media.entity';
-import { GERADOR_DE_MIDIA, type GeradorDeMidia } from './gerador-de-midia';
+import { GERADOR_DE_MIDIA, type GeradorDeMidia, type OpcoesDeVideo } from './gerador-de-midia';
 
 const TERMINAL = ['completed', 'failed', 'nsfw', 'canceled'];
 
@@ -110,6 +110,7 @@ export class VideogenService {
       framePrompt: string;
       referencias: Buffer[];
       videoPrompt: string;
+      opcoes?: OpcoesDeVideo;
     },
   ): Promise<GeneratedMedia> {
     const submitted = await this.billing.withCharge(userId, 'video', () =>
@@ -127,6 +128,8 @@ export class VideogenService {
         status: (submitted.status as GeneratedMedia['status']) ?? 'queued',
         phase: 'image',
         requestId: submitted.requestId,
+        // Gravado já na fase 1: a fase 2 (refresh) anima com ESTE modelo.
+        model: pedido.opcoes?.modelo ?? null,
       }),
     );
   }
@@ -136,9 +139,10 @@ export class VideogenService {
     imageUrl: string,
     prompt: string,
     imagem?: Buffer,
+    opcoes?: OpcoesDeVideo,
   ): Promise<GeneratedMedia> {
     const submitted = await this.billing.withCharge(userId, 'video', () =>
-      this.higgsfield.submitVideo(imageUrl, prompt, imagem),
+      this.higgsfield.submitVideo(imageUrl, prompt, imagem, opcoes),
     );
     this.registrarCusto(userId, 'video');
     return this.media.save(
@@ -152,8 +156,19 @@ export class VideogenService {
         phase: 'video',
         imageUrl,
         requestId: submitted.requestId,
+        model: opcoes?.modelo ?? null,
       }),
     );
+  }
+
+  /** Modelo que gerou cada mídia, por id — para a tela mostrar "IA: X". */
+  async modelosDasMidias(ids: string[]): Promise<Record<string, string | null>> {
+    if (!ids.length) return {};
+    const itens = await this.media.find({
+      where: { id: In(ids) },
+      select: { id: true, model: true },
+    });
+    return Object.fromEntries(itens.map((m) => [m.id, m.model ?? null]));
   }
 
   list(userId: string): Promise<GeneratedMedia[]> {
@@ -198,6 +213,8 @@ export class VideogenService {
             const video = await this.higgsfield.submitVideo(
               item.imageUrl,
               item.prompt,
+              undefined,
+              { modelo: item.model },
             );
             item.phase = 'video';
             item.requestId = video.requestId;
