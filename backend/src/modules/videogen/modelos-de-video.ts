@@ -17,6 +17,8 @@ export interface ModeloDeVideo {
   falaPtBr: boolean;
   /** Custo por clipe de 5 s, em créditos do plano (referência ago/2026). */
   custoPlano: number;
+  /** Aceita `--audio-references` (clonagem do timbre da voz-semente). */
+  vozReferencia?: boolean;
   /** Parâmetros extras que a CLI exige para este modelo num clipe 9:16 de 5 s. */
   args: (comFala: boolean) => string[];
 }
@@ -44,6 +46,7 @@ export const MODELOS_DE_VIDEO: ModeloDeVideo[] = [
     label: 'Seedance 2.0 (fala em pt-BR)',
     falaPtBr: true,
     custoPlano: 22.5,
+    vozReferencia: true,
     args: (comFala) => [
       '--aspect_ratio', '9:16', '--duration', '5', '--resolution', '720p',
       '--generate_audio', comFala ? 'true' : 'false',
@@ -54,6 +57,7 @@ export const MODELOS_DE_VIDEO: ModeloDeVideo[] = [
     label: 'Seedance 2.0 Mini (fala em pt-BR, mais barato)',
     falaPtBr: true,
     custoPlano: 10,
+    vozReferencia: true,
     args: (comFala) => [
       '--aspect_ratio', '9:16', '--duration', '5', '--resolution', '720p',
       '--generate_audio', comFala ? 'true' : 'false',

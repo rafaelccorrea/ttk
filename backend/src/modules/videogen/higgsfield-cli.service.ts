@@ -94,7 +94,12 @@ export class HiggsfieldCliService implements GeradorDeMidia {
    * não há voz, e sem `--aspect_ratio` o default é 16:9 — o frame 9:16 viraria
    * barra preta dos dois lados.
    */
-  private argsDeVideo(prompt: string, startImage: string, opcoes?: OpcoesDeVideo): string[] {
+  private argsDeVideo(
+    prompt: string,
+    startImage: string,
+    opcoes?: OpcoesDeVideo,
+    audioRef?: string | null,
+  ): string[] {
     const comFala = opcoes?.comFala ?? promptTemFala(prompt);
     const modelo = this.resolverModeloDeVideo(prompt, opcoes);
     const args = [
@@ -108,8 +113,25 @@ export class HiggsfieldCliService implements GeradorDeMidia {
     ];
     // Parâmetros por modelo vêm do catálogo; modelo fora dele (env apontando
     // para algo novo da CLI) vai sem extras, como sempre foi.
-    args.push(...(modeloDeVideo(modelo)?.args(comFala) ?? []));
+    const ficha = modeloDeVideo(modelo);
+    args.push(...(ficha?.args(comFala) ?? []));
+    // Voz-semente: só onde o modelo clona timbre. É o que mantém a MESMA voz
+    // de uma cena para a outra — sem isso cada clipe sorteia uma.
+    if (audioRef && comFala && ficha?.vozReferencia) {
+      args.push('--audio-references', HiggsfieldCliService.citar(audioRef));
+    }
     return args;
+  }
+
+  /** Grava a referência de voz num tmp para a CLI subir; quem chama apaga. */
+  private async gravarAudioRef(
+    opcoes?: OpcoesDeVideo,
+  ): Promise<{ arquivo: string; pasta: string } | null> {
+    if (!opcoes?.audioReferencia?.length) return null;
+    const pasta = await mkdtemp(join(tmpdir(), 'pikpok-hf-voz-'));
+    const arquivo = join(pasta, `${randomUUID()}.mp3`);
+    await writeFile(arquivo, opcoes.audioReferencia);
+    return { arquivo, pasta };
   }
 
   /** Quem pediu escolhe; sem pedido, o padrão por haver fala ou não. */
@@ -662,6 +684,21 @@ export class HiggsfieldCliService implements GeradorDeMidia {
     imagem?: Buffer,
     opcoes?: OpcoesDeVideo,
   ): Promise<SubmitResult> {
+    const voz = await this.gravarAudioRef(opcoes);
+    try {
+      return await this.submitVideoComArgs(imageUrl, prompt, imagem, opcoes, voz?.arquivo ?? null);
+    } finally {
+      if (voz) await rm(voz.pasta, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
+  private async submitVideoComArgs(
+    imageUrl: string,
+    prompt: string,
+    imagem: Buffer | undefined,
+    opcoes: OpcoesDeVideo | undefined,
+    audioRef: string | null,
+  ): Promise<SubmitResult> {
     const ehIdDeJob = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
     // Frame já em mãos: grava no tmp e entrega o caminho — sem rede no meio.
@@ -670,14 +707,14 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       try {
         const arquivo = join(pasta, `${randomUUID()}.png`);
         await writeFile(arquivo, imagem);
-        return await this.submeter(this.argsDeVideo(prompt, HiggsfieldCliService.citar(arquivo), opcoes));
+        return await this.submeter(this.argsDeVideo(prompt, HiggsfieldCliService.citar(arquivo), opcoes, audioRef));
       } finally {
         await rm(pasta, { recursive: true, force: true }).catch(() => undefined);
       }
     }
 
     if (ehIdDeJob.test(imageUrl)) {
-      return this.submeter(this.argsDeVideo(prompt, imageUrl, opcoes));
+      return this.submeter(this.argsDeVideo(prompt, imageUrl, opcoes, audioRef));
     }
 
     const pasta = await mkdtemp(join(tmpdir(), 'pikpok-hf-'));
@@ -690,7 +727,7 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       }
       const arquivo = join(pasta, `${randomUUID()}.png`);
       await writeFile(arquivo, Buffer.from(await resposta.arrayBuffer()));
-      return await this.submeter(this.argsDeVideo(prompt, HiggsfieldCliService.citar(arquivo), opcoes));
+      return await this.submeter(this.argsDeVideo(prompt, HiggsfieldCliService.citar(arquivo), opcoes, audioRef));
     } finally {
       await rm(pasta, { recursive: true, force: true }).catch(() => undefined);
     }

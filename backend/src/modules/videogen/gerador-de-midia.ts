@@ -32,6 +32,8 @@ export interface OpcoesDeVideo {
   modelo?: string | null;
   /** Cena com fala sincronizada; ausente = inferido pelo marcador no prompt. */
   comFala?: boolean;
+  /** Áudio de referência de voz (mp3/wav) — o modelo clona o timbre. */
+  audioReferencia?: Buffer | null;
 }
 
 export interface GeradorDeMidia {

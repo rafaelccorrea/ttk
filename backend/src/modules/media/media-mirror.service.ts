@@ -235,6 +235,28 @@ export class MediaMirrorService {
    * não veio de fora, saiu do nosso próprio ffmpeg. A chave usa o hash do
    * conteúdo, então remontar sem mudar nada não cria objeto novo.
    */
+  /** Clipe de áudio (mp3) — ex.: voz-semente da persona. Chave pelo hash do conteúdo. */
+  async putAudio(original: Buffer, prefix: string, id: string): Promise<string | null> {
+    if (!this.client || !original?.length) return null;
+    const digest = createHash('sha1').update(original).digest('hex').slice(0, 16);
+    const key = `${prefix}/${id}-${digest}.mp3`;
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: original,
+          ContentType: 'audio/mpeg',
+          CacheControl: 'public, max-age=31536000, immutable',
+        }),
+      );
+      return `${this.publicBase}/${key}`;
+    } catch (error) {
+      this.logger.warn(`Upload de áudio falhou (${prefix}/${id}): ${error}`);
+      return null;
+    }
+  }
+
   async putVideo(
     original: Buffer,
     prefix: string,

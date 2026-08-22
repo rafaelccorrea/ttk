@@ -18,7 +18,7 @@ import { AiService } from '../studio/ai.service';
 import { Video } from '../videos/entities/video.entity';
 import { VideogenService } from '../videogen/videogen.service';
 import { MARCADOR_DE_FALA } from '../videogen/gerador-de-midia';
-import type { OpcoesDeVideo } from '../videogen/gerador-de-midia';
+import type { OpcoesDeRender } from '../videogen/videogen.service';
 import { modeloDeVideo, modeloPadraoPorPerfil, perfilDaCena } from '../videogen/modelos-de-video';
 import {
   CreateCampaignDto,
@@ -271,6 +271,8 @@ export function montarPromptDeCena(opts: {
   extras?: string[];
   fala?: string | null;
   vozDescricao?: string;
+  /** Há áudio de referência de voz junto do job (clonagem de timbre). */
+  vozReferencia?: boolean;
   /** Cena SEM rosto (demonstração): mãos podem aparecer, pessoa não. */
   semPessoa?: boolean;
 }): string {
@@ -322,6 +324,10 @@ export function montarPromptDeCena(opts: {
         'NO laughing or giggling sounds (smiling is fine). ' +
         'Speech starts at the first frame and ends within the 5-second clip, natural pace. ' +
         'Word-by-word lip-sync. No music. ' +
+        // Sem isto o modelo ignora o áudio de referência e sorteia um timbre.
+        (opts.vozReferencia
+          ? 'Voice: EXACTLY the voice of the reference audio — same timbre, pitch, accent and pace, in every scene. '
+          : '') +
         // O modelo improvisava frases além da fala ("ad-lib" no fim do clipe,
         // comentário sobre o produto): a fala é a ÚNICA coisa dita.
         'Only the Dialogue line is spoken — no ad-libs, nothing else in this prompt is said aloud.',
@@ -390,6 +396,13 @@ const RENDERS_EM_VOO = Math.max(
   1,
   Number(process.env.CAMPAIGN_RENDER_PARALLEL ?? 3) || 3,
 );
+
+/**
+ * Frase da voz-semente: neutra, com vogais abertas e ritmo de conversa — o
+ * suficiente para o modelo captar timbre e sotaque sem "aprender" conteúdo.
+ */
+const FRASE_DA_VOZ_SEMENTE =
+  'Oi, tudo bem? Hoje eu vou te mostrar uma coisa que mudou a minha rotina, e acho que vai mudar a sua também.';
 
 const CAMERAS_POR_CENA = [
   'Camera slowly pushes in.',
@@ -698,6 +711,33 @@ export class CampaignsService {
         seedImageUrl,
       }),
     );
+  }
+
+  /**
+   * Voz-semente da persona: um clipe curto de TTS com a voz dela, gerado uma
+   * vez e guardado no S3. Entra como referência de voz em toda cena falada —
+   * o modelo de vídeo não tem id de voz, e sem referência cada cena saía com
+   * um timbre diferente. Best-effort: sem TTS ou S3, devolve null e a cena
+   * segue com a voz descrita em texto, como antes.
+   */
+  private async garantirVozSemente(persona: Persona): Promise<string | null> {
+    if (persona.seedVoiceUrl) return persona.seedVoiceUrl;
+    try {
+      const audio = await this.ai.narrar(FRASE_DA_VOZ_SEMENTE, {
+        timbre: timbreTts(persona.attrs),
+        estilo: tomDaPersona(persona.attrs).tts,
+      });
+      if (!audio) return null;
+      const url = await this.mirror.putAudio(audio, 'personas-voz', persona.id);
+      if (!url) return null;
+      persona.seedVoiceUrl = url;
+      await this.personas.save(persona);
+      this.logger.log(`Voz-semente da persona ${persona.id} gerada.`);
+      return url;
+    } catch (error) {
+      this.logger.warn(`Voz-semente da persona ${persona.id} falhou: ${error}`);
+      return null;
+    }
   }
 
   listarPersonas(userId: string): Promise<Persona[]> {
@@ -1505,7 +1545,7 @@ export class CampaignsService {
      * perfil (fala / mudo / tela / objeto). Fica gravado em generated_media
      * para comparar modelo por tipo de cena depois.
      */
-    const opcoesDeVideo: OpcoesDeVideo = {
+    const opcoesDeVideo: OpcoesDeRender = {
       modelo:
         cena.modelo ??
         modeloPadraoPorPerfil(
@@ -1635,6 +1675,10 @@ export class CampaignsService {
         );
       }
       imagemBase = persona.seedImageUrl;
+      // Voz-semente da persona: mesma voz em todas as cenas faladas.
+      if (opcoesDeVideo.comFala) {
+        opcoesDeVideo.vozReferenciaUrl = await this.garantirVozSemente(persona);
+      }
       /**
        * O roteiro manda o apresentador "segurar o produto" — mas o modelo de
        * vídeo parte do retrato, onde produto nenhum existe, e sem saber O QUE
@@ -1712,6 +1756,7 @@ export class CampaignsService {
             ],
             fala: cena.modoAudio === 'sem_fala' ? null : cena.fala,
             vozDescricao: vozDaPersona(persona.attrs),
+            vozReferencia: Boolean(opcoesDeVideo.vozReferenciaUrl),
           });
           const mediaComposta = await this.dispararGeracao(cena.id, () =>
             this.videogen.generateComposedVideo(userId, {

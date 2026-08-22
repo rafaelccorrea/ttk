@@ -71,6 +71,10 @@ export class GeneratedMedia {
   @Column({ type: 'text', nullable: true })
   model: string | null;
 
+  /** Voz de referência (URL no S3) a enviar junto na animação — fase 2 inclusive. */
+  @Column({ type: 'text', nullable: true })
+  voiceRefUrl: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -7,7 +7,13 @@ import { ACTION_PRICES } from '../billing/billing.config';
 import { AiCostService } from '../telemetry/ai-cost.service';
 import { GenerateMediaDto } from './dto/generate-media.dto';
 import { GeneratedMedia } from './entities/generated-media.entity';
+import { MEDIA_ROUTE, MediaMirrorService } from '../media/media-mirror.service';
 import { GERADOR_DE_MIDIA, type GeradorDeMidia, type OpcoesDeVideo } from './gerador-de-midia';
+
+/** Opções de render vindas da campanha: modelo, fala e a voz de referência (URL). */
+export interface OpcoesDeRender extends OpcoesDeVideo {
+  vozReferenciaUrl?: string | null;
+}
 
 const TERMINAL = ['completed', 'failed', 'nsfw', 'canceled'];
 
@@ -21,7 +27,34 @@ export class VideogenService {
     private readonly billing: BillingService,
     private readonly custos: AiCostService,
     private readonly config: ConfigService,
+    private readonly mirror: MediaMirrorService,
   ) {}
+
+  /**
+   * Lê a voz de referência para mandar junto do job. URL nossa (bucket
+   * privado) sai pelo S3; URL externa, por fetch. Falha vira "sem referência"
+   * — a cena sai com voz sorteada, nunca sem cena.
+   */
+  private async lerAudio(url: string | null | undefined): Promise<Buffer | null> {
+    if (!url) return null;
+    try {
+      const prefixo = `${MEDIA_ROUTE}/`;
+      if (url.startsWith(prefixo)) {
+        const objeto = await this.mirror.readObject(url.slice(prefixo.length));
+        return objeto?.body ?? null;
+      }
+      const resposta = await fetch(url);
+      return resposta.ok ? Buffer.from(await resposta.arrayBuffer()) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async opcoesParaDriver(opcoes?: OpcoesDeRender): Promise<OpcoesDeVideo | undefined> {
+    if (!opcoes) return undefined;
+    const { vozReferenciaUrl, ...resto } = opcoes;
+    return { ...resto, audioReferencia: await this.lerAudio(vozReferenciaUrl) };
+  }
 
   /**
    * Custo unitário REAL de uma geração, para a telemetria de margem.
@@ -110,7 +143,7 @@ export class VideogenService {
       framePrompt: string;
       referencias: Buffer[];
       videoPrompt: string;
-      opcoes?: OpcoesDeVideo;
+      opcoes?: OpcoesDeRender;
     },
   ): Promise<GeneratedMedia> {
     const submitted = await this.billing.withCharge(userId, 'video', () =>
@@ -128,8 +161,10 @@ export class VideogenService {
         status: (submitted.status as GeneratedMedia['status']) ?? 'queued',
         phase: 'image',
         requestId: submitted.requestId,
-        // Gravado já na fase 1: a fase 2 (refresh) anima com ESTE modelo.
+        // Gravados já na fase 1: a fase 2 (refresh) anima com ESTE modelo e
+        // ESTA voz — o request de origem já terminou quando ela dispara.
         model: pedido.opcoes?.modelo ?? null,
+        voiceRefUrl: pedido.opcoes?.vozReferenciaUrl ?? null,
       }),
     );
   }
@@ -139,10 +174,11 @@ export class VideogenService {
     imageUrl: string,
     prompt: string,
     imagem?: Buffer,
-    opcoes?: OpcoesDeVideo,
+    opcoes?: OpcoesDeRender,
   ): Promise<GeneratedMedia> {
+    const paraDriver = await this.opcoesParaDriver(opcoes);
     const submitted = await this.billing.withCharge(userId, 'video', () =>
-      this.higgsfield.submitVideo(imageUrl, prompt, imagem, opcoes),
+      this.higgsfield.submitVideo(imageUrl, prompt, imagem, paraDriver),
     );
     this.registrarCusto(userId, 'video');
     return this.media.save(
@@ -157,6 +193,7 @@ export class VideogenService {
         imageUrl,
         requestId: submitted.requestId,
         model: opcoes?.modelo ?? null,
+        voiceRefUrl: opcoes?.vozReferenciaUrl ?? null,
       }),
     );
   }
@@ -214,7 +251,7 @@ export class VideogenService {
               item.imageUrl,
               item.prompt,
               undefined,
-              { modelo: item.model },
+              await this.opcoesParaDriver({ modelo: item.model, vozReferenciaUrl: item.voiceRefUrl }),
             );
             item.phase = 'video';
             item.requestId = video.requestId;

@@ -54,6 +54,14 @@ export class Persona {
   @Column({ type: 'text', nullable: true })
   seedImageUrl: string | null;
 
+  /**
+   * Voz-semente: clipe curto (TTS com a voz da persona) que entra como
+   * referência de voz em toda cena falada. Sem ele, cada cena sorteava um
+   * timbre diferente — o modelo de vídeo não tem id de voz, só descrição.
+   */
+  @Column({ type: 'text', nullable: true })
+  seedVoiceUrl: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
