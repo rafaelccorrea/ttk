@@ -20,8 +20,9 @@ const RESEND_COOLDOWN_MS = 60_000;
 const RESET_TOKEN_TTL_MS = 60 * 60_000; // 1 hora
 
 @Injectable()
-  private readonly logger = new Logger(AuthService.name);
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   /*
    * Chaves públicas do Google para validar o id_token do login social.
    * Cacheadas: o Google rotaciona as chaves, mas não a cada requisição.
