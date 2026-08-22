@@ -26,6 +26,14 @@ export interface StatusResult {
  * saber por onde a imagem chegou — que é como deve ser: a regra de cobrança é
  * nossa, o transporte é detalhe da fornecedora.
  */
+/** Como animar: qual modelo e se há alguém falando em quadro. */
+export interface OpcoesDeVideo {
+  /** Id do catálogo (`modelos-de-video.ts`). Ausente = o driver decide. */
+  modelo?: string | null;
+  /** Cena com fala sincronizada; ausente = inferido pelo marcador no prompt. */
+  comFala?: boolean;
+}
+
 export interface GeradorDeMidia {
   /** false quando falta credencial: a rota inteira se desliga em vez de errar. */
   readonly isConfigured: boolean;
@@ -54,7 +62,12 @@ export interface GeradorDeMidia {
    * enquanto a persona (texto → imagem, sem fetch) funcionava, escondendo a
    * causa.
    */
-  submitVideo(imageUrl: string, prompt: string, imagem?: Buffer): Promise<SubmitResult>;
+  submitVideo(
+    imageUrl: string,
+    prompt: string,
+    imagem?: Buffer,
+    opcoes?: OpcoesDeVideo,
+  ): Promise<SubmitResult>;
 
   /** Consulta um job submetido. O polling é de quem chama. */
   getStatus(requestId: string): Promise<StatusResult>;

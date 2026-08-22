@@ -211,6 +211,16 @@ export class UpdateSceneDto {
   @IsIn(['apresentador', 'apresentador_produto', 'mao_produto', 'unboxing', 'produto_close'])
   tipoCena?: 'apresentador' | 'apresentador_produto' | 'mao_produto' | 'unboxing' | 'produto_close';
 
+  /**
+   * Modelo de vídeo forçado nesta cena (experimento). Ids em
+   * `GET /campaigns/video-models`; string vazia ou null volta ao padrão.
+   */
+  @ApiPropertyOptional({ example: 'seedance_2_0', nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  modelo?: string | null;
+
   /** Como a fala vira áudio; "fala" só é aceita em cena com apresentador. */
   @ApiPropertyOptional({ enum: ['fala', 'narracao', 'sem_fala'] })
   @IsOptional()

@@ -125,6 +125,14 @@ export class CampaignScene {
   @Column({ type: 'text', nullable: true })
   promptFinal: string | null;
 
+  /**
+   * Modelo de vídeo FORÇADO nesta cena (experimento A/B). Nulo = o padrão do
+   * perfil da cena (ver `modelos-de-video.ts`). O que de fato gerou fica em
+   * `generated_media.model`.
+   */
+  @Column({ type: 'text', nullable: true })
+  modelo: string | null;
+
   @Column({ default: 'pendente' })
   status: SceneStatus;
 

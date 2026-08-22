@@ -25,6 +25,8 @@ import type {
   SubmitResult,
 } from './gerador-de-midia';
 import { promptTemFala } from './gerador-de-midia';
+import type { OpcoesDeVideo } from './gerador-de-midia';
+import { modeloDeVideo } from './modelos-de-video';
 
 const execAsync = promisify(exec);
 
@@ -92,9 +94,9 @@ export class HiggsfieldCliService implements GeradorDeMidia {
    * não há voz, e sem `--aspect_ratio` o default é 16:9 — o frame 9:16 viraria
    * barra preta dos dois lados.
    */
-  private argsDeVideo(prompt: string, startImage: string): string[] {
-    const comFala = promptTemFala(prompt);
-    const modelo = comFala ? this.modeloVideoComFala : this.modeloVideo;
+  private argsDeVideo(prompt: string, startImage: string, opcoes?: OpcoesDeVideo): string[] {
+    const comFala = opcoes?.comFala ?? promptTemFala(prompt);
+    const modelo = this.resolverModeloDeVideo(prompt, opcoes);
     const args = [
       'generate',
       'create',
@@ -104,15 +106,17 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       '--start-image',
       startImage,
     ];
-    if (comFala && modelo.startsWith('seedance')) {
-      args.push(
-        '--aspect_ratio', '9:16',
-        '--duration', '5',
-        '--resolution', '720p',
-        '--generate_audio', 'true',
-      );
-    }
+    // Parâmetros por modelo vêm do catálogo; modelo fora dele (env apontando
+    // para algo novo da CLI) vai sem extras, como sempre foi.
+    args.push(...(modeloDeVideo(modelo)?.args(comFala) ?? []));
     return args;
+  }
+
+  /** Quem pediu escolhe; sem pedido, o padrão por haver fala ou não. */
+  resolverModeloDeVideo(prompt: string, opcoes?: OpcoesDeVideo): string {
+    if (opcoes?.modelo) return opcoes.modelo;
+    const comFala = opcoes?.comFala ?? promptTemFala(prompt);
+    return comFala ? this.modeloVideoComFala : this.modeloVideo;
   }
 
   /**
@@ -653,6 +657,7 @@ export class HiggsfieldCliService implements GeradorDeMidia {
     imageUrl: string,
     prompt: string,
     imagem?: Buffer,
+    opcoes?: OpcoesDeVideo,
   ): Promise<SubmitResult> {
     const ehIdDeJob = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -662,14 +667,14 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       try {
         const arquivo = join(pasta, `${randomUUID()}.png`);
         await writeFile(arquivo, imagem);
-        return await this.submeter(this.argsDeVideo(prompt, HiggsfieldCliService.citar(arquivo)));
+        return await this.submeter(this.argsDeVideo(prompt, HiggsfieldCliService.citar(arquivo), opcoes));
       } finally {
         await rm(pasta, { recursive: true, force: true }).catch(() => undefined);
       }
     }
 
     if (ehIdDeJob.test(imageUrl)) {
-      return this.submeter(this.argsDeVideo(prompt, imageUrl));
+      return this.submeter(this.argsDeVideo(prompt, imageUrl, opcoes));
     }
 
     const pasta = await mkdtemp(join(tmpdir(), 'pikpok-hf-'));
@@ -682,7 +687,7 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       }
       const arquivo = join(pasta, `${randomUUID()}.png`);
       await writeFile(arquivo, Buffer.from(await resposta.arrayBuffer()));
-      return await this.submeter(this.argsDeVideo(prompt, HiggsfieldCliService.citar(arquivo)));
+      return await this.submeter(this.argsDeVideo(prompt, HiggsfieldCliService.citar(arquivo), opcoes));
     } finally {
       await rm(pasta, { recursive: true, force: true }).catch(() => undefined);
     }

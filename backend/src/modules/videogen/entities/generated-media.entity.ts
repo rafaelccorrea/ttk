@@ -64,6 +64,13 @@ export class GeneratedMedia {
   @Column({ default: false })
   refunded: boolean;
 
+  /**
+   * Modelo de vídeo que gerou (ou vai gerar) este item — `kling3_0_turbo`,
+   * `seedance_2_0`... É o que permite comparar IA por tipo de cena depois.
+   */
+  @Column({ type: 'text', nullable: true })
+  model: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

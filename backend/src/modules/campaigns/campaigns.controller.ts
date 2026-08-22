@@ -26,6 +26,7 @@ import {
   PlanFeatureGuard,
   RequiresPlanFeature,
 } from '../billing/plan-feature.guard';
+import { catalogoDeModelos } from '../videogen/modelos-de-video';
 import { CampaignsService } from './campaigns.service';
 import {
   CreateCampaignDto,
@@ -55,6 +56,12 @@ export class CampaignsController {
   constructor(private readonly campaigns: CampaignsService) {}
 
   // -------------------------------------------------------------- referência
+  @Get('video-models')
+  @ApiOperation({ summary: 'Modelos de vídeo disponíveis e o padrão por perfil de cena' })
+  videoModels() {
+    return catalogoDeModelos();
+  }
+
   @Get('persona-options')
   @ApiOperation({ summary: 'Atributos disponíveis para montar a persona' })
   personaOptions() {

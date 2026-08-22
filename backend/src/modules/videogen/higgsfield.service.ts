@@ -9,8 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import type {
   GeradorDeMidia,
   StatusResult,
-  SubmitResult,
-} from './gerador-de-midia';
+  SubmitResult,, OpcoesDeVideo } from './gerador-de-midia';
 
 const BASE_URL = 'https://platform.higgsfield.ai';
 
@@ -111,6 +110,8 @@ export class HiggsfieldService implements GeradorDeMidia {
     imageUrl: string,
     prompt: string,
     imagem?: Buffer,
+    // A API de plataforma só tem o DoP: o modelo não é escolhível aqui.
+    _opcoes?: OpcoesDeVideo,
   ): Promise<SubmitResult> {
     // A API só aceita URL pública. Se o frame veio como buffer é porque a URL
     // espelhada é relativa — a correção é configurar AWS_S3_PUBLIC_BASE, e a
