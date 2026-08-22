@@ -234,6 +234,8 @@ export function AppLayout() {
   const [features, setFeatures] = useState<Record<string, boolean>>({});
   const [plan, setPlan] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  // Foto de perfil (upload próprio ou herdada do login com Google).
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [nextUpdate, setNextUpdate] = useState<{
     nextRunAt: string | null;
     isRunning: boolean;
@@ -270,7 +272,10 @@ export function AppLayout() {
   useEffect(() => {
     usersService
       .me()
-      .then((u) => setIsAdmin(Boolean(u.isAdmin)))
+      .then((u) => {
+        setIsAdmin(Boolean(u.isAdmin));
+        setAvatarUrl(u.avatarUrl ?? null);
+      })
       .catch(() => setIsAdmin(false));
   }, []);
 
@@ -704,6 +709,7 @@ export function AppLayout() {
           }}
         >
           <Avatar
+            src={avatarUrl ?? undefined}
             sx={{
               width: 36,
               height: 36,
