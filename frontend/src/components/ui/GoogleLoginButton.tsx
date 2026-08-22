@@ -30,7 +30,7 @@ declare global {
 
 let gisLoading: Promise<void> | null = null;
 
-function loadGis(): Promise<void> {
+export function loadGis(): Promise<void> {
   if (window.google?.accounts?.id) return Promise.resolve();
   gisLoading ??= new Promise<void>((resolve, reject) => {
     const script = document.createElement('script');
@@ -92,6 +92,15 @@ export function GoogleLoginButton({
     };
   }, [clientId]);
 
-  // O iframe do Google tem largura própria; o wrapper centraliza.
-  return <Box ref={containerRef} display="flex" justifyContent="center" />;
+  // O iframe do Google tem largura própria; o wrapper centraliza. A altura
+  // mínima reserva o espaço do botão desde o primeiro paint — sem ela a tela
+  // "pula" quando o Google termina de renderizar.
+  return (
+    <Box
+      ref={containerRef}
+      display="flex"
+      justifyContent="center"
+      minHeight={44}
+    />
+  );
 }

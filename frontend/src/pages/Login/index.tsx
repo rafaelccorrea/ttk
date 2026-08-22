@@ -25,7 +25,7 @@ import {
 } from '@mui/material';
 import { FormEvent, useEffect, useState } from 'react';
 import { Link as RouterLink, Navigate, useNavigate } from 'react-router-dom';
-import { GoogleLoginButton } from '@/components/ui/GoogleLoginButton';
+import { GoogleLoginButton, loadGis } from '@/components/ui/GoogleLoginButton';
 import { apiErrorMessage, useAuth } from '@/contexts/AuthContext';
 import { authService } from '@/services/auth.service';
 
@@ -44,6 +44,16 @@ function translateAuthError(err: unknown): string {
   }
   return message || 'Falha no login';
 }
+
+/*
+ * Client ID do Google cacheado no navegador.
+ *
+ * Ele vem do /auth/config, e esperar essa resposta a cada visita fazia o botão
+ * do Google aparecer com atraso visível. O valor não é segredo e muda quase
+ * nunca, então a segunda visita em diante renderiza o botão de imediato com o
+ * valor guardado — e a resposta fresca da config corrige o cache se mudar.
+ */
+const GOOGLE_CLIENT_ID_KEY = 'pikpok.googleClientId';
 
 const red = '#fe2c55';
 const cyan = '#25f4ee';
@@ -76,16 +86,26 @@ export function LoginPage() {
   // Modo lista de espera vindo do backend, para a tela avisar ANTES do envio
   // em vez de prometer "conta grátis" e entregar uma fila.
   const [waitlistMode, setWaitlistMode] = useState(false);
-  // Client ID do Google vindo do backend. Nulo = botão não aparece (o login
-  // com Google não está configurado neste ambiente).
-  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  // Client ID do Google: começa pelo cache local (botão instantâneo) e é
+  // confirmado/corrigido pela config do backend. Nulo = botão não aparece.
+  const [googleClientId, setGoogleClientId] = useState<string | null>(() =>
+    localStorage.getItem(GOOGLE_CLIENT_ID_KEY),
+  );
 
   useEffect(() => {
+    // O script do Google baixa em PARALELO com a config — antes ele só
+    // começava depois da resposta chegar, e as duas esperas somavam.
+    loadGis().catch(() => undefined);
     authService
       .config()
       .then((c) => {
         setWaitlistMode(c.waitlist);
         setGoogleClientId(c.googleClientId ?? null);
+        if (c.googleClientId) {
+          localStorage.setItem(GOOGLE_CLIENT_ID_KEY, c.googleClientId);
+        } else {
+          localStorage.removeItem(GOOGLE_CLIENT_ID_KEY);
+        }
       })
       // Config indisponível não pode travar o login: segue no fluxo normal.
       .catch(() => undefined);
