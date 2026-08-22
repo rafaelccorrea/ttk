@@ -189,6 +189,15 @@ function falaParaAudio(fala: string): string {
 }
 
 /**
+ * Tira aspas da direção de cena. Texto entre aspas dentro da ação ("o olhar
+ * diz "agora sim"") parece diálogo para o modelo de vídeo — e ele o FALA.
+ * O conteúdo fica; só as marcas de citação saem.
+ */
+function semAspas(texto: string): string {
+  return texto.replace(/["“”„«»]/g, '').replace(/(^|\s)['‘]|['’](?=\s|$|[.,;:!?])/g, '$1');
+}
+
+/**
  * Prompt de renderização em BLOCOS rotulados, num idioma só por bloco.
  *
  * A versão anterior emendava fragmento da persona (inglês), ação do roteiro
@@ -218,7 +227,11 @@ function montarPromptDeCena(opts: {
     // ------------------------------------------------------------- SUJEITO
     opts.sujeito,
     // --------------------------------------------------------------- CENA
-    `Scene action (in Portuguese): ${opts.acaoVisual}`,
+    // "Stage direction / NOTHING here is spoken": o modelo tratava a prosa em
+    // português deste bloco como diálogo e a apresentadora dizia frases que
+    // não estavam na fala (produção). Rotular como direção — e tirar as aspas
+    // do texto — separa o que é instrução de câmera do que sai pela boca.
+    `Scene action — stage direction in Portuguese for camera, body and objects only; NOTHING in this block is spoken aloud: ${semAspas(opts.acaoVisual)}`,
     ...(opts.extras ?? []),
     // ------------------------------------------------------- CONTINUIDADE
     // O clipe parte de um frame real: o modelo tende a "recriar" o sujeito
@@ -257,10 +270,19 @@ function montarPromptDeCena(opts: {
         // dois evita que o modelo troque o sorriso por cara fechada.
         'NO laughing or giggling sounds (smiling is fine). ' +
         'Speech starts at the first frame and ends within the 5-second clip, natural pace. ' +
-        'Word-by-word lip-sync. No music.',
+        'Word-by-word lip-sync. No music. ' +
+        // O modelo improvisava frases além da fala ("ad-lib" no fim do clipe,
+        // comentário sobre o produto): a fala é a ÚNICA coisa dita.
+        'The Dialogue line is the ONLY speech in the whole clip — no ad-libs, no extra sentences before or after it; ' +
+        'nothing else in this prompt is ever said aloud.',
     );
   } else {
-    partes.push('Audio: no speech, no music — subtle ambient sound only.');
+    // "no speech" seco não bastava: o Kling narrava o bloco de ação em inglês
+    // por conta própria. Nomear cada forma de voz é o que o cala.
+    partes.push(
+      'Audio: NO speech of any kind — nobody talks, no voice-over, no narration, no whispering, no humming. ' +
+        'Subtle ambient sound only, no music.',
+    );
   }
 
   // -------------------------------------------------------------- PROIBIDO
@@ -286,6 +308,17 @@ function montarPromptDeCena(opts: {
   }
   return prompt.length > PROMPT_MAX ? prompt.slice(0, PROMPT_MAX) : prompt;
 }
+
+/**
+ * Quantas cenas de UMA campanha geram ao mesmo tempo. 3 é o equilíbrio entre
+ * esperar 6× o tempo de uma cena e despejar seis jobs de uma vez na
+ * fornecedora (que limita concorrência por conta). `CAMPAIGN_RENDER_PARALLEL`
+ * ajusta sem deploy; 1 volta ao comportamento serial.
+ */
+const RENDERS_EM_VOO = Math.max(
+  1,
+  Number(process.env.CAMPAIGN_RENDER_PARALLEL ?? 3) || 3,
+);
 
 const CAMERAS_POR_CENA = [
   'Camera slowly pushes in.',
@@ -1157,14 +1190,14 @@ export class CampaignsService {
 
   /**
    * Liga a fila de renderização: dispara a PRIMEIRA cena que falta e deixa o
-   * polling (`atualizarCampanha`) avançar as demais, uma por vez.
+   * polling (`atualizarCampanha` → `avancarFila`) preencher as demais vagas,
+   * até `RENDERS_EM_VOO` cenas ao mesmo tempo.
    *
    * A versão anterior disparava todas as cenas dentro deste request — o mesmo
    * padrão que o proxy da hospedagem já derrubou na redublagem: com 6 cenas o
    * request passava do timeout, o navegador via erro de rede e ninguém sabia
-   * quantas cenas tinham sido cobradas. Uma cena em voo por vez também tira a
-   * disputa pela fornecedora e pelo saldo: a próxima só é cobrada quando a
-   * anterior terminou.
+   * quantas cenas tinham sido cobradas. Por isso só UMA sai daqui; as outras
+   * saem do polling, e o paralelismo fica limitado por campanha.
    *
    * A cobrança continua cena a cena, dentro do `renderizarCena`. Quem desiste
    * no meio desliga a fila tendo pago só o que já rendeu, e a montagem final
@@ -1210,8 +1243,8 @@ export class CampaignsService {
     await this.campanhas.save(campanha);
 
     // Já existe cena em voo (ex.: um render individual clicado antes): a fila
-    // fica armada e o polling assume dali — disparar outra agora quebraria a
-    // regra de UMA por vez.
+    // fica armada e o polling preenche as vagas restantes (até RENDERS_EM_VOO)
+    // — nada sai deste request além da primeira, pelo timeout do proxy.
     const emVoo = cenas.some((c) => c.status === 'renderizando');
     if (!emVoo) {
       try {
@@ -1321,9 +1354,15 @@ export class CampaignsService {
         // lábios" — o proibido agora permite mãos e barra só rosto/pessoa.
         sujeito: sujeitoSemPessoa(cena.tipo, produtoDaCena?.name, campanha.comoUsa),
         acaoVisual: cena.acaoVisual,
-        // Sem fala a cena é só visual — o modelo não narra, e a dublagem TTS
-        // também é pulada na colheita.
-        fala: cena.modoAudio === 'sem_fala' ? null : cena.fala,
+        /*
+         * Cena sem pessoa NUNCA pede voz ao modelo de vídeo. Em `narracao` a
+         * voz é a do TTS em pt-BR, colocada por cima na colheita (`dublarCena`);
+         * pedir a fala ao modelo "como reserva" só produzia uma narração em
+         * inglês, com frases que não estavam no roteiro, que ficava no clipe
+         * sempre que a dublagem falhava. Clipe mudo + legenda é a reserva
+         * honesta. Em `sem_fala` também não há o que narrar.
+         */
+        fala: null,
         vozDescricao: vozDeNarrador(
           campanha.vozNarrador && campanha.vozNarrador !== SEM_NARRACAO
             ? { voz: campanha.vozNarrador }
@@ -1647,6 +1686,19 @@ export class CampaignsService {
     );
   }
 
+  /**
+   * Preenche as vagas da fila: mantém até `RENDERS_EM_VOO` cenas da campanha
+   * gerando ao mesmo tempo.
+   *
+   * Era UMA por vez, e seis cenas levavam seis vezes o tempo de uma — o
+   * vendedor ficava minutos olhando a barra. A fila existe para não estourar
+   * o request da hospedagem (cada disparo sobe um frame e fala com a
+   * fornecedora) e para não cobrar tudo de uma vez; nenhum dos dois exige
+   * serializar. O débito de créditos é atômico (`UPDATE ... WHERE credits >=
+   * custo`), então disparos paralelos não cobram além do saldo: o que não
+   * couber falha na cobrança e entra como `falhou`, igual antes. Os disparos
+   * continuam saindo do polling, poucos por vez, e nunca do request do clique.
+   */
   private async avancarFila(userId: string, campaignId: string): Promise<void> {
     if (this.filasEmVoo.has(campaignId)) return;
     this.filasEmVoo.add(campaignId);
@@ -1655,29 +1707,36 @@ export class CampaignsService {
         where: { campaignId },
         order: { ordem: 'ASC' },
       });
-      if (cenas.some((c) => c.status === 'renderizando')) return;
+      let emVoo = cenas.filter((c) => c.status === 'renderizando').length;
+      const pendentes = cenas.filter((c) => c.status === 'pendente');
 
-      const proxima = cenas.find((c) => c.status === 'pendente');
-      if (!proxima) {
-        // Acabaram as pendentes (prontas ou falhadas): a fila cumpriu o que
-        // tinha; a montagem automática decide sozinha logo adiante.
-        await this.campanhas.update(campaignId, { renderQueue: false });
+      if (!pendentes.length) {
+        // Acabaram as pendentes (prontas, em voo ou falhadas): a fila cumpriu
+        // o que tinha; a montagem automática decide sozinha logo adiante.
+        if (!emVoo) await this.campanhas.update(campaignId, { renderQueue: false });
         return;
       }
 
-      try {
-        await this.renderizarCena(userId, proxima.id);
-        this.logger.log(
-          `Fila da campanha ${campaignId}: cena ${proxima.ordem} disparada.`,
-        );
-      } catch (error) {
-        this.logger.warn(
-          `Fila da campanha ${campaignId}: cena ${proxima.ordem} não disparou: ${error}`,
-        );
-        proxima.status = 'falhou';
-        proxima.error = `A cena não pôde ser disparada: ${this.causaParaOCliente(error)}`;
-        await this.cenas.save(proxima);
-        await this.campanhas.update(campaignId, { renderQueue: false });
+      for (const proxima of pendentes) {
+        if (emVoo >= RENDERS_EM_VOO) break;
+        try {
+          await this.renderizarCena(userId, proxima.id);
+          emVoo++;
+          this.logger.log(
+            `Fila da campanha ${campaignId}: cena ${proxima.ordem} disparada (${emVoo} em voo).`,
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Fila da campanha ${campaignId}: cena ${proxima.ordem} não disparou: ${error}`,
+          );
+          proxima.status = 'falhou';
+          proxima.error = `A cena não pôde ser disparada: ${this.causaParaOCliente(error)}`;
+          await this.cenas.save(proxima);
+          // Uma falha de disparo (saldo, fornecedora) vale para as próximas
+          // também — parar aqui evita seis mensagens de erro iguais.
+          await this.campanhas.update(campaignId, { renderQueue: false });
+          return;
+        }
       }
     } finally {
       this.filasEmVoo.delete(campaignId);

@@ -291,21 +291,39 @@ describe('avancarFila (via atualizarCampanha)', () => {
     return { service, espiao, campanhas, cenasSalvas };
   }
 
-  it('sem cena em voo, dispara a PRÓXIMA pendente na ordem', async () => {
+  // RENDERS_EM_VOO = 3 por padrão: a fila preenche as vagas em paralelo,
+  // na ordem das cenas — seis cenas não levam mais seis vezes o tempo de uma.
+  it('sem cena em voo, dispara as pendentes NA ORDEM até encher as vagas', async () => {
     const { service, espiao } = base([
       { id: 's1', ordem: 1, status: 'pronta' },
       { id: 's2', ordem: 2, status: 'pendente' },
       { id: 's3', ordem: 3, status: 'pendente' },
+      { id: 's4', ordem: 4, status: 'pendente' },
+      { id: 's5', ordem: 5, status: 'pendente' },
+    ]);
+    await service.atualizarCampanha('u1', 'c1');
+    expect(espiao).toHaveBeenCalledTimes(3);
+    expect(espiao.mock.calls.map((c) => c[1])).toEqual(['s2', 's3', 's4']);
+  });
+
+  it('com cena em voo, só preenche as vagas que sobram', async () => {
+    const { service, espiao } = base([
+      { id: 's1', ordem: 1, status: 'renderizando', generatedMediaId: null },
+      { id: 's2', ordem: 2, status: 'renderizando', generatedMediaId: null },
+      { id: 's3', ordem: 3, status: 'pendente' },
+      { id: 's4', ordem: 4, status: 'pendente' },
     ]);
     await service.atualizarCampanha('u1', 'c1');
     expect(espiao).toHaveBeenCalledTimes(1);
-    expect(espiao).toHaveBeenCalledWith('u1', 's2');
+    expect(espiao).toHaveBeenCalledWith('u1', 's3');
   });
 
-  it('com cena em voo, NÃO dispara outra', async () => {
+  it('com as vagas cheias, NÃO dispara outra', async () => {
     const { service, espiao } = base([
       { id: 's1', ordem: 1, status: 'renderizando', generatedMediaId: null },
-      { id: 's2', ordem: 2, status: 'pendente' },
+      { id: 's2', ordem: 2, status: 'renderizando', generatedMediaId: null },
+      { id: 's3', ordem: 3, status: 'renderizando', generatedMediaId: null },
+      { id: 's4', ordem: 4, status: 'pendente' },
     ]);
     await service.atualizarCampanha('u1', 'c1');
     expect(espiao).not.toHaveBeenCalled();
