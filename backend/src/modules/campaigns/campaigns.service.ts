@@ -109,6 +109,10 @@ function gestoDaCena(ordem: number): string {
  */
 const PROMPT_MAX = 2400;
 
+/** Prefixo do bloco de ação — é por ele que o encurtamento acha o bloco. */
+const ROTULO_DA_ACAO =
+  'Scene action (stage direction in Portuguese — NOT spoken): ';
+
 /**
  * Voz coerente com a persona — e amarrada à pessoa EM QUADRO.
  *
@@ -214,7 +218,7 @@ function semAspas(texto: string): string {
  * caracteres da fornecedora (`PROMPT_MAX`), e o que passa do teto é cortado
  * começando pelos extras.
  */
-function montarPromptDeCena(opts: {
+export function montarPromptDeCena(opts: {
   sujeito: string;
   acaoVisual: string;
   extras?: string[];
@@ -231,7 +235,7 @@ function montarPromptDeCena(opts: {
     // português deste bloco como diálogo e a apresentadora dizia frases que
     // não estavam na fala (produção). Rotular como direção — e tirar as aspas
     // do texto — separa o que é instrução de câmera do que sai pela boca.
-    `Scene action — stage direction in Portuguese for camera, body and objects only; NOTHING in this block is spoken aloud: ${semAspas(opts.acaoVisual)}`,
+    `${ROTULO_DA_ACAO}${semAspas(opts.acaoVisual)}`,
     ...(opts.extras ?? []),
     // ------------------------------------------------------- CONTINUIDADE
     // O clipe parte de um frame real: o modelo tende a "recriar" o sujeito
@@ -273,15 +277,13 @@ function montarPromptDeCena(opts: {
         'Word-by-word lip-sync. No music. ' +
         // O modelo improvisava frases além da fala ("ad-lib" no fim do clipe,
         // comentário sobre o produto): a fala é a ÚNICA coisa dita.
-        'The Dialogue line is the ONLY speech in the whole clip — no ad-libs, no extra sentences before or after it; ' +
-        'nothing else in this prompt is ever said aloud.',
+        'Only the Dialogue line is spoken — no ad-libs, nothing else in this prompt is said aloud.',
     );
   } else {
     // "no speech" seco não bastava: o Kling narrava o bloco de ação em inglês
     // por conta própria. Nomear cada forma de voz é o que o cala.
     partes.push(
-      'Audio: NO speech of any kind — nobody talks, no voice-over, no narration, no whispering, no humming. ' +
-        'Subtle ambient sound only, no music.',
+      'Audio: NO speech of any kind — nobody talks, no voice-over, no narration. Subtle ambient sound only, no music.',
     );
   }
 
@@ -303,8 +305,30 @@ function montarPromptDeCena(opts: {
    */
   let prompt = partes.join('\n');
   const extras = opts.extras ?? [];
+  let restantes = partes;
   for (let i = extras.length - 1; i >= 0 && prompt.length > PROMPT_MAX; i--) {
-    prompt = partes.filter((p) => !extras.slice(i).includes(p)).join('\n');
+    restantes = partes.filter((p) => !extras.slice(i).includes(p));
+    prompt = restantes.join('\n');
+  }
+  /*
+   * Ainda acima do teto: encurta a AÇÃO DE CENA, nunca o fim do prompt. O
+   * corte cego no final levava o bloco de áudio e as proibições — justamente
+   * "fale SÓ isto, em pt-BR, sem texto na tela" (saiu assim em produção com
+   * o Seedance: prompt terminando em "The Dialogue line is the ONLY speech in
+   * the"). A ação é o único bloco longo e negociável: perder a última frase
+   * da direção custa um gesto; perder o áudio custa a cena.
+   */
+  if (prompt.length > PROMPT_MAX) {
+    const indice = restantes.findIndex((p) => p.startsWith(ROTULO_DA_ACAO));
+    if (indice >= 0) {
+      const excesso = prompt.length - PROMPT_MAX;
+      const acao = restantes[indice].slice(ROTULO_DA_ACAO.length);
+      const alvo = Math.max(40, acao.length - excesso - 1);
+      const corte = acao.lastIndexOf(' ', alvo);
+      const encurtada = acao.slice(0, corte > 40 ? corte : alvo).replace(/[,;:\-–—]+$/, '');
+      restantes = restantes.map((p, i) => (i === indice ? `${ROTULO_DA_ACAO}${encurtada}…` : p));
+      prompt = restantes.join('\n');
+    }
   }
   return prompt.length > PROMPT_MAX ? prompt.slice(0, PROMPT_MAX) : prompt;
 }

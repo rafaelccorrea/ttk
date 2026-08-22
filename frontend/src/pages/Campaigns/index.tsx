@@ -42,6 +42,7 @@ import {
   alpha,
 } from '@mui/material';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useSaldo } from '@/hooks/useSaldo';
 import { useConfirmacao } from '@/components/ui/ConfirmDialog';
 import { BrandLoader } from '@/components/ui/BrandLoader';
@@ -1602,7 +1603,15 @@ function CampanhasTab({
   // criava uma campanha — e cada campanha é um roteiro a caminho, ou seja,
   // crédito queimado por impaciência. O estado sobe ANTES do await.
   const [criando, setCriando] = useState(false);
-  const [aberta, setAberta] = useState<string | null>(null);
+  // A campanha aberta mora na URL (/campanhas/:id), não em estado local:
+  // assim dá para recarregar, voltar com o botão do navegador e compartilhar
+  // o link de uma campanha específica.
+  const { id: aberta = null } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const setAberta = useCallback(
+    (id: string | null) => navigate(id ? `/campanhas/${id}` : '/campanhas'),
+    [navigate],
+  );
   const [detalhe, setDetalhe] = useState<CampaignDetail | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   // Batida do polling. O efeito abaixo dependia só de `detalhe`: quando um
@@ -1630,7 +1639,7 @@ function CampanhasTab({
     const mudouParaRoteiro = etapa === 2 && etapaAnterior.current === 3;
     etapaAnterior.current = etapa;
     if (mudouParaRoteiro && aberta) setAberta(null);
-  }, [etapa, aberta]);
+  }, [etapa, aberta, setAberta]);
 
   const carregarDetalhe = useCallback(async (id: string) => {
     /*
@@ -1651,8 +1660,14 @@ function CampanhasTab({
       setDetalhe(null);
       return;
     }
-    void carregarDetalhe(aberta).catch(console.error);
-  }, [aberta, carregarDetalhe]);
+    // Id inválido na URL (campanha excluída, link errado): volta para a lista
+    // em vez de deixar a tela da lista com uma URL que promete outra coisa.
+    void carregarDetalhe(aberta).catch((error) => {
+      console.error(error);
+      setErro(mensagemDeErro(error));
+      setAberta(null);
+    });
+  }, [aberta, carregarDetalhe, setAberta]);
 
   // Só consulta enquanto existe algo em andamento — parado, não gera tráfego.
   useEffect(() => {
@@ -1998,7 +2013,13 @@ const PASSOS = [
 ];
 
 export function CampaignsPage() {
-  const [passo, setPasso] = useState(0);
+  // Chegou por /campanhas/:id (link direto, F5, voltar do navegador): abre
+  // direto no passo da campanha em vez de começar em "Produtos".
+  const { id: campanhaNaUrl } = useParams<{ id: string }>();
+  const [passo, setPasso] = useState(campanhaNaUrl ? 3 : 0);
+  useEffect(() => {
+    if (campanhaNaUrl) setPasso(3);
+  }, [campanhaNaUrl]);
   const [grupos, setGrupos] = useState<AttributeGroup[]>([]);
   const [produtos, setProdutos] = useState<UserProduct[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);

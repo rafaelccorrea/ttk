@@ -146,7 +146,7 @@ export function AppRoutes() {
             {/* Campanhas e Multiplicador são Pro no backend; sem o gate aqui,
                 quem assina o Essencial abria a tela e só descobria no 403. */}
             <Route
-              path="/campanhas"
+              path="/campanhas/:id?"
               element={
                 <PlanGate feature="campaigns">
                   <CampaignsPage />
