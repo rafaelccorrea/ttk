@@ -74,7 +74,7 @@ export class MailService {
     to: string;
     subject: string;
     text: string;
-    body: string;
+    body?: string;
     /** Rodapé opcional (ex.: como desativar o aviso). */
     footer?: string;
     /** HTML completo — pula o cabeçalho/rodapé padrão (e-mails de marca). */
@@ -97,7 +97,7 @@ export class MailService {
         <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#161823">
           <h1 style="font-size:22px;margin:0 0 4px">Pik<span style="color:#fe2c55">Pok</span></h1>
           <p style="color:#73747b;margin:0 0 24px">Inteligência de produtos para o TikTok Shop</p>
-          ${message.body}
+          ${message.body ?? ''}
           ${
             message.footer
               ? `<p style="color:#73747b;font-size:13px;margin:24px 0 0">${message.footer}</p>`
@@ -230,7 +230,6 @@ export class MailService {
       to,
       subject: 'Confirme seu e-mail — PikPok',
       text: `Bem-vindo ao PikPok!\n\nConfirme seu e-mail abrindo o link:\n${link}\n\nSe você não criou esta conta, ignore esta mensagem.`,
-      body: '',
       html,
     });
   }
@@ -307,23 +306,48 @@ export class MailService {
         '',
         'Você recebeu este e-mail porque criou uma conta no PikPok.',
       ].join('\n'),
-      body: '',
       html,
     });
   }
 
+  /** Redefinição de senha. Link de uso único, válido por 1 hora. */
   async sendPasswordResetEmail(to: string, link: string): Promise<SentMail> {
+    const html = this.layoutEscuro({
+      titulo: 'Redefinir sua senha — PikPok',
+      preheader: 'Escolha uma nova senha — o link vale por 1 hora.',
+      secoes: `
+        <tr><td style="padding:0 32px">
+          <div style="font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#25f4ee;margin-bottom:10px">Segurança da conta</div>
+          <h1 style="margin:0 0 12px;font-size:24px;line-height:1.25;font-weight:800;color:#ffffff">Redefinir sua senha 🔑</h1>
+          <p style="margin:0 0 28px;font-size:16px;line-height:1.6;color:#c9c9ce">Recebemos um pedido para redefinir a senha da sua conta. Clique no botão abaixo para escolher uma nova — o link vale por <strong style="color:#ffffff">1 hora</strong> e só funciona uma vez.</p>
+        </td></tr>
+
+        <tr><td align="center" style="padding:0 32px 28px">${this.botao(link, 'Criar nova senha')}</td></tr>
+
+        <tr><td style="padding:0 32px 12px">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#16161b;border-radius:14px;border-left:3px solid #25f4ee">
+            <tr><td style="padding:14px 16px;font-size:13px;line-height:1.55;color:#9a9ba1">
+              Se o botão não funcionar, copie e cole este link no navegador:<br>
+              <a href="${link}" style="color:#fe2c55;text-decoration:none;word-break:break-all">${link}</a>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <tr><td style="padding:12px 32px 36px">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#2a0f17;border-radius:14px;border:1px solid #4a1a28">
+            <tr><td style="padding:16px 18px;font-size:14px;line-height:1.55;color:#c9c9ce">
+              🛡️ <strong style="color:#fe2c55">Não foi você?</strong> Ignore este e-mail — sua senha continua a mesma e ninguém consegue alterá-la sem acesso a esta caixa de entrada.
+            </td></tr>
+          </table>
+        </td></tr>`,
+      rodape: 'Você recebeu este e-mail porque alguém pediu a redefinição de senha desta conta no PikPok.',
+    });
+
     return this.send({
       to,
       subject: 'Redefinir sua senha — PikPok',
       text: `Recebemos um pedido para redefinir a senha da sua conta PikPok.\n\nAbra o link abaixo para escolher uma nova senha (vale por 1 hora):\n${link}\n\nSe não foi você, ignore esta mensagem — sua senha continua a mesma.`,
-      body: `
-        <h2 style="font-size:18px;margin:0 0 8px">Redefinir sua senha</h2>
-        <p style="margin:0 0 24px">Recebemos um pedido para redefinir a senha da sua conta. Clique no botão abaixo para escolher uma nova — o link vale por <strong>1 hora</strong>.</p>
-        <a href="${link}" style="display:inline-block;background:#fe2c55;color:#fff;text-decoration:none;font-weight:700;padding:12px 28px;border-radius:10px">Criar nova senha</a>
-        <p style="color:#73747b;font-size:13px;margin:24px 0 0">Se o botão não funcionar, copie e cole este link no navegador:<br><a href="${link}" style="color:#fe2c55">${link}</a></p>`,
-      footer:
-        'Se não foi você que pediu, ignore esta mensagem — sua senha continua a mesma.',
+      html,
     });
   }
 }
