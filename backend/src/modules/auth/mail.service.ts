@@ -140,7 +140,7 @@ export class MailService {
     const appUrl = this.config
       .get<string>('APP_URL', 'http://localhost:5173')
       .replace(/\/+$/, '');
-    const logoUrl = `${appUrl}/icon-192.png`;
+    const logoUrl = `${appUrl}/logo-transparent.png`;
     const primeiroNome = (displayName ?? '').trim().split(/\s+/)[0];
     const saudacao = primeiroNome ? `Olá, ${escapeHtml(primeiroNome)}!` : 'Olá!';
 
