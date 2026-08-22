@@ -554,8 +554,12 @@ export class HiggsfieldCliService implements GeradorDeMidia {
 
   /** Envolve um valor para o shell da plataforma. Ver o comentário de `cli`. */
   private static citar(valor: string): string {
+    // Windows: o `hf.exe` é Go e parseia a linha de comando à moda do
+    // CommandLineToArgv — aspa interna é `\"`, NÃO `""` (o dobrar do cmd).
+    // Com `""` um prompt contendo "PikPok Sistema" virava vários argumentos
+    // posicionais ("Too many positional args") e nada gerava no Windows.
     return process.platform === 'win32'
-      ? `"${valor.replace(/"/g, '""')}"`
+      ? `"${valor.replace(/(\\*)"/g, '$1$1\\"')}"`
       : `'${valor.replace(/'/g, `'\\''`)}'`;
   }
 
