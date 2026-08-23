@@ -14,6 +14,28 @@ export const CREDIT_VALUE_BRL = 0.1;
 /** Margem mínima exigida sobre o custo real (40%). */
 export const MIN_MARGIN = 1.4;
 
+/**
+ * Quanto custa, em BRL, UM crédito do PLANO da Higgsfield — a carteira que a
+ * CLI gasta ao renderizar cena da Fábrica. Plano Ultra mensal: US$ 129 por
+ * 3.000 créditos = US$ 0,043; no anual (US$ 99) cai para US$ 0,033. Fica o
+ * mensal, que é o pior caso. `HIGGSFIELD_PLAN_CREDIT_USD` sobrescreve sem
+ * deploy quando o plano mudar.
+ */
+export const HIGGSFIELD_PLAN_CREDIT_BRL =
+  (Number(process.env.HIGGSFIELD_PLAN_CREDIT_USD) || 129 / 3000) * 6.0;
+
+/**
+ * Converte um custo real em BRL no preço em créditos, já com a margem mínima
+ * e arredondado para cima em múltiplos de 5 — é o que a Fábrica usa para
+ * precificar cada modelo de vídeo a partir do `custoPlano` dele, em vez de
+ * cobrar 60 de qualquer cena. Arredondar para cima é o que mantém a regra de
+ * ouro por construção: nenhum preço daqui fica abaixo de custo × margem.
+ */
+export function creditosPorCustoBrl(custoBrl: number): number {
+  const minimo = (custoBrl * MIN_MARGIN) / CREDIT_VALUE_BRL;
+  return Math.max(5, Math.ceil(minimo / 5) * 5);
+}
+
 export type BillableAction =
   | 'script' // Roteiro com Claude (Estúdio)
   | 'analyze' // Análise de vídeo viral com Claude
@@ -65,7 +87,13 @@ export const ACTION_PRICES: Record<BillableAction, ActionPrice> = {
   },
   // Higgsfield Soul: ~US$ 0,10 ≈ R$ 0,60
   image: { credits: 12, worstCaseCostBrl: 0.6, label: 'Imagem com IA' },
-  // Soul + DoP: ~US$ 0,60 ≈ R$ 3,60
+  /*
+   * Soul + DoP: ~US$ 0,60 ≈ R$ 3,60. É o preço do driver de API (que só tem o
+   * DoP) e o FALLBACK da Fábrica. Quando a cena roda pela CLI, com modelo
+   * escolhível, o preço vem de `creditosDaCena` (modelos-de-video.ts): Kling
+   * Turbo custa R$ 1,94 e Seedance 2.0 R$ 5,81 — 60 fixo era cobrar 3× numa e
+   * ficar com 3% de margem na outra.
+   */
   video: { credits: 60, worstCaseCostBrl: 3.6, label: 'Vídeo com IA' },
   /*
    * Montagem do Multiplicador, por vídeo gerado.

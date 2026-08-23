@@ -75,6 +75,15 @@ export class GeneratedMedia {
   @Column({ type: 'text', nullable: true })
   voiceRefUrl: string | null;
 
+  /**
+   * Créditos cobrados por ESTA geração. Nulo = preço da tabela (gerações
+   * antigas e o driver de API). É o que o estorno devolve e o que a campanha
+   * desconta do `creditsSpent` — a cena falada custa mais que a muda, e
+   * devolver "60" numa cena de 85 seria roubar 25 do cliente.
+   */
+  @Column({ type: 'int', nullable: true })
+  chargedCredits: number | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

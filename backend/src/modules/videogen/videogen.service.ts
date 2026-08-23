@@ -13,6 +13,8 @@ import { GERADOR_DE_MIDIA, type GeradorDeMidia, type OpcoesDeVideo } from './ger
 /** Opções de render vindas da campanha: modelo, fala e a voz de referência (URL). */
 export interface OpcoesDeRender extends OpcoesDeVideo {
   vozReferenciaUrl?: string | null;
+  /** Preço desta cena em créditos (ver `creditosDaCena`). Ausente = tabela. */
+  creditos?: number;
 }
 
 const TERMINAL = ['completed', 'failed', 'nsfw', 'canceled'];
@@ -74,7 +76,7 @@ export class VideogenService {
     return ACTION_PRICES[kind].worstCaseCostBrl;
   }
 
-  private registrarCusto(userId: string, kind: 'image' | 'video'): void {
+  private registrarCusto(userId: string, kind: 'image' | 'video', cobrado?: number): void {
     // Telemetria nunca no caminho crítico: registrar é fire-and-forget e o
     // próprio serviço engole o erro.
     void this.custos.registrarMidia(
@@ -84,9 +86,23 @@ export class VideogenService {
       {
         userId,
         chargedUnit: 'credit',
-        chargedAmount: ACTION_PRICES[kind].credits,
+        chargedAmount: cobrado ?? ACTION_PRICES[kind].credits,
       },
     );
+  }
+
+  /**
+   * O preço por modelo só vale onde o modelo é obedecido (CLI). No driver de
+   * API toda cena é DoP e custa a tabela — a campanha pergunta aqui antes de
+   * mostrar ou cobrar um número.
+   */
+  get precoPorModelo(): boolean {
+    return this.higgsfield.escolheModelo;
+  }
+
+  /** Preço efetivo da cena: o pedido, se o driver escolhe modelo; senão a tabela. */
+  private creditosDaGeracao(opcoes?: OpcoesDeRender): number {
+    return this.precoPorModelo && opcoes?.creditos ? opcoes.creditos : ACTION_PRICES.video.credits;
   }
 
   /**
@@ -146,11 +162,16 @@ export class VideogenService {
       opcoes?: OpcoesDeRender;
     },
   ): Promise<GeneratedMedia> {
-    const submitted = await this.billing.withCharge(userId, 'video', () =>
-      this.higgsfield.submitImage(pedido.framePrompt, '9:16', pedido.referencias),
+    const creditos = this.creditosDaGeracao(pedido.opcoes);
+    const submitted = await this.billing.withCharge(
+      userId,
+      'video',
+      () => this.higgsfield.submitImage(pedido.framePrompt, '9:16', pedido.referencias),
+      1,
+      creditos,
     );
-    this.registrarCusto(userId, 'image');
-    this.registrarCusto(userId, 'video');
+    this.registrarCusto(userId, 'image', 0);
+    this.registrarCusto(userId, 'video', creditos);
     return this.media.save(
       this.media.create({
         userId,
@@ -165,6 +186,7 @@ export class VideogenService {
         // ESTA voz — o request de origem já terminou quando ela dispara.
         model: pedido.opcoes?.modelo ?? null,
         voiceRefUrl: pedido.opcoes?.vozReferenciaUrl ?? null,
+        chargedCredits: creditos,
       }),
     );
   }
@@ -177,10 +199,15 @@ export class VideogenService {
     opcoes?: OpcoesDeRender,
   ): Promise<GeneratedMedia> {
     const paraDriver = await this.opcoesParaDriver(opcoes);
-    const submitted = await this.billing.withCharge(userId, 'video', () =>
-      this.higgsfield.submitVideo(imageUrl, prompt, imagem, paraDriver),
+    const creditos = this.creditosDaGeracao(opcoes);
+    const submitted = await this.billing.withCharge(
+      userId,
+      'video',
+      () => this.higgsfield.submitVideo(imageUrl, prompt, imagem, paraDriver),
+      1,
+      creditos,
     );
-    this.registrarCusto(userId, 'video');
+    this.registrarCusto(userId, 'video', creditos);
     return this.media.save(
       this.media.create({
         userId,
@@ -194,6 +221,7 @@ export class VideogenService {
         requestId: submitted.requestId,
         model: opcoes?.modelo ?? null,
         voiceRefUrl: opcoes?.vozReferenciaUrl ?? null,
+        chargedCredits: creditos,
       }),
     );
   }
@@ -295,10 +323,13 @@ export class VideogenService {
       // marca gravada pelo vencedor e um terceiro refresh estornaria de novo.
       item.refunded = true;
       if (marcou.affected) {
+        // Devolve o que FOI cobrado — a cena falada custa mais que a tabela.
         await this.billing.refund(
           userId,
           item.kind,
           `Estorno: geração de ${item.kind === 'video' ? 'vídeo' : 'imagem'} falhou`,
+          1,
+          item.chargedCredits ?? undefined,
         );
       }
     }

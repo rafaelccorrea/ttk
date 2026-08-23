@@ -19,7 +19,12 @@ import { Video } from '../videos/entities/video.entity';
 import { VideogenService } from '../videogen/videogen.service';
 import { MARCADOR_DE_FALA } from '../videogen/gerador-de-midia';
 import type { OpcoesDeRender } from '../videogen/videogen.service';
-import { modeloDeVideo, modeloPadraoPorPerfil, perfilDaCena } from '../videogen/modelos-de-video';
+import {
+  creditosDaCena,
+  modeloDeVideo,
+  modeloPadraoPorPerfil,
+  perfilDaCena,
+} from '../videogen/modelos-de-video';
 import {
   CreateCampaignDto,
   CreatePersonaDto,
@@ -32,6 +37,7 @@ import {
 import { Campaign, SEM_NARRACAO } from './entities/campaign.entity';
 import {
   CampaignScene,
+  SceneAudioMode,
   SceneKind,
   cenaComApresentador,
   cenaSemPessoa,
@@ -465,18 +471,50 @@ export class CampaignsService {
   ) {}
 
   // ------------------------------------------------------------------ preços
-  /** Tabela que a tela mostra antes de qualquer clique que cobra. */
+  /**
+   * Tabela que a tela mostra antes de qualquer clique que cobra.
+   *
+   * Antes do roteiro ninguém sabe quais cenas falam, então a cena vem como
+   * FAIXA: `cenaMuda` (produto/tela/apresentador sem voz) a `cenaFalada`
+   * (apresentador com lip-sync, o modelo mais caro). Depois do roteiro o
+   * número exato de cada cena vem em `cenas[].creditos` (detalharCampanha).
+   */
   precos(durationSeconds = 15) {
     const cenas = this.cenasPara(durationSeconds);
+    const roteiro = ACTION_PRICES.script.credits;
+    const precoDaCena = (tipo: SceneKind, modoAudio: SceneAudioMode) =>
+      this.creditosDaCena({ tipo, modoAudio, modelo: null }, null);
+    const cenaMuda = Math.min(
+      precoDaCena('apresentador', 'sem_fala'),
+      precoDaCena('produto_close', 'narracao'),
+    );
+    const cenaFalada = Math.max(precoDaCena('apresentador', 'fala'), cenaMuda);
     return {
       persona: ACTION_PRICES.image.credits,
-      roteiro: ACTION_PRICES.script.credits,
-      cena: ACTION_PRICES.video.credits,
+      roteiro,
+      /** Compatibilidade: o pior caso, que é o que a tela antiga assumia. */
+      cena: cenaFalada,
+      cenaMuda,
+      cenaFalada,
       cenas,
-      // O que o vendedor gasta do zero até o vídeo pronto, sem reuso.
-      totalCampanha:
-        ACTION_PRICES.script.credits + ACTION_PRICES.video.credits * cenas,
+      // O que o vendedor gasta do zero até o vídeo pronto, sem reuso —
+      // do criativo todo mudo ao criativo com fala em todas as cenas.
+      totalMin: roteiro + cenaMuda * cenas,
+      totalMax: roteiro + cenaFalada * cenas,
+      totalCampanha: roteiro + cenaFalada * cenas,
     };
+  }
+
+  /**
+   * Preço desta cena — o MESMO número que a tela mostra e que o render cobra.
+   * Com o driver de API (sem escolha de modelo) é a tabela, sempre.
+   */
+  private creditosDaCena(
+    cena: { tipo: SceneKind; modoAudio: SceneAudioMode; modelo?: string | null },
+    comoUsa: string | null | undefined,
+  ): number {
+    if (!this.videogen.precoPorModelo) return ACTION_PRICES.video.credits;
+    return creditosDaCena(cena, { comoUsa });
   }
 
   private cenasPara(durationSeconds: number): number {
@@ -981,6 +1019,10 @@ export class CampaignsService {
     const cenasComModelo = cenas.map((c) => ({
       ...c,
       modeloUsado: c.generatedMediaId ? (midias[c.generatedMediaId] ?? null) : null,
+      // O que ESTA cena custa ao renderizar (ou custaria de novo), pelo tipo,
+      // modo de áudio e modelo atuais — é o que a tela soma e mostra.
+      creditos: this.creditosDaCena(c, campanha.comoUsa),
+      creditosPadrao: this.creditosDaCena({ ...c, modelo: null }, campanha.comoUsa),
     }));
     return { ...campanha, produto, persona, cenas: cenasComModelo };
   }
@@ -1545,6 +1587,9 @@ export class CampaignsService {
      * perfil (fala / mudo / tela / objeto). Fica gravado em generated_media
      * para comparar modelo por tipo de cena depois.
      */
+    // Preço desta cena, pelo modelo que vai gerá-la. Cobrado dentro do
+    // videogen; somado ao `creditsSpent` aqui. Os dois usam ESTE número.
+    const creditosDaCena = this.creditosDaCena(cena, campanha.comoUsa);
     const opcoesDeVideo: OpcoesDeRender = {
       modelo:
         cena.modelo ??
@@ -1552,6 +1597,7 @@ export class CampaignsService {
           perfilDaCena({ tipo: cena.tipo, modoAudio: cena.modoAudio, comoUsa: campanha.comoUsa }),
         ),
       comFala: cenaComApresentador(cena.tipo) && cena.modoAudio === 'fala',
+      creditos: creditosDaCena,
     };
 
     /**
@@ -1632,7 +1678,7 @@ export class CampaignsService {
           cena.status = 'renderizando';
           cena.error = null;
           await this.cenas.save(cena);
-          campanha.creditsSpent += ACTION_PRICES.video.credits;
+          campanha.creditsSpent += creditosDaCena;
           campanha.status = 'renderizando';
           await this.campanhas.save(campanha);
           return cena;
@@ -1771,7 +1817,7 @@ export class CampaignsService {
           cena.status = 'renderizando';
           cena.error = null;
           await this.cenas.save(cena);
-          campanha.creditsSpent += ACTION_PRICES.video.credits;
+          campanha.creditsSpent += creditosDaCena;
           campanha.status = 'renderizando';
           await this.campanhas.save(campanha);
           return cena;
@@ -1841,7 +1887,7 @@ export class CampaignsService {
     cena.error = null;
     await this.cenas.save(cena);
 
-    campanha.creditsSpent += ACTION_PRICES.video.credits;
+    campanha.creditsSpent += creditosDaCena;
     campanha.status = 'renderizando';
     await this.campanhas.save(campanha);
 
@@ -1877,7 +1923,7 @@ export class CampaignsService {
       cena.error = media.error ?? 'A geração falhou.';
       campanha.creditsSpent = Math.max(
         0,
-        campanha.creditsSpent - ACTION_PRICES.video.credits,
+        campanha.creditsSpent - (media.chargedCredits ?? ACTION_PRICES.video.credits),
       );
     }
     await this.cenas.save(cena);

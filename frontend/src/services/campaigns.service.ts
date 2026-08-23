@@ -71,13 +71,20 @@ export interface CampaignScene {
   modelo: string | null;
   /** Modelo que de fato gerou o clipe atual (null até existir render). */
   modeloUsado: string | null;
+  /** Quanto esta cena custa ao renderizar, pelo tipo, áudio e modelo atuais. */
+  creditos: number;
+  /** O mesmo, com a qualidade padrão (sem modelo forçado). */
+  creditosPadrao: number;
 }
 
 export interface VideoModelOption {
   id: string;
   label: string;
   falaPtBr: boolean;
-  custoPlano: number;
+  /** Preço por cena, em créditos. */
+  creditos: number;
+  /** Preço quando a cena compõe um frame antes (sem pessoa / com produto na mão). */
+  creditosComFrame: number;
 }
 
 export type PerfilDeCena = 'apresentador_fala' | 'apresentador_mudo' | 'tela' | 'produto';
@@ -140,8 +147,16 @@ export interface CampaignDetail extends Campaign {
 export interface CampaignPricing {
   persona: number;
   roteiro: number;
+  /** Pior caso por cena (= cenaFalada). Prefira a faixa abaixo. */
   cena: number;
+  /** Cena sem voz gerada pelo modelo (produto, tela, apresentador mudo). */
+  cenaMuda: number;
+  /** Apresentador falando com lip-sync — o modelo mais caro. */
+  cenaFalada: number;
   cenas: number;
+  /** Roteiro + todas as cenas mudas / todas faladas. */
+  totalMin: number;
+  totalMax: number;
   totalCampanha: number;
 }
 

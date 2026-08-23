@@ -368,6 +368,9 @@ export class HiggsfieldCliService implements GeradorDeMidia {
     return Boolean(this.credenciais && existsSync(this.credenciais));
   }
 
+  /** A CLI aceita qualquer modelo do catálogo — e cada um tem o seu preço. */
+  readonly escolheModelo = true;
+
   /**
    * Executa a CLI e devolve o stdout.
    *

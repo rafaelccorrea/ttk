@@ -280,6 +280,12 @@ export class BillingService implements OnModuleInit {
     action: BillableAction,
     quantidade = 1,
     manager?: EntityManager,
+    /**
+     * Preço unitário que substitui o da tabela — é como a Fábrica cobra a
+     * cena pelo modelo escolhido (`creditosDaCena`). Quem passa um valor aqui
+     * precisa guardá-lo para o estorno devolver a mesma quantia.
+     */
+    creditosUnitarios?: number,
   ): Promise<void> {
     const usuarios = manager ? manager.getRepository(AppUser) : this.users;
     const lancamentos = manager
@@ -326,7 +332,9 @@ export class BillingService implements OnModuleInit {
     // arquivos, e 150 débitos separados encheriam o extrato e dariam 150
     // chances de o saldo acabar no meio da fila.
     const itens = Math.max(Math.trunc(quantidade), 1);
-    const total = price.credits * itens;
+    const unitario =
+      creditosUnitarios && creditosUnitarios > 0 ? Math.trunc(creditosUnitarios) : price.credits;
+    const total = unitario * itens;
     const result = await usuarios
       .createQueryBuilder()
       .update(AppUser)
@@ -528,12 +536,16 @@ export class BillingService implements OnModuleInit {
     action: BillableAction,
     reason?: string,
     quantidade = 1,
+    /** O que foi cobrado de fato, quando a cobrança não usou a tabela. */
+    creditosUnitarios?: number,
   ) {
     const price = ACTION_PRICES[action];
     const itens = Math.max(Math.trunc(quantidade), 1);
+    const unitario =
+      creditosUnitarios && creditosUnitarios > 0 ? Math.trunc(creditosUnitarios) : price.credits;
     await this.addCredits(
       userId,
-      price.credits * itens,
+      unitario * itens,
       'refund',
       action,
       reason ?? `Estorno: ${price.label} falhou`,
@@ -549,12 +561,13 @@ export class BillingService implements OnModuleInit {
     action: BillableAction,
     fn: () => Promise<T>,
     quantidade = 1,
+    creditosUnitarios?: number,
   ): Promise<T> {
-    await this.charge(userId, action, quantidade);
+    await this.charge(userId, action, quantidade, undefined, creditosUnitarios);
     try {
       return await fn();
     } catch (error) {
-      await this.refund(userId, action, undefined, quantidade).catch((e) =>
+      await this.refund(userId, action, undefined, quantidade, creditosUnitarios).catch((e) =>
         this.logger.error(`Falha no estorno de ${action}: ${e}`),
       );
       throw error;

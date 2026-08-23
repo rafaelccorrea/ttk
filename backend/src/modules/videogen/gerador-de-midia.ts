@@ -41,6 +41,13 @@ export interface GeradorDeMidia {
   readonly isConfigured: boolean;
 
   /**
+   * true quando `opcoes.modelo` é respeitado (CLI). A API só tem o DoP: nela
+   * toda cena custa o mesmo, e cobrar por modelo seria cobrar por um recurso
+   * que o cliente não recebe.
+   */
+  readonly escolheModelo: boolean;
+
+  /**
    * Texto → imagem. É o frame base de tudo, inclusive dos vídeos.
    *
    * `referencias` são imagens REAIS que o modelo deve reproduzir na

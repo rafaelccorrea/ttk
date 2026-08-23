@@ -22,6 +22,9 @@ export class HiggsfieldService implements GeradorDeMidia {
 
   constructor(private readonly config: ConfigService) {}
 
+  /** A API de plataforma só tem o DoP — o modelo não é escolhível. */
+  readonly escolheModelo = false;
+
   get isConfigured(): boolean {
     return Boolean(
       this.config.get('HIGGSFIELD_API_KEY') &&

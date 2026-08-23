@@ -102,6 +102,22 @@ function cenaUsaProduto(cena: CampaignScene): boolean {
   );
 }
 
+/** Nome curto do formato da cena, para a lista de preços do diálogo. */
+function rotuloDoTipoDaCena(tipo: CampaignScene['tipo']): string {
+  switch (tipo) {
+    case 'apresentador_produto':
+      return 'apresentador com produto';
+    case 'mao_produto':
+      return 'só as mãos';
+    case 'unboxing':
+      return 'unboxing';
+    case 'produto_close':
+      return 'produto em close';
+    default:
+      return 'apresentador';
+  }
+}
+
 /**
  * Troca a foto de onde a cena de produto parte.
  *
@@ -732,8 +748,6 @@ function Storyboard({
   useEffect(() => {
     campaignsService.getVideoModels().then(setModelos).catch(() => setModelos(null));
   }, []);
-  const nomeDoModelo = (id: string | null | undefined) =>
-    modelos?.modelos.find((m) => m.id === id)?.label ?? id ?? null;
 
   const personaPronta = detalhe.persona?.status === 'pronta';
   const todasProntas =
@@ -759,7 +773,8 @@ function Storyboard({
   const faltaRenderizar = detalhe.cenas.filter(
     (c) => c.status === 'pendente' || c.status === 'falhou',
   );
-  const custoTotal = precos ? faltaRenderizar.length * precos.cena : null;
+  // Soma o preço de CADA cena (fala custa mais que muda), não N × tabela.
+  const custoTotal = faltaRenderizar.reduce((soma, c) => soma + (c.creditos ?? 0), 0);
   const semSaldo =
     !ilimitado && saldo !== null && custoTotal !== null && saldo < custoTotal;
   // A fila (`renderQueue`) conta como "renderizando": o servidor gera as
@@ -1091,14 +1106,25 @@ function Storyboard({
         <DialogContent>
           <Stack spacing={1}>
             <Typography variant="body2">
-              {faltaRenderizar.length} cena(s) serão renderizadas
-              {precos ? ` a ${precos.cena} créditos cada` : ''}.
+              {faltaRenderizar.length} cena(s) serão renderizadas. O preço de cada
+              uma depende do formato e da IA escolhida:
             </Typography>
-            {custoTotal !== null && (
-              <Typography variant="h6" fontWeight={800} color="primary.main">
-                Total: {custoTotal} créditos
-              </Typography>
-            )}
+            <Stack spacing={0.25}>
+              {faltaRenderizar.map((c) => (
+                <Stack key={c.id} direction="row" justifyContent="space-between">
+                  <Typography variant="body2" color="text.secondary">
+                    Cena {c.ordem} · {rotuloDoTipoDaCena(c.tipo)}
+                    {c.modoAudio === 'fala' ? ' (fala)' : ''}
+                  </Typography>
+                  <Typography variant="body2" fontWeight={700}>
+                    {c.creditos} cr
+                  </Typography>
+                </Stack>
+              ))}
+            </Stack>
+            <Typography variant="h6" fontWeight={800} color="primary.main">
+              Total: {custoTotal} créditos
+            </Typography>
             {!ilimitado && saldo !== null && (
               <Typography variant="caption" color={semSaldo ? 'error.main' : 'text.secondary'}>
                 Seu saldo: {saldo} créditos
@@ -1335,9 +1361,7 @@ function Storyboard({
                             onClick={async () => {
                               const ok = await confirmarRefazer({
                                 titulo: `Refazer a cena ${cena.ordem}?`,
-                                mensagem: `A cena volta para edição e o vídeo atual dela é substituído quando você renderizar de novo${
-                                  precos ? ` (${precos.cena} créditos)` : ''
-                                }. O vídeo final será remontado com a cena nova.`,
+                                mensagem: `A cena volta para edição e o vídeo atual dela é substituído quando você renderizar de novo (${cena.creditos} créditos). O vídeo final será remontado com a cena nova.`,
                                 textoConfirmar: 'Refazer cena',
                                 destrutivo: false,
                               });
@@ -1477,16 +1501,20 @@ function Storyboard({
                       },
                     }}
                   />
-                  {/* Qual IA gerou (ou vai gerar) esta cena — é o que permite
-                      comparar modelo por tipo de cena olhando o resultado. */}
-                  {(cena.modeloUsado || cena.modelo) && (
+                  {/* Qual IA gerou fica só no banco (`modeloUsado`), para a
+                      nossa comparação — a tela não cita fornecedor. */}
+                  {/* Quanto ESTA cena custa, pelo formato, áudio e IA atuais.
+                      Muda na hora quando o vendedor troca qualquer um dos três:
+                      cena falada custa mais que muda, e ele decide sabendo. */}
+                  {cena.status !== 'pronta' && (
                     <Chip
                       size="small"
                       variant="outlined"
-                      label={`IA: ${nomeDoModelo(cena.modeloUsado ?? cena.modelo)}${
-                        cena.modelo && cena.status !== 'pronta' ? ' (forçada)' : ''
+                      color={cena.modoAudio === 'fala' ? 'warning' : 'success'}
+                      label={`${cena.creditos} créditos${
+                        cena.modoAudio === 'fala' ? ' · voz gerada pela IA' : ''
                       }`}
-                      sx={{ alignSelf: 'flex-start', maxWidth: '100%' }}
+                      sx={{ alignSelf: 'flex-start', fontWeight: 700 }}
                     />
                   )}
                   {/* O formato e o áudio são escolha do vendedor, não só da
@@ -1528,14 +1556,15 @@ function Storyboard({
                         <MenuItem value="unboxing">Unboxing da embalagem</MenuItem>
                         <MenuItem value="produto_close">Produto em close</MenuItem>
                       </TextField>
-                      {/* IA do vídeo: por padrão o perfil da cena decide
-                          (fala → Seedance pt-BR, muda → Kling); forçar aqui é
-                          para comparar modelos no mesmo cenário. */}
+                      {/* Qualidade do vídeo: por padrão o perfil da cena
+                          decide; o vendedor pode trocar vendo o preço de cada
+                          opção. Os rótulos são neutros de propósito — a tela
+                          nunca diz qual IA está por trás. */}
                       {modelos && (
                         <TextField
                           select
                           size="small"
-                          label="IA do vídeo"
+                          label="Qualidade do vídeo"
                           value={cena.modelo ?? ''}
                           disabled={cena.status === 'renderizando'}
                           sx={{ minWidth: { xs: 0, sm: 260 }, width: { xs: '100%', sm: 'auto' } }}
@@ -1547,10 +1576,16 @@ function Storyboard({
                             )
                           }
                         >
-                          <MenuItem value="">Padrão do perfil da cena</MenuItem>
+                          <MenuItem value="">
+                            Padrão para esta cena · {cena.creditosPadrao} cr
+                          </MenuItem>
                           {modelos.modelos.map((m) => (
                             <MenuItem key={m.id} value={m.id}>
-                              {m.label} · {m.custoPlano} cr
+                              {m.label} ·{' '}
+                              {cenaSemPessoa(cena.tipo) || cena.tipo === 'apresentador_produto'
+                                ? m.creditosComFrame
+                                : m.creditos}{' '}
+                              cr
                               {m.falaPtBr ? ' · fala pt-BR' : ''}
                             </MenuItem>
                           ))}
@@ -1648,7 +1683,7 @@ function Storyboard({
                     >
                       {cena.status === 'renderizando'
                         ? 'Renderizando...'
-                        : `Renderizar cena${precos ? ` · ${precos.cena} créditos` : ''}`}
+                        : `Renderizar cena · ${cena.creditos} créditos`}
                     </Button>
                   )}
                 </Stack>
@@ -1991,12 +2026,15 @@ function CampanhasTab({
               </TextField>
               {precos && (
                 <Alert severity="info">
-                  Roteiro {precos.roteiro} + {Math.round(durationSeconds / 5)} cenas ×{' '}
-                  {precos.cena} ={' '}
+                  Roteiro {precos.roteiro} + {Math.round(durationSeconds / 5)} cenas de{' '}
+                  {precos.cenaMuda} a {precos.cenaFalada} créditos cada ={' '}
                   <strong>
-                    {precos.roteiro + precos.cena * Math.round(durationSeconds / 5)} créditos
+                    {precos.roteiro + precos.cenaMuda * Math.round(durationSeconds / 5)} a{' '}
+                    {precos.roteiro + precos.cenaFalada * Math.round(durationSeconds / 5)} créditos
                   </strong>
-                  . Você só paga cada cena ao renderizá-la — dá para parar no meio.
+                  . Cena com o apresentador falando custa mais ({precos.cenaFalada}); cena de
+                  produto, tela ou com narração custa menos ({precos.cenaMuda}). Você vê o preço
+                  exato de cada cena no roteiro e só paga ao renderizá-la — dá para parar no meio.
                 </Alert>
               )}
               {Boolean(fotosFaltando) && (

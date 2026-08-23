@@ -61,3 +61,45 @@ describe('catálogo', () => {
     expect(modelos.find((m) => m.id === padrao.apresentador_fala)?.falaPtBr).toBe(true);
   });
 });
+
+describe('preço por modelo', () => {
+  const { creditosDaCena, creditosDoModelo, MODELOS_DE_VIDEO } = jest.requireActual<
+    typeof import('./modelos-de-video')
+  >('./modelos-de-video');
+  const { CREDIT_VALUE_BRL, HIGGSFIELD_PLAN_CREDIT_BRL, MIN_MARGIN } = jest.requireActual<
+    typeof import('../billing/billing.config')
+  >('../billing/billing.config');
+
+  it('nenhum modelo é vendido abaixo de custo × margem (regra de ouro)', () => {
+    for (const m of MODELOS_DE_VIDEO) {
+      const custo = m.custoPlano * HIGGSFIELD_PLAN_CREDIT_BRL;
+      expect(creditosDoModelo(m) * CREDIT_VALUE_BRL).toBeGreaterThanOrEqual(custo * MIN_MARGIN);
+      expect(creditosDoModelo(m, true)).toBeGreaterThan(creditosDoModelo(m));
+    }
+  });
+
+  it('a tabela vigente (plano Ultra mensal, US$ 0,043/crédito)', () => {
+    const preco = (id: string, frame = false) => creditosDoModelo(MODELOS_DE_VIDEO.find((m) => m.id === id)!, frame);
+    expect(preco('kling3_0_turbo')).toBe(30);
+    expect(preco('kling3_0_turbo', true)).toBe(35);
+    expect(preco('kling3_0')).toBe(55);
+    expect(preco('seedance_2_0_mini')).toBe(40);
+    expect(preco('seedance_2_0')).toBe(85);
+    expect(preco('seedance_2_0', true)).toBe(90);
+    expect(preco('veo3_1_lite')).toBe(75);
+  });
+
+  it('a cena resolve o modelo pelo perfil: fala custa mais que muda, produto paga o frame', () => {
+    const env = {};
+    expect(creditosDaCena({ tipo: 'apresentador', modoAudio: 'fala' }, { env })).toBe(85);
+    expect(creditosDaCena({ tipo: 'apresentador', modoAudio: 'sem_fala' }, { env })).toBe(30);
+    expect(creditosDaCena({ tipo: 'apresentador_produto', modoAudio: 'fala' }, { env })).toBe(90);
+    expect(creditosDaCena({ tipo: 'produto_close', modoAudio: 'narracao' }, { env })).toBe(35);
+    // Modelo forçado na cena manda sobre o padrão do perfil.
+    expect(
+      creditosDaCena({ tipo: 'apresentador', modoAudio: 'fala', modelo: 'seedance_2_0_mini' }, { env }),
+    ).toBe(40);
+    // Modelo desconhecido (env apontando para algo fora do catálogo) cai na tabela.
+    expect(creditosDaCena({ tipo: 'apresentador', modoAudio: 'fala', modelo: 'xyz' }, { env })).toBe(60);
+  });
+});
