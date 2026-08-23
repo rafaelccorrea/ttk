@@ -867,6 +867,7 @@ function Storyboard({
                 src={resolveApiUrl(detalhe.finalVideoUrl)}
                 controls
                 playsInline
+                onPlay={pausarOutrosVideos}
                 sx={{
                   width: '100%',
                   maxWidth: 320,
@@ -1169,8 +1170,10 @@ function Storyboard({
                       component="video"
                       src={resolveApiUrl(cena.outputUrl)}
                       controls
-                      loop
                       playsInline
+                      // Sem loop: a cena toca uma vez e para no fim — em loop
+                      // a fala repetia sem parar enquanto se lia o roteiro.
+                      onPlay={pausarOutrosVideos}
                       sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                   ) : cena.status === 'renderizando' ? (
@@ -2134,6 +2137,18 @@ function CampanhasTab({
       </Grid>
     </Grid>
   );
+}
+
+/**
+ * Um vídeo por vez na Fábrica: dar play numa cena pausa qualquer outra que
+ * esteja tocando (cenas e vídeo final). Dois clipes juntos viravam duas vozes
+ * ao mesmo tempo — e confundia o julgamento de qual cena estava ruim.
+ */
+function pausarOutrosVideos(e: React.SyntheticEvent<HTMLVideoElement>) {
+  const atual = e.currentTarget;
+  document.querySelectorAll('video').forEach((v) => {
+    if (v !== atual && !v.paused) v.pause();
+  });
 }
 
 // -------------------------------------------------------------------- página
