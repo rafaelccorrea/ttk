@@ -379,6 +379,10 @@ export interface PikPokDesktopApi {
   readonly fixarProduto: (
     titulo: string,
   ) => Promise<{ ok: boolean; motivo?: string }>;
+  /** A rotação automática parou sozinha (3 falhas seguidas) — aviso discreto. */
+  readonly aoRotacaoParada: (
+    ouvinte: (dados: { motivo: string }) => void,
+  ) => () => void;
 
   /**
    * A audiência da sala em tempo real (viewers, curtidas, presentes), direto

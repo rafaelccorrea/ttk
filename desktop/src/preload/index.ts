@@ -139,6 +139,8 @@ const api: PikPokDesktopApi = {
       ok: boolean;
       motivo?: string;
     }>,
+  aoRotacaoParada: (ouvinte) =>
+    assinar<{ motivo: string }>('live:rotacao-parada', ouvinte),
 
   copiarResposta: (replyId, texto) =>
     ipcRenderer.invoke('live:copiarResposta', { replyId, texto }) as Promise<void>,

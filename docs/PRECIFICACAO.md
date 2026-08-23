@@ -180,11 +180,14 @@ A conta certa desconta o que as horas valem sozinhas — cada hora inclusa ao pr
 de 5h (R$ 39,90 / 5 = R$ 7,98/h) — e olha o que sobra para os créditos. O teste
 `cobra mais caro por crédito no plano menor` faz exatamente essa conta.
 
-**Além das horas inclusas, cada plano carrega dois tetos de live** (não são moeda — são freio):
-duração de UMA transmissão (Essencial/Pro 6h, Business 24h — `maxLiveDurationMinutes`) e volume
-mensal total (Essencial 15h, Pro 40h, Business 60h — `maxMonthlyLiveHours`, checado em
-`chargeLiveMinutes` contra o extrato do mês). Cada transmissão debita um bloco mínimo de
-`LIVE_MIN_MINUTES` (10 min) na abertura.
+**Além das horas mensais, cada plano dá um bônus ÚNICO de adesão** ("já começa com X horas"):
+Essencial 15h, Pro 40h, Business 60h (`signupLiveHours`, concedido em `grantSignupLiveHours` no
+`setPlan` — renovação não repete, upgrade concede a diferença). É custo único de aquisição
+(15h ≈ R$ 38,70 / 40h ≈ R$ 103,20 / 60h ≈ R$ 154,80, uma vez por assinante) e por isso NÃO entra
+em `assertProfitability`, que compara grandezas mensais. A cortesia de 10 minutos passou a ser
+EXCLUSIVA da conta free (o painel abre no free; acabou a cortesia, 402 com CTA de assinar).
+Freios de tempo: duração de UMA transmissão por plano (Essencial/Pro 6h, Business 24h —
+`maxLiveDurationMinutes`) e bloco mínimo de `LIVE_MIN_MINUTES` (10 min) debitado na abertura.
 
 As horas inclusas também entram em `assertProfitability()` — o custo delas
 (`minutos × LIVE_COST_PER_MINUTE_BRL`) soma ao dos créditos na checagem do plano. Sem isso, o dia

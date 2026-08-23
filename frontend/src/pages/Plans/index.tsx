@@ -614,7 +614,8 @@ export function PlansPage() {
               <>
                 Moeda separada: <strong>não sai dos seus créditos de IA</strong> e
                 não expira. Cada transmissão debita um bloco mínimo de 10
-                minutos, e cada plano tem um teto mensal de horas de live.
+                minutos, e cada plano já começa com horas de live inclusas na
+                adesão.
                 {wallet.liveCopilot.trialAvailable
                   ? ` Você ainda tem ${wallet.liveCopilot.trialMinutes} minutos de cortesia para testar antes de comprar.`
                   : ` Saldo atual: ${formatarSaldoDeLive(wallet.liveCopilot.minutes)}.`}

@@ -197,20 +197,20 @@ Mesma trava no Multiplicador: o clipe é de graça, a montagem é que custa — 
 subir dezenas de vídeos com a carteira zerada termina em 402 com a curadoria
 toda já feita.
 
-O copiloto no modo painel abre no **Essencial** (pague por hora via packs, até
-15h/mês de teto). O **Pro** inclui 2 horas por mês (teto de 40h) e o
-**Business** inclui 10 horas (teto de 60h) e é o único com **envio
-automático**, e a razão não é preço, é risco: é o único lugar do produto onde
-escrevemos em nome do vendedor, dentro da plataforma dele. Isso pede o degrau
-que já vem com suporte de gente. A trava do envio vive em `trocarModo`, não no
-gate de feature. Os 10 minutos de cortesia continuam sendo a prova de estreia,
-uma vez por conta.
+O copiloto no modo painel abre até para a conta **free** — que só tem os 10
+minutos de cortesia (EXCLUSIVOS dela; acabou, 402 com CTA de assinar). Quem
+assina entra com o bônus único de adesão — **Essencial 15h, Pro 40h, Business
+60h** (`signupLiveHours`; renovação não repete, upgrade concede a diferença) —
+e horas mensais nos degraus de cima: Pro 2h/mês, Business 10h/mês. O
+**Business** segue o único com **envio automático**, e a razão não é preço, é
+risco: é o único lugar do produto onde escrevemos em nome do vendedor, dentro
+da plataforma dele. A trava do envio vive em `trocarModo`, não no gate de
+feature.
 
-Além do saldo, três freios de tempo (ver `billing.config.ts`): duração máxima
+Além do saldo, dois freios de tempo (ver `billing.config.ts`): duração máxima
 de UMA live por plano (6h; 24h no Business) — checada em `cobrarMinuto`, que
-encerra com `endReason='limite_duracao'`; teto MENSAL de transmissão
-(15h/40h/60h) — checado em `chargeLiveMinutes` contra o extrato do mês; e o
-bloco mínimo de 10 minutos, debitado na abertura da run.
+encerra com `endReason='limite_duracao'` — e o bloco mínimo de 10 minutos,
+debitado na abertura da run.
 
 O app também **varre a live à procura do banner de aviso/restrição do TikTok**
 (`warning-detector.ts`, cascata `seletores.aviso` servida pelo backend): ao

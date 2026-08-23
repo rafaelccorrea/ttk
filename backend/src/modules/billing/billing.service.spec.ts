@@ -43,6 +43,7 @@ function repositorioDeUsuarios(estado: {
     findOneBy: jest.fn(async () => estado.usuario ?? null),
     createQueryBuilder: jest.fn(() => builder),
     increment: jest.fn(async () => ({ affected: 1 })),
+    update: jest.fn(async () => ({ affected: 1 })),
     builder,
     execute,
   };
@@ -178,26 +179,41 @@ describe('carteira de minutos — consumo', () => {
     await expect(servico.chargeLiveMinutes('u1', 1)).resolves.toBeDefined();
   });
 
-  it('recusa a conta gratuita, mesmo com saldo', async () => {
-    // O saldo pode existir de uma assinatura anterior; o recurso não.
+  it('deixa a conta free gastar minuto — os 10 de cortesia são dela', async () => {
+    // O painel abre no free; a trava de custo é a própria carteira (10 min de
+    // cortesia, e acabou é 402 com CTA de assinar).
     const { servico } = montar({
-      usuario: { ...BUSINESS, plan: 'free', liveMinutes: 500 },
+      usuario: { ...BUSINESS, plan: 'free', liveMinutes: 10 },
     });
-    await expect(servico.chargeLiveMinutes('u1', 1)).rejects.toMatchObject({
-      status: 403,
-    });
+    await expect(servico.chargeLiveMinutes('u1', 1)).resolves.toBeDefined();
   });
 
-  it('recusa com 403 quando o teto mensal do plano já foi consumido', async () => {
-    // Pro: 40h/mês. Com o extrato somando 2.400 minutos gastos no mês, o
-    // próximo minuto não passa — hora comprada não é hora infinita.
-    const { servico, minutos } = montar({
-      usuario: { ...BUSINESS, plan: 'pro', liveMinutes: 500 },
+  it('concede o bônus de adesão uma vez, e o upgrade só a diferença', async () => {
+    // Assinou o Pro: ganha 40h (2.400 min). A renovação chama setPlan de novo
+    // e não pode conceder de novo; o upgrade para Business soma só as 20h que
+    // faltam para o bônus do degrau novo.
+    const usuario = { ...BUSINESS, plan: 'free', liveSignupMinutesGranted: 0 };
+    const { servico, users, minutos } = montar({ usuario });
+    users.update = jest.fn(async (_alvo: unknown, mudanca: Record<string, unknown>) => {
+      Object.assign(usuario, mudanca);
+      return { affected: 1 };
     });
-    minutos.consulta.getRawOne.mockResolvedValueOnce({ total: '2400' });
-    await expect(servico.chargeLiveMinutes('u1', 1)).rejects.toMatchObject({
-      status: 403,
-    });
+    const concedidos = () =>
+      (minutos.salvos as Array<{ kind?: string; minutes?: number }>)
+        .filter((t) => t.kind === 'purchase')
+        .map((t) => t.minutes);
+
+    await servico.setPlan('u1', 'pro');
+    expect(concedidos()).toEqual([2400]);
+    // Renovação: mesmo plano, nada novo.
+    await servico.setPlan('u1', 'pro');
+    expect(concedidos()).toEqual([2400]);
+    // Upgrade: só a diferença (3.600 − 2.400).
+    await servico.setPlan('u1', 'business');
+    expect(concedidos()).toEqual([2400, 1200]);
+    // Downgrade não devolve nem re-concede.
+    await servico.setPlan('u1', 'essencial');
+    expect(concedidos()).toEqual([2400, 1200]);
   });
 
   it('nunca debita menos de um minuto, nem fração', async () => {
@@ -212,12 +228,20 @@ describe('carteira de minutos — consumo', () => {
 });
 
 describe('carteira de minutos — a cortesia de estreia', () => {
-  it('concede os dez minutos a quem nunca recebeu', async () => {
+  it('concede os dez minutos à conta free que nunca recebeu', async () => {
     const { servico, minutos } = montar({
-      usuario: { ...BUSINESS, liveMinutes: LIVE_TRIAL_MINUTES },
+      usuario: { ...BUSINESS, plan: 'free', liveMinutes: LIVE_TRIAL_MINUTES },
     });
     await expect(servico.grantLiveTrial('u1')).resolves.toBe(LIVE_TRIAL_MINUTES);
     expect((minutos.salvos[0] as { kind: string }).kind).toBe('trial');
+  });
+
+  it('não concede a quem já assina — assinante entra com as horas de adesão', async () => {
+    // A cortesia é a prova de produto de quem ainda não pagou; o Business já
+    // começa com 60h, e dez minutos por cima seriam ruído no extrato.
+    const { servico, minutos } = montar({ usuario: { ...BUSINESS } });
+    await expect(servico.grantLiveTrial('u1')).resolves.toBe(0);
+    expect(minutos.salvos).toHaveLength(0);
   });
 
   it('não concede duas vezes — nem em duas abas ao mesmo tempo', async () => {
@@ -227,7 +251,7 @@ describe('carteira de minutos — a cortesia de estreia', () => {
      * duas requisições simultâneas dariam vinte minutos de graça por conta.
      */
     const { servico, minutos } = montar({
-      usuario: { ...BUSINESS },
+      usuario: { ...BUSINESS, plan: 'free' },
       afetadas: [1, 0],
     });
     await expect(servico.grantLiveTrial('u1')).resolves.toBe(LIVE_TRIAL_MINUTES);

@@ -326,9 +326,10 @@ export class Copiloto {
             this.listarProdutosDaLive().then((ps) => ps.map((p) => p.title)),
           fixar: (titulo) => this.fixarProduto(titulo),
           aoParar: (motivo) => {
-            // O mesmo canal do pin manual: a tela mostra o motivo e o vendedor
-            // decide se fixa à mão ou religa a rotação.
-            this.publicar('live:aviso-tiktok', { texto: motivo, acao: 'pausado' });
+            // Canal próprio e DISCRETO: rotação que parou é aviso de rodapé,
+            // não a faixa vermelha de aviso do TikTok — confundir os dois
+            // ensinaria o vendedor a ignorar a faixa que importa.
+            this.publicar('live:rotacao-parada', { motivo });
           },
         });
         this.rotador.iniciar();
@@ -511,7 +512,13 @@ export class Copiloto {
 
   async encerrar(
     motivo?: string,
-    fim?: 'manual' | 'aviso_tiktok',
+    /*
+     * Todo encerramento que NASCE no desktop é deliberado — botão do painel,
+     * fechar o app, sair da conta — então `manual` é o padrão. Sem isso, o
+     * motivo em texto fazia o backend classificar o fim normal como `erro`,
+     * e o histórico contava desistência como falha.
+     */
+    fim: 'manual' | 'aviso_tiktok' = 'manual',
   ): Promise<EstadoConexao> {
     // A cauda do lote vai junto: são as últimas perguntas da live, geralmente
     // as de "ainda dá tempo de comprar?".

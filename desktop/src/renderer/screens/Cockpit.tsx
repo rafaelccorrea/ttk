@@ -85,10 +85,21 @@ export function Cockpit({
   const [pinAviso, setPinAviso] = useState<{ ok: boolean; texto: string } | null>(
     null,
   );
+  /** A seção de produtos começa FECHADA: a coluna é das respostas. */
+  const [mostrarProdutos, setMostrarProdutos] = useState(false);
 
   useEffect(() => {
     if (!ponte) return undefined;
     return ponte.aoAvisoDoTikTok(setAvisoTikTok);
+  }, [ponte]);
+
+  useEffect(() => {
+    if (!ponte) return undefined;
+    // Rotação que parou é rodapé da seção de produtos, não faixa de alerta.
+    return ponte.aoRotacaoParada(({ motivo }) => {
+      setPinAviso({ ok: false, texto: motivo });
+      setMostrarProdutos(true);
+    });
   }, [ponte]);
 
   // A lista de produtos vem da base conectada, uma vez por entrada na tela —
@@ -442,6 +453,9 @@ export function Cockpit({
           pt: 1,
           flex: '0 1 auto',
           minHeight: 0,
+          // Teto de altura: a fila de escalações NUNCA engole as respostas
+          // prontas — quatro cards à vista, o resto vira contador.
+          maxHeight: 300,
           overflowY: 'auto',
           // O flash da escalação nova: um lavado vermelho que acende e escorre
           // de volta ao nada — pareado com o chime, para o canto do olho.
@@ -461,7 +475,7 @@ export function Cockpit({
           </Typography>
         ) : (
           <Stack spacing={1.25} sx={{ mt: 0.5 }}>
-            {fluxo.escalacoes.map((e) => {
+            {fluxo.escalacoes.slice(0, 4).map((e) => {
               const rascunho = rascunhos.get(e.chatMessageId) ?? null;
               return (
                 <CardEscalacao
@@ -487,54 +501,89 @@ export function Cockpit({
                 />
               );
             })}
+            {fluxo.escalacoes.length > 4 ? (
+              <Typography variant="caption" color="text.secondary">
+                + {fluxo.escalacoes.length - 4} aguardando — resolva as de cima
+                que as próximas aparecem.
+              </Typography>
+            ) : null}
           </Stack>
         )}
       </Box>
 
       {/* --------------------------------------------------- fixar produto */}
+      {/*
+        RECOLHIDA por padrão, e com teto de altura quando aberta: a coluna da
+        direita pertence às respostas e às escalações — uma base com dezenas de
+        produtos não pode empurrá-las para fora da tela. O cabeçalho é o botão.
+      */}
       {produtos.length > 0 ? (
         <Box
           sx={{
             px: 2.25,
-            py: 1,
+            py: 0.75,
             borderTop: '1px solid',
             borderColor: 'divider',
+            flex: '0 0 auto',
           }}
         >
-          <TituloDeSecao
-            texto="fixar produto na live"
-            cor={cores.ciano}
-            contagem={produtos.length}
-          />
-          {/*
-            Best-effort declarado: o clique tenta fixar no painel do TikTok
-            Shop, e a falha vem com instrução de fixar à mão — nunca trava o
-            resto do cockpit.
-          */}
-          <Stack
-            direction="row"
-            flexWrap="wrap"
-            useFlexGap
-            spacing={0.75}
-            sx={{ mt: 0.5 }}
+          <Box
+            role="button"
+            tabIndex={0}
+            onClick={() => setMostrarProdutos((v) => !v)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') setMostrarProdutos((v) => !v);
+            }}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              userSelect: 'none',
+              '&:focus-visible': { outline: '2px solid', outlineColor: cores.ciano },
+            }}
           >
-            {produtos.map((p) => (
-              <Chip
-                key={p.id}
-                label={fixando === p.title ? `Fixando ${p.title}…` : p.title}
-                size="small"
-                disabled={fixando !== null}
-                onClick={() => void fixar(p.title)}
-              />
-            ))}
-          </Stack>
-          {pinAviso ? (
-            <Typography
-              variant="caption"
-              sx={{ color: pinAviso.ok ? cores.sucesso : cores.vermelho }}
-            >
-              {pinAviso.texto}
+            <TituloDeSecao
+              texto="fixar produto na live"
+              cor={cores.ciano}
+              contagem={produtos.length}
+            />
+            <Typography variant="caption" color="text.secondary">
+              {mostrarProdutos ? 'ocultar' : 'mostrar'}
             </Typography>
+          </Box>
+          {mostrarProdutos ? (
+            <>
+              <Stack
+                direction="row"
+                flexWrap="wrap"
+                useFlexGap
+                spacing={0.75}
+                sx={{ mt: 0.5, maxHeight: 96, overflowY: 'auto' }}
+              >
+                {produtos.map((p) => (
+                  <Chip
+                    key={p.id}
+                    label={fixando === p.title ? `Fixando…` : p.title}
+                    size="small"
+                    disabled={fixando !== null}
+                    onClick={() => void fixar(p.title)}
+                  />
+                ))}
+              </Stack>
+              {pinAviso ? (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: 'block',
+                    mt: 0.5,
+                    color: pinAviso.ok ? cores.sucesso : cores.vermelho,
+                  }}
+                >
+                  {pinAviso.texto}
+                </Typography>
+              ) : null}
+            </>
           ) : null}
         </Box>
       ) : null}

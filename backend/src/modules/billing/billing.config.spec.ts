@@ -17,7 +17,7 @@ import {
   planAllows,
   planLiveMinutes,
   planMaxLiveDurationMinutes,
-  planMaxMonthlyLiveMinutes,
+  planSignupLiveMinutes,
   PlanFeature,
   SIGNUP_BONUS_CREDITS,
   worstCostPerCredit,
@@ -61,9 +61,12 @@ describe('billing.config — a fronteira da conta gratuita', () => {
   });
 
   it('não abre no gratuito nada que custe acima do Essencial', () => {
-    for (const f of ['ai_videos', 'multiplier', 'campaigns', 'live_copilot', 'ingestion'] as PlanFeature[]) {
+    for (const f of ['ai_videos', 'multiplier', 'campaigns', 'ingestion'] as PlanFeature[]) {
       expect(planAllows('free', f)).toBe(false);
     }
+    // O Live Copilot é a exceção deliberada: o free abre o PAINEL, mas só tem
+    // os 10 minutos de cortesia — o custo é limitado pela própria carteira.
+    expect(planAllows('free', 'live_copilot')).toBe(true);
   });
 
   it('dá a cortesia de boas-vindas, e ela cabe no custo de aquisição', () => {
@@ -309,8 +312,8 @@ describe('billing.config — horas de live', () => {
      * que não tem risco nenhum — e um recurso que ninguém experimenta não vende
      * o degrau de cima.
      */
-    expect(FEATURE_MIN_PLAN.live_copilot).toBe('essencial');
-    expect(planAllows('free', 'live_copilot')).toBe(false);
+    expect(FEATURE_MIN_PLAN.live_copilot).toBe('free');
+    expect(planAllows('free', 'live_copilot')).toBe(true);
     expect(planAllows('essencial', 'live_copilot')).toBe(true);
     expect(planAllows('pro', 'live_copilot')).toBe(true);
     expect(planAllows('business', 'live_copilot')).toBe(true);
@@ -325,12 +328,13 @@ describe('billing.config — horas de live', () => {
     expect(planMaxLiveDurationMinutes('business')).toBe(1440);
     expect(planMaxLiveDurationMinutes('plano-que-nao-existe')).toBe(360);
 
-    // Teto mensal: hora comprada não é hora infinita — o volume acompanha o
-    // degrau (15h / 40h / 60h).
-    expect(planMaxMonthlyLiveMinutes('essencial')).toBe(900);
-    expect(planMaxMonthlyLiveMinutes('pro')).toBe(2400);
-    expect(planMaxMonthlyLiveMinutes('business')).toBe(3600);
-    expect(planMaxMonthlyLiveMinutes('plano-que-nao-existe')).toBe(900);
+    // Bônus de adesão ("já começa com X horas"): único, por degrau. Plano
+    // desconhecido não ganha nada — bônus é do catálogo, não um default.
+    expect(planSignupLiveMinutes('essencial')).toBe(900);
+    expect(planSignupLiveMinutes('pro')).toBe(2400);
+    expect(planSignupLiveMinutes('business')).toBe(3600);
+    expect(planSignupLiveMinutes('plano-que-nao-existe')).toBe(0);
+    expect(planSignupLiveMinutes('free')).toBe(0);
   });
 
   it('inclui horas de live no Pro e no Business, com o degrau de volume', () => {

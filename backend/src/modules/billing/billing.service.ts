@@ -28,7 +28,7 @@ import {
   planCredits,
   planLiveMinutes,
   planMaxLiveDurationMinutes,
-  planMaxMonthlyLiveMinutes,
+  planSignupLiveMinutes,
   PlanFeature,
   PLANS,
   REFERRAL_REWARD,
@@ -382,6 +382,16 @@ export class BillingService implements OnModuleInit {
    * Chamável à vontade: quem já ganhou não ganha de novo.
    */
   async grantLiveTrial(userId: string): Promise<number> {
+    /*
+     * A cortesia é EXCLUSIVA da conta free: é a prova de produto de quem ainda
+     * não pagou nada. Quem assina já entra com as horas de adesão do degrau
+     * (15/40/60h) — dar os dez minutos por cima seria ruído no extrato, não
+     * benefício. Conta free que depois assina também não ganha de novo: o
+     * carimbo `liveTrialGrantedAt` continua sendo por conta.
+     */
+    const dono0 = await this.users.findOneBy({ id: userId });
+    if ((PLAN_RANK[dono0?.plan ?? 'free'] ?? 0) > 0) return 0;
+
     const concedeu = await this.users
       .createQueryBuilder()
       .update(AppUser)
@@ -448,21 +458,6 @@ export class BillingService implements OnModuleInit {
       return saldoAtual;
     }
 
-    /*
-     * Teto MENSAL do plano: hora comprada não é hora infinita. A soma vem do
-     * extrato imutável (`kind = 'spend'`), então reconexão e retomada não
-     * zeram nem dobram a conta. A mensagem diz o teto em horas porque é assim
-     * que o catálogo vende — minuto é unidade de cobrança, não de conversa.
-     */
-    const tetoMensal = planMaxMonthlyLiveMinutes(owner?.plan ?? 'free');
-    const usadosNoMes = await this.liveMinutesUsedThisMonth(userId);
-    if (usadosNoMes + total > tetoMensal) {
-      throw new HttpException(
-        `Você atingiu o teto de ${Math.round(tetoMensal / 60)} horas de live por mês do seu plano. Faça upgrade em Planos & Créditos para transmitir mais.`,
-        403,
-      );
-    }
-
     const result = await this.users
       .createQueryBuilder()
       .update(AppUser)
@@ -495,22 +490,36 @@ export class BillingService implements OnModuleInit {
   }
 
   /**
-   * Minutos de live consumidos no mês corrente, pelo extrato imutável.
+   * As horas do "já começa com X horas": bônus ÚNICO de adesão ao plano.
    *
-   * `spend` guarda minutos NEGATIVOS; o `ABS` devolve o consumo. As contas da
-   * equipe gravam spend de zero minutos, então saem da soma sozinhas.
+   * A régua é `liveSignupMinutesGranted`, o MAIOR bônus já concedido à conta:
+   * a renovação mensal chama `setPlan` de novo e o delta zera (nada a fazer);
+   * o upgrade concede só a DIFERENÇA (Essencial→Pro: +25h), nunca a soma; o
+   * downgrade não devolve nada. É a mesma lógica de "uma vez por conta" da
+   * cortesia, só que graduada por degrau.
    */
-  async liveMinutesUsedThisMonth(userId: string): Promise<number> {
-    const agora = new Date();
-    const inicioDoMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
-    const linha = await this.liveTransactions
-      .createQueryBuilder('t')
-      .select('COALESCE(SUM(ABS(t.minutes)), 0)', 'total')
-      .where('t.userId = :userId', { userId })
-      .andWhere(`t.kind = 'spend'`)
-      .andWhere('t.createdAt >= :inicioDoMes', { inicioDoMes })
-      .getRawOne<{ total: string }>();
-    return Number(linha?.total ?? 0);
+  async grantSignupLiveHours(userId: string, planId: string): Promise<void> {
+    const bonus = planSignupLiveMinutes(planId);
+    if (bonus <= 0) return;
+    const user = await this.users.findOneBy({ id: userId });
+    const jaConcedido = user?.liveSignupMinutesGranted ?? 0;
+    const delta = bonus - jaConcedido;
+    if (delta <= 0) return;
+    // A marca sobe ANTES do crédito: se o grant falhar, falta hora (visível,
+    // reclamável, corrigível) em vez de sobrar (invisível e recorrente).
+    await this.users.update(
+      { id: userId },
+      { liveSignupMinutesGranted: bonus },
+    );
+    await this.grantLiveMinutes(
+      userId,
+      delta,
+      `signup-hours:${userId}:${planId}`,
+      `${Math.round(delta / 60)} horas de live inclusas na adesão ao plano ${planId}`,
+    );
+    this.logger.log(
+      `Live Copilot: ${delta} minutos de adesão (${planId}) para ${userId}.`,
+    );
   }
 
   /**
@@ -708,6 +717,10 @@ export class BillingService implements OnModuleInit {
 
   async setPlan(userId: string, planId: string) {
     await this.users.update({ id: userId }, { plan: planId });
+    // O "já começa com X horas" nasce aqui: o mesmo webhook que ativa (ou
+    // renova) o plano concede o bônus de adesão — o delta interno garante que
+    // renovação não concede de novo e upgrade concede só a diferença.
+    await this.grantSignupLiveHours(userId, planId);
   }
 
   /** Guarda o customer do Stripe no primeiro checkout (idempotente). */

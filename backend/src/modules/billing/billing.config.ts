@@ -191,7 +191,9 @@ export function liveCostPerHourBrl(): number {
 }
 
 /**
- * Cortesia de estreia: dez minutos de copiloto ao vivo, uma vez por conta.
+ * Cortesia de estreia: dez minutos de copiloto ao vivo, uma vez por conta —
+ * e EXCLUSIVA da conta free (quem assina entra com as horas de adesão do
+ * plano; a checagem vive em `grantLiveTrial`).
  *
  * Dez minutos é tempo de ver a coisa respondendo o próprio chat de verdade, que
  * é a única demonstração que convence, e é curto demais para substituir uma
@@ -327,15 +329,16 @@ export interface Plan {
    */
   maxLiveDurationMinutes?: number;
   /**
-   * Teto MENSAL de transmissão com o copiloto, em horas.
+   * Horas de live creditadas UMA VEZ, na primeira ativação do plano.
    *
-   * Terceira grandeza, distinta das outras duas: `monthlyLiveMinutes` é o que
-   * o plano DÁ, este é o quanto o plano DEIXA usar no mês (somando horas
-   * inclusas, cortesia e packs comprados). Existe para o volume acompanhar o
-   * degrau — quem opera 60 horas/mês é operação Business, com o suporte que
-   * isso implica — sem transformar hora comprada em hora infinita.
+   * É o "já começa com X horas" do catálogo: custo único de AQUISIÇÃO, não
+   * cota recorrente — por isso não entra em `assertProfitability` (que compara
+   * preço MENSAL com gasto MENSAL). O custo real de pior caso é conhecido e
+   * aceito: 15h ≈ R$ 38,70 / 40h ≈ R$ 103,20 / 60h ≈ R$ 154,80, pago uma vez
+   * por assinante e amortizado pela vida da assinatura. Upgrade concede só a
+   * DIFERENÇA (ver `grantSignupLiveHours` no service) — nunca soma bônus.
    */
-  maxMonthlyLiveHours?: number;
+  signupLiveHours?: number;
   highlight?: boolean;
   perks: string[];
   offer?: PlanOffer;
@@ -388,21 +391,12 @@ export function planMaxLiveDurationMinutes(planId: string): number {
   return plan?.maxLiveDurationMinutes ?? DEFAULT_MAX_LIVE_DURATION_MINUTES;
 }
 
-/**
- * Padrão do teto MENSAL para planos que não declaram o seu: o do degrau de
- * entrada (15h). Mesma lógica do teto de duração — legado não ganha de brinde
- * um teto maior que o do catálogo.
- */
-export const DEFAULT_MAX_MONTHLY_LIVE_MINUTES = 15 * 60;
-
-/** Teto mensal de transmissão para o plano, em MINUTOS. */
-export function planMaxMonthlyLiveMinutes(planId: string): number {
+/** Minutos do bônus de adesão do plano (zero para quem não declara). */
+export function planSignupLiveMinutes(planId: string): number {
   const plan =
     PLANS.find((p) => p.id === planId) ??
     LEGACY_PLANS.find((p) => p.id === planId);
-  return plan?.maxMonthlyLiveHours
-    ? plan.maxMonthlyLiveHours * 60
-    : DEFAULT_MAX_MONTHLY_LIVE_MINUTES;
+  return (plan?.signupLiveHours ?? 0) * 60;
 }
 
 /**
@@ -441,9 +435,9 @@ export const PLANS: Plan[] = [
     name: 'Essencial',
     priceBrl: 39.9,
     monthlyCredits: 450,
-    // 15h de teto mensal: dá para transmitir de verdade pagando por hora, sem
-    // que o degrau de entrada vire operação de estúdio.
-    maxMonthlyLiveHours: 15,
+    // "Já começa com 15 horas": o degrau de entrada entra transmitindo de
+    // verdade, sem segunda compra no primeiro mês.
+    signupLiveHours: 15,
     annual: { priceBrl: 399.9, credits: 4600 },
     perks: [
       '450 créditos/mês (ou 4.600 no plano anual)',
@@ -451,7 +445,7 @@ export const PLANS: Plan[] = [
       'Roteiros e análises com Claude',
       'Transcrição de vídeos',
       'Imagens com IA',
-      'Live Copilot no painel: pague por hora, até 15h por mês',
+      'Live Copilot no painel: já começa com 15 horas de live',
     ],
   },
   {
@@ -475,9 +469,9 @@ export const PLANS: Plan[] = [
     // 6 horas por live: um turno inteiro de venda cabe; o que não cabe é o
     // esquecimento de madrugada. O Business, que opera de verdade, tem 24h.
     maxLiveDurationMinutes: 360,
-    // 40h/mês de teto: dez lives semanais de 4h cabem; o volume acima disso é
-    // operação diária — o degrau do Business.
-    maxMonthlyLiveHours: 40,
+    // 40 horas na adesão — quem assina o degrau do meio começa com um mês
+    // inteiro de lives diárias no saldo.
+    signupLiveHours: 40,
     highlight: true,
     annual: { priceBrl: 999.9, credits: 10400 },
     perks: [
@@ -522,9 +516,8 @@ export const PLANS: Plan[] = [
     monthlyLiveMinutes: 600,
     // 24 horas — o teto do próprio TikTok para uma transmissão contínua.
     maxLiveDurationMinutes: 1440,
-    // 60h/mês: duas horas por dia, todo dia. Acima disso é conversa de conta
-    // dedicada, não de catálogo.
-    maxMonthlyLiveHours: 60,
+    // 60 horas na adesão — o topo entra operando desde o primeiro dia.
+    signupLiveHours: 60,
     /*
      * O anual do Business faltava, e a ausência era pior do que parece: é o
      * plano mais caro, e quem chega nele é exatamente quem estaria disposto a
@@ -825,15 +818,14 @@ export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
    * tocar no chat e sem risco nenhum de ToS. Prender o painel junto do envio era
    * cobrar o degrau mais caro pela metade que não tem risco.
    *
-   * Então a trava mudou de lugar, não desapareceu: aqui abre o painel a partir
-   * do ESSENCIAL — quem paga por hora (packs) paga o custo do que usa, e o teto
-   * mensal por plano (`planMaxMonthlyLiveMinutes`) limita o volume — enquanto
-   * `trocarModo` (live-reply.service.ts) continua exigindo Business para o
-   * `auto`. A cortesia de estreia é a PROVA de qualquer degrau: conhece o
-   * produto respondendo pelo painel e sobe quando quiser mais horas (Pro tem
-   * 2h inclusas, Business 10h) ou o envio automático.
+   * Então a trava mudou de lugar, não desapareceu: aqui o painel abre até
+   * para a conta FREE — mas o free só tem os 10 minutos de cortesia (a
+   * cortesia é EXCLUSIVA dele, ver `grantLiveTrial`): acabou, é 402 com o CTA
+   * de assinar. Quem assina entra com as horas de adesão do degrau (15/40/60)
+   * e não ganha cortesia. `trocarModo` (live-reply.service.ts) continua
+   * exigindo Business para o `auto`.
    */
-  live_copilot: 'essencial',
+  live_copilot: 'free',
   // Campanhas é o construtor de anúncio em vídeo: persona + cenas animadas pelo
   // DoP. Acompanha `ai_videos` porque é o mesmo custo por trás.
   campaigns: 'pro',

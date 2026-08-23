@@ -124,6 +124,14 @@ export class AppUser {
   liveTrialGrantedAt: Date | null;
 
   /*
+   * O MAIOR bônus de adesão de plano já concedido, em minutos ("já começa com
+   * X horas"). É o que faz a renovação não conceder de novo e o upgrade
+   * conceder só a diferença — ver `grantSignupLiveHours`.
+   */
+  @Column('int', { default: 0 })
+  liveSignupMinutesGranted: number;
+
+  /*
    * Quando o vendedor aceitou o termo de risco do envio automático no chat da
    * live.
    *
