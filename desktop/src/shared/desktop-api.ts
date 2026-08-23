@@ -138,6 +138,20 @@ export interface EstadoConexao {
  * o copiloto está falando demais ou de menos, e uma ida ao servidor no meio
  * disso só adiciona uma forma de a mudança não valer.
  */
+/** O que o detector de aviso do TikTok conta à tela — ver `warning-detector`. */
+export interface AvisoDoTikTok {
+  /** Resumo do texto do banner, truncado no processo principal. */
+  texto: string;
+  /** O que o app fez: pausou o envio, ou encerrou a live (opt-in). */
+  acao: 'pausado' | 'encerrado';
+}
+
+/** Um produto da base conectada, o suficiente para a lista de fixar. */
+export interface ProdutoDaLive {
+  id: string;
+  title: string;
+}
+
 export interface ConfiguracoesCopiloto {
   /** Acima disso a resposta entra em "prontas". 0–1. */
   limiarResposta: number;
@@ -147,6 +161,26 @@ export interface ConfiguracoesCopiloto {
   listaNegra: string[];
   /** Quantas mensagens o desktop junta antes de mandar um lote. */
   tamanhoDoLote: number;
+  /**
+   * Espectadores que o vendedor bloqueou (por @). A mensagem deles é
+   * descartada ANTES do anonimizador — nunca vira lote, custo nem resposta.
+   * A lista vive só neste computador, no electron-store: é escolha do
+   * vendedor sobre o chat DELE, e não sobe ao backend.
+   */
+  usuariosBloqueados: string[];
+  /** Roda a fila de produtos da base, fixando o próximo a cada intervalo. */
+  rotacaoDeProdutosAtiva: boolean;
+  /** Minutos entre uma fixação e a próxima (2–60). */
+  rotacaoIntervaloMinutos: number;
+  /** Varre a live à procura do banner de aviso do TikTok. Ligado por padrão. */
+  detectorAvisoAtivo: boolean;
+  /**
+   * Ao detectar um aviso, ENCERRA a transmissão (clique no botão do TikTok)
+   * além de pausar o envio. Desligado por padrão — encerrar a live do vendedor
+   * é a ação mais drástica do app, e um falso positivo aqui custa a venda da
+   * noite; ligar é decisão consciente, com aviso na tela de configurações.
+   */
+  encerrarAoDetectarAviso: boolean;
 }
 
 /**
@@ -325,6 +359,26 @@ export interface PikPokDesktopApi {
   readonly aoReceberEvento: (
     ouvinte: (evento: import('./live-events').LiveEvent) => void,
   ) => () => void;
+
+  /**
+   * O detector viu um banner de aviso/restrição do TikTok na live. O envio já
+   * foi pausado (ou a live encerrada, se o opt-in estiver ligado) quando este
+   * evento chega — a tela só precisa CONTAR o que aconteceu.
+   */
+  readonly aoAvisoDoTikTok: (
+    ouvinte: (aviso: AvisoDoTikTok) => void,
+  ) => () => void;
+
+  // ---------------------------------------------------------------- produtos
+  /** Os produtos da base conectada, para a lista de "fixar na live". */
+  readonly listarProdutosDaLive: () => Promise<ProdutoDaLive[]>;
+  /**
+   * Tenta fixar o produto no painel do TikTok Shop — best-effort: `ok: false`
+   * vem com um `motivo` pronto para a tela ("fixe manualmente...").
+   */
+  readonly fixarProduto: (
+    titulo: string,
+  ) => Promise<{ ok: boolean; motivo?: string }>;
 
   /**
    * A audiência da sala em tempo real (viewers, curtidas, presentes), direto

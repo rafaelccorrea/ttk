@@ -344,6 +344,32 @@ export class ApiClient {
    * no chat — que é a cena que vende o produto. Falha vira lista vazia: o
    * simulador tem roteiro genérico de reserva.
    */
+  /**
+   * Os produtos de uma base, no recorte da lista de "fixar na live" — id e
+   * título, nada além: preço e detalhe já vivem no painel da web.
+   */
+  async listarProdutosDaBase(
+    sessionId: string,
+  ): Promise<Array<{ id: string; title: string }>> {
+    try {
+      const detalhe = await this.requisitar<LiveSessionDetalhe>(
+        'GET',
+        `/live/sessions/${sessionId}`,
+      );
+      return (detalhe.produtos ?? [])
+        .map((p) => {
+          const bruto = p as { id?: unknown; name?: unknown };
+          return {
+            id: String(bruto.id ?? ''),
+            title: String(bruto.name ?? '').trim(),
+          };
+        })
+        .filter((p) => p.id && p.title);
+    } catch {
+      return [];
+    }
+  }
+
   async nomesDeProdutos(sessionId: string): Promise<string[]> {
     try {
       const detalhe = await this.requisitar<LiveSessionDetalhe>(
@@ -480,14 +506,17 @@ export class ApiClient {
     }
   }
 
-  async encerrarRun(motivo?: string): Promise<void> {
+  async encerrarRun(
+    motivo?: string,
+    endReason?: 'manual' | 'aviso_tiktok',
+  ): Promise<void> {
     const id = this.runId;
     this.pararHeartbeat();
     this.pararStream();
     this.runId = null;
     if (!id) return;
 
-    await this.requisitar('POST', `/live/runs/${id}/end`, { motivo });
+    await this.requisitar('POST', `/live/runs/${id}/end`, { motivo, endReason });
   }
 
   // ------------------------------------------------------- envio automático
@@ -557,11 +586,34 @@ export class ApiClient {
    * no servidor. O `runId` vai junto para dar de onde vem cada relato — é o que
    * permite ver se a mudança do TikTok pegou a frota ou uma conta só.
    */
-  async reportarFalhaDeSeletor(html: string, version: number): Promise<void> {
+  async reportarFalhaDeSeletor(
+    html: string,
+    version: number,
+    contexto?: string,
+  ): Promise<void> {
     await this.requisitar('POST', '/live/telemetry/selector-failure', {
       runId: this.runId ?? undefined,
       version,
       html,
+      contexto,
+    });
+  }
+
+  /**
+   * `POST /live/runs/:id/events` — a trilha de auditoria da run: o app viu um
+   * aviso do TikTok (e o que fez), ou tentou fixar um produto. Sem run aberta
+   * vira no-op: evento de auditoria sem transmissão não tem onde morar.
+   */
+  async registrarEventoDaRun(
+    tipo: 'aviso_tiktok' | 'pin_produto',
+    acao?: string,
+    detalhe?: string,
+  ): Promise<void> {
+    if (!this.runId) return;
+    await this.requisitar('POST', `/live/runs/${this.runId}/events`, {
+      tipo,
+      acao,
+      detalhe,
     });
   }
 

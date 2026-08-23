@@ -212,7 +212,9 @@ export interface LiveHourPack {
 }
 
 /**
- * Add-ons de hora de live. Exclusivos do Business, como a própria feature.
+ * Add-ons de hora de live. Disponíveis a partir do Pro, junto com a feature
+ * (a trava real é `assertFeature('live_copilot')` no checkout — plano mínimo
+ * em `FEATURE_MIN_PLAN`).
  *
  * O preço por hora cai com o volume, e a margem é bem maior que a dos pacotes
  * de crédito — não por ganância, mas porque o custo de IA é só uma parte do que
@@ -234,10 +236,10 @@ export const LIVE_HOUR_PACKS: LiveHourPack[] = [
    * desconto de volume viraria pegadinha ao contrário. `assertProfitability` e o
    * teste da escada derrubam qualquer valor que inverta isso.
    */
-  { id: 'live-1h', name: '1 hora de live', hours: 1, priceBrl: 11.9 },
-  { id: 'live-5h', name: '5 horas de live', hours: 5, priceBrl: 49.9 },
-  { id: 'live-15h', name: '15 horas de live', hours: 15, priceBrl: 129.9 },
-  { id: 'live-40h', name: '40 horas de live', hours: 40, priceBrl: 299.9 },
+  { id: 'live-1h', name: '1 hora de live', hours: 1, priceBrl: 9.9 },
+  { id: 'live-5h', name: '5 horas de live', hours: 5, priceBrl: 39.9 },
+  { id: 'live-15h', name: '15 horas de live', hours: 15, priceBrl: 99.9 },
+  { id: 'live-40h', name: '40 horas de live', hours: 40, priceBrl: 219.9 },
 ];
 
 export function findLiveHourPack(id: string): LiveHourPack | undefined {
@@ -315,6 +317,25 @@ export interface Plan {
    * de live não vira crédito de IA nem o contrário. Ver `planLiveMinutes`.
    */
   monthlyLiveMinutes?: number;
+  /**
+   * Teto de duração de UMA transmissão com o copiloto, em minutos.
+   *
+   * Não é cota mensal (isso é `monthlyLiveMinutes` + packs): é o freio de uma
+   * live individual — protege o vendedor de esquecer o copiloto ligado e a
+   * operação de uma run infinita. Ausente = usa o padrão do catálogo
+   * (`DEFAULT_MAX_LIVE_DURATION_MINUTES`).
+   */
+  maxLiveDurationMinutes?: number;
+  /**
+   * Teto MENSAL de transmissão com o copiloto, em horas.
+   *
+   * Terceira grandeza, distinta das outras duas: `monthlyLiveMinutes` é o que
+   * o plano DÁ, este é o quanto o plano DEIXA usar no mês (somando horas
+   * inclusas, cortesia e packs comprados). Existe para o volume acompanhar o
+   * degrau — quem opera 60 horas/mês é operação Business, com o suporte que
+   * isso implica — sem transformar hora comprada em hora infinita.
+   */
+  maxMonthlyLiveHours?: number;
   highlight?: boolean;
   perks: string[];
   offer?: PlanOffer;
@@ -353,6 +374,38 @@ export function planLiveMinutes(
 }
 
 /**
+ * Padrão do teto de duração de uma live para planos que não declaram o seu —
+ * legados e desconhecidos caem aqui. 6h, o mesmo do Pro: um plano que saiu do
+ * catálogo não deve ganhar de brinde um teto maior que o do catálogo atual.
+ */
+export const DEFAULT_MAX_LIVE_DURATION_MINUTES = 360;
+
+/** Teto de duração de UMA transmissão para o plano, em minutos. */
+export function planMaxLiveDurationMinutes(planId: string): number {
+  const plan =
+    PLANS.find((p) => p.id === planId) ??
+    LEGACY_PLANS.find((p) => p.id === planId);
+  return plan?.maxLiveDurationMinutes ?? DEFAULT_MAX_LIVE_DURATION_MINUTES;
+}
+
+/**
+ * Padrão do teto MENSAL para planos que não declaram o seu: o do degrau de
+ * entrada (15h). Mesma lógica do teto de duração — legado não ganha de brinde
+ * um teto maior que o do catálogo.
+ */
+export const DEFAULT_MAX_MONTHLY_LIVE_MINUTES = 15 * 60;
+
+/** Teto mensal de transmissão para o plano, em MINUTOS. */
+export function planMaxMonthlyLiveMinutes(planId: string): number {
+  const plan =
+    PLANS.find((p) => p.id === planId) ??
+    LEGACY_PLANS.find((p) => p.id === planId);
+  return plan?.maxMonthlyLiveHours
+    ? plan.maxMonthlyLiveHours * 60
+    : DEFAULT_MAX_MONTHLY_LIVE_MINUTES;
+}
+
+/**
  * Planos: o preço do plano SEMPRE cobre o pior caso de gasto dos créditos
  * inclusos (créditos × pior custo/crédito da tabela) — checado no boot.
  * Pior custo/crédito da tabela ≈ R$ 0,06 (vídeo: 3,60/60), ou seja o piso
@@ -368,15 +421,19 @@ export function planLiveMinutes(
  * ele leva o `highlight` e o salto de recursos (vídeo com IA e multiplicador),
  * não só mais créditos.
  *
- * Preço por crédito (o piso com a margem mínima é R$ 0,084):
+ * Preço por crédito (o piso com a margem mínima é R$ 0,084). Nos planos com
+ * horas de live inclusas, desconte antes o valor das horas ao preço avulso
+ * (R$ 9,90/h) — é a conta que `billing.config.spec.ts` faz:
  *   Essencial       R$ 39,90 / 450 cr    = R$ 0,0887/cr → 1,48× o pior custo
  *   Essencial anual R$ 399,90 / 4.600 cr = R$ 0,0869/cr → 1,45× o pior custo
- *   Pro             R$ 89,90 / 1.000 cr  = R$ 0,0899/cr → 1,50× o pior custo
- *   Pro anual       R$ 899,90 / 10.400 cr= R$ 0,0865/cr → 1,44× o pior custo
- *   Business        R$ 249,90 / 2.800 cr = R$ 0,0892/cr → 1,49× o pior custo
- *   Business anual  R$ 2.499,90 / 28.800 cr = R$ 0,0868/cr → 1,45× o pior custo
- * O desconto de volume (e o anual) sai da margem, nunca do custo — é por isso
- * que a cota de créditos acompanha o preço, e não o contrário.
+ *   Pro             (R$ 99,90 − 2h) / 1.000 cr  ≈ R$ 0,0801/cr
+ *   Pro anual       (R$ 999,90 − 24h) / 10.400 cr ≈ R$ 0,0733/cr
+ *   Business        (R$ 299,90 − 10h) / 2.800 cr ≈ R$ 0,0718/cr
+ *   Business anual  (R$ 2.999,90 − 120h) / 28.800 cr ≈ R$ 0,0629/cr
+ * O piso de verdade é o de `assertProfitability`, que soma as DUAS moedas
+ * (créditos × pior custo + minutos × custo/minuto) × margem — todos os planos
+ * acima passam. O desconto de volume (e o anual) sai da margem, nunca do
+ * custo — é por isso que a cota acompanha o preço, e não o contrário.
  */
 export const PLANS: Plan[] = [
   {
@@ -384,6 +441,9 @@ export const PLANS: Plan[] = [
     name: 'Essencial',
     priceBrl: 39.9,
     monthlyCredits: 450,
+    // 15h de teto mensal: dá para transmitir de verdade pagando por hora, sem
+    // que o degrau de entrada vire operação de estúdio.
+    maxMonthlyLiveHours: 15,
     annual: { priceBrl: 399.9, credits: 4600 },
     perks: [
       '450 créditos/mês (ou 4.600 no plano anual)',
@@ -391,15 +451,35 @@ export const PLANS: Plan[] = [
       'Roteiros e análises com Claude',
       'Transcrição de vídeos',
       'Imagens com IA',
+      'Live Copilot no painel: pague por hora, até 15h por mês',
     ],
   },
   {
     id: 'pro',
     name: 'Pro',
-    priceBrl: 89.9,
+    /*
+     * R$ 99,90 e não R$ 89,90 porque o plano passou a INCLUIR 2 horas de
+     * copiloto ao vivo por mês — que avulsas custam R$ 9,90 cada. São +R$ 10
+     * no preço por R$ 19,80 de valor entregue, e a margem segue acima do piso
+     * (`assertProfitability` checa as DUAS moedas do plano no boot).
+     */
+    priceBrl: 99.9,
     monthlyCredits: 1000,
+    /*
+     * As 2 horas que fazem o Pro EXPERIMENTAR o copiloto de verdade, todo mês
+     * — a cortesia de dez minutos continua existindo, mas é de estreia, uma
+     * vez por conta. Quem OPERA com o copiloto (10h/mês + envio automático)
+     * continua sendo o Business.
+     */
+    monthlyLiveMinutes: 120,
+    // 6 horas por live: um turno inteiro de venda cabe; o que não cabe é o
+    // esquecimento de madrugada. O Business, que opera de verdade, tem 24h.
+    maxLiveDurationMinutes: 360,
+    // 40h/mês de teto: dez lives semanais de 4h cabem; o volume acima disso é
+    // operação diária — o degrau do Business.
+    maxMonthlyLiveHours: 40,
     highlight: true,
-    annual: { priceBrl: 899.9, credits: 10400 },
+    annual: { priceBrl: 999.9, credits: 10400 },
     perks: [
       '1.000 créditos/mês (ou 10.400 no plano anual)',
       'Tudo do Essencial',
@@ -412,34 +492,39 @@ export const PLANS: Plan[] = [
        * copiar ou falar. O que ele não ganha é o envio automático, que fica no
        * Business por risco (ver FEATURE_MIN_PLAN.live_copilot). Dizer só "Live
        * Copilot" aqui prometeria o produto inteiro e transformaria o upgrade
-       * numa reclamação; dizer o que ele é de fato faz os dez minutos venderem
+       * numa reclamação; dizer o que ele é de fato faz as duas horas venderem
        * o degrau de cima em vez de substituí-lo.
        */
-      `Live Copilot no painel: ${LIVE_TRIAL_MINUTES} minutos para conhecer`,
+      'Live Copilot no painel: 2 horas por mês (24 horas no plano anual)',
     ],
   },
   {
     id: 'business',
     name: 'Business',
     /*
-     * R$ 269,90 e não R$ 249,90 porque o plano passou a INCLUIR 5 horas de
-     * copiloto ao vivo — que avulsas custam R$ 49,90. São +R$ 20 no preço por
-     * R$ 49,90 de valor entregue: o cliente sai ganhando, e a margem volta para
-     * 1,49× (com as horas, o preço antigo caía para 1,38× e o servidor nem
-     * subiria — ver `assertProfitability`).
+     * R$ 299,90 e não R$ 269,90 porque as horas inclusas dobraram de 5 para
+     * 10 por mês — que avulsas custam mais de R$ 79. São +R$ 30 no preço por
+     * um múltiplo disso em valor entregue, e a margem segue acima do piso
+     * (`assertProfitability` checa as DUAS moedas do plano no boot).
      */
-    priceBrl: 269.9,
+    priceBrl: 299.9,
     monthlyCredits: 2800,
     /*
-     * As 5 horas que fazem o Business valer o degrau.
+     * As 10 horas que fazem o Business valer o degrau.
      *
      * É a diferença de natureza entre os dois planos: o Pro EXPERIMENTA o
-     * copiloto (dez minutos de cortesia, uma vez), o Business OPERA com ele
-     * todo mês. Sem horas inclusas, quem assinasse o topo ainda teria que
-     * comprar add-on antes da primeira live — e um plano que exige uma segunda
-     * compra para funcionar não é um plano, é uma entrada.
+     * copiloto (2 horas por mês, no painel), o Business OPERA com ele: 10
+     * horas por mês e o envio automático. Sem horas inclusas em volume, quem
+     * assinasse o topo ainda teria que comprar add-on antes da primeira live —
+     * e um plano que exige uma segunda compra para funcionar não é um plano,
+     * é uma entrada.
      */
-    monthlyLiveMinutes: 300,
+    monthlyLiveMinutes: 600,
+    // 24 horas — o teto do próprio TikTok para uma transmissão contínua.
+    maxLiveDurationMinutes: 1440,
+    // 60h/mês: duas horas por dia, todo dia. Acima disso é conversa de conta
+    // dedicada, não de catálogo.
+    maxMonthlyLiveHours: 60,
     /*
      * O anual do Business faltava, e a ausência era pior do que parece: é o
      * plano mais caro, e quem chega nele é exatamente quem estaria disposto a
@@ -447,17 +532,16 @@ export const PLANS: Plan[] = [
      * não no caro inverte a lógica da escada — e some com a única compra do
      * catálogo que traz doze meses de caixa de uma vez.
      *
-     * Mesma régua dos outros: dez mensalidades pelo ano, e a cota anual em
-     * ~0,86 da mensal × 12 (o desconto sai da margem, não do custo). Dá R$
-     * 0,0868 por crédito — acima do piso de R$ 0,084 e alinhado ao Pro anual
-     * (R$ 0,0865). Mexer nestes números sem refazer essa conta derruba o
-     * servidor no boot, em `assertProfitability`.
+     * Mesma régua dos outros: ~dez mensalidades pelo ano (o desconto sai da
+     * margem, não do custo), e o anual carrega também as 120 horas de live do
+     * ano — `assertProfitability` soma as duas moedas na checagem. Mexer
+     * nestes números sem refazer essa conta derruba o servidor no boot.
      */
-    annual: { priceBrl: 2699.9, credits: 28800 },
+    annual: { priceBrl: 2999.9, credits: 28800 },
     perks: [
       '2.800 créditos/mês (ou 28.800 no plano anual)',
       'Tudo do Pro',
-      '5 horas de Live Copilot por mês (60 horas no plano anual)',
+      '10 horas de Live Copilot por mês (120 horas no plano anual)',
       'Envio automático: a IA responde no chat da live (exclusivo)',
       'Coleta de dados automatizada',
       'Onboarding dedicado',
@@ -741,14 +825,15 @@ export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
    * tocar no chat e sem risco nenhum de ToS. Prender o painel junto do envio era
    * cobrar o degrau mais caro pela metade que não tem risco.
    *
-   * Então a trava mudou de lugar, não desapareceu: aqui abre o painel para o
-   * Pro, e `trocarModo` (live-reply.service.ts) exige Business para o `auto`.
-   * Os dez minutos de cortesia passam a ser a PROVA do Pro — ele conhece o
-   * produto respondendo pelo painel e sobe para o Business quando quiser que o
-   * copiloto escreva sozinho. Um recurso que ninguém experimenta não vende o
-   * degrau de cima.
+   * Então a trava mudou de lugar, não desapareceu: aqui abre o painel a partir
+   * do ESSENCIAL — quem paga por hora (packs) paga o custo do que usa, e o teto
+   * mensal por plano (`planMaxMonthlyLiveMinutes`) limita o volume — enquanto
+   * `trocarModo` (live-reply.service.ts) continua exigindo Business para o
+   * `auto`. A cortesia de estreia é a PROVA de qualquer degrau: conhece o
+   * produto respondendo pelo painel e sobe quando quiser mais horas (Pro tem
+   * 2h inclusas, Business 10h) ou o envio automático.
    */
-  live_copilot: 'pro',
+  live_copilot: 'essencial',
   // Campanhas é o construtor de anúncio em vídeo: persona + cenas animadas pelo
   // DoP. Acompanha `ai_videos` porque é o mesmo custo por trás.
   campaigns: 'pro',

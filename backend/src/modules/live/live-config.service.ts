@@ -42,7 +42,7 @@ import {
  *
  * SUBA ESTE NÚMERO SEMPRE que mexer nos seletores abaixo.
  */
-const VERSAO_DOS_SELETORES = 1;
+const VERSAO_DOS_SELETORES = 2;
 
 /**
  * A cascata do campo de comentário, em ordem de preferência.
@@ -85,6 +85,59 @@ const SELETORES_BOTAO_ENVIAR = [
   'button[type="submit"][aria-label*="nvia"]',
   'button[aria-label*="ost comment"]',
   'div[role="button"][aria-label*="oment"]',
+];
+
+/**
+ * A cascata do BANNER DE AVISO/RESTRIÇÃO que o TikTok mostra ao criador.
+ *
+ * Mesma ordem de confiança das outras cascatas (`data-e2e` → estrutural →
+ * classe). Aqui o custo do falso positivo é diferente — detectar aviso onde
+ * não há PAUSA o envio do vendedor no meio da venda — então a cascata é
+ * deliberadamente conservadora: melhor não ver um aviso (o vendedor ainda o
+ * vê na própria tela) do que pausar por uma div de layout. O texto encontrado
+ * viaja truncado e sanitizado; o ajuste fino é por env, sem rebuild.
+ */
+const SELETORES_AVISO = [
+  '[data-e2e="live-warning-banner"]',
+  '[data-e2e="violation-banner"]',
+  'div[role="alert"][class*="warn" i]',
+  'div[role="alert"][class*="violat" i]',
+  'div[class*="LiveWarning"]',
+];
+
+/**
+ * A cascata do botão de ENCERRAR a transmissão — usada SOMENTE quando o
+ * vendedor ligou o opt-in "encerrar ao detectar aviso" no app. Clicar aqui é a
+ * ação mais destrutiva que o app executa na interface do TikTok, e é por isso
+ * que ela nunca roda por padrão.
+ */
+const SELETORES_BOTAO_ENCERRAR = [
+  '[data-e2e="live-end-button"]',
+  '[data-e2e="end-live-button"]',
+  'button[aria-label*="ncerrar" i]',
+  'button[aria-label*="end live" i]',
+];
+
+/**
+ * O painel de produtos do TikTok Shop dentro da live, e o botão de FIXAR.
+ *
+ * É a parte mais instável da interface do TikTok (varia por região e por teste
+ * A/B deles), e é por isso que o pin é 100% best-effort no app: falhou, o
+ * vendedor fixa à mão e a falha vira telemetria — nunca um bloqueio do
+ * copiloto.
+ */
+const SELETORES_PAINEL_PRODUTOS = [
+  '[data-e2e="product-panel"]',
+  '[data-e2e="live-product-list"]',
+  'div[class*="ProductPanel"]',
+  'div[class*="product-list" i]',
+];
+
+const SELETORES_BOTAO_PIN = [
+  '[data-e2e="product-pin"]',
+  '[data-e2e="pin-product-button"]',
+  'button[aria-label*="ixar" i]',
+  'button[aria-label*="pin" i]',
 ];
 
 /**
@@ -187,7 +240,18 @@ export const TERMO_DE_ENVIO_AUTOMATICO = [
 export interface ConfigDeEnvio {
   version: number;
   killSwitch: boolean;
-  seletores: { campo: string[]; botaoEnviar: string[] };
+  seletores: {
+    campo: string[];
+    botaoEnviar: string[];
+    /** Banner de aviso/restrição do TikTok — detector do desktop. */
+    aviso: string[];
+    /** Botão de encerrar a live — usado só com o opt-in ligado no app. */
+    botaoEncerrar: string[];
+    /** Painel de produtos do TikTok Shop na live — pin best-effort. */
+    painelProdutos: string[];
+    /** Botão de fixar um produto dentro do painel. */
+    botaoPin: string[];
+  };
   limites: {
     cooldownMs: number;
     maxPorMinuto: number;
@@ -447,6 +511,19 @@ export class LiveConfigService {
           'LIVE_ENVIO_SELETORES_BOTAO',
           SELETORES_BOTAO_ENVIAR,
         ),
+        aviso: listaDoAmbiente('LIVE_ENVIO_SELETORES_AVISO', SELETORES_AVISO),
+        botaoEncerrar: listaDoAmbiente(
+          'LIVE_ENVIO_SELETORES_ENCERRAR',
+          SELETORES_BOTAO_ENCERRAR,
+        ),
+        painelProdutos: listaDoAmbiente(
+          'LIVE_ENVIO_SELETORES_PAINEL',
+          SELETORES_PAINEL_PRODUTOS,
+        ),
+        botaoPin: listaDoAmbiente(
+          'LIVE_ENVIO_SELETORES_PIN',
+          SELETORES_BOTAO_PIN,
+        ),
       },
       limites: {
         cooldownMs: numeroDoAmbiente('LIVE_ENVIO_COOLDOWN_MS', COOLDOWN_MS),
@@ -491,6 +568,7 @@ export class LiveConfigService {
       version: number;
       html: string;
       userAgent?: string | null;
+      contexto?: string | null;
     },
   ): Promise<{ registrado: true }> {
     // A sanitização acontece ANTES de qualquer coisa — inclusive antes do log.
@@ -502,6 +580,7 @@ export class LiveConfigService {
       this.falhas.create({
         userId,
         liveRunId: dados.runId ?? null,
+        context: dados.contexto ?? null,
         selectorsVersion: dados.version,
         htmlSample,
         userAgent: dados.userAgent?.slice(0, 300) ?? null,

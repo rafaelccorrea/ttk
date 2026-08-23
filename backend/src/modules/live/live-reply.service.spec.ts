@@ -617,8 +617,9 @@ function servicoParaPromocao(estado: {
     faqRepo as never,
     {} as never,
     {} as never,
-    // O repositório de métricas de audiência — a promoção para a base não o
-    // toca, então um objeto vazio basta.
+    // Os repositórios de métricas de audiência e de eventos de auditoria — a
+    // promoção para a base não os toca, então objetos vazios bastam.
+    {} as never,
     {} as never,
     {} as never,
     {} as never,

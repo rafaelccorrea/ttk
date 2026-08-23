@@ -16,6 +16,8 @@ import {
   PLANS,
   planAllows,
   planLiveMinutes,
+  planMaxLiveDurationMinutes,
+  planMaxMonthlyLiveMinutes,
   PlanFeature,
   SIGNUP_BONUS_CREDITS,
   worstCostPerCredit,
@@ -118,8 +120,12 @@ describe('billing.config — a fronteira da conta gratuita', () => {
     const porCredito = (id: string) => {
       const p = PLANS.find((x) => x.id === id)!;
       const horas = (p.monthlyLiveMinutes ?? 0) / 60;
-      const pacoteDeUmaHora = LIVE_HOUR_PACKS.find((h) => h.hours === 5)!;
-      const valorDasHoras = horas > 0 ? pacoteDeUmaHora.priceBrl : 0;
+      // Cada hora inclusa vale o preço/hora do pacote de 5h — a referência de
+      // varejo mais honesta (a avulsa é preço de emergência, os grandes têm
+      // desconto de volume que o plano não precisa herdar).
+      const pacoteDeCincoHoras = LIVE_HOUR_PACKS.find((h) => h.hours === 5)!;
+      const valorDasHoras =
+        horas * (pacoteDeCincoHoras.priceBrl / pacoteDeCincoHoras.hours);
       return (p.priceBrl - valorDasHoras) / p.monthlyCredits;
     };
     // Business é o mais barato por crédito; Essencial não pode ser o melhor
@@ -303,19 +309,45 @@ describe('billing.config — horas de live', () => {
      * que não tem risco nenhum — e um recurso que ninguém experimenta não vende
      * o degrau de cima.
      */
-    expect(FEATURE_MIN_PLAN.live_copilot).toBe('pro');
-    expect(planAllows('essencial', 'live_copilot')).toBe(false);
+    expect(FEATURE_MIN_PLAN.live_copilot).toBe('essencial');
+    expect(planAllows('free', 'live_copilot')).toBe(false);
+    expect(planAllows('essencial', 'live_copilot')).toBe(true);
     expect(planAllows('pro', 'live_copilot')).toBe(true);
     expect(planAllows('business', 'live_copilot')).toBe(true);
   });
 
-  it('inclui horas de live só no Business', () => {
-    // O Pro EXPERIMENTA (cortesia de estreia, uma vez); o Business OPERA (horas
-    // todo mês). Incluir horas no Pro apagaria a diferença entre os dois.
+  it('limita a duração de UMA live e o volume do mês por plano', () => {
+    // Duração de uma transmissão: 6h nos degraus de baixo, 24h (o teto do
+    // próprio TikTok) no Business. Plano desconhecido cai no padrão, nunca
+    // em "sem limite".
+    expect(planMaxLiveDurationMinutes('essencial')).toBe(360);
+    expect(planMaxLiveDurationMinutes('pro')).toBe(360);
+    expect(planMaxLiveDurationMinutes('business')).toBe(1440);
+    expect(planMaxLiveDurationMinutes('plano-que-nao-existe')).toBe(360);
+
+    // Teto mensal: hora comprada não é hora infinita — o volume acompanha o
+    // degrau (15h / 40h / 60h).
+    expect(planMaxMonthlyLiveMinutes('essencial')).toBe(900);
+    expect(planMaxMonthlyLiveMinutes('pro')).toBe(2400);
+    expect(planMaxMonthlyLiveMinutes('business')).toBe(3600);
+    expect(planMaxMonthlyLiveMinutes('plano-que-nao-existe')).toBe(900);
+  });
+
+  it('inclui horas de live no Pro e no Business, com o degrau de volume', () => {
+    // O Pro EXPERIMENTA (2h/mês, no painel); o Business OPERA (10h/mês + envio
+    // automático). O Essencial continua sem horas — a feature nem abre nele.
     const comHoras = PLANS.filter((p) => (p.monthlyLiveMinutes ?? 0) > 0).map(
       (p) => p.id,
     );
-    expect(comHoras).toEqual(['business']);
+    expect(comHoras).toEqual(['pro', 'business']);
+
+    const pro = PLANS.find((p) => p.id === 'pro')!;
+    const business = PLANS.find((p) => p.id === 'business')!;
+    expect(planLiveMinutes(pro, 'month')).toBe(120);
+    // O degrau precisa existir de verdade: o topo entrega VOLUME, não empate.
+    expect(planLiveMinutes(business, 'month')).toBeGreaterThan(
+      planLiveMinutes(pro, 'month'),
+    );
   });
 
   it('entrega no anual doze vezes o mensal de horas', () => {
@@ -323,8 +355,12 @@ describe('billing.config — horas de live', () => {
     // e não existe cron de renovação: entregar mês a mês deixaria o assinante
     // anual sem hora nenhuma a partir do segundo mês.
     const business = PLANS.find((p) => p.id === 'business')!;
-    expect(planLiveMinutes(business, 'month')).toBe(300);
-    expect(planLiveMinutes(business, 'year')).toBe(3600);
+    expect(planLiveMinutes(business, 'month')).toBe(600);
+    expect(planLiveMinutes(business, 'year')).toBe(7200);
+
+    const pro = PLANS.find((p) => p.id === 'pro')!;
+    expect(planLiveMinutes(pro, 'month')).toBe(120);
+    expect(planLiveMinutes(pro, 'year')).toBe(1440);
   });
 });
 
@@ -362,7 +398,7 @@ describe('catálogo de planos', () => {
     const comCopiloto = PLANS.filter((p) =>
       p.perks.some((perk) => /copilot/i.test(perk)),
     ).map((p) => p.id);
-    expect(comCopiloto).toEqual(['pro', 'business']);
+    expect(comCopiloto).toEqual(['essencial', 'pro', 'business']);
 
     const comEnvioAutomatico = PLANS.filter((p) =>
       p.perks.some((perk) => /envio autom/i.test(perk)),

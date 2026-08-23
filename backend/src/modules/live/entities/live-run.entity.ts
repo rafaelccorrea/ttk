@@ -37,6 +37,23 @@ export type LiveRunStatus = 'conectando' | 'ativa' | 'encerrada' | 'erro';
 export type LiveRunMode = 'painel' | 'auto';
 
 /**
+ * O motivo do fim, quando a run termina:
+ *
+ *  - `manual`: o vendedor encerrou (ou a live acabou e o app avisou);
+ *  - `limite_duracao`: bateu o teto de duração do plano;
+ *  - `creditos`: o saldo de minutos zerou no meio da transmissão;
+ *  - `aviso_tiktok`: o detector viu um aviso de restrição do TikTok e o
+ *    encerramento automático estava ligado;
+ *  - `erro`: qualquer término com `errorMessage` que não seja os acima.
+ */
+export type LiveRunEndReason =
+  | 'manual'
+  | 'limite_duracao'
+  | 'creditos'
+  | 'aviso_tiktok'
+  | 'erro';
+
+/**
  * Uma transmissão ao vivo acompanhada pelo copiloto.
  *
  * Separada de `live_sessions` pelo mesmo motivo que a base de conhecimento é
@@ -165,6 +182,15 @@ export class LiveRun {
 
   @Column({ type: 'text', nullable: true })
   errorMessage: string | null;
+
+  /**
+   * Por que a transmissão terminou, em valor legível por MÁQUINA — o
+   * `errorMessage` é o texto humano, este campo é o que desktop e histórico
+   * usam para decidir o que mostrar sem fazer parsing de frase. Nulo nas runs
+   * anteriores à coluna.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  endReason: LiveRunEndReason | null;
 
   @CreateDateColumn()
   createdAt: Date;

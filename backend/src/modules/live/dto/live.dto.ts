@@ -194,6 +194,17 @@ export class MensagemDoChatDto {
   @IsOptional()
   @IsDateString()
   receivedAt?: string;
+
+  /**
+   * O TikTok marcou esta mensagem como PERGUNTA (evento `questionNew` do
+   * webcast). É sinal do próprio espectador — ele usou o cartão de pergunta —
+   * então fura a heurística local: pergunta declarada nunca é descartada como
+   * ruído e passa na frente do lote.
+   */
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isQuestion?: boolean;
 }
 
 /**
@@ -298,6 +309,41 @@ export class EncerrarLiveRunDto {
   @IsString()
   @MaxLength(500)
   motivo?: string;
+
+  /**
+   * Fim DECLARADO pelo app (ex.: `aviso_tiktok`, quando o detector encerrou a
+   * live de propósito). Sem ele, `motivo` preenchido continua virando `erro`.
+   * A lista é fechada: o desktop não inventa categorias novas de fim.
+   */
+  @ApiPropertyOptional({ example: 'aviso_tiktok' })
+  @IsOptional()
+  @IsIn(['manual', 'aviso_tiktok'])
+  endReason?: 'manual' | 'aviso_tiktok';
+}
+
+/**
+ * Um evento de auditoria da run, reportado pelo app desktop.
+ *
+ * Lista de tipos FECHADA — o app não inventa categorias — e `detalhe` é texto
+ * curto (o resumo do banner, o título do produto), nunca HTML: amostra de DOM
+ * tem canal próprio, com sanitização, na telemetria de seletor.
+ */
+export class RegistrarEventoDaRunDto {
+  @ApiProperty({ example: 'aviso_tiktok' })
+  @IsIn(['aviso_tiktok', 'pin_produto'])
+  tipo: 'aviso_tiktok' | 'pin_produto';
+
+  @ApiPropertyOptional({ example: 'pausado' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  acao?: string;
+
+  @ApiPropertyOptional({ example: 'Seu conteúdo pode violar as diretrizes…' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  detalhe?: string;
 }
 
 export class CriarFaqDto extends AtualizarFaqDto {

@@ -21,7 +21,14 @@ import {
 const CONFIG: ConfigDeEnvio = {
   version: 1,
   killSwitch: false,
-  seletores: { campo: ['[data-e2e="comment-text-input"]'], botaoEnviar: [] },
+  seletores: {
+    campo: ['[data-e2e="comment-text-input"]'],
+    botaoEnviar: [],
+    aviso: [],
+    botaoEncerrar: [],
+    painelProdutos: [],
+    botaoPin: [],
+  },
   limites: {
     cooldownMs: 8_000,
     maxPorMinuto: 6,

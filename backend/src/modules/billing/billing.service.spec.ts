@@ -65,6 +65,17 @@ function gastos(salvos: unknown[]) {
 
 function repositorioDeLancamentos(existente: unknown = null) {
   const salvos: unknown[] = [];
+  /*
+   * A soma do consumo mensal (`liveMinutesUsedThisMonth`) vem de um
+   * queryBuilder de SELECT sobre o extrato. Zero por padrão — cada teste de
+   * teto mensal troca o retorno para simular um mês já gasto.
+   */
+  const consulta = {
+    select: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    getRawOne: jest.fn(async () => ({ total: '0' })),
+  };
   return {
     findOneBy: jest.fn(async () => existente),
     create: jest.fn((x: unknown) => x),
@@ -73,6 +84,8 @@ function repositorioDeLancamentos(existente: unknown = null) {
       return x;
     }),
     find: jest.fn(async () => []),
+    createQueryBuilder: jest.fn(() => consulta),
+    consulta,
     salvos,
   };
 }
@@ -156,11 +169,32 @@ describe('carteira de minutos — consumo', () => {
     await expect(servico.chargeLiveMinutes('u1', 1)).resolves.toBeDefined();
   });
 
-  it('recusa abaixo do Pro, mesmo com saldo', async () => {
-    // O saldo pode existir de uma assinatura anterior; o recurso não.
+  it('deixa o Essencial gastar minuto — o painel abre no degrau de entrada', async () => {
+    // O Essencial paga por hora (packs) dentro do teto mensal de 15h; a trava
+    // que continua acima dele é a de recurso melhor, não a do painel.
     const { servico } = montar({
       usuario: { ...BUSINESS, plan: 'essencial', liveMinutes: 500 },
     });
+    await expect(servico.chargeLiveMinutes('u1', 1)).resolves.toBeDefined();
+  });
+
+  it('recusa a conta gratuita, mesmo com saldo', async () => {
+    // O saldo pode existir de uma assinatura anterior; o recurso não.
+    const { servico } = montar({
+      usuario: { ...BUSINESS, plan: 'free', liveMinutes: 500 },
+    });
+    await expect(servico.chargeLiveMinutes('u1', 1)).rejects.toMatchObject({
+      status: 403,
+    });
+  });
+
+  it('recusa com 403 quando o teto mensal do plano já foi consumido', async () => {
+    // Pro: 40h/mês. Com o extrato somando 2.400 minutos gastos no mês, o
+    // próximo minuto não passa — hora comprada não é hora infinita.
+    const { servico, minutos } = montar({
+      usuario: { ...BUSINESS, plan: 'pro', liveMinutes: 500 },
+    });
+    minutos.consulta.getRawOne.mockResolvedValueOnce({ total: '2400' });
     await expect(servico.chargeLiveMinutes('u1', 1)).rejects.toMatchObject({
       status: 403,
     });
@@ -290,8 +324,10 @@ describe('a trava de lançamento do Live Copilot', () => {
   });
 
   it('continua barrando por plano quem não paga o degrau', async () => {
+    // O painel desceu até o ESSENCIAL (pague por hora, teto mensal); quem
+    // continua fora é a conta gratuita — o recurso consome fornecedor pago.
     process.env.LAUNCH_LIVE_COPILOT = 'true';
-    const { servico } = montar({ usuario: { ...BUSINESS, plan: 'essencial' } });
+    const { servico } = montar({ usuario: { ...BUSINESS, plan: 'free' } });
     await expect(servico.assertFeature('u1', 'live_copilot')).rejects.toBeInstanceOf(
       HttpException,
     );

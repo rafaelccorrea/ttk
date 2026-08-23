@@ -11,6 +11,8 @@ import { Observable, Subject } from 'rxjs';
  *    resposta, ou o chat inteiro repetiu a mesma dúvida em trinta segundos);
  *  - `stats`: os contadores da run, para o rodapé;
  *  - `credits_exhausted`: acabaram os minutos e a transmissão parou por saldo;
+ *  - `duration_limit_reached`: a run bateu o teto de duração do plano e foi
+ *    encerrada — fim normal, não erro; o painel mostra o CTA de upgrade;
  *  - `mode`: a transmissão trocou entre painel e envio automático. Painel e app
  *    desktop são clientes diferentes da MESMA run, e sem este aviso um dos dois
  *    seguiria mostrando um modo que já não é o que está acontecendo no chat —
@@ -23,6 +25,7 @@ export type LiveEventType =
   | 'escalation'
   | 'stats'
   | 'credits_exhausted'
+  | 'duration_limit_reached'
   | 'mode'
   | 'delivery'
   | 'ended';

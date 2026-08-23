@@ -12,6 +12,7 @@ import { LiveFaq } from './entities/live-faq.entity';
 import { LiveProduct } from './entities/live-product.entity';
 import { LiveReply } from './entities/live-reply.entity';
 import { LiveRun } from './entities/live-run.entity';
+import { LiveRunEvent } from './entities/live-run-event.entity';
 import { LiveRunMetric } from './entities/live-run-metric.entity';
 import { LiveSession } from './entities/live-session.entity';
 import { LiveSelectorFailure } from './entities/live-selector-failure.entity';
@@ -50,6 +51,7 @@ import { LiveService } from './live.service';
       LiveProduct,
       LiveFaq,
       LiveRun,
+      LiveRunEvent,
       LiveRunMetric,
       LiveChatMessage,
       LiveReply,

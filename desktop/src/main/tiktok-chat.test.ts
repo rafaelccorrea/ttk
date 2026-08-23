@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { AnonimizadorDeAutor, RawChatMessage } from './tiktok-chat';
+import {
+  AnonimizadorDeAutor,
+  msgIdSintetico,
+  RawChatMessage,
+  usuarioEstaBloqueado,
+} from './tiktok-chat';
 
 /**
  * A fronteira de privacidade do produto.
@@ -87,5 +92,77 @@ describe('anonimização do autor do chat', () => {
       const saida = anon.mapear(mensagem(nome));
       expect(saida.authorHash.length).toBeGreaterThan(0);
     }
+  });
+});
+
+/*
+ * O id sintético do cartão de pergunta (`questionNew` não tem `msgId`). O
+ * contrato é o da idempotência: reprocessar o MESMO evento numa reconexão tem
+ * que colidir no backend, e perguntas diferentes não podem colidir nunca.
+ */
+describe('id sintético do questionNew', () => {
+  const agora = new Date('2026-08-17T12:00:30Z').getTime();
+
+  it('é estável dentro da janela — a reconexão colide, por projeto', () => {
+    expect(msgIdSintetico('tem em azul?', 'maria', 60_000, agora)).toBe(
+      msgIdSintetico('tem em azul?', 'maria', 60_000, agora + 20_000),
+    );
+  });
+
+  it('muda quando a janela vira — a mesma pergunta, depois, é nova', () => {
+    expect(msgIdSintetico('tem em azul?', 'maria', 60_000, agora)).not.toBe(
+      msgIdSintetico('tem em azul?', 'maria', 60_000, agora + 120_000),
+    );
+  });
+
+  it('muda por autor e por texto', () => {
+    expect(msgIdSintetico('tem em azul?', 'maria', 60_000, agora)).not.toBe(
+      msgIdSintetico('tem em azul?', 'joana', 60_000, agora),
+    );
+    expect(msgIdSintetico('tem em azul?', 'maria', 60_000, agora)).not.toBe(
+      msgIdSintetico('tem em rosa?', 'maria', 60_000, agora),
+    );
+  });
+
+  it('tem o prefixo que o separa de um msgId numérico real', () => {
+    expect(msgIdSintetico('quanto custa?', 'ana', 60_000, agora)).toMatch(
+      /^q:[a-f0-9]{64}$/,
+    );
+  });
+
+  it('não vaza o @ do autor dentro do id', () => {
+    expect(msgIdSintetico('oi', 'maria_vendas', 60_000, agora)).not.toContain(
+      'maria_vendas',
+    );
+  });
+});
+
+describe('anonimização da pergunta declarada', () => {
+  it('leva a flag isQuestion adiante, sem inventá-la nas comuns', () => {
+    const anon = new AnonimizadorDeAutor('run-1');
+    const pergunta = anon.mapear({ ...mensagem('joao'), isQuestion: true });
+    expect(pergunta.isQuestion).toBe(true);
+    const comum = anon.mapear(mensagem('joao'));
+    expect(comum).not.toHaveProperty('isQuestion');
+  });
+});
+
+describe('bloqueio de espectador por @', () => {
+  it('casa por @ normalizado — arroba, caixa e espaços não importam', () => {
+    const lista = ['@Maria_Vendas', ' curioso ', 'LOJA_X'];
+    expect(usuarioEstaBloqueado('maria_vendas', lista)).toBe(true);
+    expect(usuarioEstaBloqueado('@CURIOSO', lista)).toBe(true);
+    expect(usuarioEstaBloqueado('loja_x', lista)).toBe(true);
+    expect(usuarioEstaBloqueado('outra_pessoa', lista)).toBe(false);
+  });
+
+  it('exige igualdade exata — bloquear "ana" não cala "mariana"', () => {
+    expect(usuarioEstaBloqueado('mariana', ['ana'])).toBe(false);
+    expect(usuarioEstaBloqueado('ana', ['ana'])).toBe(true);
+  });
+
+  it('não bloqueia nome vazio nem explode com lista vazia', () => {
+    expect(usuarioEstaBloqueado('', ['ana'])).toBe(false);
+    expect(usuarioEstaBloqueado('ana', [])).toBe(false);
   });
 });

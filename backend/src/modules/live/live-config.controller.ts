@@ -115,6 +115,7 @@ export class LiveConfigController {
       version: dto.version,
       html: dto.html,
       userAgent: dto.userAgent ?? null,
+      contexto: dto.contexto ?? null,
     });
   }
 }

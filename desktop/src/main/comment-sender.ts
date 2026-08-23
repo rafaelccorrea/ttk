@@ -45,7 +45,18 @@ import { montarEsqueleto } from './esqueleto-html';
 export interface ConfigDeEnvio {
   version: number;
   killSwitch: boolean;
-  seletores: { campo: string[]; botaoEnviar: string[] };
+  seletores: {
+    campo: string[];
+    botaoEnviar: string[];
+    /** Banner de aviso/restrição — consumido pelo `warning-detector`. */
+    aviso: string[];
+    /** Botão de encerrar a live — só com o opt-in do vendedor ligado. */
+    botaoEncerrar: string[];
+    /** Painel de produtos da live — consumido pelo `product-pinner`. */
+    painelProdutos: string[];
+    /** Botão de fixar produto dentro do painel. */
+    botaoPin: string[];
+  };
   limites: {
     cooldownMs: number;
     maxPorMinuto: number;
@@ -128,6 +139,13 @@ const CONFIG_PADRAO: ConfigDeEnvio = {
   seletores: {
     campo: ['[data-e2e="comment-text-input"]', '[data-e2e="comment-input"]'],
     botaoEnviar: ['[data-e2e="comment-post"]'],
+    // Vazios de propósito: detector de aviso e pin só rodam com a cascata
+    // REMOTA em mãos — sem rede não há proteção nem pin, e tudo bem; o que
+    // não pode faltar offline é o freio do envio, acima.
+    aviso: [],
+    botaoEncerrar: [],
+    painelProdutos: [],
+    botaoPin: [],
   },
   limites: {
     cooldownMs: 8_000,

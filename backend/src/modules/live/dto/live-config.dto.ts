@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -42,6 +43,24 @@ export class ReportarFalhaDeSeletorDto {
   @IsString()
   @MaxLength(300)
   userAgent?: string;
+
+  /**
+   * QUAL cascata falhou. Com quatro em produção (campo, botão de enviar,
+   * banner de aviso, botão de encerrar), um relatório sem contexto é ambíguo —
+   * e a urgência de cada uma é diferente. Lista fechada: o app não inventa
+   * categorias.
+   */
+  @ApiPropertyOptional({ example: 'aviso' })
+  @IsOptional()
+  @IsIn([
+    'campo',
+    'botao_enviar',
+    'aviso',
+    'botao_encerrar',
+    'painel_produtos',
+    'botao_pin',
+  ])
+  contexto?: string;
 }
 
 /**

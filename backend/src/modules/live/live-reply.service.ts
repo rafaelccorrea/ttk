@@ -3,7 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'node:crypto';
 import { Repository } from 'typeorm';
-import { PLAN_RANK } from '../billing/billing.config';
+import { LIVE_MIN_MINUTES, PLAN_RANK } from '../billing/billing.config';
 import { BillingService } from '../billing/billing.service';
 import { AiCostService } from '../telemetry/ai-cost.service';
 import { killSwitchLigado } from './live-config.service';
@@ -22,7 +22,42 @@ import {
   LiveReplyDecision,
   LiveReplyDeliveryStatus,
 } from './entities/live-reply.entity';
-import { LiveRun, LiveRunMode } from './entities/live-run.entity';
+import {
+  LiveRun,
+  LiveRunEndReason,
+  LiveRunMode,
+} from './entities/live-run.entity';
+
+/**
+ * A run bateu o teto de duração do plano?
+ *
+ * `minutesCharged` é o relógio, e não `startedAt`, de propósito: o contador só
+ * anda enquanto o desktop manda batimento — uma live que caiu e voltou horas
+ * depois não "envelheceu" no intervalo, porque ninguém foi cobrado nele. Teto
+ * zero ou negativo desliga o limite (não existe no catálogo, mas a função não
+ * pode transformar um dado ruim em live de zero minutos).
+ */
+export function excedeuDuracao(
+  minutosCobrados: number,
+  maxMinutos: number,
+): boolean {
+  return maxMinutos > 0 && minutosCobrados >= maxMinutos;
+}
+
+/**
+ * Este minuto ainda está dentro do bloco mínimo pago na abertura da run?
+ *
+ * A abertura debita `LIVE_MIN_MINUTES` de uma vez (live de menos de dez
+ * minutos paga dez — é o piso do produto); os primeiros batimentos então só
+ * RESERVAM o minuto para o relógio de duração, sem debitar de novo.
+ */
+export function dentroDoBlocoMinimo(
+  minutosCobradosAntes: number,
+  blocoMinimo: number = LIVE_MIN_MINUTES,
+): boolean {
+  return minutosCobradosAntes < blocoMinimo;
+}
+import { LiveRunEvent, LiveRunEventTipo } from './entities/live-run-event.entity';
 import { LiveRunMetric } from './entities/live-run-metric.entity';
 import { LiveSession } from './entities/live-session.entity';
 
@@ -293,6 +328,23 @@ export interface MensagemDoChat {
   authorHash: string;
   text: string;
   receivedAt: Date;
+  /** O TikTok a marcou como pergunta (`questionNew`) — ver o DTO. */
+  isQuestion?: boolean;
+}
+
+/**
+ * Perguntas declaradas (cartão de pergunta do TikTok) na frente do lote.
+ *
+ * A ordem DENTRO de cada grupo é preservada (sort estável): o lote continua
+ * cronológico, só que quem usou o cartão — o sinal mais explícito de intenção
+ * de compra que o webcast entrega — não espera atrás de "kkkk" e emoji.
+ */
+export function ordenarPorPrioridade<T extends { isQuestion?: boolean }>(
+  lote: T[],
+): T[] {
+  return [...lote].sort(
+    (a, b) => Number(b.isQuestion === true) - Number(a.isQuestion === true),
+  );
 }
 
 /** A base de uma run, montada uma vez e mantida em memória do processo. */
@@ -805,6 +857,8 @@ export class LiveReplyService {
     private readonly usuarios: Repository<AppUser>,
     @InjectRepository(LiveRunMetric)
     private readonly metricas: Repository<LiveRunMetric>,
+    @InjectRepository(LiveRunEvent)
+    private readonly eventosDaRun: Repository<LiveRunEvent>,
     private readonly ai: AiService,
     private readonly billing: BillingService,
     private readonly custos: AiCostService,
@@ -850,6 +904,26 @@ export class LiveReplyService {
 
     await this.billing.grantLiveTrial(userId);
 
+    /*
+     * O bloco mínimo é debitado NA ABERTURA: live de menos de dez minutos paga
+     * dez. Cobrar aqui (e não diluído nos batimentos) faz o 402 acontecer
+     * antes de existir run — quem não tem nem o piso de saldo descobre antes
+     * de entrar ao vivo, não no primeiro minuto. Os primeiros
+     * `LIVE_MIN_MINUTES` batimentos só reservam o minuto, sem debitar de novo
+     * (ver `dentroDoBlocoMinimo` em `cobrarMinuto`).
+     */
+    await this.billing.chargeLiveMinutes(userId, LIVE_MIN_MINUTES);
+    void this.custos.registrar(
+      'live_reply',
+      'cobranca',
+      {},
+      {
+        userId,
+        chargedUnit: 'live_minute',
+        chargedAmount: LIVE_MIN_MINUTES,
+      },
+    );
+
     const run = await this.runs.save(
       this.runs.create({
         userId,
@@ -872,9 +946,13 @@ export class LiveReplyService {
     userId: string,
     runId: string,
     motivo?: string,
+    fim?: LiveRunEndReason,
   ): Promise<LiveRun> {
     const run = await this.acharRun(userId, runId);
-    run.status = motivo ? 'erro' : 'encerrada';
+    // Um fim declarado (ex.: `aviso_tiktok`) é um encerramento DELIBERADO, não
+    // uma falha — só o motivo sem fim declarado continua virando `erro`.
+    run.status = motivo && !fim ? 'erro' : 'encerrada';
+    run.endReason = fim ?? (motivo ? 'erro' : 'manual');
     run.endedAt = new Date();
     if (motivo) run.errorMessage = motivo.slice(0, 500);
     this.bases.delete(run.id);
@@ -886,6 +964,30 @@ export class LiveReplyService {
   /** A run do usuário, com os contadores atualizados. */
   async obterRun(userId: string, runId: string): Promise<LiveRun> {
     return this.acharRun(userId, runId);
+  }
+
+  /**
+   * Grava um evento de auditoria da run (aviso do TikTok, pin de produto).
+   *
+   * O detalhe é truncado AQUI além do DTO: este texto vem da tela do TikTok
+   * via app do cliente, e o banco é o último lugar onde um payload criativo
+   * pode crescer.
+   */
+  async registrarEvento(
+    userId: string,
+    runId: string,
+    dados: { tipo: LiveRunEventTipo; acao?: string; detalhe?: string },
+  ): Promise<void> {
+    const run = await this.acharRun(userId, runId);
+    await this.eventosDaRun.save(
+      this.eventosDaRun.create({
+        liveRunId: run.id,
+        userId,
+        tipo: dados.tipo,
+        acao: dados.acao?.slice(0, 40) ?? null,
+        detalhe: dados.detalhe?.slice(0, 500) ?? null,
+      }),
+    );
   }
 
   /**
@@ -1652,9 +1754,11 @@ export class LiveReplyService {
     const paraResponder = new Map<string, LiveChatMessage>();
     const escaladas: LiveChatMessage[] = [];
 
-    for (const entrada of lote) {
+    for (const entrada of ordenarPorPrioridade(lote)) {
       const normalizado = normalizarTexto(entrada.text);
-      const pergunta = ehPergunta(entrada.text);
+      // Pergunta declarada pelo espectador fura a heurística: quem abriu o
+      // cartão de pergunta não pode ser descartado como ruído.
+      const pergunta = entrada.isQuestion === true || ehPergunta(entrada.text);
       const clusterKey = normalizado ? clusterKeyDe(normalizado) : null;
 
       const mensagem = await this.gravarMensagem(run, entrada, {
@@ -2033,6 +2137,31 @@ export class LiveReplyService {
     if (!run) throw new NotFoundException('Transmissão não encontrada.');
     if (run.status === 'encerrada' || run.status === 'erro') return run;
 
+    /*
+     * O teto de duração do plano é checado ANTES da reserva: o minuto que
+     * estoura o teto não é cobrado nem contado. É um fim NORMAL (status
+     * `encerrada`, não `erro`) — a live cumpriu o que o plano vende; quem
+     * decide se o degrau de cima vale a pena é o vendedor, avisado pelo
+     * evento `duration_limit_reached` no fluxo.
+     */
+    const tetoDeDuracao = await this.billing.liveDurationLimitMinutes(
+      run.userId,
+    );
+    if (excedeuDuracao(run.minutesCharged, tetoDeDuracao)) {
+      run.status = 'encerrada';
+      run.endReason = 'limite_duracao';
+      run.endedAt = new Date();
+      this.bases.delete(run.id);
+      await this.cancelarPendentes(
+        run.id,
+        'A transmissão atingiu o limite de duração do plano.',
+      );
+      this.logger.log(
+        `Run ${run.id} encerrada por limite de duração (${tetoDeDuracao} min).`,
+      );
+      return this.runs.save(run);
+    }
+
     const carimboAnterior = run.lastChargedAt;
     const limite = new Date(Date.now() - JANELA_DE_COBRANCA_MS);
     const reserva = await this.runs
@@ -2054,27 +2183,35 @@ export class LiveReplyService {
       return run;
     }
 
+    /*
+     * Os primeiros `LIVE_MIN_MINUTES` já foram pagos na abertura (bloco
+     * mínimo): o batimento continua RESERVANDO o minuto — é ele o relógio de
+     * duração — mas não debita nem registra receita de novo.
+     */
+    const minutoPrepago = dentroDoBlocoMinimo(run.minutesCharged);
     try {
-      await this.billing.chargeLiveMinutes(run.userId, 1);
-      /*
-       * A receita do copiloto ao vivo entra no relatório de margem AQUI, e não
-       * na chamada do modelo, porque custo e receita acontecem em momentos
-       * diferentes: o custo nasce a cada resposta gerada, a receita nasce no
-       * relógio. Registrar um evento de custo zero com o minuto cobrado é o que
-       * fecha a conta — sem ele, `live_reply` apareceria com todo o custo e
-       * receita nenhuma, e o relatório leria como prejuízo permanente um
-       * recurso que está pago.
-       */
-      void this.custos.registrar(
-        'live_reply',
-        'cobranca',
-        {},
-        {
-          userId: run.userId,
-          chargedUnit: 'live_minute',
-          chargedAmount: 1,
-        },
-      );
+      if (!minutoPrepago) {
+        await this.billing.chargeLiveMinutes(run.userId, 1);
+        /*
+         * A receita do copiloto ao vivo entra no relatório de margem AQUI, e
+         * não na chamada do modelo, porque custo e receita acontecem em
+         * momentos diferentes: o custo nasce a cada resposta gerada, a receita
+         * nasce no relógio. Registrar um evento de custo zero com o minuto
+         * cobrado é o que fecha a conta — sem ele, `live_reply` apareceria com
+         * todo o custo e receita nenhuma, e o relatório leria como prejuízo
+         * permanente um recurso que está pago.
+         */
+        void this.custos.registrar(
+          'live_reply',
+          'cobranca',
+          {},
+          {
+            userId: run.userId,
+            chargedUnit: 'live_minute',
+            chargedAmount: 1,
+          },
+        );
+      }
     } catch (error) {
       // O minuto foi reservado e não foi entregue: devolve o contador e o
       // carimbo ao que eram, senão a próxima tentativa ficaria bloqueada por
@@ -2092,6 +2229,7 @@ export class LiveReplyService {
       const status = error instanceof HttpException ? error.getStatus() : 0;
       if (status !== 402 && status !== 403) throw error;
       run.status = 'erro';
+      run.endReason = 'creditos';
       run.endedAt = new Date();
       run.errorMessage =
         error instanceof HttpException

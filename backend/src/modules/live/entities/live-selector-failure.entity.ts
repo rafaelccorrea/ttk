@@ -59,6 +59,14 @@ export class LiveSelectorFailure {
   @Column({ type: 'varchar', nullable: true })
   userAgent: string | null;
 
+  /**
+   * QUAL cascata falhou (`campo`, `botao_enviar`, `aviso`, `botao_encerrar`,
+   * `painel_produtos`, `botao_pin`). Nulo nos relatos antigos, de quando só
+   * existia a cascata do envio.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  context: string | null;
+
   @Index('IDX_live_selector_failures_createdAt')
   @CreateDateColumn()
   createdAt: Date;

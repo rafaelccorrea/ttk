@@ -3,6 +3,9 @@ import Store from 'electron-store';
 import { ApiClient } from './api-client';
 import { MODO_SIMULACAO, SimuladorChatSource } from './chat-simulado';
 import { EnviadorDeComentarios } from './comment-sender';
+import { fixarProduto, RotadorDeProdutos } from './product-pinner';
+import { usuarioEstaBloqueado } from './tiktok-chat';
+import { DetectorDeAviso, scriptDeEncerrar } from './warning-detector';
 import { AgregadorDeMetricas } from './metricas';
 import { AcumuladorDeLote, JANELA_LOTE_MS } from './rate-limiter';
 import {
@@ -50,6 +53,15 @@ const CONFIG_PADRAO: ConfiguracoesCopiloto = {
   limiarDescarte: 0.3,
   listaNegra: [],
   tamanhoDoLote: 12,
+  // Detectar o aviso é proteção sem custo; ENCERRAR por causa dele é drástico
+  // e começa desligado — ver o comentário no tipo (`desktop-api.ts`).
+  detectorAvisoAtivo: true,
+  encerrarAoDetectarAviso: false,
+  usuariosBloqueados: [],
+  // Rotação começa desligada: fixar produto mexe na vitrine do vendedor, e
+  // vitrine girando sozinha sem ele ter pedido é surpresa, não feature.
+  rotacaoDeProdutosAtiva: false,
+  rotacaoIntervaloMinutos: 10,
 };
 
 interface EsquemaDeConfig {
@@ -127,6 +139,11 @@ export class Copiloto {
    */
   private readonly enviador: EnviadorDeComentarios;
 
+  /** Varre a live à procura do banner de aviso do TikTok — ver F1 no plano. */
+  private detectorDeAviso: DetectorDeAviso | null = null;
+  /** Gira a vitrine: fixa o próximo produto da base a cada intervalo. */
+  private rotador: RotadorDeProdutos | null = null;
+
   private timerFila: NodeJS.Timeout | null = null;
   /** Um ciclo de fila por vez: dois em paralelo furariam o cooldown. */
   private rodandoFila = false;
@@ -201,6 +218,12 @@ export class Copiloto {
     return this.api.obterCarteiraLive();
   }
 
+  /** Os produtos da base conectada — vazio quando não há run em curso. */
+  async listarProdutosDaLive(): Promise<Array<{ id: string; title: string }>> {
+    if (!this.baseConectadaId) return [];
+    return this.api.listarProdutosDaBase(this.baseConectadaId);
+  }
+
   // --------------------------------------------------------------- conexão
   obterConexao(): EstadoConexao {
     return this.conexao;
@@ -264,6 +287,52 @@ export class Copiloto {
         this.api.enviarMetricas(pontos),
       );
       this.metricas.iniciar();
+
+      /*
+       * O detector de aviso nasce com a run e morre no `limpar`. Não roda na
+       * simulação — lá a "página" é nossa — e respeita o desliga do vendedor.
+       * A cascata vem do backend, como todo seletor: quando o TikTok mudar o
+       * banner, o conserto é deploy nosso, não release do app.
+       */
+      if (!simulada && this.lerConfiguracoes().detectorAvisoAtivo) {
+        const configEnvio = await this.api
+          .obterConfigDeEnvio()
+          .catch(() => null);
+        const seletoresAviso = configEnvio?.seletores.aviso ?? [];
+        if (seletoresAviso.length) {
+          const seletoresEncerrar = configEnvio?.seletores.botaoEncerrar ?? [];
+          this.detectorDeAviso = new DetectorDeAviso({
+            webContents: () => this.viewDoTikTok(),
+            seletores: () => seletoresAviso,
+            aoDetectar: (aviso) => {
+              void this.reagirAoAviso(aviso, seletoresEncerrar);
+            },
+          });
+          this.detectorDeAviso.iniciar();
+        }
+      }
+
+      /*
+       * O rotador nasce SEMPRE que a run é real, mas o interruptor é lido a
+       * cada batida (`ativa`): ligar a rotação no meio da live vale na hora,
+       * sem reconectar. Desligado, ele é um timer de 30s que não faz nada.
+       */
+      if (!simulada) {
+        this.rotador = new RotadorDeProdutos({
+          ativa: () => this.lerConfiguracoes().rotacaoDeProdutosAtiva,
+          intervaloMs: () =>
+            this.lerConfiguracoes().rotacaoIntervaloMinutos * 60_000,
+          titulos: () =>
+            this.listarProdutosDaLive().then((ps) => ps.map((p) => p.title)),
+          fixar: (titulo) => this.fixarProduto(titulo),
+          aoParar: (motivo) => {
+            // O mesmo canal do pin manual: a tela mostra o motivo e o vendedor
+            // decide se fixa à mão ou religa a rotação.
+            this.publicar('live:aviso-tiktok', { texto: motivo, acao: 'pausado' });
+          },
+        });
+        this.rotador.iniciar();
+      }
       this.acumulador = new AcumuladorDeLote<ChatMessageAnonima>(
         async (lote) => {
           /*
@@ -377,6 +446,17 @@ export class Copiloto {
         });
       }
       if (this.pausado || !this.anonimizador || !this.acumulador) return;
+      // O bloqueio por @ vem ANTES do anonimizador, no único ponto autorizado
+      // a olhar o username: mensagem de bloqueado não vira hash, lote nem
+      // custo. A lista é local (electron-store) e nunca sobe ao backend.
+      if (
+        usuarioEstaBloqueado(
+          mensagem.username,
+          this.lerConfiguracoes().usuariosBloqueados,
+        )
+      ) {
+        return;
+      }
       if (this.filtrada(mensagem.text)) return;
       // A anonimização acontece AQUI, antes do acumulador: assim nenhuma
       // estrutura que possa ser enfileirada, logada ou serializada chega a
@@ -429,7 +509,10 @@ export class Copiloto {
     return this.conexao;
   }
 
-  async encerrar(motivo?: string): Promise<EstadoConexao> {
+  async encerrar(
+    motivo?: string,
+    fim?: 'manual' | 'aviso_tiktok',
+  ): Promise<EstadoConexao> {
     // A cauda do lote vai junto: são as últimas perguntas da live, geralmente
     // as de "ainda dá tempo de comprar?".
     this.acumulador?.descarregar();
@@ -438,7 +521,7 @@ export class Copiloto {
     await this.metricas?.encerrar().catch(() => undefined);
     this.metricas = null;
 
-    await this.api.encerrarRun(motivo).catch(() => undefined);
+    await this.api.encerrarRun(motivo, fim).catch(() => undefined);
     await this.limpar();
 
     this.atualizarConexao({
@@ -454,6 +537,10 @@ export class Copiloto {
     // O envio para PRIMEIRO: a run está acabando, e postar um comentário depois
     // do fim da transmissão é o pior desfecho possível desta fase.
     this.pararFila();
+    this.detectorDeAviso?.parar();
+    this.detectorDeAviso = null;
+    this.rotador?.parar();
+    this.rotador = null;
     this.chat?.disconnect();
     this.chat = null;
     this.acumulador?.parar();
@@ -664,6 +751,80 @@ export class Copiloto {
     this.pararFila();
   }
 
+  /**
+   * A reação ao banner de aviso do TikTok, na ordem do risco: primeiro o app
+   * PARA de escrever (fila parada, envio pausado), depois avisa — a tela do
+   * vendedor e a trilha de auditoria — e só ENCERRA a transmissão se o
+   * vendedor ligou o opt-in nas configurações. O padrão nunca encerra: um
+   * falso positivo que pausa custa cliques; um que derruba a live custa a
+   * venda da noite.
+   */
+  private async reagirAoAviso(
+    aviso: { seletorUsado: string; textoResumo: string },
+    seletoresEncerrar: string[],
+  ): Promise<void> {
+    const encerrarTambem = this.lerConfiguracoes().encerrarAoDetectarAviso;
+    const acao = encerrarTambem ? 'encerrado' : 'pausado';
+
+    this.pararFila();
+    this.atualizarEnvio({ pausado: true });
+
+    this.publicar('live:aviso-tiktok', {
+      texto: aviso.textoResumo,
+      acao,
+    });
+    await this.api
+      .registrarEventoDaRun('aviso_tiktok', acao, aviso.textoResumo)
+      .catch(() => undefined);
+
+    if (!encerrarTambem) return;
+    const conteudo = this.viewDoTikTok();
+    if (conteudo && !conteudo.isDestroyed() && seletoresEncerrar.length) {
+      try {
+        await conteudo.executeJavaScript(
+          scriptDeEncerrar(seletoresEncerrar),
+          true,
+        );
+      } catch {
+        // O encerramento no backend acontece do mesmo jeito, logo abaixo — o
+        // clique é cortesia para a transmissão cair junto.
+      }
+    }
+    await this.encerrar(
+      'O TikTok emitiu um aviso de restrição.',
+      'aviso_tiktok',
+    ).catch(() => undefined);
+  }
+
+  /**
+   * Fixa um produto da base na live — best-effort, ver `product-pinner.ts`.
+   * O desfecho (sucesso ou etapa que falhou) vai para a trilha de auditoria.
+   */
+  async fixarProduto(titulo: string): Promise<{ ok: boolean; motivo?: string }> {
+    const config = await this.api.obterConfigDeEnvio().catch(() => null);
+    const resultado = await fixarProduto(
+      this.viewDoTikTok(),
+      config?.seletores.painelProdutos ?? [],
+      config?.seletores.botaoPin ?? [],
+      titulo,
+    );
+    await this.api
+      .registrarEventoDaRun(
+        'pin_produto',
+        resultado.ok ? 'ok' : 'falhou',
+        resultado.ok ? titulo : `${titulo} — ${resultado.etapaFalhou}`,
+      )
+      .catch(() => undefined);
+    if (resultado.ok) return { ok: true };
+    return {
+      ok: false,
+      motivo:
+        resultado.etapaFalhou === 'produto'
+          ? 'Não encontrei este produto no painel da live. Abra o painel de produtos e tente de novo — ou fixe manualmente.'
+          : 'Não consegui clicar em fixar. O TikTok pode ter mudado a tela — fixe manualmente que o resto continua funcionando.',
+    };
+  }
+
   // --------------------------------------------------------------- eventos
   /**
    * Repassa o evento do SSE ao painel, aplicando os limiares do vendedor.
@@ -714,6 +875,13 @@ export class Copiloto {
         status: 'sem_saldo',
         motivo: evento.data.motivo,
       });
+    }
+
+    if (evento.type === 'duration_limit_reached') {
+      // O servidor encerrou pelo teto de duração do plano; o `ended` chega
+      // logo atrás com o estado final — aqui só se garante que nada mais
+      // tenta sair para o chat no intervalo.
+      this.pararFila();
     }
 
     if (evento.type === 'ended') {
@@ -797,6 +965,17 @@ export class Copiloto {
       tamanhoDoLote: Math.min(
         LOTE_MAXIMO,
         Math.max(LOTE_MINIMO, Math.round(Number(valores.tamanhoDoLote) || 0)),
+      ),
+      detectorAvisoAtivo: valores.detectorAvisoAtivo !== false,
+      encerrarAoDetectarAviso: valores.encerrarAoDetectarAviso === true,
+      usuariosBloqueados: (valores.usuariosBloqueados ?? [])
+        .map((u) => String(u).trim().replace(/^@/, '').toLowerCase())
+        .filter(Boolean)
+        .slice(0, 200),
+      rotacaoDeProdutosAtiva: valores.rotacaoDeProdutosAtiva === true,
+      rotacaoIntervaloMinutos: Math.min(
+        60,
+        Math.max(2, Math.round(Number(valores.rotacaoIntervaloMinutos) || 10)),
       ),
     };
 

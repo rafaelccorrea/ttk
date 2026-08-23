@@ -128,6 +128,11 @@ export function useFluxoDaLive(): FluxoDaLive {
         case 'credits_exhausted':
           setSemSaldo(evento.data.motivo ?? 'Seus minutos de live acabaram.');
           break;
+        case 'duration_limit_reached':
+          // Fim normal, não falta de saldo: a mensagem fala de limite do
+          // plano, e o `ended` que vem em seguida confirma o estado final.
+          setEncerrada('A transmissão atingiu o limite de duração do plano.');
+          break;
         case 'ended':
           setStats(evento.data);
           setEncerrada(evento.data.motivo);

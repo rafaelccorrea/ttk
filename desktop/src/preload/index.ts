@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import type {
+  AvisoDoTikTok,
   CarteiraLive,
   ConfiguracoesCopiloto,
+  ProdutoDaLive,
   EstadoAtivacao,
   EstadoAtualizacao,
   EstadoConexao,
@@ -128,6 +130,15 @@ const api: PikPokDesktopApi = {
     ipcRenderer.invoke('envio:pausar', pausado) as Promise<EstadoEnvio>,
 
   aoReceberEvento: (ouvinte) => assinar<LiveEvent>('live:evento', ouvinte),
+  aoAvisoDoTikTok: (ouvinte) =>
+    assinar<AvisoDoTikTok>('live:aviso-tiktok', ouvinte),
+  listarProdutosDaLive: () =>
+    ipcRenderer.invoke('produtos:listar') as Promise<ProdutoDaLive[]>,
+  fixarProduto: (titulo) =>
+    ipcRenderer.invoke('produtos:fixar', titulo) as Promise<{
+      ok: boolean;
+      motivo?: string;
+    }>,
 
   copiarResposta: (replyId, texto) =>
     ipcRenderer.invoke('live:copiarResposta', { replyId, texto }) as Promise<void>,

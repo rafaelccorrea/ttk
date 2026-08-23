@@ -29,7 +29,16 @@ export type LiveEventType =
   | 'delivery'
   | 'mode'
   | 'credits_exhausted'
+  | 'duration_limit_reached'
   | 'ended';
+
+/** `live_runs.endReason` — ver `entities/live-run.entity.ts`. */
+export type LiveRunEndReason =
+  | 'manual'
+  | 'limite_duracao'
+  | 'creditos'
+  | 'aviso_tiktok'
+  | 'erro';
 
 /** `live_runs.mode` — ver `entities/live-run.entity.ts`. */
 export type LiveRunMode = 'painel' | 'auto';
@@ -78,6 +87,8 @@ export interface LiveStatsEvent {
   mode: LiveRunMode;
   repliesSent: number;
   deliveryFailures: number;
+  /** Preenchido quando a run terminou; nulo enquanto está no ar. */
+  endReason: LiveRunEndReason | null;
 }
 
 /**
@@ -111,6 +122,16 @@ export interface LiveCreditsExhaustedEvent {
   motivo: string | null;
 }
 
+/**
+ * A run bateu o teto de duração do plano e foi encerrada pelo servidor. Fim
+ * NORMAL, não erro — o `ended` vem logo atrás no mesmo fluxo.
+ */
+export interface LiveDurationLimitEvent {
+  runId: string;
+  /** Minutos que a transmissão durou (o teto do plano, na prática). */
+  minutos: number;
+}
+
 /** Último evento do fluxo. Depois dele o canal fecha. */
 export interface LiveEndedEvent extends LiveStatsEvent {
   motivo: string;
@@ -128,6 +149,7 @@ export type LiveEvent =
   | { type: 'delivery'; data: LiveDeliveryEvent }
   | { type: 'mode'; data: LiveModeEvent }
   | { type: 'credits_exhausted'; data: LiveCreditsExhaustedEvent }
+  | { type: 'duration_limit_reached'; data: LiveDurationLimitEvent }
   | { type: 'ended'; data: LiveEndedEvent };
 
 /**
@@ -144,4 +166,6 @@ export interface ChatMessagePayload {
   text: string;
   /** ISO. Omitido, o backend carimba a hora de chegada dele. */
   receivedAt?: string;
+  /** Veio do cartão de pergunta do TikTok (`questionNew`); só quando `true`. */
+  isQuestion?: boolean;
 }

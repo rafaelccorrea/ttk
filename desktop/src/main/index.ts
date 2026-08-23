@@ -660,6 +660,12 @@ function registrarIpc(): void {
   ipcMain.handle('config:salvar', (_evento, valores: ConfiguracoesCopiloto) =>
     copiloto.salvarConfiguracoes(valores),
   );
+
+  ipcMain.handle('produtos:listar', () => copiloto.listarProdutosDaLive());
+  ipcMain.handle('produtos:fixar', (_evento, titulo: unknown) =>
+    // O renderer é conteúdo: título vira string curta aqui, não lá.
+    copiloto.fixarProduto(String(titulo ?? '').slice(0, 300)),
+  );
 }
 
 /**

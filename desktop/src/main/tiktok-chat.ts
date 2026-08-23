@@ -45,6 +45,12 @@ export interface RawChatMessage {
   username: string;
   text: string;
   receivedAt: Date;
+  /**
+   * O espectador usou o CARTÃO DE PERGUNTA do TikTok (`questionNew`). Esse
+   * evento não tem id nativo — o id vem de `msgIdSintetico` — e a flag segue
+   * até o backend, que responde perguntas declaradas na frente do lote.
+   */
+  isQuestion?: boolean;
 }
 
 /**
@@ -82,6 +88,52 @@ export interface ChatMessageAnonima {
   authorHash: string;
   text: string;
   receivedAt: string;
+  /** Só presente (e `true`) quando veio do cartão de pergunta do TikTok. */
+  isQuestion?: boolean;
+}
+
+/** `@Maria_Vendas ` → `maria_vendas` — a forma canônica do bloqueio. */
+export function normalizarUsuario(username: string): string {
+  return (username || '').trim().replace(/^@/, '').toLowerCase();
+}
+
+/**
+ * O espectador está na lista de bloqueio do vendedor?
+ *
+ * Comparação EXATA por @ normalizado, não substring: bloquear "ana" não pode
+ * calar "mariana". A checagem roda ANTES do anonimizador — é o único ponto do
+ * app autorizado a olhar o username, e a lista nunca sai da máquina.
+ */
+export function usuarioEstaBloqueado(
+  username: string,
+  bloqueados: string[],
+): boolean {
+  const alvo = normalizarUsuario(username);
+  if (!alvo) return false;
+  return bloqueados.some((b) => normalizarUsuario(b) === alvo);
+}
+
+/**
+ * Id sintético e ESTÁVEL para o `questionNew`, que chega sem `msgId`.
+ *
+ * O backend deduplica por `externalMessageId`, e a reconexão reenvia o
+ * histórico — então o id precisa sair igual para o MESMO evento reprocessado.
+ * Texto + autor + janela de tempo dá isso: dentro da janela (1 min por
+ * padrão), a repetição colide e o insert vira no-op; a MESMA pergunta feita de
+ * novo meia hora depois é, para todos os efeitos, uma pergunta nova.
+ * O prefixo `q:` evita colisão com um `msgId` numérico real do webcast.
+ */
+export function msgIdSintetico(
+  texto: string,
+  autor: string,
+  janelaMs = 60_000,
+  agora = Date.now(),
+): string {
+  const janela = Math.floor(agora / Math.max(janelaMs, 1));
+  return (
+    'q:' +
+    createHash('sha256').update(`${texto}|${autor}|${janela}`).digest('hex')
+  );
 }
 
 const BACKOFF_INICIAL_MS = 1_000;
@@ -125,6 +177,16 @@ interface WebcastGiftPayload {
 /** `social` — follow e share chegam juntos, separados pelo `displayType`. */
 interface WebcastSocialPayload {
   displayType?: string;
+}
+
+/**
+ * `questionNew` — o cartão de pergunta. A lib ACHATA `questionDetails` no
+ * objeto do evento (`Object.assign` no conversor dela), então `questionText`
+ * e `user` chegam no topo — e NÃO há `msgId` neste evento.
+ */
+interface WebcastQuestionPayload {
+  questionText?: string;
+  user?: { uniqueId?: string; nickname?: string };
 }
 
 /**
@@ -231,6 +293,25 @@ export class WebcastChatSource implements ChatSource {
         diamonds: Math.max(0, Number(dados.diamondCount ?? 0)) * vezes,
       });
     });
+    /*
+     * O cartão de pergunta é o sinal mais explícito de intenção que o webcast
+     * entrega — quem o usa está esperando resposta, não conversando. Vira
+     * mensagem normal do funil (anonimizador → lote → backend), só que com a
+     * flag e um id sintético, porque este evento não tem `msgId`.
+     */
+    conexao.on('questionNew', (dados: WebcastQuestionPayload) => {
+      const texto = (dados.questionText ?? '').trim();
+      const autor = dados.user?.uniqueId ?? dados.user?.nickname ?? '';
+      if (!texto) return;
+      this.aoReceber?.({
+        msgId: msgIdSintetico(texto, autor),
+        username: autor,
+        text: texto,
+        receivedAt: new Date(),
+        isQuestion: true,
+      });
+    });
+
     conexao.on('social', (dados: WebcastSocialPayload) => {
       const tipo = dados.displayType ?? '';
       if (/follow/i.test(tipo)) this.aoMedir?.({ kind: 'follow' });
@@ -366,6 +447,8 @@ export class AnonimizadorDeAutor {
       authorHash,
       text: mensagem.text,
       receivedAt: mensagem.receivedAt.toISOString(),
+      // Só viaja quando é verdade: o payload comum não carrega campo morto.
+      ...(mensagem.isQuestion ? { isQuestion: true } : {}),
     };
   }
 }

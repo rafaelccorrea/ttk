@@ -197,12 +197,28 @@ Mesma trava no Multiplicador: o clipe é de graça, a montagem é que custa — 
 subir dezenas de vídeos com a carteira zerada termina em 402 com a curadoria
 toda já feita.
 
-O **Pro** alcança o copiloto no modo painel, com os 10 minutos de cortesia — é a
-prova que vende o degrau de cima. O **Business** inclui 5 horas por mês e é o
-único com **envio automático**, e a razão não é preço, é risco: é o único lugar
-do produto onde escrevemos em nome do vendedor, dentro da plataforma dele. Isso
-pede o degrau que já vem com suporte de gente. A trava do envio vive em
-`trocarModo`, não no gate de feature.
+O copiloto no modo painel abre no **Essencial** (pague por hora via packs, até
+15h/mês de teto). O **Pro** inclui 2 horas por mês (teto de 40h) e o
+**Business** inclui 10 horas (teto de 60h) e é o único com **envio
+automático**, e a razão não é preço, é risco: é o único lugar do produto onde
+escrevemos em nome do vendedor, dentro da plataforma dele. Isso pede o degrau
+que já vem com suporte de gente. A trava do envio vive em `trocarModo`, não no
+gate de feature. Os 10 minutos de cortesia continuam sendo a prova de estreia,
+uma vez por conta.
+
+Além do saldo, três freios de tempo (ver `billing.config.ts`): duração máxima
+de UMA live por plano (6h; 24h no Business) — checada em `cobrarMinuto`, que
+encerra com `endReason='limite_duracao'`; teto MENSAL de transmissão
+(15h/40h/60h) — checado em `chargeLiveMinutes` contra o extrato do mês; e o
+bloco mínimo de 10 minutos, debitado na abertura da run.
+
+O app também **varre a live à procura do banner de aviso/restrição do TikTok**
+(`warning-detector.ts`, cascata `seletores.aviso` servida pelo backend): ao
+detectar, pausa o envio e notifica; encerrar automaticamente é opt-in nas
+configurações. **Fixar produto** (`product-pinner.ts`) é best-effort via DOM no
+painel do TikTok Shop. Os dois registram desfecho em `live_run_events`. O
+evento `questionNew` do webcast (cartão de pergunta) entra no funil com id
+sintético e prioridade na triagem.
 
 ---
 

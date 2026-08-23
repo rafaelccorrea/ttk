@@ -168,18 +168,23 @@ Piso com a margem mínima: R$ 0,084 por crédito.
 |---|---|---:|---:|---:|---:|
 | Essencial | mensal | 39,90 | 450 | 0,0887 | 1,48× |
 | Essencial | anual | 399,90 | 4.600 | 0,0869 | 1,45× |
-| Pro | mensal | 89,90 | 1.000 | 0,0899 | 1,50× |
-| Pro | anual | 899,90 | 10.400 | 0,0865 | **1,44×** |
-| Business | mensal | 269,90 | 2.800 + 5h de live | 0,0786¹ | 1,49× |
-| Business | anual | 2.699,90 | 28.800 + 60h de live | 0,0781¹ | 1,43× |
+| Pro | mensal | 99,90 | 1.000 + 2h de live | 0,0839¹ | 1,53× |
+| Pro | anual | 999,90 | 10.400 + 24h de live | 0,0777¹ | 1,46× |
+| Business | mensal | 299,90 | 2.800 + 10h de live | 0,0786¹ | 1,55× |
+| Business | anual | 2.999,90 | 28.800 + 120h de live | 0,0709¹ | 1,47× |
 | Starter (legado) | mensal | 49,90 | 500 | 0,0998 | 1,66× |
 
-¹ **O Business vende duas moedas, então o R$/crédito dele é líquido.** Desde que o plano passou a
-incluir 5 horas de live, dividir o preço cheio pelos créditos dá um número sem sentido — pelo
-bruto o Business sai a R$ 0,0964/crédito, *mais caro* que o Pro, como se o degrau de cima fosse o
-pior negócio. A conta certa desconta o que as horas valem sozinhas (o pacote de 5h, R$ 49,90) e
-olha o que sobra: R$ 0,0786, que é o desconto de volume de sempre. O teste
+¹ **Pro e Business vendem duas moedas, então o R$/crédito deles é líquido.** Desde que os planos
+passaram a incluir horas de live, dividir o preço cheio pelos créditos dá um número sem sentido.
+A conta certa desconta o que as horas valem sozinhas — cada hora inclusa ao preço/hora do pacote
+de 5h (R$ 39,90 / 5 = R$ 7,98/h) — e olha o que sobra para os créditos. O teste
 `cobra mais caro por crédito no plano menor` faz exatamente essa conta.
+
+**Além das horas inclusas, cada plano carrega dois tetos de live** (não são moeda — são freio):
+duração de UMA transmissão (Essencial/Pro 6h, Business 24h — `maxLiveDurationMinutes`) e volume
+mensal total (Essencial 15h, Pro 40h, Business 60h — `maxMonthlyLiveHours`, checado em
+`chargeLiveMinutes` contra o extrato do mês). Cada transmissão debita um bloco mínimo de
+`LIVE_MIN_MINUTES` (10 min) na abertura.
 
 As horas inclusas também entram em `assertProfitability()` — o custo delas
 (`minutos × LIVE_COST_PER_MINUTE_BRL`) soma ao dos créditos na checagem do plano. Sem isso, o dia

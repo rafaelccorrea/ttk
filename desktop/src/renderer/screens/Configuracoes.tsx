@@ -4,6 +4,7 @@ import {
   Chip,
   Slider,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material';
@@ -43,6 +44,7 @@ export function Configuracoes({
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
   const [listaNegraTexto, setListaNegraTexto] = useState('');
+  const [bloqueadosTexto, setBloqueadosTexto] = useState('');
 
   const carregar = useCallback(async (): Promise<void> => {
     if (!ponte) return;
@@ -51,6 +53,7 @@ export function Configuracoes({
       const lidos = await ponte.lerConfiguracoes();
       setValores(lidos);
       setListaNegraTexto(lidos.listaNegra.join(', '));
+      setBloqueadosTexto(lidos.usuariosBloqueados.join(', '));
     } catch (e) {
       setErro(mensagemDeErro(e));
     }
@@ -102,9 +105,11 @@ export function Configuracoes({
       const gravados = await ponte.salvarConfiguracoes({
         ...valores,
         listaNegra: separarPalavras(listaNegraTexto),
+        usuariosBloqueados: separarPalavras(bloqueadosTexto),
       });
       setValores(gravados);
       setListaNegraTexto(gravados.listaNegra.join(', '));
+      setBloqueadosTexto(gravados.usuariosBloqueados.join(', '));
       setSalvo(true);
     } catch (e) {
       setErro(mensagemDeErro(e));
@@ -176,6 +181,73 @@ export function Configuracoes({
             step={1}
             valueLabelDisplay="auto"
             onChange={(_, v) => alterar({ tamanhoDoLote: Number(v) })}
+          />
+        </Ajuste>
+
+        <Ajuste
+          titulo="Bloquear espectadores"
+          explicacao="Mensagens destes @ são ignoradas antes de qualquer processamento — não viram resposta nem custam nada. A lista fica só neste computador. Separe por vírgula."
+        >
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            value={bloqueadosTexto}
+            placeholder="@curioso_chato, @concorrente"
+            onChange={(e) => {
+              setBloqueadosTexto(e.target.value);
+              setSalvo(false);
+            }}
+          />
+        </Ajuste>
+
+        <Ajuste
+          titulo="Rotação automática de produtos"
+          explicacao={`Fixa o próximo produto da sua base a cada ${valores.rotacaoIntervaloMinutos} minutos, em ordem, enquanto a live corre. Se três fixações seguidas falharem, a rotação pausa sozinha e te avisa.`}
+        >
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Switch
+              checked={valores.rotacaoDeProdutosAtiva}
+              onChange={(_, ligado) =>
+                alterar({ rotacaoDeProdutosAtiva: ligado })
+              }
+            />
+            <Slider
+              disabled={!valores.rotacaoDeProdutosAtiva}
+              value={valores.rotacaoIntervaloMinutos}
+              min={2}
+              max={60}
+              step={1}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(v) => `${v} min`}
+              onChange={(_, v) =>
+                alterar({ rotacaoIntervaloMinutos: Number(v) })
+              }
+            />
+          </Stack>
+        </Ajuste>
+
+        <Ajuste
+          titulo="Detectar avisos do TikTok"
+          explicacao="Se o TikTok mostrar um aviso de restrição na sua live, o copiloto pausa o envio na hora e te avisa. Recomendado deixar ligado."
+        >
+          <Switch
+            checked={valores.detectorAvisoAtivo}
+            onChange={(_, ligado) => alterar({ detectorAvisoAtivo: ligado })}
+          />
+        </Ajuste>
+
+        <Ajuste
+          titulo="Encerrar a live ao detectar aviso"
+          explicacao="ATENÇÃO: com isto ligado, um aviso do TikTok ENCERRA a sua transmissão automaticamente. Um alarme falso derruba a live no meio da venda — ligue só se preferir não correr nenhum risco com a conta."
+        >
+          <Switch
+            color="warning"
+            disabled={!valores.detectorAvisoAtivo}
+            checked={valores.encerrarAoDetectarAviso}
+            onChange={(_, ligado) =>
+              alterar({ encerrarAoDetectarAviso: ligado })
+            }
           />
         </Ajuste>
 

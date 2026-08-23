@@ -243,10 +243,10 @@ export class StripeService implements OnModuleInit {
     } else if (item.livePackId) {
       /*
        * Add-on de horas de live. Cobrança única, como o pacote de créditos, mas
-       * entrega outra moeda — e é exclusivo do Business, então a checagem aqui
-       * é de PLANO, não só de assinatura ativa: sem ela, um Essencial compraria
-       * horas de um recurso que a conta dele não abre, e a devolução desse
-       * dinheiro é trabalho manual nosso.
+       * entrega outra moeda — e é exclusivo de quem tem o Live Copilot (Pro em
+       * diante), então a checagem aqui é de PLANO, não só de assinatura ativa:
+       * sem ela, um Essencial compraria horas de um recurso que a conta dele
+       * não abre, e a devolução desse dinheiro é trabalho manual nosso.
        */
       const pack = findLiveHourPack(item.livePackId);
       if (!pack) {

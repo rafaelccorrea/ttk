@@ -1,7 +1,12 @@
 import SettingsIcon from '@mui/icons-material/SettingsOutlined';
 import { Box, Button, Chip, IconButton, Stack, Tooltip, Typography, alpha } from '@mui/material';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { EstadoConexao, EstadoEnvio } from '@shared/desktop-api';
+import type {
+  AvisoDoTikTok,
+  EstadoConexao,
+  EstadoEnvio,
+  ProdutoDaLive,
+} from '@shared/desktop-api';
 import type { LiveReplyEvent } from '@shared/live-events';
 import { BarraDeStatus } from '../components/BarraDeStatus';
 import { CardEscalacao } from '../components/CardEscalacao';
@@ -73,6 +78,49 @@ export function Cockpit({
   const escalacoesAntes = useRef(0);
   /** Por que a última tentativa de ligar o automático não pegou. */
   const [erroDoModo, setErroDoModo] = useState<string | null>(null);
+  /** O banner de aviso do TikTok — o main já pausou (ou encerrou) quando chega. */
+  const [avisoTikTok, setAvisoTikTok] = useState<AvisoDoTikTok | null>(null);
+  const [produtos, setProdutos] = useState<ProdutoDaLive[]>([]);
+  const [fixando, setFixando] = useState<string | null>(null);
+  const [pinAviso, setPinAviso] = useState<{ ok: boolean; texto: string } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!ponte) return undefined;
+    return ponte.aoAvisoDoTikTok(setAvisoTikTok);
+  }, [ponte]);
+
+  // A lista de produtos vem da base conectada, uma vez por entrada na tela —
+  // o catálogo não muda no meio da live.
+  useEffect(() => {
+    if (!ponte) return;
+    void ponte
+      .listarProdutosDaLive()
+      .then(setProdutos)
+      .catch(() => setProdutos([]));
+  }, [ponte]);
+
+  const fixar = async (titulo: string): Promise<void> => {
+    if (!ponte) return;
+    setFixando(titulo);
+    setPinAviso(null);
+    try {
+      const resultado = await ponte.fixarProduto(titulo);
+      setPinAviso(
+        resultado.ok
+          ? { ok: true, texto: `"${titulo}" fixado na live.` }
+          : {
+              ok: false,
+              texto: resultado.motivo ?? 'Não consegui fixar — tente manualmente.',
+            },
+      );
+    } catch {
+      setPinAviso({ ok: false, texto: 'Não consegui fixar — tente manualmente.' });
+    } finally {
+      setFixando(null);
+    }
+  };
 
   useEffect(() => {
     if (!ponte) return undefined;
@@ -316,6 +364,30 @@ export function Cockpit({
       ) : null}
 
       {/*
+        O aviso do TikTok é a faixa mais séria da tela: é a conta do vendedor
+        em jogo. Quando ela aparece, o main já agiu (pausou o envio, ou
+        encerrou a live no opt-in) — aqui é contar o que aconteceu e apontar o
+        próximo passo.
+      */}
+      {avisoTikTok ? (
+        <Box sx={{ px: 2, pb: 1 }}>
+          <Aviso
+            tom="erro"
+            titulo={
+              avisoTikTok.acao === 'encerrado'
+                ? 'O TikTok emitiu um aviso — a transmissão foi encerrada'
+                : 'O TikTok emitiu um aviso — envio pausado'
+            }
+            descricao={`${avisoTikTok.texto ? `"${avisoTikTok.texto}" — ` : ''}${
+              avisoTikTok.acao === 'encerrado'
+                ? 'Você ligou o encerramento automático nas configurações. Revise o aviso na sua conta antes de abrir outra live.'
+                : 'Por segurança, o copiloto parou de enviar no chat. Revise o aviso na sua tela do TikTok; as respostas continuam aqui para você copiar.'
+            }`}
+          />
+        </Box>
+      ) : null}
+
+      {/*
         A DEGRADAÇÃO VEM ANTES DE TUDO.
 
         Quando o app cai sozinho para somente-painel, o vendedor precisa
@@ -418,6 +490,54 @@ export function Cockpit({
           </Stack>
         )}
       </Box>
+
+      {/* --------------------------------------------------- fixar produto */}
+      {produtos.length > 0 ? (
+        <Box
+          sx={{
+            px: 2.25,
+            py: 1,
+            borderTop: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <TituloDeSecao
+            texto="fixar produto na live"
+            cor={cores.ciano}
+            contagem={produtos.length}
+          />
+          {/*
+            Best-effort declarado: o clique tenta fixar no painel do TikTok
+            Shop, e a falha vem com instrução de fixar à mão — nunca trava o
+            resto do cockpit.
+          */}
+          <Stack
+            direction="row"
+            flexWrap="wrap"
+            useFlexGap
+            spacing={0.75}
+            sx={{ mt: 0.5 }}
+          >
+            {produtos.map((p) => (
+              <Chip
+                key={p.id}
+                label={fixando === p.title ? `Fixando ${p.title}…` : p.title}
+                size="small"
+                disabled={fixando !== null}
+                onClick={() => void fixar(p.title)}
+              />
+            ))}
+          </Stack>
+          {pinAviso ? (
+            <Typography
+              variant="caption"
+              sx={{ color: pinAviso.ok ? cores.sucesso : cores.vermelho }}
+            >
+              {pinAviso.texto}
+            </Typography>
+          ) : null}
+        </Box>
+      ) : null}
 
       {/* ------------------------------------------------- respostas prontas */}
       <Box

@@ -27,6 +27,8 @@ import {
   planAllows,
   planCredits,
   planLiveMinutes,
+  planMaxLiveDurationMinutes,
+  planMaxMonthlyLiveMinutes,
   PlanFeature,
   PLANS,
   REFERRAL_REWARD,
@@ -446,6 +448,21 @@ export class BillingService implements OnModuleInit {
       return saldoAtual;
     }
 
+    /*
+     * Teto MENSAL do plano: hora comprada não é hora infinita. A soma vem do
+     * extrato imutável (`kind = 'spend'`), então reconexão e retomada não
+     * zeram nem dobram a conta. A mensagem diz o teto em horas porque é assim
+     * que o catálogo vende — minuto é unidade de cobrança, não de conversa.
+     */
+    const tetoMensal = planMaxMonthlyLiveMinutes(owner?.plan ?? 'free');
+    const usadosNoMes = await this.liveMinutesUsedThisMonth(userId);
+    if (usadosNoMes + total > tetoMensal) {
+      throw new HttpException(
+        `Você atingiu o teto de ${Math.round(tetoMensal / 60)} horas de live por mês do seu plano. Faça upgrade em Planos & Créditos para transmitir mais.`,
+        403,
+      );
+    }
+
     const result = await this.users
       .createQueryBuilder()
       .update(AppUser)
@@ -475,6 +492,38 @@ export class BillingService implements OnModuleInit {
       }),
     );
     return saldo;
+  }
+
+  /**
+   * Minutos de live consumidos no mês corrente, pelo extrato imutável.
+   *
+   * `spend` guarda minutos NEGATIVOS; o `ABS` devolve o consumo. As contas da
+   * equipe gravam spend de zero minutos, então saem da soma sozinhas.
+   */
+  async liveMinutesUsedThisMonth(userId: string): Promise<number> {
+    const agora = new Date();
+    const inicioDoMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
+    const linha = await this.liveTransactions
+      .createQueryBuilder('t')
+      .select('COALESCE(SUM(ABS(t.minutes)), 0)', 'total')
+      .where('t.userId = :userId', { userId })
+      .andWhere(`t.kind = 'spend'`)
+      .andWhere('t.createdAt >= :inicioDoMes', { inicioDoMes })
+      .getRawOne<{ total: string }>();
+    return Number(linha?.total ?? 0);
+  }
+
+  /**
+   * Teto de duração de UMA transmissão para esta conta, em minutos.
+   *
+   * Conta da equipe ganha o teto do topo do catálogo: uma demo não pode cair
+   * por limite de plano, mas também não roda para sempre — o teto de 24h é o
+   * freio de esquecimento de qualquer conta.
+   */
+  async liveDurationLimitMinutes(userId: string): Promise<number> {
+    const user = await this.users.findOneBy({ id: userId });
+    if (isCompAccount(user?.email)) return 1440;
+    return planMaxLiveDurationMinutes(user?.plan ?? 'free');
   }
 
   /** Devolve minutos de uma transmissão que o copiloto não chegou a atender. */

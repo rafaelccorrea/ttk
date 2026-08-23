@@ -25,6 +25,7 @@ import {
   ConfirmarEntregaDto,
   EncerrarLiveRunDto,
   LoteDeChatDto,
+  RegistrarEventoDaRunDto,
   LoteDeMetricasDto,
   SalvarNaBaseDto,
   TrocarModoDaRunDto,
@@ -129,6 +130,7 @@ export class LiveRunController {
       authorHash: m.authorHash,
       text: m.text,
       receivedAt: m.receivedAt ? new Date(m.receivedAt) : new Date(),
+      isQuestion: m.isQuestion === true,
     }));
 
     void this.processarEmitindo(user.id, id, lote);
@@ -172,6 +174,19 @@ export class LiveRunController {
     const run = await this.replies.cobrarMinuto(id);
 
     if (run.status === 'erro' || run.status === 'encerrada') {
+      if (run.endReason === 'limite_duracao') {
+        // Fim normal, não falta de saldo: o painel mostra o teto do plano (e o
+        // CTA de upgrade), não o CTA de comprar horas.
+        this.eventos.publicar(id, 'duration_limit_reached', {
+          runId: id,
+          minutos: run.minutesCharged,
+        });
+        this.finalizar(
+          run,
+          'A transmissão atingiu o limite de duração do plano.',
+        );
+        return run;
+      }
       // Saldo acabou (ou a run já tinha morrido): o painel precisa saber disso
       // pelo fluxo, não pela ausência de respostas.
       this.eventos.publicar(id, 'credits_exhausted', {
@@ -193,9 +208,31 @@ export class LiveRunController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: EncerrarLiveRunDto,
   ) {
-    const run = await this.replies.encerrarRun(user.id, id, dto.motivo);
+    const run = await this.replies.encerrarRun(
+      user.id,
+      id,
+      dto.motivo,
+      dto.endReason,
+    );
     this.finalizar(run, dto.motivo ?? 'Transmissão encerrada pelo vendedor.');
     return run;
+  }
+
+  /**
+   * Trilha de auditoria: o app viu um aviso do TikTok (e o que fez a
+   * respeito), ou tentou fixar um produto. 202 porque o registro não pode
+   * atrasar a reação do app — o que importa é gravar, não confirmar.
+   */
+  @Post('runs/:id/events')
+  @HttpCode(202)
+  @ApiOperation({ summary: 'Registra um evento de auditoria da transmissão' })
+  async registrarEvento(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RegistrarEventoDaRunDto,
+  ) {
+    await this.replies.registrarEvento(user.id, id, dto);
+    return { ok: true };
   }
 
   // --------------------------------------------------------------- respostas
@@ -390,6 +427,7 @@ export class LiveRunController {
       authorHash: string;
       text: string;
       receivedAt: Date;
+      isQuestion?: boolean;
     }[],
   ): Promise<void> {
     try {
@@ -445,6 +483,7 @@ export class LiveRunController {
       mode: run.mode,
       repliesSent: run.repliesSent,
       deliveryFailures: run.deliveryFailures,
+      endReason: run.endReason,
     };
   }
 
