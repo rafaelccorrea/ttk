@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { AppUser } from '../users/entities/app-user.entity';
+import { NovaContaService } from '../users/nova-conta.service';
 import { AuthService } from './auth.service';
 import { MailService } from './mail.service';
 
@@ -22,6 +23,7 @@ describe('AuthService — lista de espera', () => {
     })),
   };
   const mailMock = { sendConfirmationEmail: jest.fn(() => Promise.resolve({})) };
+  const novaContaMock = { avisar: jest.fn() };
   let waitlistOn = true;
   const config = { get: jest.fn((k: string, d?: unknown) =>
     k === 'WAITLIST_MODE' ? (waitlistOn ? 'true' : 'false') : d) };
@@ -31,7 +33,8 @@ describe('AuthService — lista de espera', () => {
       providers: [AuthService,
         { provide: ConfigService, useValue: config },
         { provide: MailService, useValue: mailMock },
-        { provide: getRepositoryToken(AppUser), useValue: usersMock }],
+        { provide: getRepositoryToken(AppUser), useValue: usersMock },
+        { provide: NovaContaService, useValue: novaContaMock }],
     }).compile();
     service = m.get(AuthService); saved = null; waitlistOn = true; jest.clearAllMocks();
   });
@@ -46,6 +49,10 @@ describe('AuthService — lista de espera', () => {
     expect(saved!.waitlistedAt).toBeInstanceOf(Date);
     expect(saved!.confirmationToken).toHaveLength(64);
     expect(saved!.confirmationSentAt).toBeUndefined();
+    // A equipe é avisada da conta nova mesmo na fila — com o selo.
+    expect(novaContaMock.avisar).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'novo@pikpok.test', origem: 'senha', naFila: true }),
+    );
   });
 
   it('recadastro do mesmo e-mail nao reinicia a posicao', async () => {
@@ -53,6 +60,8 @@ describe('AuthService — lista de espera', () => {
     usersMock.findOneBy.mockResolvedValue({ id: 'u1', email: 'a@b.c', waitlistedAt: antes });
     await service.register('a@b.c', 'outrasenha');
     expect(saved!.waitlistedAt).toBe(antes);
+    // Recadastro não é conta nova: nada de avisar de novo.
+    expect(novaContaMock.avisar).not.toHaveBeenCalled();
   });
 
   it('com o modo desligado volta a enviar o e-mail na hora', async () => {

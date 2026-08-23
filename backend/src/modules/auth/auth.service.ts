@@ -14,6 +14,7 @@ import { decode, JwtPayload, sign, verify } from 'jsonwebtoken';
 import { JwksClient } from 'jwks-rsa';
 import { IsNull, Not, Repository } from 'typeorm';
 import { AppUser } from '../users/entities/app-user.entity';
+import { NovaContaService } from '../users/nova-conta.service';
 import { MailService } from './mail.service';
 
 const RESEND_COOLDOWN_MS = 60_000;
@@ -38,7 +39,27 @@ export class AuthService {
     private readonly mailService: MailService,
     @InjectRepository(AppUser)
     private readonly users: Repository<AppUser>,
+    private readonly novaConta: NovaContaService,
   ) {}
+
+  /** Aviso à equipe de que uma linha nova de `app_users` acabou de nascer. */
+  private async avisarContaNova(
+    user: AppUser,
+    origem: 'senha' | 'google',
+    naFila: boolean,
+  ): Promise<void> {
+    const indicador = user.referredBy
+      ? await this.users.findOne({ where: { id: user.referredBy }, select: { id: true, email: true } })
+      : null;
+    this.novaConta.avisar({
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      origem,
+      naFila,
+      indicadoPor: indicador?.email ?? null,
+    });
+  }
 
   /**
    * Sem fallback de propósito. Um default tipo "change-me" faz o app subir
@@ -169,6 +190,7 @@ export class AuthService {
       user.waitlistedAt ??= new Date();
       // confirmationSentAt fica nulo de propósito — nada foi enviado ainda.
       await this.users.save(user);
+      if (!existing) await this.avisarContaNova(user, 'senha', true);
 
       return {
         message: 'Você entrou na lista de espera!',
@@ -180,6 +202,9 @@ export class AuthService {
 
     user.confirmationSentAt = new Date();
     await this.users.save(user);
+    // Avisa já no cadastro, não na confirmação: quem não confirma também é
+    // informação ("cadastrou e sumiu" aparece no painel com esse selo).
+    if (!existing) await this.avisarContaNova(user, 'senha', false);
 
     const sent = await this.mailService.sendConfirmationEmail(
       normalized,
@@ -276,6 +301,7 @@ export class AuthService {
     if (this.waitlistMode && (isNew || user.waitlistedAt)) {
       user.waitlistedAt ??= new Date();
       await this.users.save(user);
+      if (isNew) await this.avisarContaNova(user, 'google', true);
       return {
         message: 'Você entrou na lista de espera!',
         waitlisted: true as const,
@@ -291,6 +317,7 @@ export class AuthService {
     user.confirmationToken = null as unknown as string;
 
     await this.users.save(user);
+    if (isNew) await this.avisarContaNova(user, 'google', false);
     if (primeiraAtivacao) this.sendWelcome(user);
     return {
       accessToken: this.issueToken(user),

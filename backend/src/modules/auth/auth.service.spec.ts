@@ -5,6 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { compare, hash } from 'bcryptjs';
 import { createHash } from 'crypto';
 import { AppUser } from '../users/entities/app-user.entity';
+import { NovaContaService } from '../users/nova-conta.service';
 import { AuthService } from './auth.service';
 import { MailService } from './mail.service';
 
@@ -51,6 +52,7 @@ describe('AuthService — recuperação de senha', () => {
         { provide: ConfigService, useValue: config },
         { provide: MailService, useValue: mailMock },
         { provide: getRepositoryToken(AppUser), useValue: usersMock },
+        { provide: NovaContaService, useValue: { avisar: jest.fn() } },
       ],
     }).compile();
 

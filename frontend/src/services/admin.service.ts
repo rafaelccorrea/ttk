@@ -12,10 +12,20 @@ export interface AdminOverview {
     comPlanoLiberado: number;
     pendentes: number;
     novos30Dias: number;
+    novos7Dias: number;
+    /** Abriram o app (API autenticada) nos últimos 7 / 30 dias. */
+    ativos7Dias: number;
+    ativos30Dias: number;
+    /** Cadastro por e-mail que nunca confirmou (e sem Google). */
+    naoConfirmaram: number;
+    /** Mais de 7 dias de casa e nenhum crédito gasto. */
+    semUso: number;
     /** Contas com Google vinculado (login social). */
     viaGoogle: number;
     conversaoPct: number;
   };
+  /** Últimos 14 dias, do mais antigo ao de hoje. */
+  cadastrosPorDia: Array<{ dia: string; total: number }>;
   porPlano: Array<{
     id: string;
     nome: string;
@@ -48,24 +58,108 @@ export interface AdminUser {
   viaGoogle: boolean;
   naFila: boolean;
   temAssinaturaStripe: boolean;
+  cortesia: boolean;
   createdAt: string;
+  emailConfirmedAt: string | null;
+  /** Última vez que bateu na API autenticada (folga de 5 min). */
+  lastSeenAt: string | null;
   creditosGastos: number;
+  /** Último lançamento de consumo no extrato. */
   ultimoUso: string | null;
+  liveMinutes: number;
+  uso: {
+    produtos: number;
+    campanhas: number;
+    videosGerados: number;
+    lives: number;
+  };
 }
 
-export interface AdminUserDetail extends Omit<AdminUser, 'creditosGastos' | 'ultimoUso'> {
+export type AdminSituacao =
+  | 'confirmado'
+  | 'nao_confirmado'
+  | 'google'
+  | 'stripe'
+  | 'fila'
+  | 'ativos_7d'
+  | 'inativos_30d'
+  | 'nunca_usou';
+
+export type AdminOrdenar = 'cadastro' | 'ultimo_acesso' | 'gastos' | 'creditos' | 'email';
+
+export interface AdminUsersParams {
+  busca?: string;
+  plano?: string;
+  situacao?: AdminSituacao;
+  cadastroDias?: number;
+  ordenar?: AdminOrdenar;
+  direcao?: 'asc' | 'desc';
+  page?: number;
+  limit?: number;
+}
+
+export interface LiveMinuteTransaction {
+  id: string;
+  minutes: number;
+  kind: string;
+  description: string | null;
+  createdAt: string;
+}
+
+export interface AdminUserDetail {
+  id: string;
+  email: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  plan: string;
+  credits: number;
+  liveMinutes: number;
+  isAdmin: boolean;
+  cortesia: boolean;
+  emailConfirmed: boolean;
+  viaGoogle: boolean;
+  naFila: boolean;
   stripeCustomerId: string | null;
+  createdAt: string;
+  linhaDoTempo: {
+    cadastro: string;
+    emailConfirmado: string | null;
+    entrouNaFila: string | null;
+    liberadoDaFila: string | null;
+    cortesiaDeLive: string | null;
+    ultimoAcesso: string | null;
+    ultimaAlteracao: string;
+  };
+  indicacao: {
+    indicadoPor: string | null;
+    recompensaPagaEm: string | null;
+    indicados: number;
+    indicadosQuePagaram: number;
+  };
+  atividade: {
+    produtos: number;
+    personas: number;
+    roteiros: number;
+    multiplicador: number;
+    campanhas: { total: number; porStatus: Record<string, number> };
+    videosGerados: { total: number; prontos: number; falhos: number; ultimo: string | null };
+    lives: { total: number; minutosUsados: number; ultima: string | null };
+    creditosGastos: number;
+  };
+  /** Custo real na IA (telemetria) contra o que pagou em crédito. */
+  custoIa: {
+    totalBrl: number;
+    ultimos30DiasBrl: number;
+    eventos: number;
+    receitaEmCreditosBrl: number;
+  };
   historico: CreditTransaction[];
+  historicoMinutos: LiveMinuteTransaction[];
 }
 
 export const adminService = {
   overview: () => api.get<AdminOverview>('/admin/overview').then((r) => r.data),
-  users: (params: {
-    busca?: string;
-    plano?: string;
-    page?: number;
-    limit?: number;
-  }) =>
+  users: (params: AdminUsersParams) =>
     api
       .get<{ items: AdminUser[]; total: number; page: number }>('/admin/users', {
         params,

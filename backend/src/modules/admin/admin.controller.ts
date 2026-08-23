@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -35,6 +36,36 @@ class ListUsersDto {
   @IsOptional()
   @IsString()
   plano?: string;
+
+  /** Recorte por situação da conta — ver `AdminService.listUsers`. */
+  @IsOptional()
+  @IsIn([
+    'confirmado',
+    'nao_confirmado',
+    'google',
+    'stripe',
+    'fila',
+    'ativos_7d',
+    'inativos_30d',
+    'nunca_usou',
+  ])
+  situacao?: string;
+
+  /** Só contas cadastradas nos últimos N dias. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(3650)
+  cadastroDias?: number;
+
+  @IsOptional()
+  @IsIn(['cadastro', 'ultimo_acesso', 'gastos', 'creditos', 'email'])
+  ordenar?: string;
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  direcao?: 'asc' | 'desc';
 
   @IsOptional()
   @Type(() => Number)
@@ -104,6 +135,16 @@ export class AdminController {
   @ApiOperation({ summary: 'Lista contas com busca e filtro por plano' })
   users(@Query() query: ListUsersDto) {
     return this.admin.listUsers(query);
+  }
+
+  /**
+   * Contas criadas depois de `desde` — é o que alimenta o toast do painel.
+   * O front guarda a última data vista e pergunta de minuto em minuto.
+   */
+  @Get('novas-contas')
+  @ApiOperation({ summary: 'Contas criadas depois de uma data (toast do admin)' })
+  novasContas(@Query('desde') desde?: string) {
+    return this.admin.novasContas(desde);
   }
 
   @Get('users/:id')

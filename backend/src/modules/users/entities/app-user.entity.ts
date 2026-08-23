@@ -171,6 +171,15 @@ export class AppUser {
   @Column({ type: 'timestamptz', nullable: true })
   referralRewardedAt: Date | null;
 
+  /**
+   * Última vez que a conta bateu na API autenticada. Gravado pelo guard com
+   * folga de alguns minutos (ver `UsersService.ensure`) — é "quando esteve
+   * aqui", não um log de requisições. O `updatedAt` não serve para isso: ele
+   * mexe quando um webhook troca o plano, e a pessoa pode nem ter aberto o app.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  lastSeenAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

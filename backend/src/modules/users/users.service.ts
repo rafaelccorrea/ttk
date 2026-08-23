@@ -14,6 +14,10 @@ import {
 } from '../billing/billing.config';
 import { MediaMirrorService } from '../media/media-mirror.service';
 import { AppUser } from './entities/app-user.entity';
+import { NovaContaService } from './nova-conta.service';
+
+/** Intervalo mínimo entre duas gravações de `lastSeenAt` da mesma conta. */
+const LAST_SEEN_FOLGA_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class UsersService {
@@ -21,6 +25,7 @@ export class UsersService {
     @InjectRepository(AppUser)
     private readonly repository: Repository<AppUser>,
     private readonly mirror: MediaMirrorService,
+    private readonly novaConta: NovaContaService,
   ) {}
 
   /**
@@ -47,9 +52,15 @@ export class UsersService {
           { plan: COMP_ACCOUNT_PLAN },
         );
       }
+      // "Visto por último", com folga: um UPDATE a cada request seria escrever
+      // a cada clique; a cada 5 minutos já diz quem usa o app e quem sumiu.
+      const visto = existing.lastSeenAt?.getTime() ?? 0;
+      if (Date.now() - visto > LAST_SEEN_FOLGA_MS) {
+        await this.repository.update({ id: existing.id }, { lastSeenAt: new Date() });
+      }
       return;
     }
-    await this.repository
+    const inserido = await this.repository
       .createQueryBuilder()
       .insert()
       .values({
@@ -59,6 +70,11 @@ export class UsersService {
       })
       .orIgnore()
       .execute();
+    // `ON CONFLICT DO NOTHING` devolve zero linhas quando a conta já existia
+    // (duas requisições simultâneas do mesmo login) — só a que inseriu avisa.
+    if ((inserido.raw as unknown[]).length > 0) {
+      this.novaConta.avisar({ id: user.id, email: user.email, origem: 'supabase' });
+    }
   }
 
   async findById(id: string): Promise<AppUser> {

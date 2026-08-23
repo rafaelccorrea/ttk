@@ -42,6 +42,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { SupportFab } from '@/components/ui/SupportFab';
+import { NovasContasToast } from '@/components/layout/NovasContasToast';
 import { useAuth } from '@/contexts/AuthContext';
 import { api, CREDITS_CHANGED_EVENT } from '@/services/api';
 import { billingService } from '@/services/billing.service';
@@ -1035,6 +1036,8 @@ export function AppLayout() {
         </Box>
       </Box>
       <SupportFab />
+      {/* Aviso de conta nova, só para a equipe — o backend barra quem não é. */}
+      {isAdmin && <NovasContasToast />}
     </Box>
   );
 }
