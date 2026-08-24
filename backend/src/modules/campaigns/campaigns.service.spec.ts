@@ -37,7 +37,12 @@ function servico(deps: Partial<Record<string, Dict>> = {}) {
   const billing = deps.billing ?? {
     withCharge: jest.fn(async (_u: string, _a: string, fn: () => unknown) => fn()),
     // Conta com a Fábrica inteira: o modo amostra tem teste próprio no billing.
-    modoAmostraDaFabrica: jest.fn(async () => ({ ativo: false, videoDisponivel: false })),
+    modoAmostraDaFabrica: jest.fn(async () => ({
+      ativo: false,
+      videoDisponivel: false,
+      roteiroDisponivel: false,
+    })),
+    consumirRoteiroDeCortesia: jest.fn(async () => false),
   };
   const videogen = deps.videogen ?? {
     generate: jest.fn(),

@@ -139,20 +139,24 @@ export function AppRoutes() {
           <Route path="/analisar" element={<AnalyzePage />} />
           <Route path="/geracoes" element={<GenerationsPage />} />
           <Route path="/prompts" element={<PromptsPage />} />
+          {/* A Fábrica abre no gratuito em MODO AMOSTRA (campaigns_sample):
+              produto + roteiro + uma cena de produto pelo vídeo de cortesia.
+              O que produz a campanha inteira é decidido dentro da tela, cena a
+              cena, pelo `amostra` do detalhe — e o backend é a autoridade. */}
+          <Route
+            path="/campanhas/:id?"
+            element={
+              <PlanGate feature="campaigns_sample">
+                <CampaignsPage />
+              </PlanGate>
+            }
+          />
           {/* Estar logado não basta: conta sem assinatura não entra no resto. */}
           <Route element={<RequireSubscription />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/tendencias" element={<TrendsPage />} />
-            {/* Campanhas e Multiplicador são Pro no backend; sem o gate aqui,
-                quem assina o Essencial abria a tela e só descobria no 403. */}
-            <Route
-              path="/campanhas/:id?"
-              element={
-                <PlanGate feature="campaigns_sample">
-                  <CampaignsPage />
-                </PlanGate>
-              }
-            />
+            {/* Multiplicador é Pro no backend; sem o gate aqui, quem assina o
+                Essencial abria a tela e só descobria no 403. */}
             <Route
               path="/multiplicador"
               element={

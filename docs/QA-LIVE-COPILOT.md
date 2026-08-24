@@ -70,7 +70,7 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 
 | # | Passo | Esperado | OK |
 |---|---|---|---|
-| 3.1 | Conta **free** | Chip "10 min grátis" no topo; menu "Copiloto de Live" **sem cadeado**; bloco "Horas de Live Copilot" visível com "você tem 10 minutos de cortesia para conhecer; assinando, o plano vem com 15, 40 ou 60 horas"; packs de crédito desabilitados | |
+| 3.1 | Conta **free** | Chip "10 min grátis" no topo; menu "Copiloto de Live" **sem cadeado** e a página `/copiloto` **abre** (não mostra "Esta parte abre com um plano" — o `RequireSubscription` respeita `wallet.features`); bloco "Horas de Live Copilot" visível com "você tem 10 minutos de cortesia para conhecer; assinando, o plano vem com 15, 40 ou 60 horas"; packs de crédito desabilitados | |
 | 3.2 | Cards de plano | Preços/perks idênticos ao item 2.2/2.3; "Roteiros e análises com IA" (sem "Claude") | |
 | 3.3 | Bloco de horas | Packs 9,90 / 39,90 / 99,90 / 219,90; "melhor preço/hora" no de 40h; texto cita bloco mínimo de 10 min | |
 | 3.4 | Conta **assinante** (qualquer plano) | **Sem** chip/frase de cortesia (`trialAvailable=false` mesmo sem ter usado); frase "cada plano já começa com horas de live inclusas na adesão" | |

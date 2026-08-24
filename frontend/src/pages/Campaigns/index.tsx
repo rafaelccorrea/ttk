@@ -55,6 +55,7 @@ import {
   type PedidoDeGasto,
 } from '@/hooks/useConfirmarGasto';
 import { resolveApiUrl } from '@/services/api';
+import { billingService, Wallet } from '@/services/billing.service';
 import { formatMoney } from '@/utils/format';
 import {
   LIMITES,
@@ -963,14 +964,21 @@ function Storyboard({
                 variant="contained"
                 startIcon={<AutoAwesomeRoundedIcon />}
                 disabled={ocupado}
-                onClick={() => acao(() => campaignsService.generateScript(detalhe.id), {
-                    acao: 'script',
-                    titulo: 'Gerar roteiro e storyboard',
-                  })}
+                onClick={() =>
+                  acao(
+                    () => campaignsService.generateScript(detalhe.id),
+                    // Roteiro de cortesia (modo amostra) não debita: sem diálogo de gasto.
+                    detalhe.amostra?.roteiroDisponivel
+                      ? undefined
+                      : { acao: 'script', titulo: 'Gerar roteiro e storyboard' },
+                  )
+                }
               >
                 {ocupado
                   ? 'Escrevendo...'
-                  : `Gerar roteiro${precos ? ` · ${precos.roteiro} créditos` : ''}`}
+                  : detalhe.amostra?.roteiroDisponivel
+                    ? 'Gerar roteiro · por nossa conta'
+                    : `Gerar roteiro${precos ? ` · ${precos.roteiro} créditos` : ''}`}
               </Button>
               {/* Quem já sabe o que quer dizer não precisa pagar a IA: o
                   storyboard nasce em branco, no formato certo, e cada cena é
@@ -999,10 +1007,15 @@ function Storyboard({
           sx={{ alignSelf: 'flex-start' }}
           startIcon={<AutoAwesomeRoundedIcon />}
           disabled={ocupado}
-          onClick={() => acao(() => campaignsService.generateScript(detalhe.id), {
-                    acao: 'script',
-                    titulo: 'Gerar roteiro e storyboard',
-                  })}
+          onClick={() =>
+                  acao(
+                    () => campaignsService.generateScript(detalhe.id),
+                    // Roteiro de cortesia (modo amostra) não debita: sem diálogo de gasto.
+                    detalhe.amostra?.roteiroDisponivel
+                      ? undefined
+                      : { acao: 'script', titulo: 'Gerar roteiro e storyboard' },
+                  )
+                }
         >
           Não gostou? Escrever outra versão
           {precos ? ` · ${precos.roteiro} créditos` : ''}
@@ -1012,7 +1025,7 @@ function Storyboard({
       {/* Mesmo roteiro, outro apresentador (ou o mesmo, para testar outra IA):
           a cópia é grátis — reescrever por IA só para trocar a pessoa jogava
           os créditos do roteiro fora. */}
-      {detalhe.cenas.length > 0 && (
+      {detalhe.cenas.length > 0 && !detalhe.amostra?.ativo && (
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
           {detalhe.estilo !== 'sem_apresentador' && (
             <TextField
@@ -1700,10 +1713,15 @@ function Storyboard({
                           (!cenaSemPessoa(cena.tipo) || !detalhe.amostra.videoDisponivel))
                       }
                       onClick={() =>
-                        acao(() => campaignsService.renderScene(cena.id), {
-                          acao: 'video',
-                          titulo: 'Renderizar cena',
-                        })
+                        acao(
+                          () => campaignsService.renderScene(cena.id),
+                          // Cena de cortesia não debita: a confirmação de
+                          // gasto diria "custa 60, seu saldo não cobre" —
+                          // mentira que trava o único clique que importa.
+                          detalhe.amostra?.ativo && detalhe.amostra.videoDisponivel
+                            ? undefined
+                            : { acao: 'video', titulo: 'Renderizar cena' },
+                        )
                       }
                     >
                       {cena.status === 'renderizando'
@@ -2268,6 +2286,10 @@ export function CampaignsPage() {
   const [buscaCampanhas, setBuscaCampanhas] = useState('');
   const [buscaAplicada, setBuscaAplicada] = useState('');
   const [precos, setPrecos] = useState<CampaignPricing | null>(null);
+  // A carteira, para a faixa de cortesia do topo: quem ainda tem o vídeo
+  // grátis precisa saber disso ANTES de cadastrar produto — é o motivo de
+  // estar aqui.
+  const [carteira, setCarteira] = useState<Wallet | null>(null);
   const [carregando, setCarregando] = useState(true);
   const montado = useRef(true);
 
@@ -2302,6 +2324,7 @@ export function CampaignsPage() {
     Promise.all([
       campaignsService.personaOptions().then(setGrupos),
       campaignsService.pricing().then(setPrecos),
+      billingService.wallet().then(setCarteira).catch(() => setCarteira(null)),
       recarregar(),
     ])
       .catch(console.error)
@@ -2364,6 +2387,29 @@ export function CampaignsPage() {
         Cadastre o seu produto, escolha quem apresenta, aprove o roteiro e receba
         o vídeo pronto para publicar.
       </Typography>
+
+      {/* A faixa da cortesia, no TOPO: quem ainda tem o vídeo grátis precisa
+          saber antes de cadastrar o produto, não depois de criar a campanha. */}
+      {carteira?.freeSample?.active && carteira.sampleVideo && (
+        <Alert
+          severity={carteira.sampleVideo.available ? 'success' : 'info'}
+          icon={<MovieFilterRoundedIcon fontSize="inherit" />}
+          sx={{ mb: 3 }}
+        >
+          {carteira.sampleVideo.available ? (
+            <>
+              <strong>Você tem 1 vídeo do seu produto por nossa conta.</strong> Cadastre o
+              produto com a foto, gere o roteiro e a primeira cena de produto — os dois sem
+              gastar créditos. A campanha completa faz parte do plano Pro.
+            </>
+          ) : (
+            <>
+              Seu vídeo de cortesia já foi usado. Para gerar a campanha completa,{' '}
+              <Link to="/planos">assine o Pro</Link>.
+            </>
+          )}
+        </Alert>
+      )}
 
       <Stepper
         nonLinear

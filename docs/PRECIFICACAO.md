@@ -466,8 +466,10 @@ com que ninguém opera. Trava: `sampleVideoUsedAt` no usuário, consumido por UP
 em `charge`; geração que falha devolve o voucher (`restoreSampleVideo`), nunca 60 créditos.
 
 **Onde o vídeo é gasto: na Fábrica de Criativos, em modo amostra** (`campaigns_sample`, free).
-A conta cadastra o produto com a foto, paga o roteiro com os créditos de cortesia (8 dos 25) e
-gera **uma cena de produto** — a foto real dele virando vídeo — pelo voucher. Cena com
+A conta cadastra o produto com a foto, ganha **o roteiro desse vídeo** (um por conta, lançamento
+`sample_video`/`script` de valor zero — `consumirRoteiroDeCortesia`) e gera **uma cena de
+produto** — a foto real dele virando vídeo — pelo voucher. Custo teto do roteiro: R$ 0,39, já
+somado ao teto de aquisição do teste (R$ 5,50). Cena com
 apresentador, "gerar tudo", montagem, clone e redublagem seguem `campaigns` (Pro); a regra da
 cena avulsa mora em `renderizarCena`. O gerador avulso por prompt (`/videogen`) **não** usa o
 voucher (`permitirCortesia = false`): um vídeo de texto genérico não é a demonstração que a

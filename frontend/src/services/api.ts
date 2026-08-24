@@ -44,7 +44,16 @@ api.interceptors.request.use((config) => {
 export const CREDITS_CHANGED_EVENT = 'pikpok:credits-changed';
 
 // Endpoints cujo sucesso altera o saldo (gastos de IA e compras).
-const CREDIT_SPENDING = [/^\/studio\/(transcribe|analyze|scripts\/generate)/, /^\/videogen/, /^\/billing\/(packs\/purchase|subscribe)/];
+const CREDIT_SPENDING = [
+  /^\/studio\/(transcribe|analyze|scripts\/generate)/,
+  /^\/videogen/,
+  /^\/billing\/(packs\/purchase|subscribe)/,
+  // A Fábrica cobra roteiro, retrato e cena — sem isto o header ficava com
+  // o saldo velho até a próxima navegação.
+  /^\/campaigns\/personas/,
+  /^\/campaigns\/[^/]+\/(script|render-all)/,
+  /^\/campaigns\/scenes\/[^/]+\/(render|redub)/,
+];
 
 api.interceptors.response.use(
   (response) => {

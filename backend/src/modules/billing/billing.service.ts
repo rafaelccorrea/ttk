@@ -458,13 +458,50 @@ export class BillingService implements OnModuleInit {
    */
   async modoAmostraDaFabrica(
     userId: string,
-  ): Promise<{ ativo: boolean; videoDisponivel: boolean }> {
+  ): Promise<{ ativo: boolean; videoDisponivel: boolean; roteiroDisponivel: boolean }> {
     const user = await this.users.findOneBy({ id: userId });
     if (!user) throw new NotFoundException('Usuário não encontrado');
     if (isCompAccount(user.email) || planAllows(user.plan, 'campaigns')) {
-      return { ativo: false, videoDisponivel: false };
+      return { ativo: false, videoDisponivel: false, roteiroDisponivel: false };
     }
-    return { ativo: true, videoDisponivel: this.sampleVideoAvailable(user) };
+    const videoDisponivel = this.sampleVideoAvailable(user);
+    return {
+      ativo: true,
+      videoDisponivel,
+      roteiroDisponivel: videoDisponivel && !(await this.roteiroDeCortesiaUsado(userId)),
+    };
+  }
+
+  /**
+   * O roteiro de cortesia da Fábrica: UM por conta, e só enquanto o vídeo de
+   * cortesia ainda existe — é o roteiro DESSE vídeo, não um roteiro avulso.
+   * Fica registrado no extrato (`sample_video` + `script`, valor zero), que é
+   * a trava de "uma vez". Devolve `true` se este pedido foi a cortesia.
+   */
+  async consumirRoteiroDeCortesia(userId: string): Promise<boolean> {
+    const amostra = await this.modoAmostraDaFabrica(userId);
+    if (!amostra.roteiroDisponivel) return false;
+    const user = await this.users.findOneBy({ id: userId });
+    await this.transactions.save(
+      this.transactions.create({
+        userId,
+        amount: 0,
+        balanceAfter: user?.credits ?? 0,
+        kind: 'sample_video',
+        action: 'script',
+        description: 'Roteiro com IA — cortesia da Fábrica',
+      }),
+    );
+    return true;
+  }
+
+  private async roteiroDeCortesiaUsado(userId: string): Promise<boolean> {
+    const usado = await this.transactions.findOneBy({
+      userId,
+      kind: 'sample_video',
+      action: 'script',
+    });
+    return !!usado;
   }
 
   /** Esta conta ainda tem o vídeo de cortesia — e está no degrau que o recebe? */

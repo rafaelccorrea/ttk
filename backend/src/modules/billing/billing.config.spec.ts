@@ -93,8 +93,12 @@ describe('billing.config — a fronteira da conta gratuita', () => {
     // subir o CAC de todo mundo — inclusive de quem cadastra em série.
     expect(SAMPLE_VIDEOS_PER_ACCOUNT).toBe(1);
     expect(sampleVideoWorstCostBrl()).toBe(ACTION_PRICES.video.worstCaseCostBrl);
-    const cac = SIGNUP_BONUS_CREDITS * worstCostPerCredit() + sampleVideoWorstCostBrl();
-    expect(Number(cac.toFixed(2))).toBeLessThanOrEqual(5.1);
+    // + o roteiro de cortesia da Fábrica (um por conta, junto do vídeo).
+    const cac =
+      SIGNUP_BONUS_CREDITS * worstCostPerCredit() +
+      sampleVideoWorstCostBrl() +
+      ACTION_PRICES.script.worstCaseCostBrl;
+    expect(Number(cac.toFixed(2))).toBeLessThanOrEqual(5.5);
   });
 
   it('não vende plano de preço zero', () => {

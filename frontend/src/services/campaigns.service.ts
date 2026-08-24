@@ -146,7 +146,7 @@ export interface CampaignDetail extends Campaign {
    * Modo amostra (conta abaixo do Pro): só a cena de produto é gerada, pelo
    * vídeo de cortesia, e só enquanto `videoDisponivel`. O resto pede o Pro.
    */
-  amostra?: { ativo: boolean; videoDisponivel: boolean };
+  amostra?: { ativo: boolean; videoDisponivel: boolean; roteiroDisponivel: boolean };
 }
 
 export interface CampaignPricing {

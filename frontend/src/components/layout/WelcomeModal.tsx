@@ -98,8 +98,8 @@ export function WelcomeModal({ carteira, email }: Props) {
     video?.available
       ? {
           icone: <MovieFilterRoundedIcon />,
-          titulo: '1 cena de vídeo do seu produto, por nossa conta',
-          texto: `Na Fábrica de Criativos: cadastre o produto com a foto, deixe a IA roteirizar e veja a foto dele virar vídeo — vale ${video.credits} créditos, sem gastar nada.`,
+          titulo: '1 vídeo do seu produto, por nossa conta',
+          texto: `Na Fábrica de Criativos: cadastre o produto com a foto, a IA escreve o roteiro e anima a primeira cena — roteiro e cena sem gastar créditos (vale ${video.credits}+ créditos).`,
         }
       : null,
     {

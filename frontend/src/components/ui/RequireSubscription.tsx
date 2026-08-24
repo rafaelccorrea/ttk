@@ -35,10 +35,22 @@ import { billingService } from '@/services/billing.service';
  * e trancar o usuário fora do app por uma falha momentânea de /wallet seria
  * pior do que deixá-lo bater no 403.
  */
+/**
+ * Rotas pagas que a conta gratuita PODE abrir quando a carteira diz que a
+ * feature está liberada para ela. Hoje é só o copiloto: o painel abre no free
+ * (com os 10 minutos de cortesia como único limite), e é o `features` do
+ * backend — a mesma régua do `PlanFeatureGuard` — que decide, não este mapa.
+ * O mapa só traduz prefixo de URL em nome de feature.
+ */
+const FEATURE_DA_ROTA: ReadonlyArray<[prefixo: string, feature: string]> = [
+  ['/copiloto', 'live_copilot'],
+];
+
 export function RequireSubscription() {
   const [estado, setEstado] = useState<'carregando' | 'entra' | 'amostra' | 'sem-acesso'>(
     'carregando',
   );
+  const [liberadas, setLiberadas] = useState<Record<string, boolean>>({});
   const location = useLocation();
 
   useEffect(() => {
@@ -47,6 +59,7 @@ export function RequireSubscription() {
       .wallet()
       .then((w) => {
         if (!active) return;
+        setLiberadas((w.features ?? {}) as Record<string, boolean>);
         if (w.plan !== 'free') return setEstado('entra');
         setEstado(w.freeSample?.active ? 'amostra' : 'sem-acesso');
       })
@@ -72,6 +85,13 @@ export function RequireSubscription() {
   if (location.pathname.startsWith('/dashboard')) {
     return <Navigate to="/produtos" replace />;
   }
+  // Feature aberta no free pela carteira (ex.: o painel do copiloto) entra —
+  // bloquear aqui o que o menu mostra destrancado seria o app se contradizendo.
+  const abertaNoFree = FEATURE_DA_ROTA.some(
+    ([prefixo, feature]) =>
+      location.pathname.startsWith(prefixo) && liberadas[feature] === true,
+  );
+  if (abertaNoFree) return <Outlet />;
   return <BloqueioDePlano />;
 }
 

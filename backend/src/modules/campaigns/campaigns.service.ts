@@ -1184,9 +1184,13 @@ export class CampaignsService {
     };
 
     const run = () => this.ai.generateCampaign(pedido);
-    const resultado = this.ai.enabled
-      ? await this.billing.withCharge(userId, 'script', run)
-      : await run();
+    // Modo amostra: o roteiro do vídeo de cortesia também é cortesia — um por
+    // conta (ver `consumirRoteiroDeCortesia`). Fora disso, cobra a tabela.
+    const roteiroDeCortesia =
+      this.ai.enabled && (await this.billing.consumirRoteiroDeCortesia(userId));
+    const resultado = !this.ai.enabled || roteiroDeCortesia
+      ? await run()
+      : await this.billing.withCharge(userId, 'script', run);
 
     // Regerar o roteiro descarta as cenas antigas — e as gerações delas, que
     // sem isto ficariam órfãs em "Minhas Gerações".
