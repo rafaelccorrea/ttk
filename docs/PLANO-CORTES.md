@@ -122,3 +122,8 @@ Guards: `SupabaseAuthGuard` + `PlanFeatureGuard` com `@RequiresPlanFeature('cuts
 Observações da rodada:
 - A leitura da duração no navegador falhou uma vez para o mesmo arquivo que funcionou em outra (`lerDuracaoDoVideo`); o servidor confere de qualquer jeito. Só afeta a estimativa de blocos de transcrição na cotação.
 - A IA devolve trechos sobrepostos entre si mesmo com a instrução de não sobrepor; a validação greedy (ordem da IA) fica com o melhor de cada região e o rápido completa. Log `IA sugeriu N, M válido(s)` no `CutsService` mostra isso.
+
+## QA em PRODUÇÃO — 2026-08-24 (pikpokviral.com.br, conta interna)
+- Backend deployado com `CutsController` (rota `/api/v1/cuts/*` respondendo), frontend estático subido.
+- Job inteligente com legenda (2:31, 6 pedidos): Whisper + IA em prod, 3 cortes (2 da IA com título/gancho + 1 rápido), **legenda queimada renderizada no Linux com a fonte embarcada** (`backend/assets/fonts`), job `Pronto`. Tempo total ≈ 2 min.
+- Pendência menor: `lerDuracaoDoVideo` no navegador falha às vezes (só afeta a estimativa de blocos na cotação; o servidor mede de verdade).
