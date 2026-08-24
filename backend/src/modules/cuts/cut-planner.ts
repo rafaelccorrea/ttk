@@ -65,17 +65,18 @@ export function ajustarAoSilencio(
 }
 
 /**
- * Modo rápido: `quantidade` janelas espalhadas pela fonte inteira.
+ * Modo rápido: `quantidade` janelas espalhadas pela parte LIVRE da fonte.
  *
  * Espalhar (em vez de encavalar do início) é decisão de produto: um review de
  * 20 min tem começo, meio e fim, e cortes só dos primeiros 5 minutos entregam
- * o mesmo assunto 10 vezes. O passo entre janelas é (duração − alvo) / (n − 1),
- * então o primeiro corte começa em 0 e o último termina no fim.
+ * o mesmo assunto 10 vezes. A fonte é dividida nos espaços entre os trechos a
+ * `evitar` (os que a IA já escolheu); cada espaço recebe janelas na proporção
+ * do seu tamanho, em grade uniforme, sem sobreposição.
  *
- * Cada borda é puxada para o silêncio mais próximo (até `folga` segundos),
- * respeitando a faixa [min, max] do corte. Se a fonte é curta demais para
- * `quantidade` janelas sem sobreposição, as janelas se sobrepõem — é o que o
- * usuário pediu; ele vê a faixa de tempo de cada corte na tela.
+ * O alvo de duração é o meio da faixa, e encolhe até o mínimo quando a fonte
+ * é curta para o pedido: 6 cortes de 30–60 s em 2:30 não cabem com 45 s (só
+ * 3), mas cabem 5 de 30 s. Cada borda é puxada para o silêncio mais próximo
+ * (até `folga` segundos), sem sair da faixa nem do espaço livre.
  */
 export function planejarRapido(
   duracaoFonte: number,
@@ -86,35 +87,74 @@ export function planejarRapido(
   evitar: Trecho[] = [],
 ): TrechoPlanejado[] {
   const n = Math.max(1, Math.trunc(quantidade));
-  const alvo = Math.min(duracaoAlvo(minSeg, maxSeg), duracaoFonte);
   const folga = Math.max(0, (maxSeg - minSeg) / 2);
-  // A grade tem uma vaga para cada trecho a evitar (os que a IA já escolheu):
-  // a vaga que cair em cima de um deles é descartada e as outras preenchem.
-  const vagas = n + evitar.length;
-  const passo = vagas > 1 ? Math.max(0, (duracaoFonte - alvo) / (vagas - 1)) : 0;
+  const espacos = espacosLivres(duracaoFonte, evitar);
+  const livre = espacos.reduce((s, e) => s + (e.fim - e.inicio), 0);
+  if (livre <= 0) return [];
+  const alvo = Math.min(duracaoAlvo(minSeg, maxSeg), Math.max(minSeg, livre / n), duracaoFonte);
 
   const resultado: TrechoPlanejado[] = [];
-  for (let i = 0; resultado.length < n && i < vagas; i += 1) {
-    const inicioBruto = Math.min(i * passo, Math.max(0, duracaoFonte - alvo));
-    let inicio = ajustarAoSilencio(inicioBruto, silencios, folga);
-    inicio = Math.max(0, Math.min(inicio, Math.max(0, duracaoFonte - minSeg)));
-
-    let fim = ajustarAoSilencio(inicio + alvo, silencios, folga);
-    fim = Math.max(inicio + minSeg, Math.min(fim, inicio + maxSeg, duracaoFonte));
-    if (fim - inicio < minSeg) {
-      // Fonte acabou antes do mínimo: recua o início para caber.
-      inicio = Math.max(0, fim - minSeg);
-    }
-    if (fim - inicio < Math.min(minSeg, duracaoFonte) - 0.01) break;
-
-    const trecho = { inicio: arred(inicio), fim: arred(fim) };
-    if (sobrepoe(trecho, evitar) || sobrepoe(trecho, resultado)) {
-      if (i * passo > duracaoFonte) break;
-      continue;
-    }
-    resultado.push({ ...trecho, title: null, hook: null, reason: null, origem: 'rapido' });
+  // Quantas janelas cabem em cada espaço, e quantas ele merece pelo tamanho.
+  const cotas = espacos.map((e) => {
+    const tamanho = e.fim - e.inicio;
+    const cabem = Math.floor(tamanho / Math.min(alvo, minSeg + 0.0001) + 1e-9);
+    const merece = Math.round((tamanho / livre) * n);
+    return { espaco: e, tamanho, quer: Math.min(cabem, Math.max(merece, tamanho >= minSeg ? 1 : 0)) };
+  });
+  // Ajusta a soma das cotas para n (sobra vai para os espaços com folga).
+  let soma = cotas.reduce((s, c) => s + c.quer, 0);
+  for (const c of cotas.sort((a, b) => b.tamanho - a.tamanho)) {
+    if (soma >= n) break;
+    const cabem = Math.floor(c.tamanho / minSeg + 1e-9);
+    const extra = Math.min(n - soma, Math.max(0, cabem - c.quer));
+    c.quer += extra;
+    soma += extra;
   }
-  return resultado;
+  for (const c of cotas.sort((a, b) => b.quer - a.quer)) {
+    if (soma <= n) break;
+    const tira = Math.min(soma - n, c.quer);
+    c.quer -= tira;
+    soma -= tira;
+  }
+  cotas.sort((a, b) => a.espaco.inicio - b.espaco.inicio);
+
+  for (const { espaco, tamanho, quer } of cotas) {
+    if (quer <= 0) continue;
+    // Duração por janela neste espaço: o alvo, ou menos se for preciso caber.
+    const dur = Math.max(minSeg, Math.min(alvo, tamanho / quer));
+    const passo = quer > 1 ? (tamanho - dur) / (quer - 1) : 0;
+    for (let i = 0; i < quer; i += 1) {
+      const inicioBruto = espaco.inicio + i * passo;
+      let inicio = ajustarAoSilencio(inicioBruto, silencios, folga);
+      inicio = Math.max(espaco.inicio, Math.min(inicio, espaco.fim - minSeg));
+      let fim = ajustarAoSilencio(inicio + dur, silencios, folga);
+      fim = Math.max(inicio + minSeg, Math.min(fim, inicio + maxSeg, espaco.fim));
+      if (fim - inicio < minSeg - 0.01) {
+        inicio = Math.max(espaco.inicio, fim - minSeg);
+        if (fim - inicio < minSeg - 0.01) continue;
+      }
+      const trecho = { inicio: arred(inicio), fim: arred(fim) };
+      if (sobrepoe(trecho, resultado) || sobrepoe(trecho, evitar)) continue;
+      resultado.push({ ...trecho, title: null, hook: null, reason: null, origem: 'rapido' });
+    }
+  }
+  return resultado.slice(0, n);
+}
+
+/** Os intervalos de `[0, duracao]` que não tocam nenhum trecho de `evitar`. */
+export function espacosLivres(duracao: number, evitar: Trecho[]): Trecho[] {
+  const ocupados = [...evitar]
+    .map((t) => ({ inicio: Math.max(0, t.inicio), fim: Math.min(duracao, t.fim) }))
+    .filter((t) => t.fim > t.inicio)
+    .sort((a, b) => a.inicio - b.inicio);
+  const livres: Trecho[] = [];
+  let cursor = 0;
+  for (const o of ocupados) {
+    if (o.inicio > cursor) livres.push({ inicio: cursor, fim: o.inicio });
+    cursor = Math.max(cursor, o.fim);
+  }
+  if (duracao > cursor) livres.push({ inicio: cursor, fim: duracao });
+  return livres;
 }
 
 /** Sugestão crua vinda da IA — nada aqui é confiável até `validarSugestoes`. */

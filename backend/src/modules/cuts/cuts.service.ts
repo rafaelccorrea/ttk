@@ -492,6 +492,9 @@ export class CutsService {
         userId: job.userId,
       });
       daIa = validarSugestoes(sugestoes, duracao, job.quantity, job.minSeconds, job.maxSeconds);
+      this.logger.log(
+        `Job ${job.id}: IA sugeriu ${sugestoes.length} trecho(s), ${daIa.length} válido(s) ${JSON.stringify(sugestoes.map((s) => [s.inicio, s.fim]))}`,
+      );
     } else {
       this.logger.warn(`Job ${job.id}: transcrição vazia, caindo para o modo rápido.`);
     }

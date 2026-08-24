@@ -1,6 +1,7 @@
 import {
   ajustarAoSilencio,
   blocosDeTranscricao,
+  espacosLivres,
   planejarRapido,
   sobrepoe,
   srtDoTrecho,
@@ -38,11 +39,20 @@ describe('cut-planner — modo rápido', () => {
     for (const c of cortes) expect(sobrepoe(c, daIa)).toBe(false);
   });
 
+  it('encolhe o alvo até o mínimo quando a fonte é curta para o pedido', () => {
+    // 6 cortes de 30–60 s em 2:30: com 45 s só cabem 3; com 30 s cabem 5.
+    const cortes = planejarRapido(150, 6, 30, 60);
+    expect(cortes.length).toBeGreaterThanOrEqual(5);
+    for (const c of cortes) expect(c.fim - c.inicio).toBeGreaterThanOrEqual(30);
+  });
+
   it('numa fonte mais curta que o alvo, entrega o que cabe', () => {
     const cortes = planejarRapido(20, 3, 15, 30);
     expect(cortes.length).toBeGreaterThanOrEqual(1);
     expect(cortes[0].inicio).toBe(0);
-    expect(cortes[0].fim).toBe(20);
+    // Alvo encolhe até o mínimo (15 s); nunca passa do fim da fonte.
+    expect(cortes[0].fim).toBeGreaterThanOrEqual(15);
+    expect(cortes[0].fim).toBeLessThanOrEqual(20);
   });
 });
 
@@ -143,5 +153,25 @@ describe('cut-planner — legenda (SRT)', () => {
 
   it('devolve vazio quando não há fala no trecho', () => {
     expect(srtDoTrecho(fala, 25, 35)).toBe('');
+  });
+});
+
+describe('cut-planner — complemento nos espaços livres', () => {
+  it('preenche os dois lados de um trecho da IA sem desperdiçar vagas', () => {
+    // Fonte de 151 s, IA ficou com 57–117; sobram 0–57 e 117–151.
+    const daIa = [{ inicio: 57, fim: 117 }];
+    const cortes = planejarRapido(151, 5, 30, 60, [], daIa);
+    expect(cortes.length).toBeGreaterThanOrEqual(2);
+    for (const c of cortes) {
+      expect(sobrepoe(c, daIa)).toBe(false);
+      expect(c.fim - c.inicio).toBeGreaterThanOrEqual(30);
+    }
+    expect(cortes.some((c) => c.fim <= 57)).toBe(true);
+    expect(cortes.some((c) => c.inicio >= 117)).toBe(true);
+  });
+
+  it('espacosLivres funde trechos sobrepostos e recorta nas bordas', () => {
+    expect(espacosLivres(100, [{ inicio: -5, fim: 10 }, { inicio: 5, fim: 20 }, { inicio: 90, fim: 120 }]))
+      .toEqual([{ inicio: 20, fim: 90 }]);
   });
 });

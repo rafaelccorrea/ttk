@@ -106,4 +106,19 @@ Guards: `SupabaseAuthGuard` + `PlanFeatureGuard` com `@RequiresPlanFeature('cuts
 12. `npm run stripe:check` não é necessário (não há produto Stripe novo).
 13. **Legenda (F3)**: modo inteligente com "Legenda queimada" marcado → o corte sai com a fala no terço de baixo (ícone de legenda no card). Se o servidor não tiver fonte, o corte sai SEM legenda e sem erro (`captions=false`); aí configurar `CUTS_FONTS_DIR` com um .ttf (DejaVu) e repetir.
 14. **Multiplicador (F3)**: corte de ≤ 25 s → "Usar no Multiplicador" → Corpo; aparece na lista de clipes de corpo em `/multiplicador`. Corte de 45 s → só os blocos em que não cabe ficam desabilitados com "passa de N s"; forçar pela API devolve 400 com a conta na mensagem.
-15. **Smoke local já feito (2026-08-23, Windows)**: fonte sintética de 3 min com silêncios a cada 20 s → `silencios()` achou os 9, o plano alinhou as bordas ao meio dos silêncios, cortes 9:16 e 1:1 em ~11 s cada, legenda renderizada no terço de baixo. Falta o mesmo no Linux do Hostinger (fonte!).
+15. **Smoke local (2026-08-23, Windows)**: ver a tabela "QA executado" abaixo para a rodada completa pelo navegador.
+
+## QA executado em 2026-08-24 (local: vite 5174 → backend local → Supabase, conta interna `pikpok@pikpok…`)
+| # | Item | Resultado |
+|---|---|---|
+| 3 | Rápido, 2:30, 6 cortes 30–60 s, 9:16 | ✅ Após correção do planner: 6/6 com 15–25 s; com 30–60 s saem 5 (o máximo sem sobreposição). Bordas nos silêncios. |
+| 4 | Inteligente, 2:31 com fala (TTS pt-BR), 6 cortes | ✅ Whisper transcreveu, IA sugeriu 12 trechos (2 válidos sem sobreposição), complemento rápido preencheu o espaço livre → 3 cortes; títulos/ganchos coerentes ("Como usar o kit em 2 minutos", "Cupom, frete grátis e últimas unidades"). Cotação 36 + 6 = 42 cr. |
+| 13 | Legenda queimada | ✅ Renderizada no terço de baixo (Windows). Pendente confirmar no Linux da Hostinger (fonte). |
+| 14 | Usar no Multiplicador | ✅ Corte de 20 s → só "Corpo" habilitado (Gancho "passa de 8s", CTA "passa de 12s"); enviado, apareceu em `/multiplicador` como `teste-cortes-corte-1.mp4`. |
+| 9 | Excluir job | ✅ Some da lista; objetos apagados do S3. |
+| — | Cotação/UI | ✅ `2 cr/corte` e `6 cr/corte`, duração lida no navegador, progresso de upload, polling até `pronto`. |
+| 1, 2, 5, 6, 7, 8, 10, 11 | plano, saldo, sem áudio, fora da duração, estorno, restart, 409, concorrência | ⏳ Não executados nesta rodada (conta interna tem créditos ilimitados; precisam de conta Pro/Essencial comuns e de derrubar o processo no meio). |
+
+Observações da rodada:
+- A leitura da duração no navegador falhou uma vez para o mesmo arquivo que funcionou em outra (`lerDuracaoDoVideo`); o servidor confere de qualquer jeito. Só afeta a estimativa de blocos de transcrição na cotação.
+- A IA devolve trechos sobrepostos entre si mesmo com a instrução de não sobrepor; a validação greedy (ordem da IA) fica com o melhor de cada região e o rápido completa. Log `IA sugeriu N, M válido(s)` no `CutsService` mostra isso.
