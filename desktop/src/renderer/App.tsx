@@ -123,6 +123,11 @@ export function App(): JSX.Element {
     if (!ponte) return;
     void ponte.obterLarguraDoPainel().then(setLargura).catch(() => undefined);
   }, [ponte]);
+  // Diálogos (MUI Dialog) são posicionados na janela inteira; o tema os
+  // desloca para o painel lendo esta variável — ver MuiDialog em theme.ts.
+  useEffect(() => {
+    document.documentElement.style.setProperty('--largura-painel', `${largura}px`);
+  }, [largura]);
   const iniciarArrasto = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!ponte) return;

@@ -282,7 +282,9 @@ export const theme = createTheme({
          * atrás do vídeo. Alinhar o root ao painel é o que faz ele existir
          * inteiro no único pedaço de tela que é nosso.
          */
-        root: { left: '60%' },
+        // A largura do painel é dinâmica (padrão 640px, arrastável); o App
+        // publica o valor na variável CSS `--largura-painel` a cada mudança.
+        root: { left: 'calc(100% - var(--largura-painel, 640px))' },
         paper: {
           backgroundImage: 'none',
           backgroundColor: SUPERFICIE_ALTA,
