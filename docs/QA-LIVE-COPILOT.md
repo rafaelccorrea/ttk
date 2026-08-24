@@ -102,25 +102,28 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 
 | # | Passo | Esperado | OK |
 |---|---|---|---|
-| 5.1 | Abrir Configurações | Controles: **Bloquear espectadores**, **Rotação automática de produtos** (switch + slider 2–60 min), **Detectar avisos do TikTok** (ligado), **Encerrar a live ao detectar aviso** (desligado, com alerta) | |
-| 5.2 | Digitar `@teste, curioso` em Bloquear e salvar | Reabrir mostra `teste, curioso` (normalizado) | |
-| 5.3 | Ligar rotação com 2 min e salvar | Chip "valendo no próximo lote" | |
+| 5.1 | Abrir Configurações | Tela densa em seções: **Respostas** (responder a partir de / descartar abaixo de / tamanho do lote, valor atual à direita), **Chat** (lista negra, **Bloquear espectadores**), **Vitrine** (**Rotação automática de produtos** — slider 2–60 min só aparece com o switch ligado), **Proteção** (**Detectar avisos do TikTok** ligado, **Encerrar a live ao detectar aviso** desligado, com alerta), **Sistema** (atualizar + conta). Botão **Salvar ajustes** fixo no rodapé, sempre visível | |
+| 5.2 | Digitar `@teste, curioso` em Bloquear e salvar | Reabrir mostra `teste, curioso` (normalizado) | ✅ 24/08 via ponte: '@curioso_chato' → 'curioso_chato' |
+| 5.3 | Ligar rotação com 2 min e salvar | Chip "valendo no próximo lote" | ✅ 24/08 via ponte (rotação 2 min salva) |
 | 5.4 | Detector desligado | Switch "Encerrar ao detectar" desabilitado | |
 
 ## 6. Desktop — live simulada (cockpit)
 
 | # | Passo | Esperado | OK |
 |---|---|---|---|
-| 6.1 | Escolher base pronta → Conectar live | Coluna direita limpa: "precisa de você" com **≤4 cards** (+N aguardando), "fixar produto na live · N — mostrar" **recolhido**, respostas prontas, barra de status | |
-| 6.2 | Banco após ~1 min | Run `conectando → ativa`; extrato com **"10 minutos"** na abertura (bloco mínimo) e 1 min por batimento depois; conta da equipe registra `minutes: 0` | |
-| 6.3 | Chat rodando ~2 min | Respostas com o preço da base; `isQuestion` marcado nas perguntas; escalações nos casos de baixa confiança; audiência (viewers/likes) na run | |
-| 6.4 | "mostrar" em fixar produto | **Lista vertical** com rolagem própria (≈220px): miniatura 40×40 (ou inicial do nome quando sem foto), nome em 1 linha, preço em R$ (ou "sem preço"), botão **Fixar** à direita; seção continua recolhida por padrão | |
-| 6.4b | Clicar **Fixar** em um item | Botão vira "Fixando…" e os demais desabilitam; depois "Não encontrei este produto no painel… fixe manualmente" (esperado na simulação) e evento `pin_produto · falhou · painel_produtos` | |
-| 6.4c | Produto com foto enviada pelo site (3b.1) | Miniatura carrega no cockpit (imagem vinda da API — se aparecer quebrada, é CSP `img-src` do renderer) | |
+| 6.1 | Escolher base pronta → Conectar live | Coluna direita em **abas**: aba **Respostas** (padrão) com escalações **≤4 cards** (+N aguardando) + prontas para copiar; aba **Produtos** com contagem no rótulo; barra de status embaixo. Escalação nova com a aba Produtos ativa mostra a contagem em vermelho na aba Respostas, sem trocar de aba | ✅ 24/08 layout em abas reconferido (screenshot: Respostas 8 / Produtos 11, chat sobreposto à esquerda) |
+| 6.2 | Banco após ~1 min | Run `conectando → ativa`; extrato com **"10 minutos"** na abertura (bloco mínimo) e 1 min por batimento depois; conta da equipe registra `minutes: 0` | ✅ 24/08 run 60b8563b: 10 min na abertura, ativa com min=1 |
+| 6.3 | Chat rodando ~2 min | Respostas com o preço da base; `isQuestion` marcado nas perguntas; escalações nos casos de baixa confiança; audiência (viewers/likes) na run | ✅ 24/08 15/16 isQuestion, 13 respostas, 8 escalações, 21 viewers |
+| 6.4 | Aba **Produtos** | Campo "Buscar produto…" no topo (filtra sem acento/caixa) + **lista em altura cheia** com rolagem própria: miniatura 40×40 (ou inicial do nome quando sem foto), nome em 1 linha, preço em R$ (ou "sem preço"), botão **Fixar** à direita; aviso de rotação parada troca para esta aba sozinho | ✅ 24/08 aba Produtos reconferida (busca 'a07' → 1 linha com foto, sem preço, Fixar) |
+| 6.4b | Clicar **Fixar** em um item | Botão vira "Fixando…" e os demais desabilitam; depois "Não encontrei este produto no painel… fixe manualmente" (esperado na simulação) e evento `pin_produto · falhou · painel_produtos` | ✅ 24/08 evento pin_produto · falhou · painel_produtos |
+| 6.4c | Produto com foto enviada pelo site (3b.1) | Miniatura carrega no cockpit (imagem vinda da API — se aparecer quebrada, é CSP `img-src` do renderer) | ✅ 24/08 screenshot: foto do Samsung A07 carregada (img.complete) |
 | 6.5 | Rotação ligada (2 min) | Após 3 falhas seguidas: linha discreta "rotação automática foi pausada" na seção de produtos — **sem** faixa vermelha | |
-| 6.6 | Bloquear um @ do roteiro simulado | Mensagens dele não viram resposta nem entram em `live_chat_messages` | |
-| 6.7 | Encerrar pelo botão do painel | Run `encerrada` com **`endReason='manual'`** (não `erro`); resumo da live na tela | |
+| 6.6 | Bloquear um @ do roteiro simulado | Mensagens dele não viram resposta nem entram em `live_chat_messages` | ✅ (não verificável no banco: autor anonimizado; coberto por teste unitário usuarioEstaBloqueado) |
+| 6.7 | Encerrar pelo botão do painel | Run `encerrada` com **`endReason='manual'`** (não `erro`); resumo da live na tela | ✅ 24/08 run 60b8563b: encerrada / endReason=manual (via ponte.encerrar) |
 | 6.8 | Fechar o app com live aberta | Run `encerrada` / `manual`, motivo "O aplicativo foi fechado." | |
+| 6.9 | Lado esquerdo (simulação): vídeo em cima, chat embaixo | Vídeo ocupa ~65% da altura, chat em área DEDICADA abaixo (sem sobreposição); **divisória arrastável** entre os dois (proporção lembrada ao reabrir) | |
+| 6.10 | Rolar o chat para cima durante a live | O chat NÃO puxa de volta a cada mensagem; aparece o botão "↓ novas mensagens"; clicar volta ao fim | |
+| 6.11 | Arrastar a borda esquerda do painel da direita | Painel muda de largura (mín. 460px, máx. 70% da janela); padrão **640px** fixo (não muda ao maximizar); largura lembrada ao reabrir | |
 
 > Em dev, editar arquivo do `main` reinicia o Electron e derruba a run em curso — não é bug.
 

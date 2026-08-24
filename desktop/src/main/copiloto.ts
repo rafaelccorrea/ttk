@@ -314,11 +314,13 @@ export class Copiloto {
       }
 
       /*
-       * O rotador nasce SEMPRE que a run é real, mas o interruptor é lido a
+       * O rotador nasce em TODA run — inclusive na simulada, onde o pin falha
+       * sem estrago (é best-effort) e é exatamente isso que o QA precisa ver:
+       * o giro, a auditoria e a pausa após três falhas. O interruptor é lido a
        * cada batida (`ativa`): ligar a rotação no meio da live vale na hora,
        * sem reconectar. Desligado, ele é um timer de 30s que não faz nada.
        */
-      if (!simulada) {
+      {
         this.rotador = new RotadorDeProdutos({
           ativa: () => this.lerConfiguracoes().rotacaoDeProdutosAtiva,
           intervaloMs: () =>
@@ -824,12 +826,22 @@ export class Copiloto {
       )
       .catch(() => undefined);
     if (resultado.ok) return { ok: true };
+    // A mensagem diz ONDE parou: cada etapa pede uma ação diferente do
+    // vendedor, e "não consegui clicar" para tudo o mandava caçar um botão que
+    // às vezes nem estava na tela.
+    const motivos: Record<string, string> = {
+      painel_produtos:
+        'Não achei o painel de produtos da live. Abra o painel do TikTok Shop na transmissão e tente de novo — ou fixe manualmente.',
+      botao_pin:
+        'Achei o painel, mas não o botão de fixar. O TikTok pode ter mudado a tela — fixe manualmente que o resto continua funcionando.',
+      produto:
+        'Não encontrei este produto no painel da live. Confira se ele está na vitrine da transmissão — ou fixe manualmente.',
+    };
     return {
       ok: false,
       motivo:
-        resultado.etapaFalhou === 'produto'
-          ? 'Não encontrei este produto no painel da live. Abra o painel de produtos e tente de novo — ou fixe manualmente.'
-          : 'Não consegui clicar em fixar. O TikTok pode ter mudado a tela — fixe manualmente que o resto continua funcionando.',
+        motivos[resultado.etapaFalhou ?? ''] ??
+        'Não consegui fixar. O TikTok pode ter mudado a tela — fixe manualmente que o resto continua funcionando.',
     };
   }
 

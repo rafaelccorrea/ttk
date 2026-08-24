@@ -28,3 +28,17 @@ export function formatarPrecoBrl(valor: number | null | undefined): string {
   const comMilhar = inteiro.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return `${valor < 0 ? '-' : ''}R$ ${comMilhar},${centavos}`;
 }
+
+/**
+ * A chave de busca da lista de produtos: sem acento, sem caixa, sem espaço
+ * sobrando. O vendedor digita "creme" no meio da live e precisa achar
+ * "Crème Hidratante" — a busca exata deixaria a lista vazia por um til.
+ */
+export function normalizarBusca(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}

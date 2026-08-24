@@ -10,7 +10,13 @@ import {
   session,
   shell,
 } from 'electron';
-import type { ConfiguracoesCopiloto } from '../shared/desktop-api';
+import Store from 'electron-store';
+import {
+  FRACAO_MAXIMA_DO_PAINEL,
+  LARGURA_PAINEL_MINIMA,
+  LARGURA_PAINEL_PADRAO,
+  type ConfiguracoesCopiloto,
+} from '../shared/desktop-api';
 import type { LiveRunMode } from '../shared/live-events';
 import { MODO_SIMULACAO } from './chat-simulado';
 import { Copiloto } from './copiloto';
@@ -27,9 +33,9 @@ import {
  *
  * A janela é dividida em dois mundos que NÃO se conhecem:
  *
- *   [ 60% BrowserView ]  [ 40% renderer ]
- *    tiktok.com, o site   o painel do PikPok
- *    de terceiro           (React + MUI)
+ *   [ BrowserView: o resto ]  [ renderer: 640px fixos, arrastável ]
+ *    tiktok.com, o site         o painel do PikPok
+ *    de terceiro                (React + MUI)
  *
  * Nesta fase nada é escrito no TikTok: a BrowserView existe para o vendedor
  * ficar logado e enxergar a própria live no mesmo app, enquanto as respostas
@@ -37,8 +43,25 @@ import {
  * ponte com o backend entram depois; aqui é só a casca.
  */
 
-/** Fatia da largura da janela que fica com o TikTok. */
-const FRACAO_TIKTOK = 0.6;
+/**
+ * A largura do painel da direita é um número FIXO em px (padrão em
+ * `LARGURA_PAINEL_PADRAO`), guardado no disco quando o vendedor arrasta a
+ * divisória. O TikTok fica com o resto. Antes era uma fração (60/40) — e num
+ * monitor largo isso dava um painel de 900px com texto boiando e um vídeo
+ * espremido; num pequeno, um painel ilegível.
+ */
+const discoDeLayout = new Store<{ larguraPainel?: number }>({ name: 'layout' });
+
+function larguraDoPainel(larguraDaJanela: number): number {
+  const pedida = discoDeLayout.get('larguraPainel') ?? LARGURA_PAINEL_PADRAO;
+  const maxima = Math.round(larguraDaJanela * FRACAO_MAXIMA_DO_PAINEL);
+  return Math.max(LARGURA_PAINEL_MINIMA, Math.min(maxima, Math.round(pedida)));
+}
+
+/** Reposiciona a BrowserView — preenchido quando ela existe. */
+let reposicionarView: (() => void) | null = null;
+/** Durante o arrasto a view some (largura 0) para o mouse não cair nela. */
+let arrastandoDivisoria = false;
 
 /**
  * O ícone do app — a mesma arte que o site usa como favicon.
@@ -258,11 +281,12 @@ function anexarTikTok(janela: BrowserWindow): void {
     view.setBounds({
       x: 0,
       y: ALTURA_BARRA,
-      width: Math.round(width * FRACAO_TIKTOK),
+      width: arrastandoDivisoria ? 0 : Math.max(0, width - larguraDoPainel(width)),
       height: Math.max(0, height - ALTURA_BARRA),
     });
   };
 
+  reposicionarView = posicionar;
   posicionar();
   // `setAutoResize` do Electron reescala proporcionalmente e desalinha a
   // divisão quando a janela muda de forma; recalcular na mão mantém os 60/40
@@ -655,6 +679,24 @@ function registrarIpc(): void {
   ipcMain.handle('envio:pausar', (_evento, pausado: boolean) =>
     copiloto.pausarEnvio(Boolean(pausado)),
   );
+
+  ipcMain.handle('layout:painel:ler', () => {
+    const j = janelaPrincipal;
+    return larguraDoPainel(j ? j.getContentBounds().width : LARGURA_INICIAL);
+  });
+  ipcMain.handle('layout:painel', (_evento, largura: unknown) => {
+    // O renderer é conteúdo: número fora dos limites vira o limite, lixo vira
+    // o padrão — e o disco só guarda o que a view de fato usou.
+    const n = Number(largura);
+    discoDeLayout.set('larguraPainel', Number.isFinite(n) ? n : LARGURA_PAINEL_PADRAO);
+    reposicionarView?.();
+    const j = janelaPrincipal;
+    return larguraDoPainel(j ? j.getContentBounds().width : LARGURA_INICIAL);
+  });
+  ipcMain.handle('layout:painel:arrastando', (_evento, arrastando: unknown) => {
+    arrastandoDivisoria = arrastando === true;
+    reposicionarView?.();
+  });
 
   ipcMain.handle('config:ler', () => copiloto.lerConfiguracoes());
   ipcMain.handle('config:salvar', (_evento, valores: ConfiguracoesCopiloto) =>

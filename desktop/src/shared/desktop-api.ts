@@ -138,6 +138,17 @@ export interface EstadoConexao {
  * o copiloto está falando demais ou de menos, e uma ida ao servidor no meio
  * disso só adiciona uma forma de a mudança não valer.
  */
+/**
+ * A largura do painel da direita, em px. O padrão é FIXO (não uma fração da
+ * janela): o cockpit tem uma largura em que fica legível, e ela não muda
+ * porque o vendedor maximizou a janela num monitor largo — o que cresce é o
+ * vídeo. O vendedor arrasta a divisória para mudar; o valor fica no disco.
+ */
+export const LARGURA_PAINEL_PADRAO = 640;
+export const LARGURA_PAINEL_MINIMA = 460;
+/** Fração máxima da janela que o painel pode tomar — o vídeo nunca some. */
+export const FRACAO_MAXIMA_DO_PAINEL = 0.7;
+
 /** O que o detector de aviso do TikTok conta à tela — ver `warning-detector`. */
 export interface AvisoDoTikTok {
   /** Resumo do texto do banner, truncado no processo principal. */
@@ -387,6 +398,20 @@ export interface PikPokDesktopApi {
   readonly aoRotacaoParada: (
     ouvinte: (dados: { motivo: string }) => void,
   ) => () => void;
+
+  // ----------------------------------------------------------------- layout
+  /** Largura atual do painel da direita, em px (padrão fixo, ver constantes). */
+  readonly obterLarguraDoPainel: () => Promise<number>;
+  /**
+   * Muda a largura do painel (o main reposiciona a BrowserView e guarda no
+   * disco). Devolve a largura efetiva, já dentro dos limites.
+   */
+  readonly definirLarguraDoPainel: (largura: number) => Promise<number>;
+  /**
+   * Enquanto a divisória está sendo arrastada, a BrowserView é recolhida —
+   * senão o mouse cai dentro do TikTok e o painel para de receber o arrasto.
+   */
+  readonly arrastandoDivisoria: (arrastando: boolean) => Promise<void>;
 
   /**
    * A audiência da sala em tempo real (viewers, curtidas, presentes), direto

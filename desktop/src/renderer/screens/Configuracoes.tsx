@@ -2,11 +2,14 @@ import {
   Box,
   Button,
   Chip,
+  Divider,
   Slider,
   Stack,
   Switch,
   TextField,
+  Tooltip,
   Typography,
+  alpha,
 } from '@mui/material';
 import { useCallback, useEffect, useState } from 'react';
 import type { ConfiguracoesCopiloto } from '@shared/desktop-api';
@@ -29,6 +32,16 @@ import { useEstadoAtualizacao } from '../hooks/useEstadoAtualizacao';
  * Os valores ficam no computador dele e valem no lote seguinte. Não há botão de
  * "restaurar padrão de fábrica" porque os padrões já são os que a gente
  * recomenda e cada slider mostra onde eles estão.
+ *
+ * POR QUE A TELA É DENSA
+ * ----------------------
+ * A versão anterior dava um cartão inteiro a cada controle — padding largo,
+ * parágrafo de explicação, slider sozinho na linha. Com nove controles isso
+ * virava 1.800 px de rolagem numa coluna de 700 px, e o botão de salvar ficava
+ * lá embaixo, fora da vista. Agora cada controle é UMA linha dentro de uma
+ * seção (Respostas, Chat, Vitrine, Proteção, Sistema), a explicação cabe numa
+ * linha de legenda (o detalhe fica no tooltip do título) e o salvar mora num
+ * rodapé fixo. A tela inteira cabe em ~1000 px sem perder nenhum ajuste.
  */
 export function Configuracoes({
   aoVoltar,
@@ -118,163 +131,198 @@ export function Configuracoes({
     }
   };
 
+  /* O rodapé é passado à Moldura para ficar fora da área que rola. */
+  const rodape = (
+    <Stack direction="row" spacing={1.25} alignItems="center">
+      <Button variant="contained" onClick={() => void salvar()} disabled={salvando}>
+        {salvando ? 'Salvando…' : 'Salvar ajustes'}
+      </Button>
+      {salvo ? (
+        <Chip
+          size="small"
+          label="valendo no próximo lote"
+          sx={{
+            bgcolor: `${cores.sucesso}22`,
+            color: cores.sucesso,
+            border: '1px solid',
+            borderColor: `${cores.sucesso}55`,
+          }}
+        />
+      ) : null}
+    </Stack>
+  );
+
   return (
-    <Moldura aoVoltar={aoVoltar}>
-      <Stack spacing={1.75}>
-        <Ajuste
-          titulo="Responder sozinho a partir de"
-          explicacao={`Acima de ${porcento(valores.limiarResposta)} de certeza, a resposta já entra na lista de prontas. Baixar isso enche a tela mais rápido, mas com respostas mais frouxas.`}
-        >
-          <Slider
-            value={valores.limiarResposta}
-            min={0.5}
-            max={0.95}
-            step={0.05}
-            marks
-            valueLabelDisplay="auto"
-            valueLabelFormat={porcento}
-            onChange={(_, v) => alterar({ limiarResposta: Number(v) })}
-          />
-        </Ajuste>
-
-        <Ajuste
-          titulo="Descartar abaixo de"
-          explicacao={`Abaixo de ${porcento(valores.limiarDescarte)} a pergunta some sem virar nem rascunho. É o que evita o painel encher de "kkkk" e de mensagem sem pergunta nenhuma.`}
-        >
-          <Slider
-            value={valores.limiarDescarte}
-            min={0.05}
-            max={0.5}
-            step={0.05}
-            marks
-            valueLabelDisplay="auto"
-            valueLabelFormat={porcento}
-            onChange={(_, v) => alterar({ limiarDescarte: Number(v) })}
-          />
-        </Ajuste>
-
-        <Ajuste
-          titulo="Lista negra"
-          explicacao="Mensagens que contêm qualquer uma destas palavras são ignoradas antes de custar processamento. Separe por vírgula."
-        >
-          <TextField
-            fullWidth
-            multiline
-            minRows={2}
-            value={listaNegraTexto}
-            placeholder="golpe, link, whatsapp"
-            onChange={(e) => {
-              setListaNegraTexto(e.target.value);
-              setSalvo(false);
-            }}
-          />
-        </Ajuste>
-
-        <Ajuste
-          titulo="Tamanho do lote"
-          explicacao={`Junto até ${valores.tamanhoDoLote} mensagens antes de mandar para análise. Lote maior sai mais barato; lote menor responde mais rápido.`}
-        >
-          <Slider
-            value={valores.tamanhoDoLote}
-            min={LOTE_MINIMO}
-            max={LOTE_MAXIMO}
-            step={1}
-            valueLabelDisplay="auto"
-            onChange={(_, v) => alterar({ tamanhoDoLote: Number(v) })}
-          />
-        </Ajuste>
-
-        <Ajuste
-          titulo="Bloquear espectadores"
-          explicacao="Mensagens destes @ são ignoradas antes de qualquer processamento — não viram resposta nem custam nada. A lista fica só neste computador. Separe por vírgula."
-        >
-          <TextField
-            fullWidth
-            multiline
-            minRows={2}
-            value={bloqueadosTexto}
-            placeholder="@curioso_chato, @concorrente"
-            onChange={(e) => {
-              setBloqueadosTexto(e.target.value);
-              setSalvo(false);
-            }}
-          />
-        </Ajuste>
-
-        <Ajuste
-          titulo="Rotação automática de produtos"
-          explicacao={`Fixa o próximo produto da sua base a cada ${valores.rotacaoIntervaloMinutos} minutos, em ordem, enquanto a live corre. Se três fixações seguidas falharem, a rotação pausa sozinha e te avisa.`}
-        >
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Switch
-              checked={valores.rotacaoDeProdutosAtiva}
-              onChange={(_, ligado) =>
-                alterar({ rotacaoDeProdutosAtiva: ligado })
-              }
-            />
+    <Moldura aoVoltar={aoVoltar} rodape={rodape}>
+      <Stack spacing={1.5}>
+        <Secao titulo="respostas" cor={cores.ciano}>
+          <Linha
+            titulo="Responder sozinho a partir de"
+            explicacao="Acima disto a resposta já entra na lista de prontas. Menor = mais respostas, mais frouxas."
+            detalhe="Abaixar enche a tela mais rápido, mas com respostas de que o copiloto tem menos certeza."
+            valor={porcento(valores.limiarResposta)}
+          >
             <Slider
-              disabled={!valores.rotacaoDeProdutosAtiva}
-              value={valores.rotacaoIntervaloMinutos}
-              min={2}
-              max={60}
+              size="small"
+              value={valores.limiarResposta}
+              min={0.5}
+              max={0.95}
+              step={0.05}
+              marks
+              valueLabelDisplay="auto"
+              valueLabelFormat={porcento}
+              onChange={(_, v) => alterar({ limiarResposta: Number(v) })}
+            />
+          </Linha>
+          <Linha
+            titulo="Descartar abaixo de"
+            explicacao="Abaixo disto a mensagem some sem virar rascunho — evita encher o painel de “kkkk”."
+            detalhe="Mensagens sem pergunta nenhuma nem chegam a custar processamento."
+            valor={porcento(valores.limiarDescarte)}
+          >
+            <Slider
+              size="small"
+              value={valores.limiarDescarte}
+              min={0.05}
+              max={0.5}
+              step={0.05}
+              marks
+              valueLabelDisplay="auto"
+              valueLabelFormat={porcento}
+              onChange={(_, v) => alterar({ limiarDescarte: Number(v) })}
+            />
+          </Linha>
+          <Linha
+            titulo="Tamanho do lote"
+            explicacao="Junta mensagens antes de analisar. Lote maior sai mais barato; menor responde mais rápido."
+            valor={`${valores.tamanhoDoLote} msgs`}
+            ultima
+          >
+            <Slider
+              size="small"
+              value={valores.tamanhoDoLote}
+              min={LOTE_MINIMO}
+              max={LOTE_MAXIMO}
               step={1}
               valueLabelDisplay="auto"
-              valueLabelFormat={(v) => `${v} min`}
-              onChange={(_, v) =>
-                alterar({ rotacaoIntervaloMinutos: Number(v) })
-              }
+              onChange={(_, v) => alterar({ tamanhoDoLote: Number(v) })}
             />
-          </Stack>
-        </Ajuste>
+          </Linha>
+        </Secao>
 
-        <Ajuste
-          titulo="Detectar avisos do TikTok"
-          explicacao="Se o TikTok mostrar um aviso de restrição na sua live, o copiloto pausa o envio na hora e te avisa. Recomendado deixar ligado."
-        >
-          <Switch
-            checked={valores.detectorAvisoAtivo}
-            onChange={(_, ligado) => alterar({ detectorAvisoAtivo: ligado })}
-          />
-        </Ajuste>
-
-        <Ajuste
-          titulo="Encerrar a live ao detectar aviso"
-          explicacao="ATENÇÃO: com isto ligado, um aviso do TikTok ENCERRA a sua transmissão automaticamente. Um alarme falso derruba a live no meio da venda — ligue só se preferir não correr nenhum risco com a conta."
-        >
-          <Switch
-            color="warning"
-            disabled={!valores.detectorAvisoAtivo}
-            checked={valores.encerrarAoDetectarAviso}
-            onChange={(_, ligado) =>
-              alterar({ encerrarAoDetectarAviso: ligado })
-            }
-          />
-        </Ajuste>
-
-        <Stack direction="row" spacing={1.25} alignItems="center" sx={{ pt: 0.5 }}>
-          <Button variant="contained" onClick={() => void salvar()} disabled={salvando}>
-            {salvando ? 'Salvando…' : 'Salvar ajustes'}
-          </Button>
-          {salvo ? (
-            <Chip
+        <Secao titulo="chat" cor={cores.ciano}>
+          <Linha
+            titulo="Lista negra"
+            explicacao="Mensagens com qualquer destas palavras são ignoradas. Separe por vírgula."
+            detalhe="O filtro roda antes de custar processamento."
+          >
+            <TextField
+              fullWidth
               size="small"
-              label="valendo no próximo lote"
-              sx={{
-                bgcolor: `${cores.sucesso}22`,
-                color: cores.sucesso,
-                border: '1px solid',
-                borderColor: `${cores.sucesso}55`,
+              multiline
+              minRows={1}
+              value={listaNegraTexto}
+              placeholder="golpe, link, whatsapp"
+              onChange={(e) => {
+                setListaNegraTexto(e.target.value);
+                setSalvo(false);
               }}
             />
-          ) : null}
-        </Stack>
+          </Linha>
+          <Linha
+            titulo="Bloquear espectadores"
+            explicacao="Mensagens destes @ são ignoradas e não custam nada. Separe por vírgula."
+            detalhe="A lista fica só neste computador."
+            ultima
+          >
+            <TextField
+              fullWidth
+              size="small"
+              multiline
+              minRows={1}
+              value={bloqueadosTexto}
+              placeholder="@curioso_chato, @concorrente"
+              onChange={(e) => {
+                setBloqueadosTexto(e.target.value);
+                setSalvo(false);
+              }}
+            />
+          </Linha>
+        </Secao>
 
-        <Ajuste
-          titulo="Atualizar sistema"
-          explicacao="O app baixa as atualizações sozinho e instala quando você fecha. Este botão só adianta a conferência — útil antes de começar uma live."
-        >
-          <BlocoDeAtualizacao />
-        </Ajuste>
+        <Secao titulo="vitrine" cor={cores.ciano}>
+          <Linha
+            titulo="Rotação automática de produtos"
+            explicacao="Fixa o próximo produto da base, em ordem, enquanto a live corre."
+            detalhe="Se três fixações seguidas falharem, a rotação pausa sozinha e te avisa."
+            controle={
+              <Switch
+                checked={valores.rotacaoDeProdutosAtiva}
+                onChange={(_, ligado) => alterar({ rotacaoDeProdutosAtiva: ligado })}
+              />
+            }
+            ultima={!valores.rotacaoDeProdutosAtiva}
+          />
+          {/* O intervalo só faz sentido com a rotação ligada; desligado, some
+              em vez de ficar cinza ocupando linha. */}
+          {valores.rotacaoDeProdutosAtiva ? (
+            <Linha
+              titulo="Intervalo entre produtos"
+              explicacao="Tempo que cada produto fica fixado antes de passar para o próximo."
+              valor={`${valores.rotacaoIntervaloMinutos} min`}
+              ultima
+            >
+              <Slider
+                size="small"
+                value={valores.rotacaoIntervaloMinutos}
+                min={2}
+                max={60}
+                step={1}
+                valueLabelDisplay="auto"
+                valueLabelFormat={(v) => `${v} min`}
+                onChange={(_, v) => alterar({ rotacaoIntervaloMinutos: Number(v) })}
+              />
+            </Linha>
+          ) : null}
+        </Secao>
+
+        <Secao titulo="proteção" cor={cores.atencao}>
+          <Linha
+            titulo="Detectar avisos do TikTok"
+            explicacao="Com um aviso de restrição na live, o envio pausa na hora. Recomendado ligado."
+            controle={
+              <Switch
+                checked={valores.detectorAvisoAtivo}
+                onChange={(_, ligado) => alterar({ detectorAvisoAtivo: ligado })}
+              />
+            }
+          />
+          <Linha
+            titulo="Encerrar a live ao detectar aviso"
+            explicacao="ATENÇÃO: um aviso do TikTok ENCERRA a transmissão. Um alarme falso derruba a live."
+            detalhe="Ligue só se preferir não correr nenhum risco com a conta. Depende do detector ligado."
+            controle={
+              <Switch
+                color="warning"
+                disabled={!valores.detectorAvisoAtivo}
+                checked={valores.encerrarAoDetectarAviso}
+                onChange={(_, ligado) => alterar({ encerrarAoDetectarAviso: ligado })}
+              />
+            }
+            ultima
+          />
+        </Secao>
+
+        <Secao titulo="sistema" cor={cores.ciano}>
+          <Linha
+            titulo="Atualizar sistema"
+            explicacao="Baixa sozinho e instala ao fechar. O botão só adianta a conferência."
+            detalhe="Útil antes de começar uma live."
+            ultima
+          >
+            <BlocoDeAtualizacao />
+          </Linha>
+        </Secao>
 
         <BlocoDaConta aoSair={aoSair} />
       </Stack>
@@ -282,51 +330,152 @@ export function Configuracoes({
   );
 }
 
-function Ajuste({
+/**
+ * Um bloco de ajustes afins: cabeçalho pequeno em caixa alta (o mesmo desenho
+ * do `TituloDeSecao` do Cockpit) e as linhas separadas por um fio fino. É o
+ * agrupamento, e não o cartão por controle, que deixa a tela escaneável.
+ */
+function Secao({
   titulo,
-  explicacao,
+  cor,
   children,
 }: {
   readonly titulo: string;
-  readonly explicacao: string;
+  readonly cor: string;
   readonly children: React.ReactNode;
 }): JSX.Element {
   return (
-    <Box
-      sx={{
-        p: 2,
-        borderRadius: 3,
-        bgcolor: cores.superficie,
-        border: '1px solid',
-        borderColor: 'divider',
-      }}
-    >
-      <Typography variant="subtitle2" fontWeight={800}>
-        {titulo}
-      </Typography>
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        component="p"
-        sx={{ mb: 1.5, mt: 0.35, lineHeight: 1.55 }}
+    <Box>
+      <Stack direction="row" alignItems="center" spacing={0.85} sx={{ mb: 0.5, ml: 0.25 }}>
+        <Box sx={{ width: 3, height: 11, borderRadius: 999, bgcolor: cor, flexShrink: 0 }} />
+        <Typography variant="overline" sx={{ color: cor, fontSize: 12, letterSpacing: 1.2 }}>
+          {titulo}
+        </Typography>
+      </Stack>
+      <Box
+        sx={{
+          px: 1.75,
+          py: 0.5,
+          borderRadius: 2,
+          bgcolor: cores.superficie,
+          border: '1px solid',
+          borderColor: 'divider',
+        }}
       >
-        {explicacao}
-      </Typography>
-      {children}
+        {children}
+      </Box>
     </Box>
   );
 }
 
+/**
+ * Uma linha de ajuste: título e legenda à esquerda, à direita o switch ou o
+ * valor atual do slider. O `children` (slider, campo de texto, botões) entra
+ * logo abaixo do título ocupando a largura toda. A legenda é curta de
+ * propósito; o que não coube vai para o tooltip do título.
+ */
+function Linha({
+  titulo,
+  explicacao,
+  detalhe,
+  valor,
+  controle,
+  ultima = false,
+  children,
+}: {
+  readonly titulo: string;
+  readonly explicacao: string;
+  /** Texto extra que aparece no tooltip do título, se houver. */
+  readonly detalhe?: string;
+  /** Valor atual em destaque à direita (ex.: "65%", "5 msgs", "10 min"). */
+  readonly valor?: string;
+  /** Controle que fica à direita na própria linha (switch). */
+  readonly controle?: React.ReactNode;
+  /** Sem o separador embaixo — última linha da seção. */
+  readonly ultima?: boolean;
+  readonly children?: React.ReactNode;
+}): JSX.Element {
+  const rotulo = (
+    <Typography
+      variant="body2"
+      fontWeight={600}
+      sx={
+        detalhe
+          ? {
+              cursor: 'help',
+              textDecoration: 'underline dotted',
+              textDecorationColor: alpha('#ffffff', 0.25),
+              textUnderlineOffset: 3,
+            }
+          : undefined
+      }
+    >
+      {titulo}
+    </Typography>
+  );
+  return (
+    <>
+      <Box sx={{ py: 1 }}>
+        <Stack direction="row" alignItems="center" spacing={1.5}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {detalhe ? (
+              <Tooltip title={detalhe} placement="top-start" enterDelay={300}>
+                <Box component="span" sx={{ display: 'inline-block' }}>
+                  {rotulo}
+                </Box>
+              </Tooltip>
+            ) : (
+              rotulo
+            )}
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              component="p"
+              noWrap
+              sx={{ lineHeight: 1.4 }}
+            >
+              {explicacao}
+            </Typography>
+          </Box>
+          {valor ? (
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 750,
+                color: cores.ciano,
+                fontVariantNumeric: 'tabular-nums',
+                flexShrink: 0,
+              }}
+            >
+              {valor}
+            </Typography>
+          ) : null}
+          {controle ? <Box sx={{ flexShrink: 0, mr: -1 }}>{controle}</Box> : null}
+        </Stack>
+        {children ? <Box sx={{ mt: 0.5, px: 0.5 }}>{children}</Box> : null}
+      </Box>
+      {ultima ? null : <Divider />}
+    </>
+  );
+}
+
+/**
+ * Cabeçalho, área que rola e, se houver, um rodapé fixo. O rodapé fica FORA
+ * da área rolável para que "Salvar" esteja sempre à vista — antes ele ficava
+ * no fim de 1.800 px de rolagem.
+ */
 function Moldura({
   children,
   aoVoltar,
+  rodape,
 }: {
   readonly children: React.ReactNode;
   readonly aoVoltar: () => void;
+  readonly rodape?: React.ReactNode;
 }): JSX.Element {
   return (
-    <Stack spacing={2} sx={{ p: 3, pt: 2, overflowY: 'auto', height: '100%' }}>
-      <Stack direction="row" alignItems="center">
+    <Stack sx={{ height: '100%', minHeight: 0 }}>
+      <Stack direction="row" alignItems="center" sx={{ px: 3, pt: 2, pb: 1.5 }}>
         <Typography variant="h5" sx={{ flex: 1 }}>
           Ajustes
         </Typography>
@@ -334,7 +483,21 @@ function Moldura({
           Voltar
         </Button>
       </Stack>
-      {children}
+      <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 3, pb: 2 }}>{children}</Box>
+      {rodape ? (
+        <Box
+          sx={{
+            px: 3,
+            py: 1.5,
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            bgcolor: cores.fundo,
+            flexShrink: 0,
+          }}
+        >
+          {rodape}
+        </Box>
+      ) : null}
     </Stack>
   );
 }
@@ -380,7 +543,7 @@ function BlocoDeAtualizacao(): JSX.Element {
             : null;
 
   return (
-    <Stack spacing={1.25}>
+    <Stack spacing={0.75}>
       <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
         <Button
           variant="outlined"

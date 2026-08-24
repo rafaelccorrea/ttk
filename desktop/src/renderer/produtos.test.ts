@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatarPrecoBrl, iniciaisDe } from './produtos';
+import { formatarPrecoBrl, iniciaisDe, normalizarBusca } from './produtos';
 
 describe('iniciaisDe', () => {
   it('pega a primeira letra, em maiúscula, ignorando espaço', () => {
@@ -25,5 +25,17 @@ describe('formatarPrecoBrl', () => {
     expect(formatarPrecoBrl(null)).toBe('sem preço');
     expect(formatarPrecoBrl(undefined)).toBe('sem preço');
     expect(formatarPrecoBrl(Number.NaN)).toBe('sem preço');
+  });
+});
+
+describe('normalizarBusca', () => {
+  it('tira acento, caixa e espaço sobrando', () => {
+    expect(normalizarBusca('  Crème  Hidratante ')).toBe('creme hidratante');
+    expect(normalizarBusca('ÁGUA')).toBe('agua');
+  });
+
+  it('faz o trecho digitado bater no título', () => {
+    expect(normalizarBusca('Kit Glow Rosé').includes(normalizarBusca('rose'))).toBe(true);
+    expect(normalizarBusca('')).toBe('');
   });
 });

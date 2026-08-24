@@ -1,6 +1,11 @@
 import { Box, Stack, Tooltip, Typography, alpha } from '@mui/material';
 import { useCallback, useEffect, useState } from 'react';
 import type { EstadoConexao } from '@shared/desktop-api';
+import {
+  FRACAO_MAXIMA_DO_PAINEL,
+  LARGURA_PAINEL_MINIMA,
+  LARGURA_PAINEL_PADRAO,
+} from '@shared/desktop-api';
 import { Carregando } from './components/Estados';
 import { FaixaDeAtualizacao } from './components/FaixaDeAtualizacao';
 import { Logo } from './components/Logo';
@@ -106,13 +111,77 @@ export function App(): JSX.Element {
     });
   }, [ponte]);
 
+  /*
+   * A largura do painel vem do processo principal (padrão fixo em px, o que o
+   * vendedor arrastou fica no disco). Durante o arrasto o valor muda aqui a
+   * cada movimento e a BrowserView fica recolhida — senão o mouse entraria no
+   * TikTok e o painel pararia de receber o gesto — e no soltar o main grava e
+   * reposiciona a view com o valor final.
+   */
+  const [largura, setLargura] = useState(LARGURA_PAINEL_PADRAO);
+  useEffect(() => {
+    if (!ponte) return;
+    void ponte.obterLarguraDoPainel().then(setLargura).catch(() => undefined);
+  }, [ponte]);
+  const iniciarArrasto = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!ponte) return;
+      e.preventDefault();
+      void ponte.arrastandoDivisoria(true);
+      const limitar = (x: number): number =>
+        Math.max(
+          LARGURA_PAINEL_MINIMA,
+          Math.min(Math.round(window.innerWidth * FRACAO_MAXIMA_DO_PAINEL), Math.round(window.innerWidth - x)),
+        );
+      const mover = (ev: PointerEvent): void => setLargura(limitar(ev.clientX));
+      const soltar = (ev: PointerEvent): void => {
+        window.removeEventListener('pointermove', mover);
+        window.removeEventListener('pointerup', soltar);
+        const final = limitar(ev.clientX);
+        setLargura(final);
+        void ponte
+          .definirLarguraDoPainel(final)
+          .then(setLargura)
+          .finally(() => void ponte.arrastandoDivisoria(false));
+      };
+      window.addEventListener('pointermove', mover);
+      window.addEventListener('pointerup', soltar);
+    },
+    [ponte],
+  );
+
   return (
     <>
       <BarraDeTitulo />
+      {/* A divisória: 8px na borda esquerda do painel, cursor de redimensionar. */}
+      <Box
+        onPointerDown={iniciarArrasto}
+        title="Arraste para mudar a largura do painel"
+        sx={{
+          position: 'fixed',
+          top: `${ALTURA_BARRA}px`,
+          bottom: 0,
+          left: `calc(100% - ${largura}px - 4px)`,
+          width: 8,
+          zIndex: 20,
+          cursor: 'col-resize',
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            left: 3,
+            top: 'calc(50% - 24px)',
+            width: 2,
+            height: 48,
+            borderRadius: 1,
+            bgcolor: alpha('#ffffff', 0.25),
+          },
+          '&:hover::after': { bgcolor: cores.ciano },
+        }}
+      />
       <Box
       sx={{
-        // 40% da direita: o restante é a BrowserView.
-        marginLeft: '60%',
+        // O painel tem largura FIXA em px; o restante é a BrowserView.
+        marginLeft: `calc(100% - ${largura}px)`,
         // A barra de título é nossa (ver ALTURA_BARRA no processo principal): o
         // documento começa no topo absoluto da janela, e sem este desconto o
         // cabeçalho do painel nasceria debaixo dos botões de fechar.

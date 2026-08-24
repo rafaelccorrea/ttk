@@ -1,5 +1,17 @@
 import SettingsIcon from '@mui/icons-material/SettingsOutlined';
-import { Box, Button, Chip, IconButton, Stack, Tooltip, Typography, alpha } from '@mui/material';
+import {
+  Box,
+  Button,
+  Chip,
+  IconButton,
+  Stack,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography,
+  alpha,
+} from '@mui/material';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AvisoDoTikTok,
@@ -18,7 +30,7 @@ import { useFluxoDaLive } from '../hooks/useFluxoDaLive';
 import { cores } from '../theme/theme';
 import { LINKS } from '../links';
 import { SEM_PONTE, obterPonte } from '../ponte';
-import { formatarPrecoBrl, iniciaisDe } from '../produtos';
+import { formatarPrecoBrl, iniciaisDe, normalizarBusca } from '../produtos';
 
 /**
  * Tela 3 — o cockpit, ao lado da BrowserView do TikTok.
@@ -28,6 +40,12 @@ import { formatarPrecoBrl, iniciaisDe } from '../produtos';
  *   1. o que exige o vendedor AGORA (escalações);
  *   2. o que ele pode usar sem pensar (respostas prontas);
  *   3. o que ele só confere de relance (a barra de status).
+ *
+ * Os dois primeiros vivem na aba "Respostas", que é a aba padrão. A lista de
+ * fixar produto ganhou uma aba própria ("Produtos") em vez de uma seção
+ * empilhada: numa coluna de 700px, faixas + escalações + lista + prontas
+ * viravam poluição, e a lista de um catálogo grande empurrava as respostas
+ * para fora da vista.
  *
  * A rolagem fica DENTRO de cada bloco, não na tela. Uma página que rola inteira
  * faria a escalação nova nascer fora da vista sempre que o vendedor tivesse
@@ -41,6 +59,9 @@ import { formatarPrecoBrl, iniciaisDe } from '../produtos';
  * erra dizendo que NÃO está enviando. O erro na direção contrária faria o
  * vendedor acreditar, por um instante, que o app está postando por ele.
  */
+/** As duas abas da coluna da direita. */
+type AbaDoCockpit = 'respostas' | 'produtos';
+
 const ENVIO_DESCONHECIDO: EstadoEnvio = {
   modo: 'painel',
   aceito: false,
@@ -86,8 +107,13 @@ export function Cockpit({
   const [pinAviso, setPinAviso] = useState<{ ok: boolean; texto: string } | null>(
     null,
   );
-  /** A seção de produtos começa FECHADA: a coluna é das respostas. */
-  const [mostrarProdutos, setMostrarProdutos] = useState(false);
+  /**
+   * A aba começa em Respostas: a coluna é das respostas. Uma escalação nova
+   * NÃO troca a aba sozinha — o vendedor pode estar no meio de um "Fixar", e
+   * a contagem em vermelho na aba já faz o chamado.
+   */
+  const [aba, setAba] = useState<AbaDoCockpit>('respostas');
+  const [busca, setBusca] = useState('');
 
   useEffect(() => {
     if (!ponte) return undefined;
@@ -96,10 +122,11 @@ export function Cockpit({
 
   useEffect(() => {
     if (!ponte) return undefined;
-    // Rotação que parou é rodapé da seção de produtos, não faixa de alerta.
+    // Rotação que parou é aviso da aba de produtos, não faixa de alerta — e a
+    // aba troca para lá porque, sem isso, o aviso nasceria escondido.
     return ponte.aoRotacaoParada(({ motivo }) => {
       setPinAviso({ ok: false, texto: motivo });
-      setMostrarProdutos(true);
+      setAba('produtos');
     });
   }, [ponte]);
 
@@ -247,6 +274,14 @@ export function Cockpit({
     () => fluxo.respostas.filter((r) => r.decision === 'enviar'),
     [fluxo.respostas],
   );
+
+  // A busca compara título e trecho já normalizados: acento e caixa não
+  // podem esconder um produto no meio da live.
+  const produtosFiltrados = useMemo(() => {
+    const chave = normalizarBusca(busca);
+    if (!chave) return produtos;
+    return produtos.filter((p) => normalizarBusca(p.title).includes(chave));
+  }, [produtos, busca]);
 
   /**
    * O feed do automático: as mesmas respostas aprovadas, vistas pelo lado da
@@ -446,266 +481,305 @@ export function Cockpit({
         </Box>
       ) : null}
 
-      {/* ------------------------------------------------ painel de escalação */}
-      <Box
+      {/* ------------------------------------------------------------ abas */}
+      {/*
+        Duas abas, e só duas. "Respostas" é o trabalho da live (escalações +
+        prontas); "Produtos" é a ferramenta de fixar. A contagem em vermelho na
+        aba Respostas é o que avisa da escalação nova quando o vendedor está do
+        outro lado — a aba não troca sozinha, para não roubar o clique de um
+        "Fixar" no meio do caminho.
+      */}
+      <Tabs
+        value={aba}
+        onChange={(_, valor: AbaDoCockpit) => setAba(valor)}
+        variant="fullWidth"
         sx={{
+          flexShrink: 0,
+          minHeight: 36,
           px: 2.25,
-          pb: 1,
-          pt: 1,
-          flex: '0 1 auto',
-          minHeight: 0,
-          // Teto de altura: a fila de escalações NUNCA engole as respostas
-          // prontas — quatro cards à vista, o resto vira contador.
-          maxHeight: 300,
-          overflowY: 'auto',
-          // O flash da escalação nova: um lavado vermelho que acende e escorre
-          // de volta ao nada — pareado com o chime, para o canto do olho.
-          transition: 'background-color 1.2s ease',
-          bgcolor: flashEscalacao ? alpha(cores.vermelho, 0.14) : 'transparent',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          '& .MuiTabs-indicator': { bgcolor: cores.ciano, height: 2 },
+          '& .MuiTab-root': {
+            minHeight: 36,
+            py: 0.5,
+            fontSize: 12,
+            fontWeight: 750,
+            letterSpacing: 0.4,
+            textTransform: 'uppercase',
+            color: 'text.secondary',
+          },
+          '& .Mui-selected': { color: cores.ciano },
         }}
       >
-        <TituloDeSecao
-          texto="precisa de você"
-          cor={cores.vermelho}
-          contagem={fluxo.escalacoes.length}
+        <Tab
+          value="respostas"
+          label={
+            <RotuloDeAba
+              texto="Respostas"
+              contagem={fluxo.escalacoes.length}
+              cor={cores.vermelho}
+            />
+          }
         />
-        {fluxo.escalacoes.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 1, lineHeight: 1.55 }}>
-            Nada travado por aqui. Quando alguém perguntar algo que eu não souber
-            responder com segurança, aparece nesta faixa.
-          </Typography>
-        ) : (
-          <Stack spacing={1.25} sx={{ mt: 0.5 }}>
-            {fluxo.escalacoes.slice(0, 4).map((e) => {
-              const rascunho = rascunhos.get(e.chatMessageId) ?? null;
-              return (
-                <CardEscalacao
-                  key={e.chatMessageId}
-                  escalacao={e}
-                  rascunho={rascunho?.text ?? null}
-                  replyId={rascunho?.id ?? null}
-                  aoSalvarNaBase={(replyId, texto) =>
-                    ponte.salvarNaBase(replyId, texto)
-                  }
-                  aoCopiar={(texto) => {
-                    if (rascunho) void ponte.copiarResposta(rascunho.id, texto);
-                    else void ponte.copiarTexto(texto);
-                  }}
-                  aoResponder={() => {
-                    fluxo.descartarEscalacao(e.chatMessageId);
-                    void ponte.resolverEscalacao(e.chatMessageId, 'respondida');
-                  }}
-                  aoDescartar={() => {
-                    fluxo.descartarEscalacao(e.chatMessageId);
-                    void ponte.resolverEscalacao(e.chatMessageId, 'descartada');
-                  }}
-                />
-              );
-            })}
-            {fluxo.escalacoes.length > 4 ? (
-              <Typography variant="caption" color="text.secondary">
-                + {fluxo.escalacoes.length - 4} aguardando — resolva as de cima
-                que as próximas aparecem.
-              </Typography>
-            ) : null}
-          </Stack>
-        )}
-      </Box>
+        <Tab
+          value="produtos"
+          label={<RotuloDeAba texto="Produtos" contagem={produtos.length} cor={cores.ciano} />}
+        />
+      </Tabs>
 
-      {/* --------------------------------------------------- fixar produto */}
-      {/*
-        RECOLHIDA por padrão, e com teto de altura quando aberta: a coluna da
-        direita pertence às respostas e às escalações — uma base com dezenas de
-        produtos não pode empurrá-las para fora da tela. O cabeçalho é o botão.
-      */}
-      {produtos.length > 0 ? (
-        <Box
-          sx={{
-            px: 2.25,
-            py: 0.75,
-            borderTop: '1px solid',
-            borderColor: 'divider',
-            flex: '0 0 auto',
-          }}
-        >
+      {aba === 'respostas' ? (
+        <>
+          {/* ------------------------------------------ painel de escalação */}
           <Box
-            role="button"
-            tabIndex={0}
-            onClick={() => setMostrarProdutos((v) => !v)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') setMostrarProdutos((v) => !v);
-            }}
             sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              cursor: 'pointer',
-              userSelect: 'none',
-              '&:focus-visible': { outline: '2px solid', outlineColor: cores.ciano },
+              px: 2.25,
+              pb: 1,
+              pt: 1,
+              flex: '0 1 auto',
+              minHeight: 0,
+              // Teto de altura: a fila de escalações NUNCA engole as respostas
+              // prontas — quatro cards à vista, o resto vira contador.
+              maxHeight: 300,
+              overflowY: 'auto',
+              // O flash da escalação nova: um lavado vermelho que acende e
+              // escorre de volta ao nada — pareado com o chime, para o canto
+              // do olho.
+              transition: 'background-color 1.2s ease',
+              bgcolor: flashEscalacao ? alpha(cores.vermelho, 0.14) : 'transparent',
             }}
           >
             <TituloDeSecao
-              texto="fixar produto na live"
-              cor={cores.ciano}
-              contagem={produtos.length}
+              texto="precisa de você"
+              cor={cores.vermelho}
+              contagem={fluxo.escalacoes.length}
             />
-            <Typography variant="caption" color="text.secondary">
-              {mostrarProdutos ? 'ocultar' : 'mostrar'}
-            </Typography>
-          </Box>
-          {mostrarProdutos ? (
-            <>
-              {/*
-                Lista vertical com rolagem própria: foto, nome e preço são o
-                que o vendedor usa para RECONHECER o produto no meio da live —
-                em chip só cabia o nome, e nome de catálogo ninguém decora.
-                Continua leve: o teto de altura é da lista, não da coluna.
-              */}
-              <Stack
-                spacing={0.25}
-                sx={{ mt: 0.5, maxHeight: 220, overflowY: 'auto', pr: 0.5 }}
-              >
-                {produtos.map((p) => {
-                  const fixandoEste = fixando === p.title;
+            {fluxo.escalacoes.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 1, lineHeight: 1.55 }}>
+                Nada travado por aqui. Quando alguém perguntar algo que eu não souber
+                responder com segurança, aparece nesta faixa.
+              </Typography>
+            ) : (
+              <Stack spacing={1.25} sx={{ mt: 0.5 }}>
+                {fluxo.escalacoes.slice(0, 4).map((e) => {
+                  const rascunho = rascunhos.get(e.chatMessageId) ?? null;
                   return (
-                    <Box
-                      key={p.id}
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1,
-                        py: 0.5,
-                        borderRadius: 1,
-                        '&:hover': { bgcolor: alpha(cores.ciano, 0.06) },
+                    <CardEscalacao
+                      key={e.chatMessageId}
+                      escalacao={e}
+                      rascunho={rascunho?.text ?? null}
+                      replyId={rascunho?.id ?? null}
+                      aoSalvarNaBase={(replyId, texto) =>
+                        ponte.salvarNaBase(replyId, texto)
+                      }
+                      aoCopiar={(texto) => {
+                        if (rascunho) void ponte.copiarResposta(rascunho.id, texto);
+                        else void ponte.copiarTexto(texto);
                       }}
-                    >
-                      <Box
-                        sx={{
-                          width: 40,
-                          height: 40,
-                          flex: '0 0 auto',
-                          borderRadius: 1,
-                          overflow: 'hidden',
-                          border: '1px solid',
-                          borderColor: 'divider',
-                          bgcolor: p.imageUrl ? '#fff' : alpha(cores.ciano, 0.12),
-                          display: 'grid',
-                          placeItems: 'center',
-                          fontWeight: 800,
-                          fontSize: 16,
-                          color: cores.ciano,
-                          userSelect: 'none',
-                        }}
-                      >
-                        {p.imageUrl ? (
-                          <Box
-                            component="img"
-                            src={p.imageUrl}
-                            alt=""
-                            sx={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'cover',
-                              display: 'block',
-                            }}
-                          />
-                        ) : (
-                          iniciaisDe(p.title)
-                        )}
-                      </Box>
-                      <Box sx={{ flex: '1 1 auto', minWidth: 0 }}>
-                        <Typography
-                          variant="body2"
-                          title={p.title}
-                          sx={{
-                            fontWeight: 600,
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                        >
-                          {p.title}
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          color={p.priceBrl == null ? 'text.disabled' : 'text.secondary'}
-                        >
-                          {formatarPrecoBrl(p.priceBrl)}
-                        </Typography>
-                      </Box>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        disabled={fixando !== null}
-                        onClick={() => void fixar(p.title)}
-                        sx={{ flex: '0 0 auto', minWidth: 72, py: 0.25 }}
-                      >
-                        {fixandoEste ? 'Fixando…' : 'Fixar'}
-                      </Button>
-                    </Box>
+                      aoResponder={() => {
+                        fluxo.descartarEscalacao(e.chatMessageId);
+                        void ponte.resolverEscalacao(e.chatMessageId, 'respondida');
+                      }}
+                      aoDescartar={() => {
+                        fluxo.descartarEscalacao(e.chatMessageId);
+                        void ponte.resolverEscalacao(e.chatMessageId, 'descartada');
+                      }}
+                    />
                   );
                 })}
+                {fluxo.escalacoes.length > 4 ? (
+                  <Typography variant="caption" color="text.secondary">
+                    + {fluxo.escalacoes.length - 4} aguardando — resolva as de cima
+                    que as próximas aparecem.
+                  </Typography>
+                ) : null}
               </Stack>
-              {pinAviso ? (
-                <Typography
-                  variant="caption"
-                  sx={{
-                    display: 'block',
-                    mt: 0.5,
-                    color: pinAviso.ok ? cores.sucesso : cores.vermelho,
-                  }}
-                >
-                  {pinAviso.texto}
-                </Typography>
-              ) : null}
-            </>
-          ) : null}
-        </Box>
-      ) : null}
+            )}
+          </Box>
 
-      {/* ------------------------------------------------- respostas prontas */}
-      <Box
-        sx={{
-          px: 2.25,
-          py: 1,
-          flex: '1 1 auto',
-          minHeight: 0,
-          overflowY: 'auto',
-          borderTop: '1px solid',
-          borderColor: 'divider',
-        }}
-      >
-        <TituloDeSecao
-          texto={envio.modo === 'auto' ? 'enviadas no chat' : 'prontas para copiar'}
-          cor={envio.modo === 'auto' ? cores.sucesso : cores.ciano}
-          contagem={envio.modo === 'auto' ? envios.length : prontas.length}
-        />
-        {/*
-          No automático a mesma lista troca de eixo: deixa de ser "o que você
-          pode copiar" e passa a ser "o que saiu em seu nome". Duas listas
-          paralelas com o mesmo conteúdo obrigariam o vendedor a cruzar as duas
-          para saber se uma resposta foi ou não ao chat.
-        */}
-        {envio.modo === 'auto' ? (
-          <FeedDeEnvios itens={envios} />
-        ) : prontas.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ py: 1, lineHeight: 1.55 }}>
-            {estadoBarra.status === 'ativa'
-              ? 'Estou lendo o chat. A primeira pergunta sobre preço, tamanho ou frete já vira resposta aqui.'
-              : 'Assim que a live estiver no ar, as respostas aparecem aqui para você copiar.'}
-          </Typography>
-        ) : (
-          <Stack spacing={1} sx={{ mt: 0.5 }}>
-            {prontas.map((r) => (
-              <CardResposta
-                key={r.id}
-                resposta={r}
-                aoCopiar={() => ponte.copiarResposta(r.id, r.text)}
-              />
-            ))}
+          {/* ------------------------------------------- respostas prontas */}
+          <Box
+            sx={{
+              px: 2.25,
+              py: 1,
+              flex: '1 1 auto',
+              minHeight: 0,
+              overflowY: 'auto',
+              borderTop: '1px solid',
+              borderColor: 'divider',
+            }}
+          >
+            <TituloDeSecao
+              texto={envio.modo === 'auto' ? 'enviadas no chat' : 'prontas para copiar'}
+              cor={envio.modo === 'auto' ? cores.sucesso : cores.ciano}
+              contagem={envio.modo === 'auto' ? envios.length : prontas.length}
+            />
+            {/*
+              No automático a mesma lista troca de eixo: deixa de ser "o que
+              você pode copiar" e passa a ser "o que saiu em seu nome". Duas
+              listas paralelas com o mesmo conteúdo obrigariam o vendedor a
+              cruzar as duas para saber se uma resposta foi ou não ao chat.
+            */}
+            {envio.modo === 'auto' ? (
+              <FeedDeEnvios itens={envios} />
+            ) : prontas.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 1, lineHeight: 1.55 }}>
+                {estadoBarra.status === 'ativa'
+                  ? 'Estou lendo o chat. A primeira pergunta sobre preço, tamanho ou frete já vira resposta aqui.'
+                  : 'Assim que a live estiver no ar, as respostas aparecem aqui para você copiar.'}
+              </Typography>
+            ) : (
+              <Stack spacing={1} sx={{ mt: 0.5 }}>
+                {prontas.map((r) => (
+                  <CardResposta
+                    key={r.id}
+                    resposta={r}
+                    aoCopiar={() => ponte.copiarResposta(r.id, r.text)}
+                  />
+                ))}
+              </Stack>
+            )}
+          </Box>
+        </>
+      ) : (
+        /* ------------------------------------------------- fixar produto */
+        <Box
+          sx={{
+            px: 2.25,
+            py: 1,
+            flex: '1 1 auto',
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {/*
+            A busca fica no topo e a lista toma a altura toda: com a aba
+            própria, a lista já não disputa espaço com as respostas — e um
+            catálogo com dezenas de itens se acha digitando, não rolando.
+          */}
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="Buscar produto…"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            inputProps={{ 'aria-label': 'Buscar produto' }}
+            sx={{ flexShrink: 0, mb: 0.75 }}
+          />
+          {pinAviso ? (
+            <Typography
+              variant="caption"
+              sx={{
+                display: 'block',
+                mb: 0.5,
+                flexShrink: 0,
+                color: pinAviso.ok ? cores.sucesso : cores.vermelho,
+              }}
+            >
+              {pinAviso.texto}
+            </Typography>
+          ) : null}
+          {/*
+            Foto, nome e preço são o que o vendedor usa para RECONHECER o
+            produto no meio da live — em chip só cabia o nome, e nome de
+            catálogo ninguém decora.
+          */}
+          <Stack spacing={0.25} sx={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', pr: 0.5 }}>
+            {produtos.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 1, lineHeight: 1.55 }}>
+                Os produtos da sua base aparecem aqui para fixar na live.
+              </Typography>
+            ) : produtosFiltrados.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 1, lineHeight: 1.55 }}>
+                Nenhum produto com esse nome.
+              </Typography>
+            ) : (
+              produtosFiltrados.map((p) => {
+                const fixandoEste = fixando === p.title;
+                return (
+                  <Box
+                    key={p.id}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      flexShrink: 0,
+                      '&:hover': { bgcolor: alpha(cores.ciano, 0.06) },
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        flex: '0 0 auto',
+                        borderRadius: 1,
+                        overflow: 'hidden',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        bgcolor: p.imageUrl ? '#fff' : alpha(cores.ciano, 0.12),
+                        display: 'grid',
+                        placeItems: 'center',
+                        fontWeight: 800,
+                        fontSize: 16,
+                        color: cores.ciano,
+                        userSelect: 'none',
+                      }}
+                    >
+                      {p.imageUrl ? (
+                        <Box
+                          component="img"
+                          src={p.imageUrl}
+                          alt=""
+                          sx={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            display: 'block',
+                          }}
+                        />
+                      ) : (
+                        iniciaisDe(p.title)
+                      )}
+                    </Box>
+                    <Box sx={{ flex: '1 1 auto', minWidth: 0 }}>
+                      <Typography
+                        variant="body2"
+                        title={p.title}
+                        sx={{
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {p.title}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color={p.priceBrl == null ? 'text.disabled' : 'text.secondary'}
+                      >
+                        {formatarPrecoBrl(p.priceBrl)}
+                      </Typography>
+                    </Box>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={fixando !== null}
+                      onClick={() => void fixar(p.title)}
+                      sx={{ flex: '0 0 auto', minWidth: 72, py: 0.25 }}
+                    >
+                      {fixandoEste ? 'Fixando…' : 'Fixar'}
+                    </Button>
+                  </Box>
+                );
+              })
+            )}
           </Stack>
-        )}
-      </Box>
+        </Box>
+      )}
 
       <BarraDeStatus
         conexao={fluxo.semSaldo ? { ...estadoBarra, status: 'sem_saldo' } : estadoBarra}
@@ -829,6 +903,47 @@ function ResumoDaLive({
         Conectar outra live
       </Button>
     </Box>
+  );
+}
+
+/**
+ * O rótulo de uma aba: o nome e a contagem na mesma pílula do `TituloDeSecao`.
+ *
+ * Na aba Respostas a contagem é a de ESCALAÇÕES, em vermelho — é o único
+ * número que precisa atravessar a aba para chegar ao vendedor que está do
+ * lado dos produtos. Some quando é zero, pelo mesmo motivo do título.
+ */
+function RotuloDeAba({
+  texto,
+  contagem,
+  cor,
+}: {
+  readonly texto: string;
+  readonly contagem: number;
+  readonly cor: string;
+}): JSX.Element {
+  return (
+    <Stack direction="row" alignItems="center" spacing={0.75}>
+      <span>{texto}</span>
+      {contagem > 0 ? (
+        <Typography
+          component="span"
+          variant="caption"
+          sx={{
+            px: 0.75,
+            borderRadius: 999,
+            fontWeight: 750,
+            fontSize: 10.5,
+            lineHeight: 1.6,
+            color: cor,
+            bgcolor: alpha(cor, 0.14),
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {contagem}
+        </Typography>
+      ) : null}
+    </Stack>
   );
 }
 

@@ -141,6 +141,12 @@ const api: PikPokDesktopApi = {
     }>,
   aoRotacaoParada: (ouvinte) =>
     assinar<{ motivo: string }>('live:rotacao-parada', ouvinte),
+  obterLarguraDoPainel: () =>
+    ipcRenderer.invoke('layout:painel:ler') as Promise<number>,
+  definirLarguraDoPainel: (largura) =>
+    ipcRenderer.invoke('layout:painel', largura) as Promise<number>,
+  arrastandoDivisoria: (arrastando) =>
+    ipcRenderer.invoke('layout:painel:arrastando', arrastando) as Promise<void>,
 
   copiarResposta: (replyId, texto) =>
     ipcRenderer.invoke('live:copiarResposta', { replyId, texto }) as Promise<void>,

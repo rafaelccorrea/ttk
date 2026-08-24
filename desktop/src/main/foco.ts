@@ -398,8 +398,33 @@ function paginaDeChatSimulado(logo: string | null, video: string | null): string
     animation:piscar 1.4s ease-in-out infinite}
   @keyframes piscar{0%,100%{opacity:1}50%{opacity:.25}}
   .rotulo{font-size:12px;color:rgba(255,255,255,.5);margin-left:auto}
-  #chat{position:absolute;top:55px;bottom:0;left:0;right:0;overflow-y:auto;padding:14px 16px 18px;
-    display:flex;flex-direction:column;gap:10px}
+  /* Duas faixas, sem sobreposição: o vídeo ocupa os 65% de cima, limpo, e o
+     chat vive numa área DEDICADA nos 35% de baixo. Chat por cima do vídeo
+     polui a imagem que o vendedor está olhando; separar é o que deixa os dois
+     legíveis. Sem o arquivo de vídeo o palco fica escuro, mas a divisão é a
+     mesma. */
+  :root{--video:65vh}
+  .palco-video{position:fixed;top:0;left:0;right:0;height:var(--video);width:100%;object-fit:cover;z-index:0}
+  .veu{display:none}
+  /* A divisória é arrastável: o vendedor decide quanto de vídeo e quanto de
+     chat quer ver, e a proporção fica guardada no navegador da view. */
+  #divisor{position:absolute;top:var(--video);left:0;right:0;height:10px;margin-top:-5px;z-index:3;
+    cursor:row-resize;background:transparent}
+  #divisor::after{content:'';position:absolute;left:50%;top:3px;width:56px;height:4px;margin-left:-28px;
+    border-radius:2px;background:rgba(255,255,255,.28)}
+  #divisor:hover::after,body.arrastando #divisor::after{background:#00C2BB}
+  body.arrastando{cursor:row-resize;-webkit-user-select:none}
+  #chat{position:absolute;top:var(--video);bottom:0;left:0;right:0;overflow-y:auto;padding:12px 16px 14px;
+    display:flex;flex-direction:column;gap:8px;
+    background:#0b0b10;border-top:1px solid rgba(255,255,255,.08)}
+  #chat::-webkit-scrollbar{width:8px}
+  #chat::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:4px}
+  /* Empurra as mensagens para o fim quando são poucas, sem quebrar a rolagem. */
+  #chat::before{content:'';flex:1 0 auto}
+  #voltar{position:absolute;right:16px;bottom:14px;z-index:4;display:none;padding:6px 12px;border-radius:999px;
+    border:1px solid rgba(255,255,255,.2);background:rgba(16,16,24,.9);color:#fff;font-size:12px;cursor:pointer}
+  #voltar.visivel{display:block}
+  .topo{position:absolute;top:0;left:0;right:0;z-index:2}
   #chat::-webkit-scrollbar{width:0}
   .msg{display:flex;gap:9px;align-items:flex-start;animation:entrar .3s cubic-bezier(.2,.8,.2,1) both}
   @keyframes entrar{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
@@ -414,14 +439,32 @@ function paginaDeChatSimulado(logo: string | null, video: string | null): string
     border-radius:12px;padding:8px 12px}
   .msg.ia .autor{background:linear-gradient(90deg,#FE2C55,#00C2BB);-webkit-background-clip:text;
     color:transparent;font-weight:800}
-  ${videoUrl ? '#chat{right:auto;width:min(62%,540px)}.topo{background:rgba(10,10,14,.55);backdrop-filter:blur(6px)}' : ''}
+  ${videoUrl ? '.topo{background:rgba(10,10,14,.55);backdrop-filter:blur(6px)}' : ''}
   </style></head><body>
   ${fundoVideo}
   <div class="topo">${marca}<span class="aovivo">ao vivo</span><span class="rotulo">live simulada · o chat é de mentira, a IA é de verdade</span></div>
+  <div id="divisor" title="Arraste para mudar o tamanho do vídeo e do chat"></div>
   <div id="chat"></div>
+  <button id="voltar" type="button">↓ novas mensagens</button>
   <script>
   (function(){
     var chat=document.getElementById('chat');
+    var divisor=document.getElementById('divisor');
+    var voltar=document.getElementById('voltar');
+    // A proporção vídeo/chat sobrevive à reabertura: é preferência de layout.
+    try{var salvo=localStorage.getItem('pikpok.sim.video');if(salvo)document.documentElement.style.setProperty('--video',salvo+'%')}catch(e){}
+    var arrastando=false;
+    divisor.addEventListener('mousedown',function(e){arrastando=true;document.body.classList.add('arrastando');e.preventDefault()});
+    window.addEventListener('mousemove',function(e){if(!arrastando)return;
+      var pct=Math.min(85,Math.max(30,e.clientY/window.innerHeight*100));
+      document.documentElement.style.setProperty('--video',pct+'%');});
+    window.addEventListener('mouseup',function(){if(!arrastando)return;arrastando=false;document.body.classList.remove('arrastando');
+      try{localStorage.setItem('pikpok.sim.video',parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--video')))}catch(e){}});
+    // Rolagem livre: só gruda no fim se o leitor JÁ estava no fim. Quem subiu
+    // para reler uma pergunta não é puxado de volta a cada mensagem nova.
+    function noFim(){return chat.scrollHeight-chat.scrollTop-chat.clientHeight<40}
+    chat.addEventListener('scroll',function(){if(noFim())voltar.classList.remove('visivel')});
+    voltar.addEventListener('click',function(){chat.scrollTop=chat.scrollHeight;voltar.classList.remove('visivel')});
     function corDe(nome){var h=0;for(var i=0;i<nome.length;i++){h=(h*31+nome.charCodeAt(i))%360}
       return 'hsl('+h+',55%,42%)'}
     window.__pikpokChat=function(item){
@@ -434,9 +477,10 @@ function paginaDeChatSimulado(logo: string | null, video: string | null): string
       autor.textContent=item.autor||'PikPok IA';
       var texto=document.createElement('div');texto.className='texto';texto.textContent=item.texto;
       corpo.appendChild(autor);corpo.appendChild(texto);
+      var estavaNoFim=noFim();
       linha.appendChild(av);linha.appendChild(corpo);chat.appendChild(linha);
-      while(chat.children.length>80)chat.removeChild(chat.firstChild);
-      chat.scrollTop=chat.scrollHeight;
+      while(chat.children.length>200)chat.removeChild(chat.firstChild);
+      if(estavaNoFim)chat.scrollTop=chat.scrollHeight;else voltar.classList.add('visivel');
     };
   })();
   </script></body></html>`;
