@@ -112,8 +112,10 @@ export class VideogenService {
    */
   async generate(userId: string, dto: GenerateMediaDto): Promise<GeneratedMedia> {
     // Cobra antes de submeter; se a Higgsfield recusar, o estorno é automático.
-    const submitted = await this.billing.withCharge(userId, dto.kind, () =>
-      this.higgsfield.submitImage(dto.prompt, dto.aspectRatio ?? '9:16'),
+    const { resultado: submitted, cortesia } = await this.billing.withChargeReceipt(
+      userId,
+      dto.kind,
+      () => this.higgsfield.submitImage(dto.prompt, dto.aspectRatio ?? '9:16'),
     );
     this.registrarCusto(userId, dto.kind);
     return this.media.save(
@@ -125,6 +127,8 @@ export class VideogenService {
         status: (submitted.status as GeneratedMedia['status']) ?? 'queued',
         phase: 'image',
         requestId: submitted.requestId,
+        // Zero = vídeo de cortesia: o estorno devolve o voucher, não 60 créditos.
+        chargedCredits: cortesia ? 0 : null,
       }),
     );
   }
@@ -163,7 +167,7 @@ export class VideogenService {
     },
   ): Promise<GeneratedMedia> {
     const creditos = this.creditosDaGeracao(pedido.opcoes);
-    const submitted = await this.billing.withCharge(
+    const { resultado: submitted, cortesia } = await this.billing.withChargeReceipt(
       userId,
       'video',
       () => this.higgsfield.submitImage(pedido.framePrompt, '9:16', pedido.referencias),
@@ -186,7 +190,7 @@ export class VideogenService {
         // ESTA voz — o request de origem já terminou quando ela dispara.
         model: pedido.opcoes?.modelo ?? null,
         voiceRefUrl: pedido.opcoes?.vozReferenciaUrl ?? null,
-        chargedCredits: creditos,
+        chargedCredits: cortesia ? 0 : creditos,
       }),
     );
   }
@@ -200,7 +204,7 @@ export class VideogenService {
   ): Promise<GeneratedMedia> {
     const paraDriver = await this.opcoesParaDriver(opcoes);
     const creditos = this.creditosDaGeracao(opcoes);
-    const submitted = await this.billing.withCharge(
+    const { resultado: submitted, cortesia } = await this.billing.withChargeReceipt(
       userId,
       'video',
       () => this.higgsfield.submitVideo(imageUrl, prompt, imagem, paraDriver),
@@ -221,7 +225,7 @@ export class VideogenService {
         requestId: submitted.requestId,
         model: opcoes?.modelo ?? null,
         voiceRefUrl: opcoes?.vozReferenciaUrl ?? null,
-        chargedCredits: creditos,
+        chargedCredits: cortesia ? 0 : creditos,
       }),
     );
   }
@@ -323,14 +327,20 @@ export class VideogenService {
       // marca gravada pelo vencedor e um terceiro refresh estornaria de novo.
       item.refunded = true;
       if (marcou.affected) {
-        // Devolve o que FOI cobrado — a cena falada custa mais que a tabela.
-        await this.billing.refund(
-          userId,
-          item.kind,
-          `Estorno: geração de ${item.kind === 'video' ? 'vídeo' : 'imagem'} falhou`,
-          1,
-          item.chargedCredits ?? undefined,
-        );
+        const motivo = `Estorno: geração de ${item.kind === 'video' ? 'vídeo' : 'imagem'} falhou`;
+        if (item.chargedCredits === 0) {
+          // Saiu do vídeo de cortesia, não do saldo: volta o voucher.
+          await this.billing.restoreSampleVideo(userId, motivo);
+        } else {
+          // Devolve o que FOI cobrado — a cena falada custa mais que a tabela.
+          await this.billing.refund(
+            userId,
+            item.kind,
+            motivo,
+            1,
+            item.chargedCredits ?? undefined,
+          );
+        }
       }
     }
 

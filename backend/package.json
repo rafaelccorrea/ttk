@@ -20,6 +20,7 @@
     "typeorm": "typeorm-ts-node-commonjs -d src/database/data-source.ts",
     "migration:generate": "npm run typeorm -- migration:generate",
     "migration:run": "npm run typeorm -- migration:run",
+    "stripe:check": "node scripts/stripe-check.js",
     "migration:revert": "npm run typeorm -- migration:revert",
     "cc:login": "node scripts/cc-login.js",
     "purge:scraped": "ts-node src/database/seeds/purge-scraped.ts",

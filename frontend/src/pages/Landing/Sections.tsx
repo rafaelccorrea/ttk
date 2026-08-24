@@ -637,8 +637,8 @@ export function FinalCta() {
               Pronto para vender <Box component="span" sx={gradientText}>antes da tendência</Box>?
             </Typography>
             <Typography color={textDim} fontSize={{ xs: 15.5, md: 17.5 }} mt={2.5} maxWidth={560} mx="auto" lineHeight={1.65}>
-              Crie sua conta em menos de um minuto, ganhe 30 créditos de boas-vindas e descubra hoje
-              mesmo o que já está bombando no seu nicho.
+              Crie sua conta em menos de um minuto, ganhe 25 créditos de boas-vindas e 10 minutos de
+              Live Copilot de cortesia, e descubra hoje mesmo o que já está bombando no seu nicho.
             </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" alignItems={{ xs: 'stretch', sm: 'center' }} mt={4.5} sx={{ maxWidth: { xs: 360, sm: 'none' }, mx: 'auto' }}>
               <Button

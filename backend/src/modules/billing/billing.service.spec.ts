@@ -43,7 +43,9 @@ function repositorioDeUsuarios(estado: {
     findOneBy: jest.fn(async () => estado.usuario ?? null),
     createQueryBuilder: jest.fn(() => builder),
     increment: jest.fn(async () => ({ affected: 1 })),
-    update: jest.fn(async () => ({ affected: 1 })),
+    update: jest.fn(async (_alvo: unknown, _mudanca: unknown) => ({
+      affected: 1,
+    })),
     builder,
     execute,
   };
@@ -194,8 +196,8 @@ describe('carteira de minutos — consumo', () => {
     // faltam para o bônus do degrau novo.
     const usuario = { ...BUSINESS, plan: 'free', liveSignupMinutesGranted: 0 };
     const { servico, users, minutos } = montar({ usuario });
-    users.update = jest.fn(async (_alvo: unknown, mudanca: Record<string, unknown>) => {
-      Object.assign(usuario, mudanca);
+    users.update.mockImplementation(async (_alvo: unknown, mudanca: unknown) => {
+      Object.assign(usuario, mudanca as Record<string, unknown>);
       return { affected: 1 };
     });
     const concedidos = () =>
@@ -266,6 +268,24 @@ describe('carteira de minutos — a cortesia de estreia', () => {
     });
     await expect(servico.grantLiveTrial('u1')).resolves.toBe(0);
     expect(minutos.salvos).toHaveLength(0);
+  });
+
+  it('a carteira só anuncia a cortesia para a conta free', async () => {
+    // `trialAvailable` é o que a tela lê antes de prometer os dez minutos. Um
+    // assinante sem o carimbo ainda não os ganhou — e nunca vai ganhar
+    // (`grantLiveTrial` devolve zero) —, então a carteira não pode oferecê-los.
+    const { servico: free } = montar({
+      usuario: { ...BUSINESS, plan: 'free', liveMinutes: 0 },
+    });
+    expect((await free.getWallet('u1')).liveCopilot.trialAvailable).toBe(true);
+
+    const { servico: assinante } = montar({ usuario: { ...BUSINESS } });
+    expect((await assinante.getWallet('u1')).liveCopilot.trialAvailable).toBe(false);
+
+    const { servico: jaGanhou } = montar({
+      usuario: { ...BUSINESS, plan: 'free', liveTrialGrantedAt: new Date() },
+    });
+    expect((await jaGanhou.getWallet('u1')).liveCopilot.trialAvailable).toBe(false);
   });
 });
 
@@ -348,13 +368,16 @@ describe('a trava de lançamento do Live Copilot', () => {
   });
 
   it('continua barrando por plano quem não paga o degrau', async () => {
-    // O painel desceu até o ESSENCIAL (pague por hora, teto mensal); quem
-    // continua fora é a conta gratuita — o recurso consome fornecedor pago.
+    // O painel do copiloto abre até no free (só a cortesia); a trava de plano
+    // continua valendo para os recursos que realmente pedem degrau — o vídeo
+    // com IA é do Pro, e o Essencial não passa.
     process.env.LAUNCH_LIVE_COPILOT = 'true';
     const { servico } = montar({ usuario: { ...BUSINESS, plan: 'free' } });
-    await expect(servico.assertFeature('u1', 'live_copilot')).rejects.toBeInstanceOf(
-      HttpException,
-    );
+    await expect(servico.assertFeature('u1', 'live_copilot')).resolves.toBeUndefined();
+    const essencial = montar({ usuario: { ...BUSINESS, plan: 'essencial' } });
+    await expect(
+      essencial.servico.assertFeature('u1', 'ai_videos'),
+    ).rejects.toBeInstanceOf(HttpException);
   });
 });
 
@@ -398,11 +421,13 @@ describe('assertSaldo — a trava de entrada', () => {
     // Crédito de sobra não compra um recurso que o plano não inclui — e a
     // mensagem tem de falar de plano, não de saldo, senão o vendedor compra um
     // pacote de créditos que não vai destravar nada.
+    // `video` é do Pro; `live_extract` deixou de servir de exemplo porque o
+    // copiloto (e a base dele) abriu até para o free.
     const { servico } = montar({
       usuario: { ...BUSINESS, plan: 'free', credits: 10_000 },
     });
     await expect(
-      servico.assertSaldo('u1', [{ action: 'live_extract' }]),
+      servico.assertSaldo('u1', [{ action: 'video' }]),
     ).rejects.toMatchObject({ status: 403 });
   });
 
@@ -481,7 +506,7 @@ describe('conta interna (COMP_ACCOUNT_EMAILS)', () => {
     const { servico, users, creditos } = montar({
       usuario: { ...BUSINESS, email: ADMIN, credits: 0 },
     });
-    await expect(servico.charge('u1', 'transcribe')).resolves.toBeUndefined();
+    await expect(servico.charge('u1', 'transcribe')).resolves.toEqual({ cortesia: false });
     expect(users.builder.set).not.toHaveBeenCalled();
     // Mas o uso fica no extrato, com valor zero: o histórico segue contando o
     // que foi feito sem mexer no saldo.
@@ -562,6 +587,80 @@ describe('cortesia de cadastro (SIGNUP_BONUS_CREDITS)', () => {
         (t) => t.kind === 'signup_bonus',
       ),
     ).toHaveLength(0);
+  });
+});
+
+/**
+ * O vídeo de cortesia (SAMPLE_VIDEOS_PER_ACCOUNT). O que se protege: ele passa
+ * sem debitar e sem exigir o Pro, passa UMA vez, e o estorno devolve o voucher —
+ * nunca 60 créditos para uma conta que não os comprou.
+ */
+describe('vídeo de cortesia (SAMPLE_VIDEOS_PER_ACCOUNT)', () => {
+  const FREE = { ...BUSINESS, plan: 'free', credits: 25, sampleVideoUsedAt: null };
+
+  it('deixa a conta gratuita gerar um vídeo sem debitar', async () => {
+    const { servico, creditos } = montar({ usuario: FREE });
+    const recibo = await servico.charge('u1', 'video');
+    expect(recibo.cortesia).toBe(true);
+    const lancado = gastos(creditos.salvos) as Array<{ kind: string; amount: number }>;
+    expect(lancado).toHaveLength(1);
+    expect(lancado[0]).toMatchObject({ kind: 'sample_video', amount: 0 });
+  });
+
+  it('só vale uma vez: gasto o vídeo, a ação volta a exigir o Pro', async () => {
+    const { servico } = montar({
+      usuario: { ...FREE, sampleVideoUsedAt: new Date() },
+    });
+    await expect(servico.charge('u1', 'video')).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('não cobre cena de modelo mais caro que a tabela', async () => {
+    // Amostra é o vídeo de tabela; escolher o modelo de 90 é operação.
+    const { servico } = montar({ usuario: FREE });
+    await expect(
+      servico.charge('u1', 'video', 1, undefined, ACTION_PRICES.video.credits + 30),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('quem perde a corrida do UPDATE não ganha o vídeo', async () => {
+    // Dois pedidos leram `sampleVideoUsedAt` nulo; o banco só deixa um passar.
+    const { servico } = montar({ usuario: FREE, afetadas: [0] });
+    await expect(servico.charge('u1', 'video')).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('não dá cortesia a quem já tem vídeo no plano', async () => {
+    const { servico, creditos } = montar({
+      usuario: { ...BUSINESS, plan: 'pro', credits: 500, sampleVideoUsedAt: null },
+    });
+    const recibo = await servico.charge('u1', 'video');
+    expect(recibo.cortesia).toBe(false);
+    expect((gastos(creditos.salvos)[0] as { kind: string }).kind).toBe('spend');
+  });
+
+  it('estorna devolvendo o voucher, não créditos', async () => {
+    const { servico, users, creditos } = montar({
+      usuario: { ...FREE, sampleVideoUsedAt: new Date() },
+    });
+    await servico.restoreSampleVideo('u1', 'Estorno: geração de vídeo falhou');
+    expect(users.builder.set).toHaveBeenCalledWith({ sampleVideoUsedAt: null });
+    const lancado = gastos(creditos.salvos) as Array<{ kind: string; amount: number }>;
+    expect(lancado).toHaveLength(1);
+    expect(lancado[0]).toMatchObject({ kind: 'sample_video', amount: 0 });
+  });
+
+  it('withCharge: falhou a IA, volta o voucher em vez de creditar', async () => {
+    const { servico, users } = montar({ usuario: FREE });
+    await expect(
+      servico.withCharge('u1', 'video', async () => {
+        throw new Error('fornecedor caiu');
+      }),
+    ).rejects.toThrow('fornecedor caiu');
+    expect(users.builder.set).toHaveBeenCalledWith({ sampleVideoUsedAt: null });
+    // Nenhum `credits + N`: o saldo da conta gratuita não pode crescer por falha nossa.
+    const campos = users.builder.set.mock.calls.flatMap((c: unknown[]) =>
+      Object.keys(c[0] as Record<string, unknown>),
+    );
+    expect(campos).not.toContain('credits');
   });
 });
 

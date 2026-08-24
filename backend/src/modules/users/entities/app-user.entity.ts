@@ -132,6 +132,18 @@ export class AppUser {
   liveSignupMinutesGranted: number;
 
   /*
+   * Quando a conta gastou o vídeo com IA de cortesia (`SAMPLE_VIDEOS_PER_ACCOUNT`).
+   *
+   * Nulo = ainda tem. É o mesmo desenho do `liveTrialGrantedAt`: a cortesia
+   * não entra no saldo — ela é a ação `video` passando uma vez sem débito —,
+   * então esta data é a única coisa que distingue quem ainda não usou de quem
+   * já usou. O `charge` consome com UPDATE condicional; o estorno de geração
+   * que falhou devolve zerando a data, não creditando 60.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  sampleVideoUsedAt: Date | null;
+
+  /*
    * Quando o vendedor aceitou o termo de risco do envio automático no chat da
    * live.
    *

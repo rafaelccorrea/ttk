@@ -186,7 +186,7 @@ export function AnalyzePage() {
                     sx={{ my: 1.5, py: 1.5, wordBreak: 'break-word', overflowWrap: 'anywhere', textAlign: 'center' }}
                   >
                     {transcribing
-                      ? 'Transcrevendo com Whisper...'
+                      ? 'Transcrevendo com IA...'
                       : (fileName ?? 'Enviar vídeo ou áudio (máx. 25MB)')}
                     <input
                       hidden

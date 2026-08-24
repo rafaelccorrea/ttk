@@ -44,6 +44,7 @@ import {
 
 const KIND_LABEL: Record<string, string> = {
   signup_bonus: 'Boas-vindas',
+  sample_video: 'Cortesia',
   plan_grant: 'Plano',
   purchase: 'Compra',
   spend: 'Uso de IA',
@@ -53,6 +54,7 @@ const KIND_LABEL: Record<string, string> = {
 /** Cada tipo de lançamento tem uma cor no extrato — a linha se lê sem ler. */
 const KIND_COLOR: Record<string, string> = {
   signup_bonus: 'rgba(0,194,187,0.14)',
+  sample_video: 'rgba(0,194,187,0.14)',
   plan_grant: 'rgba(254,44,85,0.12)',
   purchase: 'rgba(22,163,74,0.12)',
   spend: 'rgba(22,24,35,0.06)',
@@ -614,8 +616,16 @@ export function PlansPage() {
               <>
                 Moeda separada: <strong>não sai dos seus créditos de IA</strong> e
                 não expira. Cada transmissão debita um bloco mínimo de 10
-                minutos, e cada plano já começa com horas de live inclusas na
-                adesão.
+                minutos
+                {/*
+                 * A frase das horas de adesão fala no tempo certo para cada
+                 * conta: quem assina JÁ recebeu as horas; a free ainda não —
+                 * para ela o que existe é a cortesia, e as horas são o que vem
+                 * se assinar.
+                 */}
+                {semPlano
+                  ? '; você tem 10 minutos de cortesia para conhecer; assinando, o plano vem com 15, 40 ou 60 horas.'
+                  : ', e cada plano já começa com horas de live inclusas na adesão.'}
                 {wallet.liveCopilot.trialAvailable
                   ? ` Você ainda tem ${wallet.liveCopilot.trialMinutes} minutos de cortesia para testar antes de comprar.`
                   : ` Saldo atual: ${formatarSaldoDeLive(wallet.liveCopilot.minutes)}.`}

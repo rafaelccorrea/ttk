@@ -199,10 +199,10 @@ toda já feita.
 
 O copiloto no modo painel abre até para a conta **free** — que só tem os 10
 minutos de cortesia (EXCLUSIVOS dela; acabou, 402 com CTA de assinar). Quem
-assina entra com o bônus único de adesão — **Essencial 15h, Pro 40h, Business
-60h** (`signupLiveHours`; renovação não repete, upgrade concede a diferença) —
-e horas mensais nos degraus de cima: Pro 2h/mês, Business 10h/mês. O
-**Business** segue o único com **envio automático**, e a razão não é preço, é
+assina entra com as horas que VÊM com o plano — **Essencial 15h, Pro 40h,
+Business 60h** (`signupLiveHours`, bônus único de adesão; renovação não
+repete, upgrade concede a diferença). Não há hora mensal recorrente: acabou,
+é pack. O **Business** segue o único com **envio automático**, e a razão não é preço, é
 risco: é o único lugar do produto onde escrevemos em nome do vendedor, dentro
 da plataforma dele. A trava do envio vive em `trocarModo`, não no gate de
 feature.

@@ -36,7 +36,7 @@ Esta é a frase que decide tudo o que vem abaixo, e ela separa os dois custos do
 |---|---|---|
 | Como custa | por consulta ao fornecedor | por chamada, e a chamada já é medida em crédito |
 | Tem teto natural? | **não** | **sim: o saldo** |
-| No gratuito | só a **amostra** fixa | **abertas**, com 25 créditos de cortesia |
+| No gratuito | só a **amostra** fixa | **abertas**, com 25 créditos de cortesia + **1 vídeo com IA** de cortesia |
 
 Abrir o roteiro, a análise, a transcrição e a imagem para quem não paga não abre torneira
 nenhuma: o teto é o saldo, o saldo é concedido uma vez e não renova. E é o que faz a conta
@@ -64,10 +64,11 @@ Do lado do dado, portanto, não há o que ganhar burlando: a décima conta de um
 vê os mesmos 20 produtos que a primeira.
 
 **Isso vale para o dado, e não para a cortesia de créditos.** Desde que a conta gratuita
-passou a receber 25 créditos de IA (seção 1.1), uma conta nova vale até R$ 1,50 — e aí o
-incentivo a criar contas em série existe de verdade. O que segura é a cortesia ser concedida
-**uma vez por conta**, não renovar, e o cadastro exigir confirmação de e-mail; o que não
-existe é limite por IP ou por domínio. Está descrito com números em
+passou a receber 25 créditos de IA e um vídeo com IA de cortesia (seção 1.1), uma conta nova
+vale até R$ 5,10 — e aí o incentivo a criar contas em série existe de verdade. O que segura é
+cada cortesia ser concedida **uma vez por conta**, não renovar, o vídeo não entrar no saldo
+(dez contas não somam dez vídeos numa campanha) e o cadastro exigir confirmação de e-mail; o
+que não existe é limite por IP ou por domínio. Está descrito com números em
 [Precificação, seção 8.3](PRECIFICACAO.md).
 
 Consequência de projeto: o snapshot é **persistido em tabela**, não guardado em memória.

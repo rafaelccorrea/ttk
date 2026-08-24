@@ -168,19 +168,17 @@ Piso com a margem mínima: R$ 0,084 por crédito.
 |---|---|---:|---:|---:|---:|
 | Essencial | mensal | 39,90 | 450 | 0,0887 | 1,48× |
 | Essencial | anual | 399,90 | 4.600 | 0,0869 | 1,45× |
-| Pro | mensal | 99,90 | 1.000 + 2h de live | 0,0839¹ | 1,53× |
-| Pro | anual | 999,90 | 10.400 + 24h de live | 0,0777¹ | 1,46× |
-| Business | mensal | 299,90 | 2.800 + 10h de live | 0,0786¹ | 1,55× |
-| Business | anual | 2.999,90 | 28.800 + 120h de live | 0,0709¹ | 1,47× |
+| Pro | mensal | 89,90 | 1.000 | 0,0899 | 1,50× |
+| Pro | anual | 899,90 | 10.400 | 0,0865 | **1,44×** |
+| Business | mensal | 249,90 | 2.800 | 0,0892 | 1,49× |
+| Business | anual | 2.499,90 | 28.800 | 0,0868 | 1,45× |
 | Starter (legado) | mensal | 49,90 | 500 | 0,0998 | 1,66× |
 
-¹ **Pro e Business vendem duas moedas, então o R$/crédito deles é líquido.** Desde que os planos
-passaram a incluir horas de live, dividir o preço cheio pelos créditos dá um número sem sentido.
-A conta certa desconta o que as horas valem sozinhas — cada hora inclusa ao preço/hora do pacote
-de 5h (R$ 39,90 / 5 = R$ 7,98/h) — e olha o que sobra para os créditos. O teste
-`cobra mais caro por crédito no plano menor` faz exatamente essa conta.
+Nenhum plano inclui hora MENSAL de live (a moeda recorrente do plano é só o crédito) — por isso
+a conta de margem volta a ser preço ÷ créditos, e o teste `cobra mais caro por crédito no plano
+menor` compara a escada direto.
 
-**Além das horas mensais, cada plano dá um bônus ÚNICO de adesão** ("já começa com X horas"):
+**O que cada plano DÁ de live é um bônus ÚNICO de adesão** ("o plano vem com X horas"):
 Essencial 15h, Pro 40h, Business 60h (`signupLiveHours`, concedido em `grantSignupLiveHours` no
 `setPlan` — renovação não repete, upgrade concede a diferença). É custo único de aquisição
 (15h ≈ R$ 38,70 / 40h ≈ R$ 103,20 / 60h ≈ R$ 154,80, uma vez por assinante) e por isso NÃO entra
@@ -441,36 +439,50 @@ custo**. Esta seção existe para que esse custo não vire surpresa.
 | Amostra de produtos e vídeos | **zero** — conjunto fixo e global, servido do que já está ingerido. Nenhuma consulta ao fornecedor |
 | Minutos de live | **zero** — o copiloto é Pro+ |
 | Créditos de IA | **até R$ 1,50** — a cortesia de cadastro |
+| Vídeo com IA de cortesia | **até R$ 3,60** — um por conta, sem entrar no saldo |
 
-A cortesia (`SIGNUP_BONUS_CREDITS = 25`) é o único custo real, e existe porque uma conta que
-só olha não vira cliente: o vendedor precisa ver o roteiro sair com o produto dele. Vinte e
-cinco créditos dão três roteiros — dá para conhecer, não dá para operar.
+A cortesia de créditos (`SIGNUP_BONUS_CREDITS = 25`) existe porque uma conta que só olha não
+vira cliente: o vendedor precisa ver o roteiro sair com o produto dele. Vinte e cinco créditos
+dão três roteiros — dá para conhecer, não dá para operar.
+
+Só que roteiro, análise e imagem ele já tem em qualquer chat de IA. **O que justifica o Pro é a
+cena em vídeo**, e ela custa 60 — os 25 nunca chegam lá. Subir a cortesia para 60+ resolveria
+isso inflando a carteira, e crédito em saldo é alvo de multiconta: dez contas são dez saldos que
+se gastam em qualquer coisa. Por isso a segunda cortesia é um **vídeo, não créditos**
+(`SAMPLE_VIDEOS_PER_ACCOUNT = 1`): a ação `video` passa uma vez por conta sem debitar e sem
+exigir o Pro, só no preço de tabela, para quem está abaixo do plano mínimo de vídeo (free e
+Essencial). Um benefício fixo não vale nada em escala — dez contas são dez vídeos de amostra
+com que ninguém opera. Trava: `sampleVideoUsedAt` no usuário, consumido por UPDATE condicional
+em `charge`; geração que falha devolve o voucher (`restoreSampleVideo`), nunca 60 créditos.
 
 ### 8.2 A conta do pior caso
 
-25 créditos × R$ 0,06 (o `worstCostPerCredit()` de hoje, seção 3) = **R$ 1,50 por conta
-gratuita**, no cenário em que a pessoa gasta tudo na ação mais cara que o plano dela alcança.
-Na prática é menos — um roteiro custa 8 créditos e sai por ~R$ 0,39 —, mas o número que se
-planeja é o do teto.
+25 créditos × R$ 0,06 (o `worstCostPerCredit()` de hoje, seção 3) = **R$ 1,50**, mais um vídeo
+a R$ 3,60 (`sampleVideoWorstCostBrl()`) = **R$ 5,10 por conta gratuita**, no cenário em que a
+pessoa gasta tudo na ação mais cara que alcança e ainda usa o vídeo. Na prática é menos — um
+roteiro custa 8 créditos e sai por ~R$ 0,39 —, mas o número que se planeja é o do teto.
 
 Isso é **custo de aquisição**, não de operação: acontece uma vez por cadastro e nunca mais.
 `assertProfitability()` continua sem olhar para ele, porque aqui não há preço de venda a
-proteger — não é margem, é investimento. Quem trava o número é o teste
-"dá a cortesia de boas-vindas, e ela cabe no custo de aquisição", em `billing.config.spec.ts`.
+proteger — não é margem, é investimento. Quem trava os números são os testes
+"dá a cortesia de boas-vindas, e ela cabe no custo de aquisição" e "dá um vídeo de cortesia, e
+o custo de aquisição total cabe em R$ 5,10", em `billing.config.spec.ts`.
 
-**Se `worstCostPerCredit()` subir, este custo sobe junto, em silêncio.** Foi por isso que o
-teste multiplica um pelo outro, em vez de conferir só o 25.
+**Se `worstCostPerCredit()` ou o pior caso do vídeo subir, este custo sobe junto, em
+silêncio.** Foi por isso que os testes multiplicam um pelo outro, em vez de conferir só o 25.
 
 ### 8.3 O risco que isso reabre: multiconta
 
 Enquanto o gratuito era só a amostra, criar dez contas não dava nada a ninguém — a amostra é
-a mesma para todo mundo, e essa era a defesa. **Com a cortesia, cada conta nova vale R$ 1,50
-de IA**, e a defesa passa a ser outra. O que segura hoje:
+a mesma para todo mundo, e essa era a defesa. **Com as cortesias, cada conta nova vale até
+R$ 5,10 de IA**, e a defesa passa a ser outra. O que segura hoje:
 
-- a cortesia é **uma vez por conta** (lançamento `signup_bonus`, conferido antes de conceder)
-  e **não renova** no mês seguinte;
+- a cortesia de créditos é **uma vez por conta** (lançamento `signup_bonus`, conferido antes de
+  conceder) e **não renova** no mês seguinte;
+- o vídeo de cortesia é **um por conta** (`sampleVideoUsedAt`), não entra no saldo e só cobre o
+  vídeo de tabela — não dá para juntar dez vouchers numa campanha;
 - o cadastro exige **confirmação de e-mail**;
-- 25 créditos não montam operação nenhuma: quem quer volume assina.
+- 25 créditos e um vídeo não montam operação nenhuma: quem quer volume assina.
 
 O que **não** existe hoje: limite por IP, por dispositivo ou por domínio de e-mail. Se a
 telemetria mostrar cadastros em série, é aqui que a trava entra — e o lugar dela é o

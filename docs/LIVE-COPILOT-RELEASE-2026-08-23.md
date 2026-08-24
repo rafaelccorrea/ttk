@@ -16,9 +16,13 @@ Migrations aplicadas no Supabase: `AddLiveRunEndReason`, `AddLiveRunEvents`,
 | Plano | Preço | Horas de live |
 |---|---|---|
 | Free | — | **10 min de cortesia, exclusivos do free** (`grantLiveTrial` só concede a plano de rank 0) |
-| Essencial | R$ 39,90 (anual 399,90) | **15h na adesão** (uma vez) |
-| Pro | R$ 99,90 (anual 999,90) | **40h na adesão** + 2h/mês (24h no anual) |
-| Business | R$ 299,90 (anual 2.999,90) | **60h na adesão** + 10h/mês (120h no anual) + envio automático |
+| Essencial | R$ 39,90 (anual 399,90) | **o plano vem com 15h** (uma vez, na adesão) |
+| Pro | R$ 89,90 (anual 899,90) | **o plano vem com 40h** |
+| Business | R$ 249,90 (anual 2.499,90) | **o plano vem com 60h** + envio automático |
+
+Não há hora mensal recorrente em nenhum plano: acabou, é pack. (Preços mensais
+voltaram aos valores base — o aumento que existiu durante o dia era para bancar
+horas mensais que foram descartadas.)
 
 Packs (para qualquer plano com o copiloto): 1h R$ 9,90 · 5h R$ 39,90 ·
 15h R$ 99,90 · 40h R$ 219,90.
@@ -30,10 +34,10 @@ Coluna `app_users.liveSignupMinutesGranted` guarda o maior bônus já concedido.
 É custo único de aquisição (15h ≈ R$ 38,70 / 40h ≈ R$ 103,20 / 60h ≈ R$ 154,80)
 e por isso **não entra em `assertProfitability`**, que compara grandezas mensais.
 
-**Por que os preços mensais subiram** (Pro 89,90→99,90; Business 269,90→299,90):
-o guard de boot (`assertProfitability`, margem 1,4× sobre créditos×R$0,06 +
-minutos×R$0,043) impede incluir horas *mensais* sem cobrir o custo; foi o
-aumento moderado aprovado, no precedente do próprio Business.
+**Por que as horas são de adesão e não mensais:** o guard de boot
+(`assertProfitability`, margem 1,4× sobre créditos×R$0,06 + minutos×R$0,043)
+impede incluir 15/40/60h *por mês* nos preços atuais; como custo único de
+aquisição elas cabem, e o catálogo fica simples de anunciar.
 
 **Gate de feature:** `FEATURE_MIN_PLAN.live_copilot = 'free'` (painel abre para
 todos; o free só tem a cortesia). Envio automático continua Business

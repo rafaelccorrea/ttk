@@ -43,9 +43,10 @@ import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { SupportFab } from '@/components/ui/SupportFab';
 import { NovasContasToast } from '@/components/layout/NovasContasToast';
+import { WelcomeModal } from '@/components/layout/WelcomeModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { api, CREDITS_CHANGED_EVENT } from '@/services/api';
-import { billingService } from '@/services/billing.service';
+import { billingService, Wallet } from '@/services/billing.service';
 import { usersService } from '@/services/users.service';
 
 const DRAWER_WIDTH = 248;
@@ -225,6 +226,8 @@ export function AppLayout() {
   const location = useLocation();
   const current = NAV.find((n) => location.pathname.startsWith(n.to));
   const [credits, setCredits] = useState<number | null>(null);
+  // A carteira inteira, para o modal de boas-vindas listar o que a conta tem.
+  const [carteira, setCarteira] = useState<Wallet | null>(null);
   /*
    * O saldo de live é uma MOEDA À PARTE, e por isso um estado à parte.
    *
@@ -330,6 +333,7 @@ export function AppLayout() {
       billingService
         .wallet()
         .then((w) => {
+          setCarteira(w);
           setCredits(w.credits);
           setFeatures(w.features ?? {});
           setPlan(w.plan);
@@ -1036,6 +1040,7 @@ export function AppLayout() {
         </Box>
       </Box>
       <SupportFab />
+      <WelcomeModal carteira={carteira} email={email} />
       {/* Aviso de conta nova, só para a equipe — o backend barra quem não é. */}
       {isAdmin && <NovasContasToast />}
     </Box>

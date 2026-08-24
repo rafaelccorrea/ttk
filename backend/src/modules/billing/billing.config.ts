@@ -214,9 +214,9 @@ export interface LiveHourPack {
 }
 
 /**
- * Add-ons de hora de live. Disponíveis a partir do Pro, junto com a feature
- * (a trava real é `assertFeature('live_copilot')` no checkout — plano mínimo
- * em `FEATURE_MIN_PLAN`).
+ * Add-ons de hora de live. Disponíveis a partir do free (qualquer conta com a
+ * feature — a trava real é `assertFeature('live_copilot')` no checkout, plano
+ * mínimo em `FEATURE_MIN_PLAN`).
  *
  * O preço por hora cai com o volume, e a margem é bem maior que a dos pacotes
  * de crédito — não por ganância, mas porque o custo de IA é só uma parte do que
@@ -415,18 +415,16 @@ export function planSignupLiveMinutes(planId: string): number {
  * ele leva o `highlight` e o salto de recursos (vídeo com IA e multiplicador),
  * não só mais créditos.
  *
- * Preço por crédito (o piso com a margem mínima é R$ 0,084). Nos planos com
- * horas de live inclusas, desconte antes o valor das horas ao preço avulso
- * (R$ 9,90/h) — é a conta que `billing.config.spec.ts` faz:
+ * Preço por crédito (o piso com a margem mínima é R$ 0,084):
  *   Essencial       R$ 39,90 / 450 cr    = R$ 0,0887/cr → 1,48× o pior custo
  *   Essencial anual R$ 399,90 / 4.600 cr = R$ 0,0869/cr → 1,45× o pior custo
- *   Pro             (R$ 99,90 − 2h) / 1.000 cr  ≈ R$ 0,0801/cr
- *   Pro anual       (R$ 999,90 − 24h) / 10.400 cr ≈ R$ 0,0733/cr
- *   Business        (R$ 299,90 − 10h) / 2.800 cr ≈ R$ 0,0718/cr
- *   Business anual  (R$ 2.999,90 − 120h) / 28.800 cr ≈ R$ 0,0629/cr
- * O piso de verdade é o de `assertProfitability`, que soma as DUAS moedas
- * (créditos × pior custo + minutos × custo/minuto) × margem — todos os planos
- * acima passam. O desconto de volume (e o anual) sai da margem, nunca do
+ *   Pro             R$ 89,90 / 1.000 cr  = R$ 0,0899/cr → 1,50× o pior custo
+ *   Pro anual       R$ 899,90 / 10.400 cr= R$ 0,0865/cr → 1,44× o pior custo
+ *   Business        R$ 249,90 / 2.800 cr = R$ 0,0892/cr → 1,49× o pior custo
+ *   Business anual  R$ 2.499,90 / 28.800 cr = R$ 0,0868/cr → 1,45× o pior custo
+ * Nenhum plano inclui hora MENSAL de live: as horas do plano (15/40/60h) são
+ * bônus único de adesão (`signupLiveHours`), custo de aquisição que não entra
+ * nesta conta. O desconto de volume (e o anual) sai da margem, nunca do
  * custo — é por isso que a cota acompanha o preço, e não o contrário.
  */
 export const PLANS: Plan[] = [
@@ -442,38 +440,25 @@ export const PLANS: Plan[] = [
     perks: [
       '450 créditos/mês (ou 4.600 no plano anual)',
       'Descoberta completa: produtos, vídeos e criadores',
-      'Roteiros e análises com Claude',
+      'Roteiros e análises com IA',
       'Transcrição de vídeos',
       'Imagens com IA',
-      'Live Copilot no painel: já começa com 15 horas de live',
+      'Live Copilot no painel: o plano vem com 15 horas de live',
     ],
   },
   {
     id: 'pro',
     name: 'Pro',
-    /*
-     * R$ 99,90 e não R$ 89,90 porque o plano passou a INCLUIR 2 horas de
-     * copiloto ao vivo por mês — que avulsas custam R$ 9,90 cada. São +R$ 10
-     * no preço por R$ 19,80 de valor entregue, e a margem segue acima do piso
-     * (`assertProfitability` checa as DUAS moedas do plano no boot).
-     */
-    priceBrl: 99.9,
+    priceBrl: 89.9,
     monthlyCredits: 1000,
-    /*
-     * As 2 horas que fazem o Pro EXPERIMENTAR o copiloto de verdade, todo mês
-     * — a cortesia de dez minutos continua existindo, mas é de estreia, uma
-     * vez por conta. Quem OPERA com o copiloto (10h/mês + envio automático)
-     * continua sendo o Business.
-     */
-    monthlyLiveMinutes: 120,
     // 6 horas por live: um turno inteiro de venda cabe; o que não cabe é o
     // esquecimento de madrugada. O Business, que opera de verdade, tem 24h.
     maxLiveDurationMinutes: 360,
-    // 40 horas na adesão — quem assina o degrau do meio começa com um mês
-    // inteiro de lives diárias no saldo.
+    // O plano VEM com 40 horas de live (uma vez, na adesão). Não há hora
+    // mensal: acabou, é pack — simples de anunciar e de cobrar.
     signupLiveHours: 40,
     highlight: true,
-    annual: { priceBrl: 999.9, credits: 10400 },
+    annual: { priceBrl: 899.9, credits: 10400 },
     perks: [
       '1.000 créditos/mês (ou 10.400 no plano anual)',
       'Tudo do Essencial',
@@ -489,34 +474,24 @@ export const PLANS: Plan[] = [
        * numa reclamação; dizer o que ele é de fato faz as duas horas venderem
        * o degrau de cima em vez de substituí-lo.
        */
-      'Live Copilot no painel: 2 horas por mês (24 horas no plano anual)',
+      'Live Copilot no painel: o plano vem com 40 horas de live',
     ],
   },
   {
     id: 'business',
     name: 'Business',
     /*
-     * R$ 299,90 e não R$ 269,90 porque as horas inclusas dobraram de 5 para
-     * 10 por mês — que avulsas custam mais de R$ 79. São +R$ 30 no preço por
-     * um múltiplo disso em valor entregue, e a margem segue acima do piso
-     * (`assertProfitability` checa as DUAS moedas do plano no boot).
+     * R$ 249,90: o preço do plano SEM hora mensal. A versão com 5h/mês custava
+     * 269,90; as horas agora vêm de uma vez na adesão (60h), que é custo único
+     * e não entra na conta mensal — então o preço volta ao seu valor base.
      */
-    priceBrl: 299.9,
+    priceBrl: 249.9,
     monthlyCredits: 2800,
-    /*
-     * As 10 horas que fazem o Business valer o degrau.
-     *
-     * É a diferença de natureza entre os dois planos: o Pro EXPERIMENTA o
-     * copiloto (2 horas por mês, no painel), o Business OPERA com ele: 10
-     * horas por mês e o envio automático. Sem horas inclusas em volume, quem
-     * assinasse o topo ainda teria que comprar add-on antes da primeira live —
-     * e um plano que exige uma segunda compra para funcionar não é um plano,
-     * é uma entrada.
-     */
-    monthlyLiveMinutes: 600,
     // 24 horas — o teto do próprio TikTok para uma transmissão contínua.
     maxLiveDurationMinutes: 1440,
-    // 60 horas na adesão — o topo entra operando desde o primeiro dia.
+    // O plano VEM com 60 horas de live (uma vez, na adesão): o topo entra
+    // operando desde o primeiro dia, e o que o distingue além disso é o envio
+    // automático.
     signupLiveHours: 60,
     /*
      * O anual do Business faltava, e a ausência era pior do que parece: é o
@@ -530,11 +505,11 @@ export const PLANS: Plan[] = [
      * ano — `assertProfitability` soma as duas moedas na checagem. Mexer
      * nestes números sem refazer essa conta derruba o servidor no boot.
      */
-    annual: { priceBrl: 2999.9, credits: 28800 },
+    annual: { priceBrl: 2499.9, credits: 28800 },
     perks: [
       '2.800 créditos/mês (ou 28.800 no plano anual)',
       'Tudo do Pro',
-      '10 horas de Live Copilot por mês (120 horas no plano anual)',
+      'Live Copilot: o plano vem com 60 horas de live',
       'Envio automático: a IA responde no chat da live (exclusivo)',
       'Coleta de dados automatizada',
       'Onboarding dedicado',
@@ -585,6 +560,37 @@ export function findPlan(id: string): Plan | undefined {
  * duas vezes.
  */
 export const SIGNUP_BONUS_CREDITS = 25;
+
+/**
+ * Vídeos com IA de cortesia por conta — a prova de valor que os 25 créditos
+ * não alcançam.
+ *
+ * Vinte e cinco créditos compram roteiro, análise e imagem: o que o vendedor
+ * já tem em qualquer chat de IA. O que ele NÃO tem em lugar nenhum — e o que
+ * justifica o Pro — é a cena em vídeo, e ela custa 60. Subir a cortesia para
+ * 60+ resolveria isso à custa de inflar a carteira: crédito em saldo vira alvo
+ * de multiconta, porque dez contas são dez saldos que se gastam em qualquer
+ * coisa. Um benefício FIXO não vale nada em escala — dez contas são dez
+ * vídeos de amostra que ninguém opera com.
+ *
+ * Por isso a cortesia é um vídeo, não são créditos: a carteira não muda, a
+ * ação `video` passa UMA vez por conta sem debitar e sem exigir o Pro
+ * (`sampleVideoUsedAt` no usuário, ver `charge`), só no preço de tabela —
+ * quem escolhe modelo mais caro paga a diferença como cliente. Vale para quem
+ * está ABAIXO do plano mínimo de vídeo: o free experimenta, o Essencial vê o
+ * degrau de cima antes de subir. Quem já é Pro tem vídeo no plano.
+ *
+ * **Custo teto por conta: `sampleVideoWorstCostBrl()`** (hoje R$ 3,60, o
+ * pior caso de `ACTION_PRICES.video`). Somado à cortesia de créditos, é o
+ * custo de aquisição total de um cadastro que nunca paga — o teste em
+ * `billing.config.spec.ts` trava a soma.
+ */
+export const SAMPLE_VIDEOS_PER_ACCOUNT = 1;
+
+/** Teto do que a cortesia de vídeo custa por conta, em BRL. */
+export function sampleVideoWorstCostBrl(): number {
+  return SAMPLE_VIDEOS_PER_ACCOUNT * ACTION_PRICES.video.worstCaseCostBrl;
+}
 
 /**
  * Programa de indicação (`/indique`): a recompensa é em CRÉDITOS, não em

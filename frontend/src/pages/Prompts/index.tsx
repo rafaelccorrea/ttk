@@ -40,7 +40,10 @@ function PromptCard({ prompt, wallet }: { prompt: PromptTemplate; wallet: Wallet
    * decisão, não detalhe.
    */
   const preco = wallet?.prices?.[prompt.mediaType]?.credits ?? null;
-  const semSaldo = wallet !== null && preco !== null && wallet.credits < preco;
+  // O vídeo de cortesia: este vídeo sai sem debitar, então nem o preço nem a
+  // trava de saldo valem — o que a tela diz é que ele é por nossa conta.
+  const cortesia = prompt.mediaType === 'video' && wallet?.sampleVideo?.available === true;
+  const semSaldo = !cortesia && wallet !== null && preco !== null && wallet.credits < preco;
 
   const filled = prompt.fields.reduce(
     (text, field) => text.replaceAll(`{{${field}}}`, values[field] || `{{${field}}}`),
@@ -142,9 +145,14 @@ function PromptCard({ prompt, wallet }: { prompt: PromptTemplate; wallet: Wallet
           {generating
             ? 'Enviando...'
             : `${prompt.mediaType === 'video' ? 'Gerar vídeo com IA' : 'Gerar imagem com IA'}${
-                preco !== null ? ` · ${preco} cr` : ''
+                cortesia ? ' · por nossa conta' : preco !== null ? ` · ${preco} cr` : ''
               }`}
         </Button>
+        {cortesia && (
+          <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
+            Seu primeiro vídeo com IA é cortesia — não gasta seus créditos.
+          </Typography>
+        )}
         {semSaldo && (
           <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
             Saldo insuficiente ({wallet?.credits} cr). Recarregue em Planos &

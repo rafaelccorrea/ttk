@@ -20,6 +20,8 @@ import {
   planSignupLiveMinutes,
   PlanFeature,
   SIGNUP_BONUS_CREDITS,
+  SAMPLE_VIDEOS_PER_ACCOUNT,
+  sampleVideoWorstCostBrl,
   worstCostPerCredit,
 } from './billing.config';
 
@@ -45,6 +47,9 @@ describe('billing.config — a fronteira da conta gratuita', () => {
         'ai_images',
         'ai_scripts',
         'ai_transcribe',
+        // O painel do copiloto abre no free — o custo é limitado pela
+        // própria carteira (10 minutos de cortesia, e só).
+        'live_copilot',
         'studio_templates',
         'uploads',
       ].sort(),
@@ -75,6 +80,18 @@ describe('billing.config — a fronteira da conta gratuita', () => {
     expect(SIGNUP_BONUS_CREDITS).toBe(25);
     const custoMaximo = SIGNUP_BONUS_CREDITS * worstCostPerCredit();
     expect(Number(custoMaximo.toFixed(2))).toBeLessThanOrEqual(1.5);
+  });
+
+  it('dá um vídeo de cortesia, e o custo de aquisição total cabe em R$ 5,10', () => {
+    // A cortesia é um VÍDEO, não créditos: a carteira não infla, e o que a
+    // conta gratuita vê é a cena — a única coisa que o Pro vende e os 25
+    // créditos não alcançam. Pior caso: 25 × R$ 0,06 + 1 × R$ 3,60 = R$ 5,10
+    // por cadastro confirmado que nunca paga. Subir qualquer um dos dois é
+    // subir o CAC de todo mundo — inclusive de quem cadastra em série.
+    expect(SAMPLE_VIDEOS_PER_ACCOUNT).toBe(1);
+    expect(sampleVideoWorstCostBrl()).toBe(ACTION_PRICES.video.worstCaseCostBrl);
+    const cac = SIGNUP_BONUS_CREDITS * worstCostPerCredit() + sampleVideoWorstCostBrl();
+    expect(Number(cac.toFixed(2))).toBeLessThanOrEqual(5.1);
   });
 
   it('não vende plano de preço zero', () => {
@@ -301,7 +318,7 @@ describe('billing.config — horas de live', () => {
     }
   });
 
-  it('abre o copiloto no Pro, e não abaixo dele', () => {
+  it('abre o copiloto no free', () => {
     /*
      * O Pro alcança o copiloto no modo PAINEL — a resposta na tela, sem tocar
      * no chat e sem risco de ToS. O que continua no Business é o ENVIO
@@ -337,34 +354,28 @@ describe('billing.config — horas de live', () => {
     expect(planSignupLiveMinutes('free')).toBe(0);
   });
 
-  it('inclui horas de live no Pro e no Business, com o degrau de volume', () => {
-    // O Pro EXPERIMENTA (2h/mês, no painel); o Business OPERA (10h/mês + envio
-    // automático). O Essencial continua sem horas — a feature nem abre nele.
-    const comHoras = PLANS.filter((p) => (p.monthlyLiveMinutes ?? 0) > 0).map(
-      (p) => p.id,
-    );
-    expect(comHoras).toEqual(['pro', 'business']);
+  it('não inclui hora MENSAL em plano nenhum — a hora do plano é a de adesão', () => {
+    // "O plano vem com X horas" é bônus único (`signupLiveHours`), com o degrau
+    // de volume 15 < 40 < 60. Hora mensal recorrente não existe: acabou, é
+    // pack. É o que mantém a conta de margem simples (uma moeda por mês).
+    const comHorasMensais = PLANS.filter(
+      (p) => (p.monthlyLiveMinutes ?? 0) > 0,
+    ).map((p) => p.id);
+    expect(comHorasMensais).toEqual([]);
 
-    const pro = PLANS.find((p) => p.id === 'pro')!;
-    const business = PLANS.find((p) => p.id === 'business')!;
-    expect(planLiveMinutes(pro, 'month')).toBe(120);
-    // O degrau precisa existir de verdade: o topo entrega VOLUME, não empate.
-    expect(planLiveMinutes(business, 'month')).toBeGreaterThan(
-      planLiveMinutes(pro, 'month'),
-    );
+    const horasDeAdesao = PLANS.map((p) => p.signupLiveHours ?? 0);
+    expect(horasDeAdesao).toEqual([15, 40, 60]);
   });
 
   it('entrega no anual doze vezes o mensal de horas', () => {
     // Minuto de live não expira, então adiantar o ano não cria pressão de uso —
     // e não existe cron de renovação: entregar mês a mês deixaria o assinante
     // anual sem hora nenhuma a partir do segundo mês.
+    // Hoje nenhum plano tem hora mensal; a regra do ×12 fica travada para
+    // quando voltar a ter.
     const business = PLANS.find((p) => p.id === 'business')!;
-    expect(planLiveMinutes(business, 'month')).toBe(600);
-    expect(planLiveMinutes(business, 'year')).toBe(7200);
-
-    const pro = PLANS.find((p) => p.id === 'pro')!;
-    expect(planLiveMinutes(pro, 'month')).toBe(120);
-    expect(planLiveMinutes(pro, 'year')).toBe(1440);
+    expect(planLiveMinutes(business, 'month')).toBe(0);
+    expect(planLiveMinutes({ ...business, monthlyLiveMinutes: 300 }, 'year')).toBe(3600);
   });
 });
 

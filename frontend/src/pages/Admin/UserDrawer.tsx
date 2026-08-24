@@ -26,6 +26,7 @@ import { PLANO_COR, brl, dataHora, relativo } from './formato';
 
 const KIND_LABEL: Record<string, string> = {
   signup_bonus: 'Bônus de cadastro',
+  sample_video: 'Vídeo de cortesia',
   plan_grant: 'Créditos do plano',
   purchase: 'Compra / ajuste',
   spend: 'Consumo de IA',

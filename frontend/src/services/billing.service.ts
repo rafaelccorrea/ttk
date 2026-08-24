@@ -4,7 +4,15 @@ export interface CreditTransaction {
   id: string;
   amount: number;
   balanceAfter: number;
-  kind: 'signup_bonus' | 'plan_grant' | 'purchase' | 'spend' | 'refund';
+  kind:
+    | 'signup_bonus'
+    | 'sample_video'
+    | 'plan_grant'
+    | 'purchase'
+    | 'spend'
+    | 'refund'
+    | 'referral_bonus'
+    | 'referral_welcome';
   action?: string;
   reference?: string;
   description?: string;
@@ -31,6 +39,16 @@ export interface Wallet {
   features?: Record<string, boolean>;
   /** recurso → plano mínimo. */
   featureMinPlan?: Record<string, string>;
+  /**
+   * O vídeo com IA de cortesia — um por conta, para quem ainda não alcança o
+   * Pro. Enquanto `available`, gerar um vídeo no preço de tabela não debita
+   * nada; `credits` é o que deixa de ser cobrado, para a tela dizer o tamanho
+   * do presente.
+   */
+  sampleVideo?: {
+    available: boolean;
+    credits: number;
+  };
   /**
    * Conta gratuita em modo amostra (`docs/CONTA-FREE.md`).
    *

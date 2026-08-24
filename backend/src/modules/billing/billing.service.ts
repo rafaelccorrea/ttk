@@ -33,9 +33,15 @@ import {
   PLANS,
   REFERRAL_REWARD,
   SIGNUP_BONUS_CREDITS,
+  SAMPLE_VIDEOS_PER_ACCOUNT,
 } from './billing.config';
 import { CreditTransaction, TransactionKind } from './entities/credit-transaction.entity';
 import { LiveMinuteTransaction } from './entities/live-minute-transaction.entity';
+
+/** Como a cobrança saiu: do saldo, ou do vídeo de cortesia (sem débito). */
+export interface ChargeReceipt {
+  cortesia: boolean;
+}
 
 @Injectable()
 export class BillingService implements OnModuleInit {
@@ -85,9 +91,27 @@ export class BillingService implements OnModuleInit {
           (featureLancada(f) || isCompAccount(user.email)),
       ]),
     );
+    /*
+     * O vídeo de cortesia abre `ai_videos` para quem ainda o tem, mesmo abaixo
+     * do Pro — senão a tela esconderia o botão da única coisa que a cortesia
+     * existe para mostrar. O `charge` continua sendo quem decide: passada a
+     * cortesia, a ação volta a exigir o plano.
+     */
+    const sampleVideoAvailable = this.sampleVideoAvailable(user);
+    if (sampleVideoAvailable && featureLancada('ai_videos')) features.ai_videos = true;
     return {
       credits: user.credits,
       plan: user.plan,
+      /**
+       * A cortesia de vídeo (`SAMPLE_VIDEOS_PER_ACCOUNT`): a interface mostra
+       * "por nossa conta" no lugar do preço enquanto ela existe, e o preço de
+       * tabela depois. `credits` é o que ela DEIXA de cobrar — a ação em si
+       * não debita nada.
+       */
+      sampleVideo: {
+        available: sampleVideoAvailable,
+        credits: ACTION_PRICES.video.credits,
+      },
       /*
        * Conta da equipe: nada é debitado dela (ver `charge`). A interface
        * precisa saber disso porque, sem o aviso, o cabeçalho mostraria um saldo
@@ -121,11 +145,19 @@ export class BillingService implements OnModuleInit {
        * é a mesma tela e são saldos que não se convertem um no outro.
        * `trialAvailable` responde a pergunta que a interface faz antes de
        * oferecer o teste: esta conta ainda tem os dez minutos de cortesia?
+       *
+       * A cortesia é EXCLUSIVA da conta free (rank 0): quem assina entra com
+       * as horas de adesão do plano e `grantLiveTrial` devolve zero. Se a
+       * resposta aqui olhasse só o carimbo, um assinante que nunca pediu a
+       * cortesia veria "você ainda tem 10 minutos para testar" numa tela que
+       * jamais os concederia — a interface e a concessão têm de ler a mesma
+       * regra.
        */
       liveCopilot: {
         minutes: user.liveMinutes ?? 0,
         trialMinutes: LIVE_TRIAL_MINUTES,
-        trialAvailable: !user.liveTrialGrantedAt,
+        trialAvailable:
+          !user.liveTrialGrantedAt && (PLAN_RANK[user.plan ?? 'free'] ?? 0) === 0,
         // Só o catálogo de venda. O custo por hora fica no servidor: é a nossa
         // margem, e ela não tem por que viajar até o navegador do cliente.
         packs: LIVE_HOUR_PACKS,
@@ -288,7 +320,7 @@ export class BillingService implements OnModuleInit {
      * precisa guardá-lo para o estorno devolver a mesma quantia.
      */
     creditosUnitarios?: number,
-  ): Promise<void> {
+  ): Promise<ChargeReceipt> {
     const usuarios = manager ? manager.getRepository(AppUser) : this.users;
     const lancamentos = manager
       ? manager.getRepository(CreditTransaction)
@@ -297,6 +329,14 @@ export class BillingService implements OnModuleInit {
     await this.ensureSignupBonus(userId);
     // Plano mínimo da ação (ex.: vídeo IA só no Pro+).
     const owner = await usuarios.findOneBy({ id: userId });
+    const price = ACTION_PRICES[action];
+    // Uma montagem do Multiplicador cobra os N vídeos numa tacada: são até 150
+    // arquivos, e 150 débitos separados encheriam o extrato e dariam 150
+    // chances de o saldo acabar no meio da fila.
+    const itens = Math.max(Math.trunc(quantidade), 1);
+    const unitario =
+      creditosUnitarios && creditosUnitarios > 0 ? Math.trunc(creditosUnitarios) : price.credits;
+    const total = unitario * itens;
 
     /*
      * A conta da equipe não paga — mas o uso fica registrado.
@@ -320,8 +360,48 @@ export class BillingService implements OnModuleInit {
           description: `${ACTION_PRICES[action].label} (uso interno)`,
         }),
       );
-      return;
+      return { cortesia: false };
     }
+
+    /*
+     * O vídeo de cortesia (`SAMPLE_VIDEOS_PER_ACCOUNT`) vem ANTES da trava de
+     * plano, porque ele existe justamente para quem ainda não alcança o Pro.
+     * Só um vídeo por vez e só no preço de tabela: uma cena de modelo mais caro
+     * não é amostra, é operação — e essa a conta paga (ou não pode).
+     *
+     * O UPDATE condicional é a trava de "uma vez": dois pedidos simultâneos
+     * leriam os dois `sampleVideoUsedAt` nulo, e só quem afeta a linha ganha.
+     * O saldo não se mexe; o lançamento de valor zero mantém o extrato honesto.
+     */
+    if (
+      action === 'video' &&
+      itens === 1 &&
+      unitario <= price.credits &&
+      owner &&
+      this.sampleVideoAvailable(owner)
+    ) {
+      const consumiu = await usuarios
+        .createQueryBuilder()
+        .update(AppUser)
+        .set({ sampleVideoUsedAt: () => 'now()' })
+        .where('id = :userId AND "sampleVideoUsedAt" IS NULL', { userId })
+        .execute();
+      if (consumiu.affected) {
+        await lancamentos.save(
+          lancamentos.create({
+            userId,
+            amount: 0,
+            balanceAfter: owner.credits ?? 0,
+            kind: 'sample_video',
+            action,
+            description: `${price.label} — vídeo de cortesia`,
+          }),
+        );
+        this.logger.log(`Vídeo de cortesia consumido por ${userId}.`);
+        return { cortesia: true };
+      }
+    }
+
     const minPlan = ACTION_MIN_PLAN[action];
     if ((PLAN_RANK[owner?.plan ?? 'free'] ?? 0) < (PLAN_RANK[minPlan] ?? 0)) {
       throw new HttpException(
@@ -329,14 +409,6 @@ export class BillingService implements OnModuleInit {
         403,
       );
     }
-    const price = ACTION_PRICES[action];
-    // Uma montagem do Multiplicador cobra os N vídeos numa tacada: são até 150
-    // arquivos, e 150 débitos separados encheriam o extrato e dariam 150
-    // chances de o saldo acabar no meio da fila.
-    const itens = Math.max(Math.trunc(quantidade), 1);
-    const unitario =
-      creditosUnitarios && creditosUnitarios > 0 ? Math.trunc(creditosUnitarios) : price.credits;
-    const total = unitario * itens;
     const result = await usuarios
       .createQueryBuilder()
       .update(AppUser)
@@ -364,6 +436,45 @@ export class BillingService implements OnModuleInit {
         kind: 'spend',
         action,
         description: itens > 1 ? `${price.label} × ${itens}` : price.label,
+      }),
+    );
+    return { cortesia: false };
+  }
+
+  /** Esta conta ainda tem o vídeo de cortesia — e está no degrau que o recebe? */
+  private sampleVideoAvailable(user: Pick<AppUser, 'plan' | 'sampleVideoUsedAt'>): boolean {
+    if (SAMPLE_VIDEOS_PER_ACCOUNT <= 0) return false;
+    // Quem já alcança o vídeo no plano não precisa de amostra dele.
+    const rank = PLAN_RANK[user.plan ?? 'free'] ?? 0;
+    if (rank >= (PLAN_RANK[ACTION_MIN_PLAN.video] ?? 0)) return false;
+    return !user.sampleVideoUsedAt;
+  }
+
+  /**
+   * Devolve o vídeo de cortesia quando a geração que o consumiu falhou.
+   *
+   * É o par do estorno de crédito, e precisa ser separado dele: creditar 60
+   * aqui daria a uma conta gratuita 60 créditos de roteiro por uma falha
+   * nossa — e o vídeo, que era o combinado, ela continuaria sem. Zerar a data
+   * devolve exatamente o que foi tirado.
+   */
+  async restoreSampleVideo(userId: string, reason?: string): Promise<void> {
+    const devolveu = await this.users
+      .createQueryBuilder()
+      .update(AppUser)
+      .set({ sampleVideoUsedAt: null })
+      .where('id = :userId AND "sampleVideoUsedAt" IS NOT NULL', { userId })
+      .execute();
+    if (!devolveu.affected) return;
+    const user = await this.users.findOneBy({ id: userId });
+    await this.transactions.save(
+      this.transactions.create({
+        userId,
+        amount: 0,
+        balanceAfter: user?.credits ?? 0,
+        kind: 'sample_video',
+        action: 'video',
+        description: reason ?? 'Estorno: vídeo de cortesia devolvido',
       }),
     );
   }
@@ -621,13 +732,43 @@ export class BillingService implements OnModuleInit {
     quantidade = 1,
     creditosUnitarios?: number,
   ): Promise<T> {
-    await this.charge(userId, action, quantidade, undefined, creditosUnitarios);
+    const { resultado } = await this.withChargeReceipt(
+      userId,
+      action,
+      fn,
+      quantidade,
+      creditosUnitarios,
+    );
+    return resultado;
+  }
+
+  /**
+   * `withCharge` que também diz COMO cobrou. Quem guarda a geração para
+   * estornar depois (o refresh da Fábrica/Gerações) precisa saber se o que
+   * saiu foi crédito ou o vídeo de cortesia — os dois se devolvem de jeitos
+   * diferentes.
+   */
+  async withChargeReceipt<T>(
+    userId: string,
+    action: BillableAction,
+    fn: () => Promise<T>,
+    quantidade = 1,
+    creditosUnitarios?: number,
+  ): Promise<{ resultado: T; cortesia: boolean }> {
+    const { cortesia } = await this.charge(
+      userId,
+      action,
+      quantidade,
+      undefined,
+      creditosUnitarios,
+    );
     try {
-      return await fn();
+      return { resultado: await fn(), cortesia };
     } catch (error) {
-      await this.refund(userId, action, undefined, quantidade, creditosUnitarios).catch((e) =>
-        this.logger.error(`Falha no estorno de ${action}: ${e}`),
-      );
+      const estorno = cortesia
+        ? this.restoreSampleVideo(userId)
+        : this.refund(userId, action, undefined, quantidade, creditosUnitarios);
+      await estorno.catch((e) => this.logger.error(`Falha no estorno de ${action}: ${e}`));
       throw error;
     }
   }

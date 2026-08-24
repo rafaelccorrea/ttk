@@ -14,7 +14,10 @@ export type TransactionKind =
   | 'refund'
   // Indicação: bônus de quem indicou e boas-vindas de quem foi indicado.
   | 'referral_bonus'
-  | 'referral_welcome';
+  | 'referral_welcome'
+  // Vídeo de cortesia: lançamento de valor ZERO, só para o extrato contar a
+  // história — o saldo não se mexe, o que mudou foi `sampleVideoUsedAt`.
+  | 'sample_video';
 
 // Extrato imutável de créditos — todo débito/crédito passa por aqui.
 @Entity('credit_transactions')
