@@ -36,7 +36,7 @@ Esta é a frase que decide tudo o que vem abaixo, e ela separa os dois custos do
 |---|---|---|
 | Como custa | por consulta ao fornecedor | por chamada, e a chamada já é medida em crédito |
 | Tem teto natural? | **não** | **sim: o saldo** |
-| No gratuito | só a **amostra** fixa | **abertas**, com 25 créditos de cortesia + **1 vídeo com IA** de cortesia |
+| No gratuito | só a **amostra** fixa | **abertas**, com 25 créditos de cortesia + **1 vídeo com IA** de cortesia + **10 minutos de Live Copilot** (painel) de cortesia, exclusivos do free |
 
 Abrir o roteiro, a análise, a transcrição e a imagem para quem não paga não abre torneira
 nenhuma: o teto é o saldo, o saldo é concedido uma vez e não renova. E é o que faz a conta
@@ -207,13 +207,15 @@ pagou.
 ## 6. O que abre e o que não abre
 
 **Abre** (mínimo `free` em `FEATURE_MIN_PLAN`, limitado pelo saldo): roteiros com IA,
-análise de vídeo viral, transcrição, imagens com IA, gerador local do estúdio e upload de
-arquivo do próprio vendedor.
+análise de vídeo viral, transcrição, imagens com IA, gerador local do estúdio, upload de
+arquivo do próprio vendedor e o **Live Copilot no modo painel** (`live_copilot = 'free'`),
+limitado pelos 10 minutos de cortesia — que são exclusivos do free: quem assina entra com as
+horas de adesão do plano e não ganha cortesia. Acabou, é 402 com o CTA de assinar.
 
 **Não abre:** o dado de mercado completo (`discovery` — ranking, busca, filtros, tendências,
-criadores, favoritos), vídeos com IA, multiplicador, campanhas, Live Copilot e coleta. Os
-quatro últimos porque são de planos acima do Essencial; `discovery` porque não tem teto
-(seção 1.1).
+criadores, favoritos), vídeos com IA, multiplicador, campanhas, o **envio automático** do Live
+Copilot (Business, travado em `trocarModo`) e coleta. Os quatro últimos porque são de planos
+acima do Essencial; `discovery` porque não tem teto (seção 1.1).
 
 A régua para features futuras: **pergunte se o recurso tem teto de saldo.** Se tiver, pode
 descer para `free` em `FEATURE_MIN_PLAN`. Se não tiver — qualquer coisa que consulte

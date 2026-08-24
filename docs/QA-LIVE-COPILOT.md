@@ -1,80 +1,147 @@
-# Roteiro de QA — Live Copilot (release 23/08/2026)
+# Roteiro de QA ponta a ponta — Live Copilot e catálogo (release 23/08/2026)
 
-Objetivo: validar, **pelo navegador** (site) e **pelo app desktop em
-simulação**, as sete features da release + preços. Cada passo tem o resultado
-esperado e como provar no banco quando a tela não basta.
+Objetivo: validar, **pelo navegador** (site), **pelo app desktop em simulação**,
+**na Stripe** e **em produção depois do deploy**, as sete features da release e
+as regras de preço/horas. Cada passo tem o resultado esperado e como provar no
+banco quando a tela não basta. Marque ✅/❌ na coluna "OK".
+
+## Regras que este roteiro valida (fonte: `backend/src/modules/billing/billing.config.ts`)
+
+| Regra | Valor |
+|---|---|
+| Preços mensais / anuais | Essencial 39,90 / 399,90 · Pro 89,90 / 899,90 · Business 249,90 / 2.499,90 |
+| Créditos | 450 (4.600 anual) · 1.000 (10.400) · 2.800 (28.800) |
+| **O plano VEM com horas de live** (bônus único na adesão) | Essencial **15h** · Pro **40h** · Business **60h** — renovação não repete, upgrade concede a diferença |
+| Hora mensal recorrente | **não existe** em nenhum plano |
+| Cortesia de 10 min de live | **exclusiva da conta free** (assinante não ganha); painel do copiloto abre no free |
+| Packs de live | 1h 9,90 · 5h 39,90 · 15h 99,90 · 40h 219,90 — qualquer conta com a feature |
+| Packs de crédito | 100 cr 14,90 · 300 cr 39,90 · 1.000 cr 119,90 (só assinante) |
+| Bônus de cadastro | 25 créditos + 1 vídeo com IA de cortesia |
+| Envio automático no chat | só Business (`trocarModo`) |
+| Freios de tempo | bloco mínimo 10 min por live; duração máx. 6h (Essencial/Pro) / 24h (Business) |
+| UI | nunca nomear fornecedor/modelo de IA ("IA", nunca Claude/GPT/Whisper) |
+
+---
 
 ## 0. Ambiente
 
 | Peça | Como subir | Aponta para |
 |---|---|---|
-| Backend local | `cd backend && npm run start` (porta 3000) | Supabase (DATABASE_URL do `.env`) |
+| Backend local | `cd backend && npm run start` (porta 3000; `nest start` compila os specs — erro de TS em spec derruba o boot) | Supabase (DATABASE_URL do `.env`) |
 | Site (código novo) | `cd frontend && DEV_API_TARGET=http://localhost:3000 npx vite --port 5175` | backend local |
-| Site (espelho de prod) | `npm run dev` (5173/5174, `.env` tem `DEV_API_TARGET` de prod) | produção — mostra o catálogo ANTIGO até o deploy |
+| Site (espelho de prod) | `npm run dev` (5173/5174; o `.env` tem `DEV_API_TARGET` de prod) | produção |
 | Desktop (simulação) | `cd desktop && npm run dev:sim` | backend local (`NODE_ENV=development`) |
 
-Pré-requisitos: migrations aplicadas (`npm run migration:run`); conta da equipe
-em `COMP_ACCOUNT_EMAILS` (não gasta minutos) ou uma conta free de teste.
-Consulta de apoio (Node + pg, no `backend/`):
+Pré-requisitos: migrations aplicadas (`cd backend && npm run migration:run` —
+esperado "No migrations are pending"); conta da equipe em `COMP_ACCOUNT_EMAILS`
+(não gasta minutos) **e** uma conta free de teste (ex.: `free.teste@…`).
+
+Consulta de apoio ao banco (no `backend/`):
 
 ```
-node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false}});await c.connect();console.table((await c.query('SELECT id,status,\"minutesCharged\",\"messagesSeen\",\"repliesGenerated\",\"endReason\" FROM live_runs ORDER BY \"createdAt\" DESC LIMIT 3')).rows);console.table((await c.query('SELECT tipo,acao,detalhe FROM live_run_events ORDER BY \"createdAt\" DESC LIMIT 5')).rows);await c.end()})()"
+node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false}});await c.connect();console.table((await c.query('SELECT id,status,\"minutesCharged\",\"messagesSeen\",\"repliesGenerated\",\"endReason\" FROM live_runs ORDER BY \"createdAt\" DESC LIMIT 3')).rows);console.table((await c.query('SELECT tipo,acao,detalhe FROM live_run_events ORDER BY \"createdAt\" DESC LIMIT 5')).rows);console.table((await c.query('SELECT minutes,kind,description FROM live_minute_transactions ORDER BY \"createdAt\" DESC LIMIT 5')).rows);await c.end()})()"
 ```
 
 ---
 
-## 1. Site — Planos & Créditos (`http://localhost:5175/planos`)
+## 1. Stripe × catálogo (antes de qualquer teste de compra)
 
-| # | Passo | Esperado |
-|---|---|---|
-| 1.1 | Abrir `/planos` logado | Essencial R$ 39,90 · **Pro R$ 99,90** · **Business R$ 299,90**; anuais 399,90 / 999,90 / 2.999,90 |
-| 1.2 | Ler os perks | Essencial: "Live Copilot no painel: já começa com 15 horas de live"; Pro: "2 horas por mês (24 no anual)"; Business: "10 horas… (120 no anual)" + "Envio automático" só no Business |
-| 1.3 | Bloco "Horas de Live Copilot" | Packs **9,90 / 39,90 / 99,90 / 219,90**; marcador "melhor preço/hora" no de 40h; texto cita bloco mínimo de 10 min e horas de adesão |
-| 1.4 | Conta FREE (nova) | Bloco de horas visível (feature abre no free) com "10 minutos de cortesia" disponível |
-| 1.5 | Conta que acabou de assinar Pro (Stripe teste) | Saldo de live = **40h** (2.400 min) no extrato como `purchase` "horas de live inclusas na adesão"; sem lançamento `trial` |
-| 1.6 | Renovar a mesma assinatura (webhook de novo) | Nenhum novo lançamento de adesão |
-| 1.7 | Upgrade Pro → Business | Lançamento de **+20h** (1.200 min), não 60h |
+| # | Passo | Esperado | OK |
+|---|---|---|---|
+| 1.1 | `cd backend && npm run stripe:check` | "Tudo alinhado." — 13 linhas `OK` (3 planos × 2 ciclos, 3 packs de crédito, 4 packs de live), todas `ativo`, moeda BRL | |
+| 1.2 | Painel da Hostinger (env de produção) | Os 6 `STRIPE_PRICE_*` de Business e packs de live iguais aos do `backend/.env` local (IDs `price_1U7l…` criados em 23/08) | |
+| 1.3 | Dashboard Stripe → Produtos | Só produtos "PikPok" têm prices ativos apontados pelo env; nenhum price ativo órfão; produtos de outros projetos intocados | |
 
-## 2. Desktop — Configurações
+> Preço na Stripe vence o `priceBrl` do config no checkout. **Mudou preço no código = criar
+> price novo, apontar env local + Hostinger, arquivar o antigo, rodar `stripe:check`.**
 
-| # | Passo | Esperado |
-|---|---|---|
-| 2.1 | Abrir Configurações | Novos controles: **Bloquear espectadores**, **Rotação automática de produtos** (switch + slider 2–60 min), **Detectar avisos do TikTok** (ligado), **Encerrar a live ao detectar aviso** (desligado, com alerta) |
-| 2.2 | Digitar `@teste, curioso` em Bloquear e salvar | Reabrir mostra `teste, curioso` (normalizado, sem @) |
-| 2.3 | Ligar rotação com 2 min e salvar | Chip "valendo no próximo lote" |
-| 2.4 | Tentar ligar "Encerrar ao detectar" com o detector desligado | Switch desabilitado |
+## 2. Site público (landing, deslogado — `http://localhost:5175/`)
 
-## 3. Desktop — live simulada (cockpit)
+| # | Passo | Esperado | OK |
+|---|---|---|---|
+| 2.1 | Abrir `/` **deslogado** (logado redireciona para `/produtos`) | Seção **Live Copilot** presente (4 cards: respostas com a sua base, envio automático no Business, detector de aviso do TikTok, fixar produto), sem preço e sem nome de IA | |
+| 2.2 | Cards de plano | 39,90 / **89,90** / **249,90**; anual 399,90 / 899,90 / 2.499,90 (Business com anual) | |
+| 2.3 | Perks | Essencial "…o plano vem com 15 horas de live"; Pro "…40 horas"; Business "…60 horas" + "Envio automático (exclusivo)". **Nenhum** "por mês" em horas | |
+| 2.4 | FAQ "Preciso de cartão?" e CTA final | "25 créditos de boas-vindas" + "10 minutos de Live Copilot de cortesia" (não "30 créditos") | |
+| 2.5 | FAQ "Como funcionam os créditos?" | Explica a moeda de horas de live (separada), horas de adesão 15/40/60 e packs 9,90 / 39,90 / 99,90 / 219,90 | |
+| 2.6 | Buscar na página por "Claude", "GPT", "Whisper", "OpenAI" | Zero ocorrências | |
 
-| # | Passo | Esperado |
-|---|---|---|
-| 3.1 | Escolher base pronta → Conectar live | Coluna direita limpa: escalações (≤4 cards, "+N aguardando"), "fixar produto na live · N — mostrar" **recolhido**, respostas prontas, barra de status |
-| 3.2 | Banco após ~1 min | Run `conectando → ativa`; extrato com **"10 minutos"** na abertura (bloco mínimo) e 1 min por batimento depois |
-| 3.3 | Chat rodando ~2 min | Respostas com preço da base; `live_chat_messages.isQuestion` marcado nas perguntas; escalações nos casos de baixa confiança |
-| 3.4 | Clicar "mostrar" em fixar produto → clicar um chip | Mensagem "Não encontrei este produto no painel… fixe manualmente" (esperado na simulação) e evento `pin_produto · falhou · painel_produtos` no banco |
-| 3.5 | Rotação ligada (2 min) | Após 3 falhas seguidas: linha discreta "rotação automática foi pausada" na seção de produtos — **sem** faixa vermelha; eventos `pin_produto` no banco |
-| 3.6 | Encerrar pelo botão do painel | Run `encerrada` com **`endReason='manual'`** (não `erro`); resumo da live na tela |
-| 3.7 | Bloqueio | Com um @ do roteiro simulado bloqueado, as mensagens dele não aparecem em respostas nem em `live_chat_messages` |
+## 3. Site logado — Planos & Créditos (`/planos`)
 
-## 4. Tetos de tempo (só via banco/simulação de dados)
+| # | Passo | Esperado | OK |
+|---|---|---|---|
+| 3.1 | Conta **free** | Chip "10 min grátis" no topo; menu "Copiloto de Live" **sem cadeado**; bloco "Horas de Live Copilot" visível com "você tem 10 minutos de cortesia para conhecer; assinando, o plano vem com 15, 40 ou 60 horas"; packs de crédito desabilitados | |
+| 3.2 | Cards de plano | Preços/perks idênticos ao item 2.2/2.3; "Roteiros e análises com IA" (sem "Claude") | |
+| 3.3 | Bloco de horas | Packs 9,90 / 39,90 / 99,90 / 219,90; "melhor preço/hora" no de 40h; texto cita bloco mínimo de 10 min | |
+| 3.4 | Conta **assinante** (qualquer plano) | **Sem** chip/frase de cortesia (`trialAvailable=false` mesmo sem ter usado); frase "cada plano já começa com horas de live inclusas na adesão" | |
+| 3.5 | Tela Analisar Vídeo (`/analisar`) durante transcrição | "Transcrevendo com IA…" | |
 
-| # | Como | Esperado |
-|---|---|---|
-| 4.1 | `UPDATE live_runs SET "minutesCharged"=360 WHERE id=<run ativa de conta Pro>` e esperar o próximo batimento | Run `encerrada`, `endReason='limite_duracao'`; desktop mostra "atingiu o limite de duração do plano" |
-| 4.2 | Conta free com `liveMinutes=0` e cortesia já usada tenta abrir run | 402 "Suas horas de live acabaram" com CTA de assinar |
+## 4. Adesão, renovação e upgrade (webhook da Stripe — usar conta de teste, cartão real ou evento reenviado)
 
-## 5. Detector de aviso e pin — com TikTok real (não simulável)
+| # | Passo | Esperado (extrato `live_minute_transactions` + `app_users`) | OK |
+|---|---|---|---|
+| 4.1 | Conta free assina **Pro** | `purchase` de **+2.400 min** "40 horas de live inclusas na adesão ao plano pro"; `liveSignupMinutesGranted=2400`; **nenhum** lançamento `trial`; saldo de live no site = 40h | |
+| 4.2 | Reenviar o mesmo `invoice.paid` (renovação) | Nenhum lançamento de adesão novo | |
+| 4.3 | Upgrade Pro → **Business** | `purchase` de **+1.200 min** (20h), `liveSignupMinutesGranted=3600` | |
+| 4.4 | Downgrade Business → Essencial | Nenhum lançamento; saldo mantido | |
+| 4.5 | Conta free abre a primeira live | `trial` de +10 min uma vez; conta que já assinou **não** recebe trial | |
+| 4.6 | Checkout de pack de live (1h) com conta Essencial | Stripe cobra **R$ 9,90** (price novo); webhook credita +60 min | |
+| 4.7 | Checkout de pack de crédito com conta free | Recusado (só assinante) — texto explica | |
 
-| # | Como | Esperado |
-|---|---|---|
-| 5.1 | Live real; forçar um banner de aviso (ou apontar `LIVE_ENVIO_SELETORES_AVISO` para um elemento existente da página, só para o teste) | Em ≤15s: envio pausado, faixa "O TikTok emitiu um aviso — envio pausado", evento `aviso_tiktok · pausado` |
-| 5.2 | Mesmo cenário com "Encerrar ao detectar" ligado | Clique no botão de encerrar do TikTok + run `endReason='aviso_tiktok'` |
-| 5.3 | Cascata errada de propósito | Linha em `live_selector_failures` com `context='aviso'` |
-| 5.4 | Pin com painel do TikTok Shop aberto | Produto fixado; evento `pin_produto · ok` |
+## 5. Desktop — Configurações
 
-## 6. Regressões rápidas
+| # | Passo | Esperado | OK |
+|---|---|---|---|
+| 5.1 | Abrir Configurações | Controles: **Bloquear espectadores**, **Rotação automática de produtos** (switch + slider 2–60 min), **Detectar avisos do TikTok** (ligado), **Encerrar a live ao detectar aviso** (desligado, com alerta) | |
+| 5.2 | Digitar `@teste, curioso` em Bloquear e salvar | Reabrir mostra `teste, curioso` (normalizado) | |
+| 5.3 | Ligar rotação com 2 min e salvar | Chip "valendo no próximo lote" | |
+| 5.4 | Detector desligado | Switch "Encerrar ao detectar" desabilitado | |
 
-- `cd backend && npx tsc --noEmit && npx jest` → verde.
+## 6. Desktop — live simulada (cockpit)
+
+| # | Passo | Esperado | OK |
+|---|---|---|---|
+| 6.1 | Escolher base pronta → Conectar live | Coluna direita limpa: "precisa de você" com **≤4 cards** (+N aguardando), "fixar produto na live · N — mostrar" **recolhido**, respostas prontas, barra de status | |
+| 6.2 | Banco após ~1 min | Run `conectando → ativa`; extrato com **"10 minutos"** na abertura (bloco mínimo) e 1 min por batimento depois; conta da equipe registra `minutes: 0` | |
+| 6.3 | Chat rodando ~2 min | Respostas com o preço da base; `isQuestion` marcado nas perguntas; escalações nos casos de baixa confiança; audiência (viewers/likes) na run | |
+| 6.4 | "mostrar" em fixar produto → clicar um chip | "Não encontrei este produto no painel… fixe manualmente" (esperado na simulação) e evento `pin_produto · falhou · painel_produtos` | |
+| 6.5 | Rotação ligada (2 min) | Após 3 falhas seguidas: linha discreta "rotação automática foi pausada" na seção de produtos — **sem** faixa vermelha | |
+| 6.6 | Bloquear um @ do roteiro simulado | Mensagens dele não viram resposta nem entram em `live_chat_messages` | |
+| 6.7 | Encerrar pelo botão do painel | Run `encerrada` com **`endReason='manual'`** (não `erro`); resumo da live na tela | |
+| 6.8 | Fechar o app com live aberta | Run `encerrada` / `manual`, motivo "O aplicativo foi fechado." | |
+
+> Em dev, editar arquivo do `main` reinicia o Electron e derruba a run em curso — não é bug.
+
+## 7. Freios de tempo (via banco)
+
+| # | Como | Esperado | OK |
+|---|---|---|---|
+| 7.1 | `UPDATE live_runs SET "minutesCharged"=360 WHERE id=<run ativa, conta Pro>` e esperar o batimento | Run `encerrada`, `endReason='limite_duracao'`; desktop mostra "atingiu o limite de duração do plano" | |
+| 7.2 | Mesmo com conta Business | Só encerra em 1.440 | |
+| 7.3 | Conta free com `liveMinutes=0` e cortesia usada tenta abrir run | 402 "Suas horas de live acabaram" com CTA de assinar | |
+
+## 8. Detector de aviso e pin — com TikTok real (não simulável)
+
+| # | Como | Esperado | OK |
+|---|---|---|---|
+| 8.1 | Live real; forçar um banner (ou apontar `LIVE_ENVIO_SELETORES_AVISO` para um elemento existente, só para o teste) | Em ≤15s: envio pausado, faixa "O TikTok emitiu um aviso — envio pausado", evento `aviso_tiktok · pausado` | |
+| 8.2 | Mesmo cenário com "Encerrar ao detectar" ligado | Clique no botão de encerrar do TikTok + run `endReason='aviso_tiktok'` | |
+| 8.3 | Cascata errada de propósito | Linha em `live_selector_failures` com `context='aviso'` | |
+| 8.4 | Pin com painel do TikTok Shop aberto | Produto fixado; evento `pin_produto · ok`; rotação girando a cada N min | |
+
+## 9. Produção — depois do deploy (push = deploy do backend)
+
+| # | Passo | Esperado | OK |
+|---|---|---|---|
+| 9.1 | Log de boot do backend (Hostinger) | "Tabela de preços validada" e migrations sem pendência (`migrationsRun` em produção) | |
+| 9.2 | `GET /api/v1/billing/plans` (logado) em produção | Preços/perks iguais ao item 2.2/2.3 | |
+| 9.3 | Site de produção (frontend estático **subido à mão**) | Landing e `/planos` iguais ao local — se não, o build do front não foi publicado | |
+| 9.4 | Checkout real de pack de live 1h | Página da Stripe mostra **R$ 9,90**; webhook credita 60 min | |
+| 9.5 | Desktop `dev:sim:prod` (ou build) contra produção | Itens 6.1–6.7 repetidos | |
+
+## 10. Regressões rápidas
+
+- `cd backend && npx tsc --noEmit && npx jest` → verde (inclui `live-duracao`, `live-prioridade`, billing).
 - `cd desktop && npx tsc --noEmit && npx vitest run` → verde (54+ testes).
-- `cd frontend && npx vitest run` → verde.
-- Boot do backend não reclama de margem (`assertProfitability`).
+- `cd frontend && npx tsc --noEmit -p tsconfig.json && npx vitest run` → verde.
+- `cd backend && npm run stripe:check` → "Tudo alinhado."

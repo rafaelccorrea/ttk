@@ -11,6 +11,7 @@ import {
   FinalCta,
   Footer,
   HowItWorks,
+  LiveCopilot,
   NichesMarquee,
   Pricing,
   Showcase,
@@ -43,6 +44,8 @@ export function LandingPage() {
       <Hero />
       <NichesMarquee />
       <Features />
+      {/* Logo depois do bento: o copiloto é o recurso que age durante a venda. */}
+      <LiveCopilot />
       <Showcase />
       {/* Depois do tour em print: dado real, ao vivo, sem exigir cadastro. */}
       <LiveSample />

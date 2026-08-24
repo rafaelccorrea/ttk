@@ -164,7 +164,7 @@ export const FAQ = [
   },
   {
     q: 'Como funcionam os créditos?',
-    a: 'Ações com IA (roteiro, análise de viral, transcrição, imagem e vídeo) consomem créditos. Todo plano vem com uma cota mensal e você pode comprar pacotes avulsos quando precisar. A descoberta de produtos, vídeos e criadores não consome crédito.',
+    a: 'Ações com IA (roteiro, análise de viral, transcrição, imagem e vídeo) consomem créditos. Todo plano vem com uma cota mensal e você pode comprar pacotes avulsos quando precisar. A descoberta de produtos, vídeos e criadores não consome crédito. O copiloto ao vivo é diferente: ele gasta horas de live, uma moeda separada que não sai dos seus créditos. O plano já vem com horas na adesão (15h no Essencial, 40h no Pro, 60h no Business) e, se precisar de mais, há pacotes: 1h por R$ 9,90, 5h por R$ 39,90, 15h por R$ 99,90 e 40h por R$ 219,90.',
   },
   {
     q: 'Posso cancelar quando quiser?',
@@ -172,7 +172,7 @@ export const FAQ = [
   },
   {
     q: 'Preciso de cartão para testar?',
-    a: 'Não. O plano Free é permanente e você ainda ganha 30 créditos de boas-vindas no cadastro para experimentar as ferramentas de IA.',
+    a: 'Não. O plano Free é permanente e você ainda ganha 25 créditos de boas-vindas no cadastro para experimentar as ferramentas de IA, além de 10 minutos de Live Copilot de cortesia para ver o copiloto respondendo o seu chat de verdade.',
   },
   {
     q: 'Os roteiros gerados são originais?',
@@ -204,6 +204,10 @@ export interface PricingPlan {
   annual?: { price: number; credits: string };
 }
 
+// A landing não importa o backend (são builds separados), então os perks abaixo
+// são cópia LITERAL de `PLANS[*].perks` em billing.config.ts — a fonte da
+// verdade. Só o item de cota fica sem o "(ou N no plano anual)", porque o card
+// já mostra a cota anual na linha do preço. Ao mudar um perk lá, mude aqui.
 export const PRICING: PricingPlan[] = [
   {
     id: 'essencial',
@@ -211,7 +215,14 @@ export const PRICING: PricingPlan[] = [
     price: 39.9,
     annual: { price: 399.9, credits: '4.600 créditos no ano' },
     tagline: 'Para começar a garimpar',
-    perks: ['450 créditos/mês', 'Descoberta completa: produtos, vídeos e criadores', 'Roteiros e análises com IA', 'Transcrição de vídeos', 'Imagens com IA'],
+    perks: [
+      '450 créditos/mês',
+      'Descoberta completa: produtos, vídeos e criadores',
+      'Roteiros e análises com IA',
+      'Transcrição de vídeos',
+      'Imagens com IA',
+      'Live Copilot no painel: o plano vem com 15 horas de live',
+    ],
   },
   {
     id: 'pro',
@@ -220,16 +231,49 @@ export const PRICING: PricingPlan[] = [
     annual: { price: 899.9, credits: '10.400 créditos no ano' },
     tagline: 'Para quem publica toda semana',
     highlight: true,
-    perks: ['1.000 créditos/mês', 'Tudo do Essencial', 'Vídeos com IA', 'Multiplicador de conteúdo'],
+    perks: [
+      '1.000 créditos/mês',
+      'Tudo do Essencial',
+      'Vídeos com IA',
+      'Multiplicador de conteúdo',
+      'Live Copilot no painel: o plano vem com 40 horas de live',
+    ],
   },
   {
     id: 'business',
     name: 'Business',
     price: 249.9,
+    annual: { price: 2499.9, credits: '28.800 créditos no ano' },
     tagline: 'Para times e agências',
-    perks: ['2.800 créditos/mês', 'Tudo do Pro', 'Coleta de dados automatizada', 'Onboarding dedicado', 'Suporte prioritário'],
+    perks: [
+      '2.800 créditos/mês',
+      'Tudo do Pro',
+      'Live Copilot: o plano vem com 60 horas de live',
+      'Envio automático: a IA responde no chat da live (exclusivo)',
+      'Coleta de dados automatizada',
+      'Onboarding dedicado',
+      'Suporte prioritário',
+    ],
   },
 ];
+
+/**
+ * Bloco do Live Copilot na landing. Sem preço de propósito: o preço mora nos
+ * cards de plano e na FAQ; aqui é o que ele faz. Rótulos neutros — nunca o
+ * nome do fornecedor ou do modelo de IA em texto de tela.
+ */
+export const LIVE_COPILOT = {
+  eyebrow: 'LIVE COPILOT',
+  title: 'Um copiloto lendo o chat da sua live',
+  subtitle:
+    'A IA acompanha o chat em tempo real e sugere a resposta certa com o preço e o estoque da sua própria base — você só copia ou fala. No Business, ela responde sozinha.',
+  bullets: [
+    { title: 'Respostas com a sua base', desc: 'Preço, estoque, frete e objeções vêm dos seus produtos e da sua live gravada — não de um texto genérico.' },
+    { title: 'Envio automático', desc: 'No plano Business, a IA responde direto no chat da live, sem você tirar a mão do produto.' },
+    { title: 'Detector de aviso do TikTok', desc: 'Quando a plataforma sinaliza a transmissão, o copiloto avisa na hora para você ajustar antes de virar bloqueio.' },
+    { title: 'Fixar produto', desc: 'Fixe o produto em destaque e as respostas passam a puxar o link e o preço dele automaticamente.' },
+  ],
+};
 
 export const brl = (v: number) =>
   v === 0 ? 'R$ 0' : `R$ ${v.toFixed(2).replace('.', ',')}`;

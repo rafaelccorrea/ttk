@@ -6,6 +6,7 @@ import {
   FavoriteRounded,
   GroupsRounded,
   InsightsRounded,
+  LiveTvRounded,
   LocalFireDepartmentRounded,
   OndemandVideoRounded,
   RocketLaunchRounded,
@@ -26,7 +27,7 @@ import {
 } from '@mui/material';
 import { ReactNode, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { COMPARISON, FAQ, FEATURES, HIGHLIGHTS, NICHES, PRICING, STEPS, TESTIMONIALS, brl } from './data';
+import { COMPARISON, FAQ, FEATURES, HIGHLIGHTS, LIVE_COPILOT, NICHES, PRICING, STEPS, TESTIMONIALS, brl } from './data';
 import { BrowserFrame, Reveal, SectionHeading, cyan, cyanDeep, glass, glowCard, gradientText, ink, inkSoft, line, lineStrong, page, pageNarrow, red, textDim, textFaint, textMain } from './theme';
 
 /* ---------------------------------------------------------------- marquee */
@@ -117,6 +118,37 @@ export function Features() {
           <Grid item xs={12} sm={6} md={3} key={f.title}>
             <Reveal delay={(i % 4) * 100}>
               <FeatureCard {...f} />
+            </Reveal>
+          </Grid>
+        ))}
+      </Grid>
+    </Container>
+  );
+}
+
+/* ----------------------------------------------------------- live copilot */
+
+/**
+ * O Live Copilot ganha um bloco próprio, e não um card a mais no bento: é o
+ * único recurso que age DURANTE a venda (os outros preparam o criativo antes),
+ * e diluído entre sete cards ele lia como "mais uma feature de IA". Sem preço
+ * aqui — o preço mora nos planos e na FAQ.
+ */
+export function LiveCopilot() {
+  return (
+    <Container id="live-copilot" maxWidth={false} sx={{ ...page, py: { xs: 9, md: 13 }, scrollMarginTop: 88 }}>
+      <Reveal>
+        <SectionHeading
+          eyebrow={LIVE_COPILOT.eyebrow}
+          title={<>Venda ao vivo com <Box component="span" sx={gradientText}>a IA no seu chat</Box></>}
+          subtitle={LIVE_COPILOT.subtitle}
+        />
+      </Reveal>
+      <Grid container spacing={3}>
+        {LIVE_COPILOT.bullets.map((b, i) => (
+          <Grid item xs={12} sm={6} md={3} key={b.title}>
+            <Reveal delay={i * 100}>
+              <FeatureCard icon={<LiveTvRounded />} tag="Ao vivo" title={b.title} desc={b.desc} />
             </Reveal>
           </Grid>
         ))}

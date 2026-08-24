@@ -15,7 +15,7 @@ O PikPok cobra em duas moedas que **não se convertem uma na outra**.
 | Moeda | Campo | O que compra | Onde é vendida |
 |---|---|---|---|
 | Crédito de IA | `app_users.credits` | Roteiro, análise, transcrição, imagem, vídeo, montagem do Multiplicador, extração da base de conhecimento de uma live gravada | Cota mensal/anual do plano + `CREDIT_PACKS` |
-| Minuto de live | `app_users.liveMinutes` | Tempo de copiloto ao vivo conectado ao chat da transmissão | Add-ons `LIVE_HOUR_PACKS` (exclusivos do Business) + 10 min de cortesia |
+| Minuto de live | `app_users.liveMinutes` | Tempo de copiloto ao vivo conectado ao chat da transmissão | Bônus único de adesão do plano (`signupLiveHours`) + add-ons `LIVE_HOUR_PACKS` (para qualquer conta com a feature) + 10 min de cortesia (exclusivos da conta free) |
 
 **Por que separadas.** Crédito é uma unidade de *trabalho pedido item a item*: um roteiro, uma
 imagem, uma transcrição. São coisas discretas, que o vendedor solicita uma a uma e cujo preço
@@ -187,12 +187,14 @@ EXCLUSIVA da conta free (o painel abre no free; acabou a cortesia, 402 com CTA d
 Freios de tempo: duração de UMA transmissão por plano (Essencial/Pro 6h, Business 24h —
 `maxLiveDurationMinutes`) e bloco mínimo de `LIVE_MIN_MINUTES` (10 min) debitado na abertura.
 
-As horas inclusas também entram em `assertProfitability()` — o custo delas
-(`minutos × LIVE_COST_PER_MINUTE_BRL`) soma ao dos créditos na checagem do plano. Sem isso, o dia
-em que o Business ganhou 5 horas teria passado batido: o servidor subiria anunciando 1,49× de
-margem quando a real já era 1,38×. Foi essa conta que obrigou o preço a ir de R$ 249,90 para
-R$ 269,90 — e a alternativa (manter o preço e cortar 200 créditos) seria um downgrade silencioso
-em quem já assinava.
+Hora MENSAL de live, se algum plano voltar a incluir (`monthlyLiveMinutes`), entra em
+`assertProfitability()` — o custo dela (`minutos × LIVE_COST_PER_MINUTE_BRL`) soma ao dos créditos
+na checagem do plano. Hoje nenhum plano declara esse campo, mas a checagem fica, e a história
+explica por quê: no dia em que o Business ganhou 5 horas por mês, sem essa soma o servidor teria
+subido anunciando 1,49× de margem quando a real já era 1,38×. Foi essa conta que, na época,
+obrigou o preço a ir de R$ 249,90 para R$ 269,90 — e a alternativa (manter o preço e cortar 200
+créditos) seria um downgrade silencioso em quem já assinava. Quando as horas viraram bônus único
+de adesão, o custo mensal sumiu e o preço voltou aos R$ 249,90 base (estado atual).
 
 O Pro anual é o item de menor folga da tabela inteira. Trate-o como o canário: qualquer mudança
 de custo que ameace 1,4 aparece nele primeiro.
@@ -202,10 +204,13 @@ como qualquer outro — ele existe só para a renovação de quem assinou antes 
 
 Os planos não se diferenciam só por cota; cada degrau destrava recurso (`FEATURE_MIN_PLAN`):
 Essencial abre descoberta, roteiro, análise, transcrição, imagens e uploads; Pro abre vídeo com IA,
-Multiplicador e campanhas; Business abre coleta e Live Copilot. Isso está travado em teste
-(`vende três degraus, e cada um destrava algo novo`). **Nada começa no `free`** — `free` não é um
-plano vendável, é o estado "conta criada, pagamento pendente", com rank 0 e nenhum recurso.
-`SIGNUP_BONUS_CREDITS = 0` pelo mesmo motivo.
+Multiplicador e campanhas; Business abre coleta e o **envio automático** do Live Copilot. O painel
+do Live Copilot (`live_copilot = 'free'`) abre em qualquer conta, inclusive na free — a trava do
+envio vive em `trocarModo`, não no gate de feature. Isso está travado em teste
+(`vende três degraus, e cada um destrava algo novo`). `free` não é um plano vendável, é o estado
+"conta criada, pagamento pendente", com rank 0 — mas rank 0 já não significa "nenhum recurso":
+as ferramentas de IA limitáveis por saldo abrem ali, com `SIGNUP_BONUS_CREDITS = 25` de cortesia
+(seção 6 e [CONTA-FREE.md](CONTA-FREE.md)).
 
 ### 4.3 Pacotes avulsos (`CREDIT_PACKS`)
 
@@ -225,22 +230,25 @@ Custo de referência: `LIVE_COST_PER_MINUTE_BRL = 0,043` → `liveCostPerHourBrl
 
 | Pacote | Horas | Minutos | Preço (R$) | R$/hora | Custo pior caso (R$) | Margem |
 |---|---:|---:|---:|---:|---:|---:|
-| `live-1h` | 1 | 60 | 11,90 | 11,90 | 2,58 | 4,61× |
-| `live-5h` | 5 | 300 | 49,90 | 9,98 | 12,90 | 3,87× |
-| `live-15h` | 15 | 900 | 129,90 | 8,66 | 38,70 | 3,36× |
-| `live-40h` | 40 | 2.400 | 299,90 | 7,50 | 103,20 | 2,91× |
+| `live-1h` | 1 | 60 | 9,90 | 9,90 | 2,58 | 3,84× |
+| `live-5h` | 5 | 300 | 39,90 | 7,98 | 12,90 | 3,09× |
+| `live-15h` | 15 | 900 | 99,90 | 6,66 | 38,70 | 2,58× |
+| `live-40h` | 40 | 2.400 | 219,90 | 5,50 | 103,20 | 2,13× |
 
 A margem é bem maior que a dos créditos, e não por ganância: o custo de IA é só uma parte do que
 uma hora de copiloto consome. É uma hora em que a nossa infraestrutura fica conectada ao chat de
 alguém, gerando resposta em nome dele, com o suporte que isso implica quando algo dá errado ao vivo.
+
+Os packs valem para qualquer conta que tenha a feature (`assertFeature('live_copilot')` no
+checkout — e o gate é `free`), não são exclusivos de degrau nenhum.
 
 Dois testes travam a escada: nenhum pacote pode ser vendido abaixo de custo × 1,4, e
 **pacote maior nunca pode sair mais caro por hora** que um menor.
 
 **A avulsa de 1h é a mais cara por hora, e tem de ser.** Ela existe para um momento específico: o
 saldo acabou com a live no ar e o vendedor precisa de mais uma hora *agora*, não de um pacote de
-quarenta. Sem ela, a única saída no meio da transmissão é gastar R$ 49,90 de uma vez — e quem não
-quer isso simplesmente desliga o copiloto no meio da venda. Se ela saísse abaixo de R$ 9,98,
+quarenta. Sem ela, a única saída no meio da transmissão é gastar R$ 39,90 de uma vez — e quem não
+quer isso simplesmente desliga o copiloto no meio da venda. Se ela saísse abaixo de R$ 7,98,
 cinco avulsas custariam menos que o pacote de 5h e o desconto de volume viraria pegadinha ao
 contrário; é exatamente isso que o teste da escada impede.
 
@@ -248,22 +256,24 @@ contrário; é exatamente isso que o teste da escada impede.
 
 ## 5. O Live Copilot
 
-### Por que é exclusivo do Business
+### O painel abre no free; o que é exclusivo do Business é o envio automático
 
-`FEATURE_MIN_PLAN.live_copilot = 'business'`. **Não é preço, é risco.** Pelo custo, o copiloto
-caberia num degrau mais baixo — é mais barato que vídeo com IA. Mas é o único lugar do produto
-onde escrevemos, **em nome do vendedor, dentro da plataforma dele**, com a conta dele exposta ao
-que o TikTok pensa de automação. Quem usa isso precisa de suporte de gente, não de um checkout de
-autoatendimento, e o Business é o único degrau que já vem com onboarding dedicado.
+`FEATURE_MIN_PLAN.live_copilot = 'free'`. O copiloto em **modo painel** — a resposta aparece para o
+streamer copiar ou falar, e nada é enviado ao chat do TikTok — abre para qualquer conta, inclusive
+a gratuita. Pelo custo isso cabe: é mais barato que vídeo com IA e o teto é o saldo de minutos, que
+é a régua de sempre (o que é limitável por saldo abre; ver CONTA-FREE.md).
 
-Isso também dá sentido à cortesia: dez minutos grátis só existem porque quem chega ali já é
-assinante do topo, não visitante.
+O que fica no Business é o **envio automático** (`trocarModo` em `live-reply.service.ts` exige
+Business para o modo `auto`). **Não é preço, é risco.** É o único lugar do produto onde escrevemos,
+**em nome do vendedor, dentro da plataforma dele**, com a conta dele exposta ao que o TikTok pensa
+de automação. Quem usa isso precisa de suporte de gente, não de um checkout de autoatendimento, e o
+Business é o único degrau que já vem com onboarding dedicado. A trava mudou de lugar, não
+desapareceu: prender o painel junto do envio era cobrar o degrau mais caro pela metade que não tem
+risco.
 
-Na Fase 1 o copiloto opera em **modo somente-painel** — a resposta aparece para o streamer copiar
-ou falar, e nada é enviado ao chat do TikTok. A exclusividade do Business já vale assim, porque a
-restrição existe pelo destino do produto, não pelo estado atual dele. O perk publicado no plano
-menciona só a base de conhecimento da live gravada, que é o que existe para o cliente hoje —
-perk é promessa de venda, não de roadmap.
+Isso também dá sentido à cortesia: os dez minutos grátis são do **visitante free**, e só dele —
+quem assina não ganha cortesia, entra com as horas de adesão do plano (15/40/60h). Acabou a
+cortesia, é 402 com o CTA de assinar.
 
 ### A cortesia de 10 minutos
 
@@ -283,12 +293,12 @@ Por minuto, com o **teto de 4 respostas/minuto** que o motor aplica:
 
 | Componente | Conta | R$/min |
 |---|---|---:|
-| Respostas em `claude-haiku-4-5` | 4 × (1,5k entrada em cache + 120 saída) ≈ 4 × US$ 0,00075 ≈ US$ 0,003 | 0,018 |
-| Reprocessamento em `claude-opus-5` da faixa cinzenta (~10% das respostas) | é onde o custo de verdade mora | 0,024 |
+| Respostas no modelo "mini" | 4 × (1,5k entrada em cache + 120 saída) ≈ 4 × US$ 0,00075 ≈ US$ 0,003 | 0,018 |
+| Reprocessamento no modelo maior da faixa cinzenta (~10% das respostas) | é onde o custo de verdade mora | 0,024 |
 | Fatia da escrita do cache da base (TTL de 1 h) | | 0,001 |
 | **Total** | | **0,043** |
 
-Ou R$ 2,58 por hora cheia. Repare que **mais da metade do custo é o reprocessamento em Opus** da
+Ou R$ 2,58 por hora cheia. Repare que **mais da metade do custo é o reprocessamento no modelo maior** da
 faixa de baixa confiança — a alavanca de custo do copiloto não é o volume de chat, é a fração de
 respostas que precisa do modelo caro.
 
@@ -359,7 +369,7 @@ Fica no admin, não no painel do cliente, por motivo óbvio: é o nosso custo.
 | `alertas` | recursos cujo custo **medido** já passou do **estimado** |
 
 O preço do minuto usado na receita de live é o do pacote **mais barato por hora** (hoje `live-40h`:
-299,90 ÷ 2.400 = R$ 0,1250/min). É a leitura conservadora de propósito: subestima a receita, nunca
+219,90 ÷ 2.400 = R$ 0,0916/min). É a leitura conservadora de propósito: subestima a receita, nunca
 o contrário.
 
 ### 6.3 Como ler os `alertas`
@@ -382,7 +392,7 @@ refeita com dado real.
 | Frequência | O que olhar | Gatilho | Ação |
 |---|---|---|---|
 | Semanal | `alertas` em `?dias=7` | lista não vazia | Refazer o preço da ação: recalcular `worstCaseCostBrl` com o custo medido, e **antes de fechar, checar `worstCaseCostBrl/credits <= 0,06`** (seção 3). Se o piso subir, reprecificar os planos anuais na mesma alteração |
-| Semanal | `porRecurso[].custoMedioBrl` de `live_reply` | subindo sem mudança de produto | Investigar a fração de reprocessamento em Opus — é mais da metade do custo do minuto |
+| Semanal | `porRecurso[].custoMedioBrl` de `live_reply` | subindo sem mudança de produto | Investigar a fração de reprocessamento no modelo maior — é mais da metade do custo do minuto |
 | Semanal | `cacheReadTokens` de `live_reply` | **zerado ou caindo** | O prompt está sendo invalidado: algo variável entrou no prefixo cacheado (timestamp, contador, ordem instável de itens da base). O custo por minuto vai a múltiplos do estimado sem que nenhum alerta por chamada dispare cedo |
 | Mensal | `total.margem` em `?dias=30` | **< 1,4** | Parar e revisar a tabela inteira. Este é o mesmo número que o `assertProfitability()` exige na estimativa — se o realizado não alcança, a estimativa está errada, não o mundo |
 | Mensal | `porRecurso[].margem` por recurso | qualquer recurso < 1,4 com o total acima de 1,4 | Um recurso está sendo subsidiado pelos outros. Decida explicitamente se é subsídio intencional (ex.: `assembly`, barato de propósito) ou erro de preço |
@@ -402,9 +412,9 @@ Honestamente, os três pontos onde esta tabela pode furar:
 
 **1. O custo do copiloto ao vivo nunca foi medido em produção.** Os R$ 0,043/minuto foram
 decompostos à mão *antes de a feature existir*. As três premissas embutidas — 4 respostas/min como
-teto efetivo, ~10% de reprocessamento em Opus, cache da base pegando com TTL de 1 h — são todas
-estimativas. A margem dos add-ons (2,9× a 3,9×) é folgada o bastante para absorver um erro razoável,
-mas **um erro de ordem de grandeza na fração de Opus come essa folga**. É o primeiro número a
+teto efetivo, ~10% de reprocessamento no modelo maior, cache da base pegando com TTL de 1 h — são todas
+estimativas. A margem dos add-ons (2,1× a 3,8×) é folgada o bastante para absorver um erro razoável,
+mas **um erro de ordem de grandeza na fração do modelo maior come essa folga**. É o primeiro número a
 substituir por dado real assim que houver volume: veja `porRecurso.live_reply.custoMedioBrl`.
 
 **2. O câmbio é fixo no código e o real se move.** `USD_BRL = 6,0` é conservador hoje, não é

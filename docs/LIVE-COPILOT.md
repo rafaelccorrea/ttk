@@ -171,7 +171,8 @@ Duas moedas que não se convertem — os números estão em
 
 - **Créditos de IA**: roteiro, imagem, transcrição, e a extração da base (`live_extract`).
 - **Minutos de live**: o tempo com o copiloto ligado. Vendidos por hora em
-  add-ons, com **10 minutos de cortesia por conta** que entram no mesmo saldo.
+  add-ons (e como bônus único de adesão do plano), com **10 minutos de cortesia por
+  conta free** — exclusivos dela — que entram no mesmo saldo.
 
 ### A trava de entrada
 `BillingService.assertSaldo` — confere plano e saldo **sem debitar**.
