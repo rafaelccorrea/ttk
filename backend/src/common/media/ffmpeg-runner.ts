@@ -238,9 +238,17 @@ export class FfmpegRunner {
        * não tem nenhuma instalada (caso do host compartilhado).
        */
       const caminho = legendaSrt.replace(/\\/g, '/').replace(/:/g, '\\:');
-      const fontsdir = process.env.CUTS_FONTS_DIR
-        ? `:fontsdir='${process.env.CUTS_FONTS_DIR.replace(/\\/g, '/').replace(/:/g, '\\:')}'`
-        : '';
+      /*
+       * A fonte vai no repo (`backend/assets/fonts`, DejaVu Sans, licença
+       * livre) porque o host compartilhado não tem fonte nenhuma instalada e
+       * o libass, sem fonte, desenha nada — o corte sairia sem legenda e sem
+       * erro. `__dirname` resolve tanto de `src/` (jest/ts-node) quanto de
+       * `dist/` (prod): os dois estão a três níveis de `backend/`.
+       * `CUTS_FONTS_DIR` continua valendo para apontar outra pasta.
+       */
+      const pastaDeFontes =
+        process.env.CUTS_FONTS_DIR || join(__dirname, '..', '..', '..', 'assets', 'fonts');
+      const fontsdir = `:fontsdir='${pastaDeFontes.replace(/\\/g, '/').replace(/:/g, '\\:')}'`;
       /*
        * As medidas do `force_style` NÃO são pixels: um SRT vira ASS com
        * PlayResX=384 / PlayResY=288 e o libass escala tudo a partir daí. Em

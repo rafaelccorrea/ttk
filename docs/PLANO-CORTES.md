@@ -77,7 +77,7 @@ Guards: `SupabaseAuthGuard` + `PlanFeatureGuard` com `@RequiresPlanFeature('cuts
 - [x] Cobrança de `transcribe` por bloco + `cut_ai`; fallback para janelas rápidas quando a IA devolve menos que o pedido
 - [x] Título/gancho na tela, com copiar
 ### F3 — Legenda queimada + Multiplicador  [x]
-- [x] Legenda queimada (opt-in no modo inteligente): SRT por corte a partir dos segmentos do Whisper (`srtDoTrecho`), filtro `subtitles` do libass com estilo fixo (branco, contorno preto, terço de baixo). **Tentativa, não promessa**: se o libass/fonte falhar no servidor, o corte sai sem legenda e `cut_clips.captions=false` registra isso. Envs: `CUTS_FONTS_DIR` (pasta com .ttf quando o host não tem fonte) e `CUTS_FONT_NAME` (padrão `DejaVu Sans`).
+- [x] Legenda queimada (opt-in no modo inteligente): SRT por corte a partir dos segmentos do Whisper (`srtDoTrecho`), filtro `subtitles` do libass com estilo fixo (branco, contorno preto, terço de baixo). **Tentativa, não promessa**: se o libass/fonte falhar no servidor, o corte sai sem legenda e `cut_clips.captions=false` registra isso. A fonte vai no repo: `backend/assets/fonts/DejaVuSans*.ttf` (licença livre, `LICENSE-DejaVu.txt`), resolvida por `__dirname` tanto de `src/` quanto de `dist/`; `CUTS_FONTS_DIR` sobrescreve a pasta e `CUTS_FONT_NAME` a fonte (padrão `DejaVu Sans`).
 - [x] "Usar no Multiplicador": `POST /cuts/clips/:id/multiplier {role, produto?}` lê o corte do S3 e chama `CombinationsService.uploadClip`. Respeita o teto duro de `clip-timing.ts` (gancho 8 s, corpo 25 s, CTA 12 s) — a tela só habilita os blocos em que o corte cabe. Não cobra (clipe é grátis; a montagem cobra).
 - [ ] Upload direto ao S3 por presign — **deixado de fora de propósito**: exige CORS no bucket e não muda nada enquanto o upload em disco (padrão do Live Copilot, 2 GB) funciona. Volta se o disco do Hostinger virar gargalo.
 
@@ -113,7 +113,7 @@ Guards: `SupabaseAuthGuard` + `PlanFeatureGuard` com `@RequiresPlanFeature('cuts
 |---|---|---|
 | 3 | Rápido, 2:30, 6 cortes 30–60 s, 9:16 | ✅ Após correção do planner: 6/6 com 15–25 s; com 30–60 s saem 5 (o máximo sem sobreposição). Bordas nos silêncios. |
 | 4 | Inteligente, 2:31 com fala (TTS pt-BR), 6 cortes | ✅ Whisper transcreveu, IA sugeriu 12 trechos (2 válidos sem sobreposição), complemento rápido preencheu o espaço livre → 3 cortes; títulos/ganchos coerentes ("Como usar o kit em 2 minutos", "Cupom, frete grátis e últimas unidades"). Cotação 36 + 6 = 42 cr. |
-| 13 | Legenda queimada | ✅ Renderizada no terço de baixo (Windows). Pendente confirmar no Linux da Hostinger (fonte). |
+| 13 | Legenda queimada | ✅ Renderizada no terço de baixo com a fonte embarcada em `backend/assets/fonts` (não depende de fonte do sistema). |
 | 14 | Usar no Multiplicador | ✅ Corte de 20 s → só "Corpo" habilitado (Gancho "passa de 8s", CTA "passa de 12s"); enviado, apareceu em `/multiplicador` como `teste-cortes-corte-1.mp4`. |
 | 9 | Excluir job | ✅ Some da lista; objetos apagados do S3. |
 | — | Cotação/UI | ✅ `2 cr/corte` e `6 cr/corte`, duração lida no navegador, progresso de upload, polling até `pronto`. |
