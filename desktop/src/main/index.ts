@@ -823,8 +823,25 @@ app.on('window-all-closed', () => {
  * desenho descrito no controller —, mas a run continuaria com status 'ativa' e
  * a próxima tentativa de conectar esbarraria numa live fantasma.
  */
-app.on('before-quit', () => {
-  void copiloto.encerrar('O aplicativo foi fechado.');
+let encerramentoConcluido = false;
+app.on('before-quit', (evento) => {
+  if (encerramentoConcluido) return;
+  /*
+   * Segura o quit até o backend responder: com `void encerrar(...)` o
+   * processo morria antes do POST /end sair, e a run ficava `conectando` no
+   * banco — o QA pegou exatamente isso. Teto de 3s para o app nunca "não
+   * fechar" por causa de rede ruim; passado o teto, o sweep do servidor faz o
+   * resto.
+   */
+  evento.preventDefault();
+  const teto = new Promise<void>((r) => setTimeout(r, 3000));
+  void Promise.race([
+    copiloto.encerrar('O aplicativo foi fechado.').catch(() => undefined),
+    teto,
+  ]).then(() => {
+    encerramentoConcluido = true;
+    app.quit();
+  });
 });
 
 // Atalho global que sobrevive ao app seria uma tecla sequestrada do sistema.

@@ -49,8 +49,8 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 | # | Passo | Esperado | OK |
 |---|---|---|---|
 | 1.1 | `cd backend && npm run stripe:check` | "Tudo alinhado." — 13 linhas `OK` (3 planos × 2 ciclos, 3 packs de crédito, 4 packs de live), todas `ativo`, moeda BRL | ✅ 23/08 21:05 |
-| 1.2 | Painel da Hostinger (env de produção) | Os 6 `STRIPE_PRICE_*` de Business e packs de live iguais aos do `backend/.env` local (IDs `price_1U7l…` criados em 23/08) | |
-| 1.3 | Dashboard Stripe → Produtos | Só produtos "PikPok" têm prices ativos apontados pelo env; nenhum price ativo órfão; produtos de outros projetos intocados | |
+| 1.2 | Painel da Hostinger (env de produção) | Os 6 `STRIPE_PRICE_*` de Business e packs de live iguais aos do `backend/.env` local (IDs `price_1U7l…` criados em 23/08) | ✅ 24/08 6 STRIPE_PRICE_* atualizados no hPanel (Sites › Web Apps › ivory-spider › Variáveis de ambiente › Aplicar mudanças); LIVE_40H conferido com o ID novo |
+| 1.3 | Dashboard Stripe → Produtos | Só produtos "PikPok" têm prices ativos apontados pelo env; nenhum price ativo órfão; produtos de outros projetos intocados | ✅ 24/08 via API: nenhum price ativo sem uso nos 12 produtos PikPok; outros projetos intocados |
 
 > Preço na Stripe vence o `priceBrl` do config no checkout. **Mudou preço no código = criar
 > price novo, apontar env local + Hostinger, arquivar o antigo, rodar `stripe:check`.**
@@ -105,7 +105,7 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 | 5.1 | Abrir Configurações | Tela densa em seções: **Respostas** (responder a partir de / descartar abaixo de / tamanho do lote, valor atual à direita), **Chat** (lista negra, **Bloquear espectadores**), **Vitrine** (**Rotação automática de produtos** — slider 2–60 min só aparece com o switch ligado), **Proteção** (**Detectar avisos do TikTok** ligado, **Encerrar a live ao detectar aviso** desligado, com alerta), **Sistema** (atualizar + conta). Botão **Salvar ajustes** fixo no rodapé, sempre visível | ✅ 24/08 screenshot: seções Respostas/Chat/Vitrine/Proteção/Sistema, Salvar fixo |
 | 5.2 | Digitar `@teste, curioso` em Bloquear e salvar | Reabrir mostra `teste, curioso` (normalizado) | ✅ 24/08 via ponte: '@curioso_chato' → 'curioso_chato' |
 | 5.3 | Ligar rotação com 2 min e salvar | Chip "valendo no próximo lote" | ✅ 24/08 via ponte (rotação 2 min salva) |
-| 5.4 | Detector desligado | Switch "Encerrar ao detectar" desabilitado | |
+| 5.4 | Detector desligado | Switch "Encerrar ao detectar" desabilitado | ✅ 24/08 detector desligado → switch 'Encerrar' disabled=true (3 switches na tela) |
 
 ## 6. Desktop — live simulada (cockpit)
 
@@ -120,11 +120,11 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 | 6.5 | Rotação ligada (2 min) | Após 3 falhas seguidas: linha discreta "rotação automática foi pausada" na seção de produtos — **sem** faixa vermelha | ✅ 24/08 run 566a225c: giros a cada 2 min (S26 base → S25 FE) em live_run_events; pausa após 3 falhas coberta pelo teste unitário do RotadorDeProdutos |
 | 6.6 | Bloquear um @ do roteiro simulado | Mensagens dele não viram resposta nem entram em `live_chat_messages` | ✅ (não verificável no banco: autor anonimizado; coberto por teste unitário usuarioEstaBloqueado) |
 | 6.7 | Encerrar pelo botão do painel | Run `encerrada` com **`endReason='manual'`** (não `erro`); resumo da live na tela | ✅ 24/08 reconfirmado (runs 60b8563b, 06c59bc3, 566a225c: encerrada/manual) |
-| 6.8 | Fechar o app com live aberta | Run `encerrada` / `manual`, motivo "O aplicativo foi fechado." | |
+| 6.8 | Fechar o app com live aberta | Run `encerrada` / `manual`, motivo "O aplicativo foi fechado." | ✅ 24/08 run fca622ac: app fechado (Browser.close) → encerrada/manual 'O aplicativo foi fechado.' — antes ficava em 'conectando' (before-quit corrigido para aguardar o POST /end) |
 | 6.9 | Lado esquerdo (simulação): vídeo em cima, chat embaixo | Vídeo ocupa ~65% da altura, chat em área DEDICADA abaixo (sem sobreposição); **divisória arrastável** entre os dois (proporção lembrada ao reabrir) | ✅ 24/08 screenshot: vídeo 65% / chat 35% com divisória |
-| 6.10 | Rolar o chat para cima durante a live | O chat NÃO puxa de volta a cada mensagem; aparece o botão "↓ novas mensagens"; clicar volta ao fim | ✅ (código: só gruda no fim se já estava no fim; botão '↓ novas mensagens') — conferir à mão |
+| 6.10 | Rolar o chat para cima durante a live | O chat NÃO puxa de volta a cada mensagem; aparece o botão "↓ novas mensagens"; clicar volta ao fim | ✅ 24/08 rolou ao topo, não foi puxado por 12 s de mensagens; botão '↓ novas mensagens' apareceu e voltou ao fim |
 | 6.11 | Arrastar a borda esquerda do painel da direita | Painel muda de largura (mín. 460px, máx. 70% da janela); padrão **640px** fixo (não muda ao maximizar); largura lembrada ao reabrir | ✅ 24/08 via ponte: 640 → marginLeft 800 (janela 1440); 860 → 580; padrão 640 |
-| 6.12 | Clicar **Bloquear autor** (ícone ⊘ no canto) num card de escalação/resposta | Card mostra o chip **"autor bloqueado"**; o @ aparece em Ajustes › Bloquear espectadores (normalizado, sem `@` e em minúsculas, sem duplicar); mensagens seguintes desse autor não entram (nem lote, nem resposta); num card de mensagem antiga/outra live → aviso "Não achei quem escreveu (a mensagem é antiga ou de outra live)." | |
+| 6.12 | Clicar **Bloquear autor** (ícone ⊘ no canto) num card de escalação/resposta | Card mostra o chip **"autor bloqueado"**; o @ aparece em Ajustes › Bloquear espectadores (normalizado, sem `@` e em minúsculas, sem duplicar); mensagens seguintes desse autor não entram (nem lote, nem resposta); num card de mensagem antiga/outra live → aviso "Não achei quem escreveu (a mensagem é antiga ou de outra live)." | ✅ 24/08 run 08008865: clique no ⊘ → chip 'autor bloqueado'; usuariosBloqueados 1→2 |
 
 > Em dev, editar arquivo do `main` reinicia o Electron e derruba a run em curso — não é bug.
 
@@ -132,8 +132,8 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 
 | # | Como | Esperado | OK |
 |---|---|---|---|
-| 7.1 | `UPDATE live_runs SET "minutesCharged"=360 WHERE id=<run ativa, conta Pro>` e esperar o batimento | Run `encerrada`, `endReason='limite_duracao'`; desktop mostra "atingiu o limite de duração do plano" | |
-| 7.2 | Mesmo com conta Business | Só encerra em 1.440 | |
+| 7.1 | `UPDATE live_runs SET "minutesCharged"=360 WHERE id=<run ativa, conta Pro>` e esperar o batimento | Run `encerrada`, `endReason='limite_duracao'`; desktop mostra "atingiu o limite de duração do plano" | ✅ 24/08 minutesCharged forçado ao teto → run encerrada/limite_duracao no batimento seguinte; desktop mostrou 'limite de duração do plano' |
+| 7.2 | Mesmo com conta Business | Só encerra em 1.440 | ✅ 24/08 conta Business: só encerrou em 1440 (teto de 24h) |
 | 7.3 | Conta free com `liveMinutes=0` e cortesia usada tenta abrir run | 402 "Suas horas de live acabaram" com CTA de assinar | |
 
 ## 8. Detector de aviso e pin — com TikTok real (não simulável)
