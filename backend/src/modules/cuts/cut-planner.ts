@@ -176,6 +176,64 @@ export function blocosDeTranscricao(duracaoSeg: number, blocoMin: number): numbe
   return Math.max(1, Math.ceil(duracaoSeg / (blocoMin * 60)));
 }
 
+/** Um segmento de fala com tempo absoluto na fonte. */
+export interface SegmentoDeFala {
+  inicio: number;
+  fim: number;
+  texto: string;
+}
+
+/**
+ * O SRT de um corte: só os segmentos que tocam `[inicio, fim]`, com os tempos
+ * deslocados para o zero do corte e recortados nas bordas. Devolve string
+ * vazia quando não há fala no trecho — o chamador então não queima nada.
+ *
+ * Linhas longas são quebradas em duas: legenda de corte é lida num celular,
+ * e 80 caracteres numa linha só viram letra miúda ou texto cortado.
+ */
+export function srtDoTrecho(segmentos: SegmentoDeFala[], inicio: number, fim: number): string {
+  const blocos: string[] = [];
+  let n = 0;
+  for (const s of segmentos) {
+    if (s.fim <= inicio || s.inicio >= fim) continue;
+    const texto = s.texto.replace(/\s+/g, ' ').trim();
+    if (!texto) continue;
+    const a = Math.max(0, s.inicio - inicio);
+    const b = Math.max(a + 0.3, Math.min(fim, s.fim) - inicio);
+    n += 1;
+    blocos.push(`${n}\n${tempoSrt(a)} --> ${tempoSrt(b)}\n${quebrar(texto)}\n`);
+  }
+  return blocos.join('\n');
+}
+
+function tempoSrt(seg: number): string {
+  const ms = Math.round(seg * 1000);
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  const s = Math.floor((ms % 60_000) / 1000);
+  const r = ms % 1000;
+  const p = (v: number, l = 2) => String(v).padStart(l, '0');
+  return `${p(h)}:${p(m)}:${p(s)},${p(r, 3)}`;
+}
+
+function quebrar(texto: string, max = 38): string {
+  if (texto.length <= max) return texto;
+  const palavras = texto.split(' ');
+  const linhas: string[] = [];
+  let atual = '';
+  for (const p of palavras) {
+    if ((atual + ' ' + p).trim().length > max && atual) {
+      linhas.push(atual);
+      atual = p;
+    } else {
+      atual = (atual + ' ' + p).trim();
+    }
+  }
+  if (atual) linhas.push(atual);
+  // No máximo duas linhas por bloco: acima disso tapa o vídeo.
+  return linhas.length <= 2 ? linhas.join('\n') : `${linhas[0]}\n${linhas.slice(1).join(' ')}`;
+}
+
 export function sobrepoe(t: Trecho, outros: Trecho[]): boolean {
   return outros.some((o) => t.inicio < o.fim && o.inicio < t.fim);
 }

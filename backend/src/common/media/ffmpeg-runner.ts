@@ -212,16 +212,62 @@ export class FfmpegRunner {
     fimSeg: number,
     formato: '9:16' | '16:9' | '1:1' = '9:16',
     timeoutMs = TIMEOUT_PADRAO_MS,
+    /**
+     * Arquivo .srt com os tempos RELATIVOS ao início do corte, para queimar a
+     * legenda no vídeo (filtro `subtitles`, libass). O estilo é fixo: branco
+     * com contorno preto, centralizado no terço de baixo — o padrão que os
+     * apps de corte usam e que sobrevive a qualquer fundo.
+     */
+    legendaSrt?: string,
   ): Promise<void> {
     const duracao = Math.max(0.5, fimSeg - inicioSeg);
     const [larg, alt] =
       formato === '16:9' ? [1280, 720] : formato === '1:1' ? [720, 720] : [720, 1280];
-    const filtro = [
+    const etapas = [
       `scale=${larg}:${alt}:force_original_aspect_ratio=increase`,
       `crop=${larg}:${alt}`,
       'setsar=1',
       'fps=30',
-    ].join(',');
+    ];
+    if (legendaSrt) {
+      /*
+       * O caminho entra dentro de uma expressão de filtro, que trata `:` e
+       * `\` como sintaxe — no Windows `C:\tmp\x.srt` viraria três argumentos.
+       * Barras normais + `:` escapado é a forma que funciona nos dois SOs.
+       * `fontsdir` aponta para uma pasta de fontes nossa quando o servidor
+       * não tem nenhuma instalada (caso do host compartilhado).
+       */
+      const caminho = legendaSrt.replace(/\\/g, '/').replace(/:/g, '\\:');
+      const fontsdir = process.env.CUTS_FONTS_DIR
+        ? `:fontsdir='${process.env.CUTS_FONTS_DIR.replace(/\\/g, '/').replace(/:/g, '\\:')}'`
+        : '';
+      /*
+       * As medidas do `force_style` NÃO são pixels: um SRT vira ASS com
+       * PlayResX=384 / PlayResY=288 e o libass escala tudo a partir daí. Em
+       * 720×1280, FontSize=16 dá ~70 px de altura de letra e MarginV=48 põe a
+       * linha a ~17% do fundo — o terço de baixo, fora do rosto e acima da
+       * barra de legenda do TikTok. (Com 180 "pensando em pixels" o texto
+       * caía no meio da tela.)
+       */
+      const vertical = formato === '9:16';
+      const estilo = [
+        `FontName=${process.env.CUTS_FONT_NAME || 'DejaVu Sans'}`,
+        `FontSize=${vertical ? 16 : 13}`,
+        'Bold=1',
+        'PrimaryColour=&H00FFFFFF',
+        'OutlineColour=&H00000000',
+        'BackColour=&H80000000',
+        'BorderStyle=1',
+        'Outline=2',
+        'Shadow=0',
+        'Alignment=2',
+        `MarginV=${vertical ? 48 : 24}`,
+        'MarginL=20',
+        'MarginR=20',
+      ].join(',');
+      etapas.push(`subtitles='${caminho}'${fontsdir}:force_style='${estilo}'`);
+    }
+    const filtro = etapas.join(',');
     await this.rodar(
       [
         '-y',

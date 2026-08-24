@@ -20,6 +20,7 @@ export interface CutJob {
   status: CutJobStatus;
   mode: CutMode;
   format: CutFormat;
+  captions: boolean;
   quantity: number;
   minSeconds: number;
   maxSeconds: number;
@@ -43,6 +44,7 @@ export interface CutClip {
   hook: string | null;
   reason: string | null;
   origin: 'ia' | 'rapido';
+  captions: boolean;
   url: string | null;
   status: CutClipStatus;
   error: string | null;
@@ -68,7 +70,20 @@ export interface CreateCutJobInput {
   quantity: number;
   minSeconds: number;
   maxSeconds: number;
+  /** Queimar legenda (só no modo inteligente). */
+  captions?: boolean;
 }
+
+export type ClipRole = 'hook' | 'body' | 'cta';
+
+/** Teto duro por bloco do Multiplicador — espelho de `clip-timing.ts`. */
+export const LIMITE_POR_BLOCO: Record<ClipRole, number> = { hook: 8, body: 25, cta: 12 };
+
+export const NOME_DO_BLOCO: Record<ClipRole, string> = {
+  hook: 'Gancho',
+  body: 'Corpo',
+  cta: 'CTA',
+};
 
 export const cutsService = {
   async quote(mode: CutMode, quantity: number, durationSeconds?: number): Promise<CutQuote> {
@@ -100,6 +115,7 @@ export const cutsService = {
     form.append('quantity', String(input.quantity));
     form.append('minSeconds', String(input.minSeconds));
     form.append('maxSeconds', String(input.maxSeconds));
+    form.append('captions', input.captions ? 'true' : 'false');
     const { data } = await api.post<CutJob>('/cuts', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (evento) => {
@@ -108,6 +124,11 @@ export const cutsService = {
       },
     });
     return data;
+  },
+
+  /** Manda um corte pronto para o Multiplicador como gancho/corpo/CTA. */
+  async toMultiplier(clipId: string, role: ClipRole, produto?: string): Promise<void> {
+    await api.post(`/cuts/clips/${clipId}/multiplier`, { role, produto });
   },
 
   async remove(id: string): Promise<void> {

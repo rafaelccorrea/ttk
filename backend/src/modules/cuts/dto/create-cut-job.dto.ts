@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { LIMITES } from '../cut-planner';
 
 /**
@@ -16,6 +16,13 @@ export class CreateCutJobDto {
   @IsOptional()
   @IsIn(['9:16', '16:9', '1:1'])
   format?: '9:16' | '16:9' | '1:1';
+
+  /** Queimar a legenda no vídeo. Só tem efeito no modo inteligente. */
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === '1')
+  @IsBoolean()
+  captions?: boolean;
 
   @ApiProperty({ minimum: LIMITES.qtdMin, maximum: LIMITES.qtdMax })
   @Type(() => Number)

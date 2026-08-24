@@ -46,6 +46,10 @@ export class CutJob {
   @Column({ type: 'int' })
   maxSeconds: number;
 
+  /** Queimar a legenda da fala no vídeo (só faz sentido no modo inteligente). */
+  @Column({ type: 'boolean', default: false })
+  captions: boolean;
+
   @Column({ length: 255 })
   sourceName: string;
 

@@ -4,11 +4,15 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   CircularProgress,
+  FormControlLabel,
   Grid,
   IconButton,
   LinearProgress,
+  Menu,
+  MenuItem,
   Slider,
   Stack,
   TextField,
@@ -23,11 +27,15 @@ import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded';
 import ContentCutRoundedIcon from '@mui/icons-material/ContentCutRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
+import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
+import SubtitlesRoundedIcon from '@mui/icons-material/SubtitlesRounded';
 import UploadRoundedIcon from '@mui/icons-material/UploadRounded';
-import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import { useConfirmarGasto } from '@/hooks/useConfirmarGasto';
 import { CREDITS_CHANGED_EVENT, resolveApiUrl } from '@/services/api';
 import {
+  ClipRole,
   CutClip,
   CutFormat,
   CutJobDetail,
@@ -37,7 +45,9 @@ import {
   cutsService,
   formatarTempo,
   lerDuracaoDoVideo,
+  LIMITE_POR_BLOCO,
   LIMITES_DE_CORTE,
+  NOME_DO_BLOCO,
 } from '@/services/cuts.service';
 import { mensagemDeErro } from '@/services/erros';
 
@@ -75,6 +85,7 @@ export function CutsPage() {
 
   const [mode, setMode] = useState<CutMode>('rapido');
   const [format, setFormat] = useState<CutFormat>('9:16');
+  const [captions, setCaptions] = useState(true);
   const [quantity, setQuantity] = useState(6);
   const [faixa, setFaixa] = useState<[number, number]>([30, 60]);
   const [file, setFile] = useState<File | null>(null);
@@ -162,7 +173,14 @@ export function CutsPage() {
     setProgresso(0);
     try {
       const job = await cutsService.create(
-        { mode, format, quantity, minSeconds: faixa[0], maxSeconds: faixa[1] },
+        {
+          mode,
+          format,
+          quantity,
+          minSeconds: faixa[0],
+          maxSeconds: faixa[1],
+          captions: mode === 'inteligente' && captions,
+        },
         file,
         setProgresso,
       );
@@ -339,6 +357,21 @@ export function CutsPage() {
                       <ToggleButton value="1:1">1:1</ToggleButton>
                       <ToggleButton value="16:9">16:9</ToggleButton>
                     </ToggleButtonGroup>
+                    {mode === 'inteligente' && (
+                      <FormControlLabel
+                        control={
+                          <Checkbox checked={captions} onChange={(e) => setCaptions(e.target.checked)} />
+                        }
+                        label={
+                          <Box>
+                            <Typography variant="body2">Legenda queimada no vídeo</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              A fala vira legenda no terço de baixo. Sem custo extra; usa a transcrição.
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                    )}
                   </Stack>
                 </Box>
 
@@ -493,8 +526,31 @@ function DetalheDoJob({ job }: { job: CutJobDetail }) {
 
 function CardDoCorte({ clip, job }: { clip: CutClip; job: CutJobDetail }) {
   const [copiado, setCopiado] = useState(false);
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
+  const [enviando, setEnviando] = useState<ClipRole | null>(null);
+  const [aviso, setAviso] = useState<{ tipo: 'success' | 'error'; texto: string } | null>(null);
   const nome = `${job.sourceName.replace(/\.[^.]+$/, '')}-corte-${clip.position}.mp4`;
   const legenda = [clip.title, clip.hook].filter(Boolean).join('\n');
+  const duracao = clip.endSeconds - clip.startSeconds;
+  // Só os blocos em que o corte cabe (teto duro do Multiplicador).
+  const blocos = (Object.keys(LIMITE_POR_BLOCO) as ClipRole[]).map((role) => ({
+    role,
+    cabe: duracao <= LIMITE_POR_BLOCO[role],
+  }));
+
+  async function mandarParaMultiplicador(role: ClipRole) {
+    setMenu(null);
+    setEnviando(role);
+    setAviso(null);
+    try {
+      await cutsService.toMultiplier(clip.id, role);
+      setAviso({ tipo: 'success', texto: `Enviado como ${NOME_DO_BLOCO[role].toLowerCase()}.` });
+    } catch (error) {
+      setAviso({ tipo: 'error', texto: mensagemDeErro(error) });
+    } finally {
+      setEnviando(null);
+    }
+  }
 
   async function copiar() {
     try {
@@ -554,20 +610,68 @@ function CardDoCorte({ clip, job }: { clip: CutClip; job: CutJobDetail }) {
               <Chip size="small" variant="outlined" icon={<AutoAwesomeRoundedIcon />} label="IA" />
             </Tooltip>
           )}
-          <Box sx={{ flexGrow: 1 }} />
-          {clip.status === 'pronto' && clip.url && (
-            <Tooltip title="Baixar">
-              <IconButton
-                size="small"
-                component="a"
-                href={resolveApiUrl(clip.url)}
-                download={nome}
-              >
-                <DownloadRoundedIcon fontSize="small" />
-              </IconButton>
+          {clip.captions && (
+            <Tooltip title="Legenda queimada no vídeo">
+              <SubtitlesRoundedIcon fontSize="small" color="action" />
             </Tooltip>
           )}
+          <Box sx={{ flexGrow: 1 }} />
+          {clip.status === 'pronto' && clip.url && (
+            <>
+              <Tooltip title="Usar no Multiplicador">
+                <span>
+                  <IconButton
+                    size="small"
+                    disabled={enviando !== null}
+                    onClick={(e: MouseEvent<HTMLElement>) => setMenu(e.currentTarget)}
+                  >
+                    {enviando ? <CircularProgress size={16} /> : <DynamicFeedRoundedIcon fontSize="small" />}
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Menu anchorEl={menu} open={Boolean(menu)} onClose={() => setMenu(null)}>
+                {blocos.map(({ role, cabe }) => (
+                  <MenuItem
+                    key={role}
+                    disabled={!cabe}
+                    onClick={() => void mandarParaMultiplicador(role)}
+                  >
+                    {NOME_DO_BLOCO[role]}
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                      {cabe ? `até ${LIMITE_POR_BLOCO[role]}s` : `passa de ${LIMITE_POR_BLOCO[role]}s`}
+                    </Typography>
+                  </MenuItem>
+                ))}
+              </Menu>
+              <Tooltip title="Baixar">
+                <IconButton
+                  size="small"
+                  component="a"
+                  href={resolveApiUrl(clip.url)}
+                  download={nome}
+                >
+                  <DownloadRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
         </Stack>
+        {aviso && (
+          <Alert
+            severity={aviso.tipo}
+            onClose={() => setAviso(null)}
+            sx={{ mb: 0.5, py: 0 }}
+            action={
+              aviso.tipo === 'success' ? (
+                <Button size="small" component={RouterLink} to="/multiplicador">
+                  Abrir
+                </Button>
+              ) : undefined
+            }
+          >
+            {aviso.texto}
+          </Alert>
+        )}
         {clip.title && (
           <Typography sx={{ fontWeight: 700, lineHeight: 1.25 }}>{clip.title}</Typography>
         )}

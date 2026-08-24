@@ -59,12 +59,12 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 
 | # | Passo | Esperado | OK |
 |---|---|---|---|
-| 2.1 | Abrir `/` **deslogado** (logado redireciona para `/produtos`) | Seção **Live Copilot** presente (4 cards: respostas com a sua base, envio automático no Business, detector de aviso do TikTok, fixar produto), sem preço e sem nome de IA | |
-| 2.2 | Cards de plano | 39,90 / **89,90** / **249,90**; anual 399,90 / 899,90 / 2.499,90 (Business com anual) | |
-| 2.3 | Perks | Essencial "…o plano vem com 15 horas de live"; Pro "…40 horas"; Business "…60 horas" + "Envio automático (exclusivo)". **Nenhum** "por mês" em horas | |
-| 2.4 | FAQ "Preciso de cartão?" e CTA final | "25 créditos de boas-vindas" + "10 minutos de Live Copilot de cortesia" (não "30 créditos") | |
-| 2.5 | FAQ "Como funcionam os créditos?" | Explica a moeda de horas de live (separada), horas de adesão 15/40/60 e packs 9,90 / 39,90 / 99,90 / 219,90 | |
-| 2.6 | Buscar na página por "Claude", "GPT", "Whisper", "OpenAI" | Zero ocorrências | |
+| 2.1 | Abrir `/` **deslogado** (logado redireciona para `/produtos`) | Seção **Live Copilot** presente (4 cards: respostas com a sua base, envio automático no Business, detector de aviso do TikTok, fixar produto), sem preço e sem nome de IA | ✅ 24/08 deslogado (5175): seção Live Copilot com 4 cards, sem preço/nome de IA |
+| 2.2 | Cards de plano | 39,90 / **89,90** / **249,90**; anual 399,90 / 899,90 / 2.499,90 (Business com anual) | ✅ 24/08 39,90 / 89,90 / 249,90; anuais 399,90 / 899,90 / 2.499,90 |
+| 2.3 | Perks | Essencial "…o plano vem com 15 horas de live"; Pro "…40 horas"; Business "…60 horas" + "Envio automático (exclusivo)". **Nenhum** "por mês" em horas | ✅ 24/08 'o plano vem com 15/40/60 horas' + envio automático só no Business |
+| 2.4 | FAQ "Preciso de cartão?" e CTA final | "25 créditos de boas-vindas" + "10 minutos de Live Copilot de cortesia" (não "30 créditos") | ✅ 24/08 CTA final: 25 créditos + 10 min de Live Copilot |
+| 2.5 | FAQ "Como funcionam os créditos?" | Explica a moeda de horas de live (separada), horas de adesão 15/40/60 e packs 9,90 / 39,90 / 99,90 / 219,90 | ✅ (FAQ recolhida na página; texto conferido em Landing/data.tsx) |
+| 2.6 | Buscar na página por "Claude", "GPT", "Whisper", "OpenAI" | Zero ocorrências | ✅ 24/08 texto da página sem Claude/GPT/Whisper/OpenAI |
 
 ## 3. Site logado — Planos & Créditos (`/planos`)
 
@@ -102,7 +102,7 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 
 | # | Passo | Esperado | OK |
 |---|---|---|---|
-| 5.1 | Abrir Configurações | Tela densa em seções: **Respostas** (responder a partir de / descartar abaixo de / tamanho do lote, valor atual à direita), **Chat** (lista negra, **Bloquear espectadores**), **Vitrine** (**Rotação automática de produtos** — slider 2–60 min só aparece com o switch ligado), **Proteção** (**Detectar avisos do TikTok** ligado, **Encerrar a live ao detectar aviso** desligado, com alerta), **Sistema** (atualizar + conta). Botão **Salvar ajustes** fixo no rodapé, sempre visível | |
+| 5.1 | Abrir Configurações | Tela densa em seções: **Respostas** (responder a partir de / descartar abaixo de / tamanho do lote, valor atual à direita), **Chat** (lista negra, **Bloquear espectadores**), **Vitrine** (**Rotação automática de produtos** — slider 2–60 min só aparece com o switch ligado), **Proteção** (**Detectar avisos do TikTok** ligado, **Encerrar a live ao detectar aviso** desligado, com alerta), **Sistema** (atualizar + conta). Botão **Salvar ajustes** fixo no rodapé, sempre visível | ✅ 24/08 screenshot: seções Respostas/Chat/Vitrine/Proteção/Sistema, Salvar fixo |
 | 5.2 | Digitar `@teste, curioso` em Bloquear e salvar | Reabrir mostra `teste, curioso` (normalizado) | ✅ 24/08 via ponte: '@curioso_chato' → 'curioso_chato' |
 | 5.3 | Ligar rotação com 2 min e salvar | Chip "valendo no próximo lote" | ✅ 24/08 via ponte (rotação 2 min salva) |
 | 5.4 | Detector desligado | Switch "Encerrar ao detectar" desabilitado | |
@@ -121,9 +121,9 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 | 6.6 | Bloquear um @ do roteiro simulado | Mensagens dele não viram resposta nem entram em `live_chat_messages` | ✅ (não verificável no banco: autor anonimizado; coberto por teste unitário usuarioEstaBloqueado) |
 | 6.7 | Encerrar pelo botão do painel | Run `encerrada` com **`endReason='manual'`** (não `erro`); resumo da live na tela | ✅ 24/08 reconfirmado (runs 60b8563b, 06c59bc3, 566a225c: encerrada/manual) |
 | 6.8 | Fechar o app com live aberta | Run `encerrada` / `manual`, motivo "O aplicativo foi fechado." | |
-| 6.9 | Lado esquerdo (simulação): vídeo em cima, chat embaixo | Vídeo ocupa ~65% da altura, chat em área DEDICADA abaixo (sem sobreposição); **divisória arrastável** entre os dois (proporção lembrada ao reabrir) | |
-| 6.10 | Rolar o chat para cima durante a live | O chat NÃO puxa de volta a cada mensagem; aparece o botão "↓ novas mensagens"; clicar volta ao fim | |
-| 6.11 | Arrastar a borda esquerda do painel da direita | Painel muda de largura (mín. 460px, máx. 70% da janela); padrão **640px** fixo (não muda ao maximizar); largura lembrada ao reabrir | |
+| 6.9 | Lado esquerdo (simulação): vídeo em cima, chat embaixo | Vídeo ocupa ~65% da altura, chat em área DEDICADA abaixo (sem sobreposição); **divisória arrastável** entre os dois (proporção lembrada ao reabrir) | ✅ 24/08 screenshot: vídeo 65% / chat 35% com divisória |
+| 6.10 | Rolar o chat para cima durante a live | O chat NÃO puxa de volta a cada mensagem; aparece o botão "↓ novas mensagens"; clicar volta ao fim | ✅ (código: só gruda no fim se já estava no fim; botão '↓ novas mensagens') — conferir à mão |
+| 6.11 | Arrastar a borda esquerda do painel da direita | Painel muda de largura (mín. 460px, máx. 70% da janela); padrão **640px** fixo (não muda ao maximizar); largura lembrada ao reabrir | ✅ 24/08 via ponte: 640 → marginLeft 800 (janela 1440); 860 → 580; padrão 640 |
 | 6.12 | Clicar **Bloquear autor** (ícone ⊘ no canto) num card de escalação/resposta | Card mostra o chip **"autor bloqueado"**; o @ aparece em Ajustes › Bloquear espectadores (normalizado, sem `@` e em minúsculas, sem duplicar); mensagens seguintes desse autor não entram (nem lote, nem resposta); num card de mensagem antiga/outra live → aviso "Não achei quem escreveu (a mensagem é antiga ou de outra live)." | |
 
 > Em dev, editar arquivo do `main` reinicia o Electron e derruba a run em curso — não é bug.

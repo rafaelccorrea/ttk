@@ -1,6 +1,6 @@
 # Cortes — vídeo longo vira N vídeos curtos
 
-Status: **F1 e F2 implementadas em 2026-08-23** (sem deploy ainda — precisa rodar a migration `CreateCuts` e passar pelo QA abaixo). F3 fica para depois.
+Status: **F1, F2 e F3 implementadas em 2026-08-23** (sem deploy — precisa rodar as migrations `CreateCuts` e `AddCutCaptions` e passar pelo QA abaixo). Upload por presign ficou de fora (ver F3).
 
 ## Decisões fechadas
 | Decisão | Valor |
@@ -76,10 +76,10 @@ Guards: `SupabaseAuthGuard` + `PlanFeatureGuard` com `@RequiresPlanFeature('cuts
 - [x] Transcrição via `AudioChunkerService` + Whisper `verboseTimestamps`, offset por fatia
 - [x] Cobrança de `transcribe` por bloco + `cut_ai`; fallback para janelas rápidas quando a IA devolve menos que o pedido
 - [x] Título/gancho na tela, com copiar
-### F3 — Depois (não entra agora)
-- Legenda queimada (depende de libass no `ffmpeg-static`; validar em prod antes)
-- "Mandar para o Multiplicador" (corte vira clipe hook/body/cta)
-- Upload direto ao S3 por presign, quando o disco do Hostinger virar gargalo
+### F3 — Legenda queimada + Multiplicador  [x]
+- [x] Legenda queimada (opt-in no modo inteligente): SRT por corte a partir dos segmentos do Whisper (`srtDoTrecho`), filtro `subtitles` do libass com estilo fixo (branco, contorno preto, terço de baixo). **Tentativa, não promessa**: se o libass/fonte falhar no servidor, o corte sai sem legenda e `cut_clips.captions=false` registra isso. Envs: `CUTS_FONTS_DIR` (pasta com .ttf quando o host não tem fonte) e `CUTS_FONT_NAME` (padrão `DejaVu Sans`).
+- [x] "Usar no Multiplicador": `POST /cuts/clips/:id/multiplier {role, produto?}` lê o corte do S3 e chama `CombinationsService.uploadClip`. Respeita o teto duro de `clip-timing.ts` (gancho 8 s, corpo 25 s, CTA 12 s) — a tela só habilita os blocos em que o corte cabe. Não cobra (clipe é grátis; a montagem cobra).
+- [ ] Upload direto ao S3 por presign — **deixado de fora de propósito**: exige CORS no bucket e não muda nada enquanto o upload em disco (padrão do Live Copilot, 2 GB) funciona. Volta se o disco do Hostinger virar gargalo.
 
 ## Riscos e mitigação
 - **Hostinger/LVE**: fila serial do ffmpeg — 1 job de cortes por vez por processo (`MAX_JOBS_SIMULTANEOS = 1`), 720p `veryfast`. Um job de 20 cortes de 90 s leva minutos e segura o Multiplicador nesse meio-tempo; aceito na v1.
@@ -104,3 +104,6 @@ Guards: `SupabaseAuthGuard` + `PlanFeatureGuard` com `@RequiresPlanFeature('cuts
 10. **Segundo upload com um job rodando** → 409 "aguarde terminar".
 11. **Multiplicador** durante um job de cortes: monta mais devagar mas termina (fila serial do ffmpeg).
 12. `npm run stripe:check` não é necessário (não há produto Stripe novo).
+13. **Legenda (F3)**: modo inteligente com "Legenda queimada" marcado → o corte sai com a fala no terço de baixo (ícone de legenda no card). Se o servidor não tiver fonte, o corte sai SEM legenda e sem erro (`captions=false`); aí configurar `CUTS_FONTS_DIR` com um .ttf (DejaVu) e repetir.
+14. **Multiplicador (F3)**: corte de ≤ 25 s → "Usar no Multiplicador" → Corpo; aparece na lista de clipes de corpo em `/multiplicador`. Corte de 45 s → só os blocos em que não cabe ficam desabilitados com "passa de N s"; forçar pela API devolve 400 com a conta na mensagem.
+15. **Smoke local já feito (2026-08-23, Windows)**: fonte sintética de 3 min com silêncios a cada 20 s → `silencios()` achou os 9, o plano alinhou as bordas ao meio dos silêncios, cortes 9:16 e 1:1 em ~11 s cada, legenda renderizada no terço de baixo. Falta o mesmo no Linux do Hostinger (fonte!).

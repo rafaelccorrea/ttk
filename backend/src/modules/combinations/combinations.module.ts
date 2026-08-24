@@ -28,5 +28,7 @@ import { CombinationVideo } from './entities/combination-video.entity';
   controllers: [CombinationsController],
   // A montagem é a mesma das campanhas — um só caminho até o ffmpeg.
   providers: [CombinationsService, VideoAssemblyService, FfmpegRunner],
+  // Cortes manda um corte pronto para virar clipe do Multiplicador.
+  exports: [CombinationsService],
 })
 export class CombinationsModule {}

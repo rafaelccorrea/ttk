@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { readFile, unlink } from 'node:fs/promises';
+import { readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DataSource, LessThan, Repository } from 'typeorm';
 import { FfmpegRunner } from '../../common/media/ffmpeg-runner';
@@ -17,6 +17,9 @@ import {
   TRANSCRIBE_BLOCK_MINUTES,
 } from '../billing/billing.config';
 import { BillingService } from '../billing/billing.service';
+import { FAIXAS } from '../combinations/clip-timing';
+import { CombinationsService } from '../combinations/combinations.service';
+import { ClipRole } from '../combinations/entities/combination-clip.entity';
 import { AudioChunkerService } from '../live/audio-chunker.service';
 import { MEDIA_ROUTE, MediaMirrorService } from '../media/media-mirror.service';
 import { AiService } from '../studio/ai.service';
@@ -27,6 +30,8 @@ import {
   CutMode,
   LIMITES,
   planejarRapido,
+  SegmentoDeFala,
+  srtDoTrecho,
   TrechoPlanejado,
   validarSugestoes,
 } from './cut-planner';
@@ -71,6 +76,7 @@ export class CutsService {
     private readonly transcricao: TranscriptionService,
     private readonly ai: AiService,
     private readonly mirror: MediaMirrorService,
+    private readonly combinations: CombinationsService,
   ) {}
 
   // ----------------------------------------------------------------- cotação
@@ -214,6 +220,8 @@ export class CutsService {
           status: 'processando',
           mode: dto.mode,
           format: dto.format ?? '9:16',
+          // Legenda vem da transcrição; sem ela (modo rápido) não há o que queimar.
+          captions: dto.mode === 'inteligente' && Boolean(dto.captions),
           quantity: dto.quantity,
           minSeconds: dto.minSeconds,
           maxSeconds: dto.maxSeconds,
@@ -296,8 +304,9 @@ export class CutsService {
 
       // 3. Planeja os trechos.
       let trechos: TrechoPlanejado[];
+      let fala: SegmentoDeFala[] = [];
       if (job.mode === 'inteligente') {
-        trechos = await this.planejarInteligente(job, fonte, duracao);
+        ({ trechos, fala } = await this.planejarInteligente(job, fonte, duracao));
         // Blocos consumidos: a transcrição aconteceu, não há o que devolver.
         await this.jobs.update({ id }, { pendingTranscribeBlocks: 0 });
       } else {
@@ -341,18 +350,54 @@ export class CutsService {
         for (const clip of registros) {
           const saida = join(pasta, `${clip.position}.mp4`);
           try {
-            await this.ffmpeg.cortar(
-              fonte,
-              saida,
-              clip.startSeconds,
-              clip.endSeconds,
-              job.format as CutFormat,
-              TIMEOUT_POR_CORTE_MS,
-            );
+            /*
+             * Legenda queimada é tentativa, não promessa: o filtro `subtitles`
+             * depende do libass e de uma fonte no servidor, e o host
+             * compartilhado pode não ter nenhuma. Falhou com legenda, sai sem
+             * — o corte vale mais que a legenda dele, e `clip.captions` diz o
+             * que aconteceu de verdade.
+             */
+            let comLegenda = false;
+            const srt = job.captions ? srtDoTrecho(fala, clip.startSeconds, clip.endSeconds) : '';
+            if (srt) {
+              const srtPath = join(pasta, `${clip.position}.srt`);
+              await writeFile(srtPath, srt, 'utf8');
+              try {
+                await this.ffmpeg.cortar(
+                  fonte,
+                  saida,
+                  clip.startSeconds,
+                  clip.endSeconds,
+                  job.format as CutFormat,
+                  TIMEOUT_POR_CORTE_MS,
+                  srtPath,
+                );
+                comLegenda = true;
+              } catch (error) {
+                this.logger.warn(
+                  `Legenda do corte ${clip.position} (job ${id}) falhou; gerando sem legenda: ${error}`,
+                );
+              } finally {
+                await unlink(srtPath).catch(() => undefined);
+              }
+            }
+            if (!comLegenda) {
+              await this.ffmpeg.cortar(
+                fonte,
+                saida,
+                clip.startSeconds,
+                clip.endSeconds,
+                job.format as CutFormat,
+                TIMEOUT_POR_CORTE_MS,
+              );
+            }
             const buffer = await readFile(saida);
             const url = await this.mirror.putVideo(buffer, `${PREFIXO_S3}/${userId}`, clip.id);
             if (!url) throw new Error('Falha ao guardar o corte no armazenamento.');
-            await this.clips.update({ id: clip.id }, { url, status: 'pronto', error: null });
+            await this.clips.update(
+              { id: clip.id },
+              { url, status: 'pronto', error: null, captions: comLegenda },
+            );
             prontos += 1;
           } catch (error) {
             const mensagem = (error as Error).message ?? String(error);
@@ -403,8 +448,8 @@ export class CutsService {
     job: CutJob,
     fonte: string,
     duracao: number,
-  ): Promise<TrechoPlanejado[]> {
-    const segmentos = await this.chunker.comAudioExtraido(
+  ): Promise<{ trechos: TrechoPlanejado[]; fala: SegmentoDeFala[] }> {
+    const segmentos: SegmentoDeFala[] = await this.chunker.comAudioExtraido(
       fonte,
       job.sourceName,
       async ({ audioPath, pasta }) => {
@@ -452,7 +497,7 @@ export class CutsService {
     }
 
     const faltam = job.quantity - daIa.length;
-    if (faltam <= 0) return daIa;
+    if (faltam <= 0) return { trechos: daIa, fala: segmentos };
     const silencios = await this.ffmpeg.silencios(fonte);
     const complemento = planejarRapido(
       duracao,
@@ -462,7 +507,46 @@ export class CutsService {
       silencios,
       daIa,
     );
-    return [...daIa, ...complemento];
+    return { trechos: [...daIa, ...complemento], fala: segmentos };
+  }
+
+  // ------------------------------------------------------ → Multiplicador
+
+  /**
+   * Um corte pronto vira clipe (gancho, corpo ou CTA) do Multiplicador.
+   *
+   * O teto de duração é o do bloco (`clip-timing.ts`): um corte de 45 s não
+   * cabe em corpo (25 s) e a montagem recusaria depois — melhor recusar aqui,
+   * com a conta na mensagem. A tela já esconde os blocos em que não cabe.
+   * Não cobra nada: clipe é de graça, quem custa é a montagem.
+   */
+  async enviarParaMultiplicador(
+    userId: string,
+    clipId: string,
+    role: ClipRole,
+    produto?: string,
+  ) {
+    const clip = await this.clips.findOneBy({ id: clipId, userId });
+    if (!clip) throw new NotFoundException('Corte não encontrado.');
+    if (clip.status !== 'pronto' || !clip.url) {
+      throw new BadRequestException('Este corte ainda não está pronto.');
+    }
+    const duracao = clip.endSeconds - clip.startSeconds;
+    const faixa = FAIXAS[role];
+    if (duracao > faixa.limite) {
+      throw new BadRequestException(
+        `Este corte tem ${Math.round(duracao)} s e o bloco aceita até ${faixa.limite} s. Gere cortes mais curtos (faixa de ${LIMITES.corteMinSeg}–${faixa.limite} s) para usar como ${nomeDoBloco(role)}.`,
+      );
+    }
+    const prefixo = `${MEDIA_ROUTE}/`;
+    if (!clip.url.startsWith(prefixo)) {
+      throw new BadRequestException('Este corte não está no nosso armazenamento.');
+    }
+    const objeto = await this.mirror.readObject(clip.url.slice(prefixo.length));
+    if (!objeto) throw new BadRequestException('Não consegui ler o arquivo do corte.');
+    const job = await this.jobs.findOneBy({ id: clip.jobId });
+    const nome = `${(job?.sourceName ?? 'video').replace(/\.[^.]+$/, '')}-corte-${clip.position}.mp4`;
+    return this.combinations.uploadClip(userId, role, nome, objeto.body, produto);
   }
 
   // -------------------------------------------------------------------- cron
@@ -527,6 +611,10 @@ export class CutsService {
     const { sourcePath: _p, pendingCutCharges: _c, pendingTranscribeBlocks: _t, ...resto } = job;
     return resto;
   }
+}
+
+function nomeDoBloco(role: ClipRole): string {
+  return role === 'hook' ? 'gancho' : role === 'body' ? 'corpo' : 'CTA';
 }
 
 function formatarDuracao(seg: number): string {

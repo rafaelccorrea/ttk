@@ -3,6 +3,7 @@ import {
   blocosDeTranscricao,
   planejarRapido,
   sobrepoe,
+  srtDoTrecho,
   validarSugestoes,
 } from './cut-planner';
 
@@ -115,5 +116,32 @@ describe('cut-planner — utilitários', () => {
     expect(blocosDeTranscricao(600, 10)).toBe(1);
     expect(blocosDeTranscricao(601, 10)).toBe(2);
     expect(blocosDeTranscricao(3600, 10)).toBe(6);
+  });
+});
+
+describe('cut-planner — legenda (SRT)', () => {
+  const fala = [
+    { inicio: 0, fim: 4, texto: 'antes do corte' },
+    { inicio: 8, fim: 12, texto: 'Olha só esse preço' },
+    { inicio: 12, fim: 20, texto: 'Esse é o kit completo com três itens que a galera mais pede na live' },
+    { inicio: 40, fim: 45, texto: 'depois do corte' },
+  ];
+
+  it('inclui só os segmentos do trecho, com tempo relativo ao corte', () => {
+    const srt = srtDoTrecho(fala, 10, 30);
+    expect(srt).toContain('1\n00:00:00,000 --> 00:00:02,000\nOlha só esse preço');
+    expect(srt).toContain('2\n00:00:02,000 --> 00:00:10,000');
+    expect(srt).not.toContain('antes do corte');
+    expect(srt).not.toContain('depois do corte');
+  });
+
+  it('quebra linha longa em duas', () => {
+    const srt = srtDoTrecho(fala, 12, 20);
+    const bloco = srt.trim().split('\n\n')[0].split('\n');
+    expect(bloco.length).toBe(4); // índice, tempo, 2 linhas
+  });
+
+  it('devolve vazio quando não há fala no trecho', () => {
+    expect(srtDoTrecho(fala, 25, 35)).toBe('');
   });
 });

@@ -46,6 +46,10 @@ export class CutClip {
   @Column({ length: 10, default: 'rapido' })
   origin: 'ia' | 'rapido';
 
+  /** A legenda foi queimada de fato neste corte (o job pode ter pedido e o libass falhado). */
+  @Column({ type: 'boolean', default: false })
+  captions: boolean;
+
   @Column({ type: 'text', nullable: true })
   url: string | null;
 

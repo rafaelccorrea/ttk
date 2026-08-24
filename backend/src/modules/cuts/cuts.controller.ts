@@ -110,6 +110,23 @@ export class CutsController {
     return this.cuts.criar(user.id, dto, file);
   }
 
+  @Post('clips/:clipId/multiplier')
+  @ApiOperation({
+    summary: 'Manda um corte pronto para o Multiplicador como gancho, corpo ou CTA',
+  })
+  toMultiplier(
+    @CurrentUser() user: AuthUser,
+    @Param('clipId', ParseUUIDPipe) clipId: string,
+    @Body() body: { role?: string; produto?: string },
+  ) {
+    const role = body?.role;
+    if (role !== 'hook' && role !== 'body' && role !== 'cta') {
+      throw new BadRequestException('Bloco inválido: use hook, body ou cta.');
+    }
+    const produto = typeof body?.produto === 'string' ? body.produto.trim() : undefined;
+    return this.cuts.enviarParaMultiplicador(user.id, clipId, role, produto || undefined);
+  }
+
   @Delete(':id')
   @HttpCode(204)
   @ApiOperation({ summary: 'Apaga o job, os cortes e os arquivos no armazenamento' })
