@@ -51,7 +51,14 @@ import {
 @ApiTags('campaigns')
 @ApiBearerAuth()
 @UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
-@RequiresPlanFeature('campaigns')
+/*
+ * A porta da Fábrica é o MODO AMOSTRA (free): entrar, cadastrar produto,
+ * roteirizar e gerar UMA cena de produto pelo vídeo de cortesia. O que produz
+ * a campanha inteira — gerar tudo, montar, clonar, redublar — pede `campaigns`
+ * (Pro) endpoint a endpoint; a cena avulsa é decidida no serviço, porque a
+ * regra depende da cena (só produto) e do voucher (só enquanto existe).
+ */
+@RequiresPlanFeature('campaigns_sample')
 @Controller('campaigns')
 export class CampaignsController {
   constructor(private readonly campaigns: CampaignsService) {}
@@ -230,6 +237,7 @@ export class CampaignsController {
   }
 
   @Post(':id/clone')
+  @RequiresPlanFeature('campaigns')
   @ApiOperation({ summary: 'Duplica a campanha (mesmo roteiro), opcionalmente com outro apresentador — grátis' })
   clone(
     @CurrentUser() user: AuthUser,
@@ -253,6 +261,7 @@ export class CampaignsController {
   }
 
   @Post(':id/assemble')
+  @RequiresPlanFeature('campaigns')
   @UseInterceptors(SingleFlightInterceptor)
   @ApiOperation({ summary: 'Junta as cenas num único vídeo (não cobra créditos)' })
   assemble(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
@@ -260,6 +269,7 @@ export class CampaignsController {
   }
 
   @Post(':id/render-all')
+  @RequiresPlanFeature('campaigns')
   @UseInterceptors(SingleFlightInterceptor)
   @ApiOperation({
     summary: 'Renderiza todas as cenas que faltam (cobra por cena) e monta o final',
@@ -309,6 +319,7 @@ export class CampaignsController {
   }
 
   @Post('scenes/:sceneId/redub')
+  @RequiresPlanFeature('campaigns')
   @UseInterceptors(SingleFlightInterceptor)
   @ApiOperation({ summary: 'Regrava a narração pt-BR de uma cena pronta (não cobra créditos)' })
   redubScene(

@@ -47,6 +47,9 @@ describe('billing.config — a fronteira da conta gratuita', () => {
         'ai_images',
         'ai_scripts',
         'ai_transcribe',
+        // A Fábrica em modo amostra: roteiro (crédito) + 1 cena de produto
+        // (vídeo de cortesia). O teto é o voucher, um por conta.
+        'campaigns_sample',
         // O painel do copiloto abre no free — o custo é limitado pela
         // própria carteira (10 minutos de cortesia, e só).
         'live_copilot',

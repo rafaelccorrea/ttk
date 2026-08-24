@@ -5,11 +5,15 @@
     <!--
       CSP restritiva: o painel é 100% local e não busca script de lugar nenhum.
       `connect-src` precisa alcançar a API do PikPok (SSE incluso) e nada mais.
+      `img-src` abre as mesmas origens (mais a da hospedagem atual, que é a
+      `API_BASE_PRODUCAO` do `api-client`) só pela foto do produto na lista de
+      fixar — a foto é servida por `GET /media/s3/*` da própria API. Um
+      `PIKPOK_API_URL` apontando para outra origem mostra a lista sem foto.
       Ajuste a origem ao trocar de ambiente, mas não relaxe para `*`.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.pikpok.com.br http://localhost:3000"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.pikpok.com.br https://ivory-spider-116452.hostingersite.com http://localhost:3000; connect-src 'self' https://api.pikpok.com.br http://localhost:3000"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PikPok Copiloto</title>

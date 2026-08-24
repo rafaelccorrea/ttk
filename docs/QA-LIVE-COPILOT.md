@@ -33,7 +33,7 @@ banco quando a tela não basta. Marque ✅/❌ na coluna "OK".
 | Desktop (simulação) | `cd desktop && npm run dev:sim` | backend local (`NODE_ENV=development`) |
 
 Pré-requisitos: migrations aplicadas (`cd backend && npm run migration:run` —
-esperado "No migrations are pending"); conta da equipe em `COMP_ACCOUNT_EMAILS`
+esperado "No migrations are pending"; a mais recente é `AddLiveProductImage`); conta da equipe em `COMP_ACCOUNT_EMAILS`
 (não gasta minutos) **e** uma conta free de teste (ex.: `free.teste@…`).
 
 Consulta de apoio ao banco (no `backend/`):
@@ -76,6 +76,16 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 | 3.4 | Conta **assinante** (qualquer plano) | **Sem** chip/frase de cortesia (`trialAvailable=false` mesmo sem ter usado); frase "cada plano já começa com horas de live inclusas na adesão" | |
 | 3.5 | Tela Analisar Vídeo (`/analisar`) durante transcrição | "Transcrevendo com IA…" | |
 
+## 3b. Site — foto do produto da base (`/live/<base>` → editar produto)
+
+| # | Passo | Esperado | OK |
+|---|---|---|---|
+| 3b.1 | Abrir um produto da base → campo **Foto** → enviar JPG/PNG | Miniatura aparece no diálogo; `live_products.imageUrl` preenchido com URL `/media/s3/live-products/…` (bucket privado, sem expirar) | |
+| 3b.2 | Lista de produtos da base | Miniatura ao lado do nome; sem foto, placeholder neutro | |
+| 3b.3 | "Remover foto" | `imageUrl` volta a `null`; placeholder na lista | |
+| 3b.4 | Arquivo inválido (PDF / >limite) | Recusado com mensagem clara, sem alterar o produto | |
+| 3b.5 | Foto em produto de OUTRA conta (chamar `POST /live/products/:id/photo` com id alheio) | 404/403 — nunca grava | |
+
 ## 4. Adesão, renovação e upgrade (webhook da Stripe — usar conta de teste, cartão real ou evento reenviado)
 
 | # | Passo | Esperado (extrato `live_minute_transactions` + `app_users`) | OK |
@@ -104,7 +114,9 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 | 6.1 | Escolher base pronta → Conectar live | Coluna direita limpa: "precisa de você" com **≤4 cards** (+N aguardando), "fixar produto na live · N — mostrar" **recolhido**, respostas prontas, barra de status | |
 | 6.2 | Banco após ~1 min | Run `conectando → ativa`; extrato com **"10 minutos"** na abertura (bloco mínimo) e 1 min por batimento depois; conta da equipe registra `minutes: 0` | |
 | 6.3 | Chat rodando ~2 min | Respostas com o preço da base; `isQuestion` marcado nas perguntas; escalações nos casos de baixa confiança; audiência (viewers/likes) na run | |
-| 6.4 | "mostrar" em fixar produto → clicar um chip | "Não encontrei este produto no painel… fixe manualmente" (esperado na simulação) e evento `pin_produto · falhou · painel_produtos` | |
+| 6.4 | "mostrar" em fixar produto | **Lista vertical** com rolagem própria (≈220px): miniatura 40×40 (ou inicial do nome quando sem foto), nome em 1 linha, preço em R$ (ou "sem preço"), botão **Fixar** à direita; seção continua recolhida por padrão | |
+| 6.4b | Clicar **Fixar** em um item | Botão vira "Fixando…" e os demais desabilitam; depois "Não encontrei este produto no painel… fixe manualmente" (esperado na simulação) e evento `pin_produto · falhou · painel_produtos` | |
+| 6.4c | Produto com foto enviada pelo site (3b.1) | Miniatura carrega no cockpit (imagem vinda da API — se aparecer quebrada, é CSP `img-src` do renderer) | |
 | 6.5 | Rotação ligada (2 min) | Após 3 falhas seguidas: linha discreta "rotação automática foi pausada" na seção de produtos — **sem** faixa vermelha | |
 | 6.6 | Bloquear um @ do roteiro simulado | Mensagens dele não viram resposta nem entram em `live_chat_messages` | |
 | 6.7 | Encerrar pelo botão do painel | Run `encerrada` com **`endReason='manual'`** (não `erro`); resumo da live na tela | |

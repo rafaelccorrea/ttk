@@ -97,6 +97,16 @@ export class LiveProduct {
   @Column({ type: 'int', nullable: true })
   sourceStartSec: number | null;
 
+  /**
+   * Foto do produto, servida pela rota de mídia do bucket privado (ver
+   * `MediaMirrorService`). É UMA foto, não uma galeria como em `user_products`:
+   * aqui ela só precisa fazer o vendedor reconhecer o item na lista de fixar do
+   * cockpit, no meio da live, sem ler o nome inteiro. Nula é o normal — a
+   * extração da gravação não produz imagem.
+   */
+  @Column({ type: 'text', nullable: true })
+  imageUrl: string | null;
+
   @Column({ type: 'boolean', default: true })
   active: boolean;
 

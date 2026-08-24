@@ -320,6 +320,12 @@ export class BillingService implements OnModuleInit {
      * precisa guardá-lo para o estorno devolver a mesma quantia.
      */
     creditosUnitarios?: number,
+    /**
+     * Se o vídeo de cortesia pode pagar esta cobrança. A Fábrica diz sim (é a
+     * cena do produto dele); o gerador avulso por prompt diz não — um vídeo
+     * de texto genérico não é a demonstração que a cortesia existe para dar.
+     */
+    permitirCortesia = true,
   ): Promise<ChargeReceipt> {
     const usuarios = manager ? manager.getRepository(AppUser) : this.users;
     const lancamentos = manager
@@ -374,6 +380,7 @@ export class BillingService implements OnModuleInit {
      * O saldo não se mexe; o lançamento de valor zero mantém o extrato honesto.
      */
     if (
+      permitirCortesia &&
       action === 'video' &&
       itens === 1 &&
       unitario <= price.credits &&
@@ -439,6 +446,25 @@ export class BillingService implements OnModuleInit {
       }),
     );
     return { cortesia: false };
+  }
+
+  /**
+   * A Fábrica para esta conta: completa (`campaigns`) ou em modo amostra.
+   *
+   * `ativo` = a conta NÃO alcança a campanha inteira; `videoDisponivel` = ela
+   * ainda tem o vídeo de cortesia para gastar numa cena de produto. É o que o
+   * serviço da Fábrica usa para decidir a cena avulsa, e o que a tela usa para
+   * mostrar o que abre e o que pede o Pro.
+   */
+  async modoAmostraDaFabrica(
+    userId: string,
+  ): Promise<{ ativo: boolean; videoDisponivel: boolean }> {
+    const user = await this.users.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException('Usuário não encontrado');
+    if (isCompAccount(user.email) || planAllows(user.plan, 'campaigns')) {
+      return { ativo: false, videoDisponivel: false };
+    }
+    return { ativo: true, videoDisponivel: this.sampleVideoAvailable(user) };
   }
 
   /** Esta conta ainda tem o vídeo de cortesia — e está no degrau que o recebe? */
@@ -754,6 +780,7 @@ export class BillingService implements OnModuleInit {
     fn: () => Promise<T>,
     quantidade = 1,
     creditosUnitarios?: number,
+    permitirCortesia = true,
   ): Promise<{ resultado: T; cortesia: boolean }> {
     const { cortesia } = await this.charge(
       userId,
@@ -761,6 +788,7 @@ export class BillingService implements OnModuleInit {
       quantidade,
       undefined,
       creditosUnitarios,
+      permitirCortesia,
     );
     try {
       return { resultado: await fn(), cortesia };

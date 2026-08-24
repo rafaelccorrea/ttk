@@ -465,6 +465,14 @@ Essencial). Um benefício fixo não vale nada em escala — dez contas são dez 
 com que ninguém opera. Trava: `sampleVideoUsedAt` no usuário, consumido por UPDATE condicional
 em `charge`; geração que falha devolve o voucher (`restoreSampleVideo`), nunca 60 créditos.
 
+**Onde o vídeo é gasto: na Fábrica de Criativos, em modo amostra** (`campaigns_sample`, free).
+A conta cadastra o produto com a foto, paga o roteiro com os créditos de cortesia (8 dos 25) e
+gera **uma cena de produto** — a foto real dele virando vídeo — pelo voucher. Cena com
+apresentador, "gerar tudo", montagem, clone e redublagem seguem `campaigns` (Pro); a regra da
+cena avulsa mora em `renderizarCena`. O gerador avulso por prompt (`/videogen`) **não** usa o
+voucher (`permitirCortesia = false`): um vídeo de texto genérico não é a demonstração que a
+cortesia existe para dar.
+
 ### 8.2 A conta do pior caso
 
 25 créditos × R$ 0,06 (o `worstCostPerCredit()` de hoje, seção 3) = **R$ 1,50**, mais um vídeo

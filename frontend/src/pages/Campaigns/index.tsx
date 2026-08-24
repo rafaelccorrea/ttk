@@ -42,7 +42,7 @@ import {
   alpha,
 } from '@mui/material';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useSaldo } from '@/hooks/useSaldo';
 import { useConfirmacao } from '@/components/ui/ConfirmDialog';
 import { BrandLoader } from '@/components/ui/BrandLoader';
@@ -828,6 +828,27 @@ function Storyboard({
         <Chip label={`${detalhe.creditsSpent} créditos usados`} size="small" />
       </Box>
 
+      {/* Modo amostra: a conta abaixo do Pro gera UMA cena — a do produto —
+          pelo vídeo de cortesia. Dizer isso aqui, antes do clique, é o que
+          separa "presente" de "botão que dá 403". */}
+      {detalhe.amostra?.ativo && (
+        <Alert severity={detalhe.amostra.videoDisponivel ? 'success' : 'info'}>
+          {detalhe.amostra.videoDisponivel ? (
+            <>
+              <strong>Sua primeira cena de produto é por nossa conta.</strong> Gere a cena
+              que anima a foto do seu produto sem gastar créditos. As demais cenas, o vídeo
+              completo e a montagem fazem parte do plano Pro —{' '}
+              <Link to="/planos">veja os planos</Link>.
+            </>
+          ) : (
+            <>
+              Você já usou sua cena de cortesia. Para gerar as outras cenas e montar o vídeo
+              completo, <Link to="/planos">assine o Pro</Link>.
+            </>
+          )}
+        </Alert>
+      )}
+
       {erro && <Alert severity="error">{erro}</Alert>}
 
       {/* Legenda é escolha: quem usa a legenda automática do TikTok acabava
@@ -906,7 +927,7 @@ function Storyboard({
         </Card>
       )}
 
-      {todasProntas && !detalhe.finalVideoUrl && (
+      {todasProntas && !detalhe.finalVideoUrl && !detalhe.amostra?.ativo && (
         <Card variant="outlined">
           <CardContent>
             <Stack spacing={1.5} alignItems="flex-start">
@@ -1034,7 +1055,7 @@ function Storyboard({
       {/* A ação que o vendedor quer é UMA: sair daqui com o vídeo. Renderizar
           cena por cena e depois montar à mão era ele executando o pipeline no
           lugar do produto. */}
-      {faltaRenderizar.length > 0 && (
+      {faltaRenderizar.length > 0 && !detalhe.amostra?.ativo && (
         <Card
           sx={{
             borderColor: 'primary.main',
@@ -1672,7 +1693,11 @@ function Storyboard({
                         // Com a fila ligada é o servidor quem dispara: o
                         // clique aqui duplicaria o pedido da mesma cena.
                         detalhe.renderQueue ||
-                        (!cenaSemPessoa(cena.tipo) && !personaPronta)
+                        (!cenaSemPessoa(cena.tipo) && !personaPronta) ||
+                        // Modo amostra: só a cena de produto, e só com o
+                        // vídeo de cortesia ainda por gastar.
+                        (detalhe.amostra?.ativo === true &&
+                          (!cenaSemPessoa(cena.tipo) || !detalhe.amostra.videoDisponivel))
                       }
                       onClick={() =>
                         acao(() => campaignsService.renderScene(cena.id), {
@@ -1683,9 +1708,20 @@ function Storyboard({
                     >
                       {cena.status === 'renderizando'
                         ? 'Renderizando...'
-                        : `Renderizar cena · ${cena.creditos} créditos`}
+                        : detalhe.amostra?.ativo && cenaSemPessoa(cena.tipo) && detalhe.amostra.videoDisponivel
+                          ? 'Renderizar cena · por nossa conta'
+                          : `Renderizar cena · ${cena.creditos} créditos`}
                     </Button>
                   )}
+                  {cena.status !== 'pronta' &&
+                    detalhe.amostra?.ativo &&
+                    (!cenaSemPessoa(cena.tipo) || !detalhe.amostra.videoDisponivel) && (
+                      <Typography variant="caption" color="text.secondary">
+                        {cenaSemPessoa(cena.tipo)
+                          ? 'Cena de cortesia já usada — disponível no plano Pro.'
+                          : 'Cena com apresentador — disponível no plano Pro.'}
+                      </Typography>
+                    )}
                 </Stack>
               </Grid>
             </Grid>

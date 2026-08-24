@@ -769,6 +769,7 @@ export type PlanFeature =
   | 'multiplier' // multiplicador G×C×A
   | 'live_copilot' // base de conhecimento a partir de live gravada
   | 'campaigns' // campanhas com personas e cenas em vídeo
+  | 'campaigns_sample' // a Fábrica em modo amostra: roteiro + 1 cena de produto (vídeo de cortesia)
   | 'uploads' // guardar arquivo nosso no bucket (foto de produto, avatar)
   | 'ingestion'; // coleta de dados (admin)
 
@@ -835,6 +836,16 @@ export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
   // Campanhas é o construtor de anúncio em vídeo: persona + cenas animadas pelo
   // DoP. Acompanha `ai_videos` porque é o mesmo custo por trás.
   campaigns: 'pro',
+  /*
+   * A Fábrica em MODO AMOSTRA: quem está abaixo do Pro entra, cadastra o
+   * produto (com a foto), paga o roteiro com os créditos de cortesia e gera
+   * UMA cena de produto pelo vídeo de cortesia (`SAMPLE_VIDEOS_PER_ACCOUNT`).
+   * As outras cenas, o "gerar tudo", a montagem, o clone e a redublagem
+   * continuam sendo `campaigns` (Pro). É a demonstração que converte — o
+   * produto DELE virando vídeo — sem abrir a campanha inteira: o teto de custo
+   * é o do voucher, e ele é um por conta.
+   */
+  campaigns_sample: 'free',
   /*
    * Guardar arquivo do usuário no nosso bucket.
    *

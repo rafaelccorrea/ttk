@@ -23,6 +23,7 @@ import {
   type EstadoAtivacao,
   type EstadoConexao,
   type EstadoEnvio,
+  type ProdutoDaLive,
   type SessaoDesktop,
   type TermoDeEnvio,
 } from '../shared/desktop-api';
@@ -219,7 +220,7 @@ export class Copiloto {
   }
 
   /** Os produtos da base conectada — vazio quando não há run em curso. */
-  async listarProdutosDaLive(): Promise<Array<{ id: string; title: string }>> {
+  async listarProdutosDaLive(): Promise<ProdutoDaLive[]> {
     if (!this.baseConectadaId) return [];
     return this.api.listarProdutosDaBase(this.baseConectadaId);
   }

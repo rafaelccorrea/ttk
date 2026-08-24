@@ -5,6 +5,7 @@ import type {
   BaseDeConhecimento,
   CarteiraLive,
   EstadoAtivacao,
+  ProdutoDaLive,
   SessaoDesktop,
 } from '../shared/desktop-api';
 import type {
@@ -348,9 +349,7 @@ export class ApiClient {
    * Os produtos de uma base, no recorte da lista de "fixar na live" — id e
    * título, nada além: preço e detalhe já vivem no painel da web.
    */
-  async listarProdutosDaBase(
-    sessionId: string,
-  ): Promise<Array<{ id: string; title: string }>> {
+  async listarProdutosDaBase(sessionId: string): Promise<ProdutoDaLive[]> {
     try {
       const detalhe = await this.requisitar<LiveSessionDetalhe>(
         'GET',
@@ -358,15 +357,43 @@ export class ApiClient {
       );
       return (detalhe.produtos ?? [])
         .map((p) => {
-          const bruto = p as { id?: unknown; name?: unknown };
+          const bruto = p as {
+            id?: unknown;
+            name?: unknown;
+            priceBrl?: unknown;
+            imageUrl?: unknown;
+          };
+          // `priceBrl` chega como string (coluna `numeric`) — "89.90".
+          const preco = Number(bruto.priceBrl);
           return {
             id: String(bruto.id ?? ''),
             title: String(bruto.name ?? '').trim(),
+            priceBrl:
+              bruto.priceBrl == null || bruto.priceBrl === '' || !Number.isFinite(preco)
+                ? null
+                : preco,
+            imageUrl: this.urlAbsolutaDeMidia(bruto.imageUrl),
           };
         })
         .filter((p) => p.id && p.title);
     } catch {
       return [];
+    }
+  }
+
+  /**
+   * O banco guarda a foto como caminho RELATIVO (`/api/v1/media/s3/...`, ver
+   * `MediaMirrorService`). O renderer não sabe qual é a origem da API — só o
+   * main sabe (`baseUrl`) — então a URL sai daqui já absoluta, pronta para o
+   * `<img>` do cockpit. Uma URL que já é absoluta (CDN) passa como veio.
+   */
+  private urlAbsolutaDeMidia(valor: unknown): string | null {
+    if (typeof valor !== 'string' || !valor.trim()) return null;
+    if (/^https?:\/\//i.test(valor)) return valor;
+    try {
+      return new URL(valor, new URL(this.baseUrl).origin).toString();
+    } catch {
+      return null;
     }
   }
 

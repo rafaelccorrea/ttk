@@ -16,6 +16,7 @@ import {
   transcribeBlocks,
 } from '../billing/billing.config';
 import { BillingService } from '../billing/billing.service';
+import { MediaMirrorService } from '../media/media-mirror.service';
 import { AiService, ProdutoExtraido } from '../studio/ai.service';
 import { TranscriptionService } from '../studio/transcription.service';
 import { AudioChunkerService, FatiaDeAudio } from './audio-chunker.service';
@@ -152,6 +153,8 @@ export class LiveService {
      * correção feita no meio da live só vale na live seguinte.
      */
     private readonly replies: LiveReplyService,
+    /** Só para a foto do produto — ver `adicionarFoto`. */
+    private readonly mirror: MediaMirrorService,
   ) {}
 
   // ---------------------------------------------------------------- sessões
@@ -869,6 +872,41 @@ export class LiveService {
     if (dto.active !== undefined) produto.active = dto.active;
 
     this.replies.invalidarBasesDaSessao(produto.liveSessionId);
+    return this.produtos.save(produto);
+  }
+
+  /**
+   * Troca a foto do produto.
+   *
+   * A foto existe para a lista de "fixar produto" do cockpit: no meio da live
+   * o vendedor acha o item pela imagem. Ela NÃO entra no prompt — por isso não
+   * invalida a base em memória das runs ativas, ao contrário das outras edições.
+   */
+  async adicionarFoto(userId: string, id: string, arquivo: Buffer): Promise<LiveProduct> {
+    const produto = await this.produtos.findOneBy({ id, userId });
+    if (!produto) throw new NotFoundException('Produto não encontrado.');
+
+    // `contain`, como a foto de `user_products`: o produto tem que caber inteiro.
+    const url = await this.mirror.putImage(arquivo, 'live-products', produto.id, 'contain');
+    if (!url) {
+      throw new BadRequestException(
+        'Não foi possível ler a imagem. Envie um JPG, PNG ou WebP.',
+      );
+    }
+    produto.imageUrl = url;
+    return this.produtos.save(produto);
+  }
+
+  /**
+   * Só zera a coluna; o objeto fica no bucket de propósito. A chave no S3 é o
+   * hash do CONTEÚDO (ver `putImage`), então a mesma foto subida em dois
+   * produtos — ou trocada e recolocada — aponta para o mesmo objeto, e apagar
+   * aqui quebraria o outro. Um WebP de ~40KB órfão custa menos que isso.
+   */
+  async removerFoto(userId: string, id: string): Promise<LiveProduct> {
+    const produto = await this.produtos.findOneBy({ id, userId });
+    if (!produto) throw new NotFoundException('Produto não encontrado.');
+    produto.imageUrl = null;
     return this.produtos.save(produto);
   }
 

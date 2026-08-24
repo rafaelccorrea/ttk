@@ -142,6 +142,11 @@ export interface CampaignDetail extends Campaign {
   produto: UserProduct | null;
   persona: Persona | null;
   cenas: CampaignScene[];
+  /**
+   * Modo amostra (conta abaixo do Pro): só a cena de produto é gerada, pelo
+   * vídeo de cortesia, e só enquanto `videoDisponivel`. O resto pede o Pro.
+   */
+  amostra?: { ativo: boolean; videoDisponivel: boolean };
 }
 
 export interface CampaignPricing {

@@ -98,8 +98,8 @@ export function WelcomeModal({ carteira, email }: Props) {
     video?.available
       ? {
           icone: <MovieFilterRoundedIcon />,
-          titulo: '1 vídeo com IA por nossa conta',
-          texto: `Gere um vídeo completo do seu produto sem gastar nada — vale ${video.credits} créditos e é o que a Fábrica faz em escala no plano Pro.`,
+          titulo: '1 cena de vídeo do seu produto, por nossa conta',
+          texto: `Na Fábrica de Criativos: cadastre o produto com a foto, deixe a IA roteirizar e veja a foto dele virar vídeo — vale ${video.credits} créditos, sem gastar nada.`,
         }
       : null,
     {
@@ -168,11 +168,13 @@ export function WelcomeModal({ carteira, email }: Props) {
           variant="contained"
           size="large"
           component={Link}
-          to={video?.available ? '/prompts' : '/estudio'}
+          // O vídeo grátis é gasto na Fábrica: produto com a foto DELE, roteiro
+          // e uma cena de produto — não um prompt genérico.
+          to={video?.available ? '/campanhas' : '/estudio'}
           onClick={fechar}
           startIcon={video?.available ? <MovieFilterRoundedIcon /> : <AutoAwesomeRoundedIcon />}
         >
-          {video?.available ? 'Gerar meu vídeo grátis' : 'Começar pelo roteiro'}
+          {video?.available ? 'Ver meu produto em vídeo' : 'Começar pelo roteiro'}
         </Button>
         <Button fullWidth color="inherit" onClick={fechar}>
           Entendi, vou explorar

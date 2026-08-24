@@ -36,7 +36,7 @@ Esta é a frase que decide tudo o que vem abaixo, e ela separa os dois custos do
 |---|---|---|
 | Como custa | por consulta ao fornecedor | por chamada, e a chamada já é medida em crédito |
 | Tem teto natural? | **não** | **sim: o saldo** |
-| No gratuito | só a **amostra** fixa | **abertas**, com 25 créditos de cortesia + **1 vídeo com IA** de cortesia + **10 minutos de Live Copilot** (painel) de cortesia, exclusivos do free |
+| No gratuito | só a **amostra** fixa | **abertas**, com 25 créditos de cortesia + **1 cena de produto na Fábrica** pelo vídeo de cortesia (`campaigns_sample`) + **10 minutos de Live Copilot** (painel) de cortesia, exclusivos do free |
 
 Abrir o roteiro, a análise, a transcrição e a imagem para quem não paga não abre torneira
 nenhuma: o teto é o saldo, o saldo é concedido uma vez e não renova. E é o que faz a conta

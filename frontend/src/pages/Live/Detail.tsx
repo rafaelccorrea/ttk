@@ -39,7 +39,7 @@ import { BrandLoader } from '@/components/ui/BrandLoader';
 import { useConfirmacao } from '@/components/ui/ConfirmDialog';
 import { CurrencyField } from '@/components/ui/CurrencyField';
 import { ScrollX } from '@/components/ui/ScrollX';
-import { CREDITS_CHANGED_EVENT } from '@/services/api';
+import { CREDITS_CHANGED_EVENT, resolveApiUrl } from '@/services/api';
 import { formatMoney } from '@/utils/format';
 import {
   FaqInput,
@@ -82,18 +82,103 @@ function deLista(itens: unknown[] | undefined): string {
 }
 
 // ---------------------------------------------------------------- produtos
+/**
+ * Miniatura quadrada do produto, ou um quadrado neutro com a inicial quando
+ * não há foto. Serve na tabela e no diálogo — o mesmo desenho que o cockpit
+ * do app mostra na lista de fixar, para o vendedor reconhecer o item nos dois.
+ */
+function MiniaturaDoProduto({
+  produto,
+  tamanho = 40,
+}: {
+  produto: Pick<LiveProduct, 'name' | 'imageUrl'>;
+  tamanho?: number;
+}) {
+  return (
+    <Box
+      sx={{
+        width: tamanho,
+        height: tamanho,
+        flex: '0 0 auto',
+        borderRadius: 1.5,
+        overflow: 'hidden',
+        border: '1px solid',
+        borderColor: 'divider',
+        bgcolor: produto.imageUrl ? '#fff' : 'action.hover',
+        display: 'grid',
+        placeItems: 'center',
+        fontWeight: 800,
+        color: 'text.secondary',
+        fontSize: tamanho * 0.4,
+        userSelect: 'none',
+      }}
+    >
+      {produto.imageUrl ? (
+        <Box
+          component="img"
+          src={resolveApiUrl(produto.imageUrl)}
+          alt=""
+          sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+      ) : (
+        (produto.name.trim().charAt(0) || '?').toUpperCase()
+      )}
+    </Box>
+  );
+}
+
 function ProdutoDialog({
   aberto,
   produto,
   onFechar,
   onSalvar,
+  onFotoAlterada,
 }: {
   aberto: boolean;
   /** `null` = cadastro novo, à mão. */
   produto: LiveProduct | null;
   onFechar: () => void;
   onSalvar: (dto: ProdutoInput & { name: string }) => Promise<void>;
+  /** A foto grava na hora, fora do "Salvar" — a lista de fora precisa saber. */
+  onFotoAlterada: (produto: LiveProduct) => void;
 }) {
+  // A foto é gravada direto no produto (precisa do id): num cadastro novo o
+  // campo nem aparece — salva primeiro, depois abre no lápis e põe a foto.
+  const [foto, setFoto] = useState<string | null>(null);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const inputFoto = useRef<HTMLInputElement | null>(null);
+
+  async function trocarFoto(arquivo: File | undefined) {
+    if (!arquivo || !produto) return;
+    setEnviandoFoto(true);
+    setErro(null);
+    try {
+      const salvo = await liveService.addPhoto(produto.id, arquivo);
+      setFoto(salvo.imageUrl ?? null);
+      onFotoAlterada(salvo);
+    } catch (error) {
+      setErro(mensagemDeErro(error));
+    } finally {
+      setEnviandoFoto(false);
+      if (inputFoto.current) inputFoto.current.value = '';
+    }
+  }
+
+  async function removerFoto() {
+    if (!produto) return;
+    setEnviandoFoto(true);
+    setErro(null);
+    try {
+      const salvo = await liveService.removePhoto(produto.id);
+      setFoto(null);
+      onFotoAlterada(salvo);
+    } catch (error) {
+      setErro(mensagemDeErro(error));
+    } finally {
+      setEnviandoFoto(false);
+    }
+  }
+
   const [nome, setNome] = useState('');
   const [preco, setPreco] = useState<number | null>(null);
   const [variacoes, setVariacoes] = useState('');
@@ -115,6 +200,7 @@ function ProdutoDialog({
     setPromo(produto?.promo ?? '');
     setDetalhes(produto?.details ?? '');
     setApelidos(deLista(produto?.aliases));
+    setFoto(produto?.imageUrl ?? null);
     setErro(null);
   }, [aberto, produto]);
 
@@ -153,6 +239,47 @@ function ProdutoDialog({
       </DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2.5} mt={0.5}>
+          {produto ? (
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <MiniaturaDoProduto produto={{ name: nome, imageUrl: foto }} tamanho={64} />
+              <Box>
+                <Typography variant="body2" fontWeight={700}>
+                  Foto do produto
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Aparece na lista de fixar do app, para você achar o produto no
+                  meio da live.
+                </Typography>
+                <Stack direction="row" spacing={1} mt={0.5}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={enviandoFoto || salvando}
+                    onClick={() => inputFoto.current?.click()}
+                  >
+                    {enviandoFoto ? 'Enviando…' : foto ? 'Trocar' : 'Adicionar'}
+                  </Button>
+                  {foto && (
+                    <Button
+                      size="small"
+                      color="inherit"
+                      disabled={enviandoFoto || salvando}
+                      onClick={() => void removerFoto()}
+                    >
+                      Remover
+                    </Button>
+                  )}
+                </Stack>
+                <input
+                  ref={inputFoto}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => void trocarFoto(e.target.files?.[0])}
+                />
+              </Box>
+            </Stack>
+          ) : null}
           <TextField
             label="Nome do produto"
             value={nome}
@@ -719,7 +846,10 @@ export function LiveDetailPage() {
                   {sessao.produtos.map((produto) => (
                     <TableRow key={produto.id} sx={{ opacity: produto.active ? 1 : 0.55 }}>
                       <TableCell>
-                        <Typography fontWeight={700}>{produto.name}</Typography>
+                        <Stack direction="row" spacing={1.25} alignItems="center">
+                          <MiniaturaDoProduto produto={produto} />
+                          <Typography fontWeight={700}>{produto.name}</Typography>
+                        </Stack>
                         <Box mt={0.5}>
                           <OrigemChip origin={produto.origin} confidence={produto.confidence} />
                         </Box>
@@ -934,6 +1064,20 @@ export function LiveDetailPage() {
         produto={produtoEditando}
         onFechar={() => setProdutoDialogo(false)}
         onSalvar={salvarProduto}
+        // Só a foto mudou: troca a linha na tabela sem recarregar a sessão
+        // inteira (o polling faria isso de qualquer jeito, mas depois).
+        onFotoAlterada={(salvo) =>
+          setSessao((atual) =>
+            atual
+              ? {
+                  ...atual,
+                  produtos: atual.produtos.map((p) =>
+                    p.id === salvo.id ? { ...p, imageUrl: salvo.imageUrl ?? null } : p,
+                  ),
+                }
+              : atual,
+          )
+        }
       />
       <FaqDialog
         aberto={faqDialogo}

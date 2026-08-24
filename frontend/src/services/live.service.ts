@@ -53,6 +53,8 @@ export interface LiveProduct {
   confidence: string | null;
   origin: LiveOrigin;
   sourceStartSec: number | null;
+  /** Caminho relativo da foto (passe por `resolveApiUrl`); nulo é o normal. */
+  imageUrl?: string | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -346,6 +348,18 @@ export const liveService = {
 
   deleteProduct: (id: string) =>
     api.delete(`/live/products/${id}`).then(() => undefined),
+
+  /** Troca a foto do produto — uma só, é a que o app mostra na lista de fixar. */
+  addPhoto: (productId: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api
+      .post<LiveProduct>(`/live/products/${productId}/photo`, form)
+      .then((r) => r.data);
+  },
+
+  removePhoto: (productId: string) =>
+    api.delete<LiveProduct>(`/live/products/${productId}/photo`).then((r) => r.data),
 
   // -------------------------------------------------------------------- FAQ
   createFaq: (

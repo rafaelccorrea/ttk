@@ -150,6 +150,10 @@ export interface AvisoDoTikTok {
 export interface ProdutoDaLive {
   id: string;
   title: string;
+  /** Em reais; `null` quando a base não tem preço. */
+  priceBrl: number | null;
+  /** URL ABSOLUTA da foto (o main já resolveu a origem da API), ou `null`. */
+  imageUrl: string | null;
 }
 
 export interface ConfiguracoesCopiloto {

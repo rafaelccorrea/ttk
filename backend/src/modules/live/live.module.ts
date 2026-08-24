@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FfmpegRunner } from '../../common/media/ffmpeg-runner';
 import { BillingModule } from '../billing/billing.module';
+import { MediaModule } from '../media/media.module';
 import { StudioModule } from '../studio/studio.module';
 import { TranscriptionService } from '../studio/transcription.service';
 import { AppUser } from '../users/entities/app-user.entity';
@@ -68,6 +69,9 @@ import { LiveService } from './live.service';
     UsersModule,
     BillingModule,
     StudioModule,
+    // A foto do produto vai para o bucket privado pelo mesmo espelho que as
+    // fotos de `user_products` — é a URL servida por `GET /media/s3/*`.
+    MediaModule,
   ],
   controllers: [
     LiveController,

@@ -112,10 +112,15 @@ export class VideogenService {
    */
   async generate(userId: string, dto: GenerateMediaDto): Promise<GeneratedMedia> {
     // Cobra antes de submeter; se a Higgsfield recusar, o estorno é automático.
+    // Sem cortesia aqui: o vídeo grátis é gasto na Fábrica, com a foto do
+    // produto do vendedor — não num prompt genérico.
     const { resultado: submitted, cortesia } = await this.billing.withChargeReceipt(
       userId,
       dto.kind,
       () => this.higgsfield.submitImage(dto.prompt, dto.aspectRatio ?? '9:16'),
+      1,
+      undefined,
+      false,
     );
     this.registrarCusto(userId, dto.kind);
     return this.media.save(

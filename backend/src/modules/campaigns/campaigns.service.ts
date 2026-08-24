@@ -1024,7 +1024,11 @@ export class CampaignsService {
       creditos: this.creditosDaCena(c, campanha.comoUsa),
       creditosPadrao: this.creditosDaCena({ ...c, modelo: null }, campanha.comoUsa),
     }));
-    return { ...campanha, produto, persona, cenas: cenasComModelo };
+    // O que esta conta pode fazer AQUI: tudo, ou só a cena de produto pelo
+    // vídeo de cortesia. A tela esconde o que pede o Pro em vez de mostrar
+    // um botão que responde 403.
+    const amostra = await this.billing.modoAmostraDaFabrica(userId);
+    return { ...campanha, produto, persona, cenas: cenasComModelo, amostra };
   }
 
   /**
@@ -1581,6 +1585,31 @@ export class CampaignsService {
     if (cena.status === 'pronta') return cena;
 
     const campanha = await this.campanhas.findOneByOrFail({ id: cena.campaignId });
+
+    /*
+     * Modo amostra (abaixo do Pro): a Fábrica gera UMA cena, e é a do
+     * produto — a foto real dele virando vídeo é a demonstração que vende o
+     * plano. A cobrança abaixo passa pelo vídeo de cortesia (`charge` de
+     * `video` sem débito, uma vez por conta); sem o voucher, o `charge` já
+     * recusaria por plano, mas a mensagem de lá fala de "vídeo com IA" e aqui
+     * o vendedor precisa entender O QUE abre e o que pede o Pro.
+     */
+    const amostra = await this.billing.modoAmostraDaFabrica(userId);
+    if (amostra.ativo) {
+      if (!cenaSemPessoa(cena.tipo)) {
+        throw new HttpException(
+          'No modo amostra a Fábrica gera só a cena do produto — a que anima a foto dele. ' +
+            'Assine o Pro em Planos & Créditos para gerar a campanha inteira.',
+          403,
+        );
+      }
+      if (!amostra.videoDisponivel) {
+        throw new HttpException(
+          'Seu vídeo de cortesia já foi usado. Assine o Pro em Planos & Créditos para gerar mais cenas.',
+          403,
+        );
+      }
+    }
 
     /*
      * Qual IA anima esta cena: a forçada na cena (experimento) ou o padrão do

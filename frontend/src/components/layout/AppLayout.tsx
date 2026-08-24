@@ -111,7 +111,9 @@ const NAV_SECTIONS: NavSection[] = [
         to: '/campanhas',
         label: 'Fábrica de Criativos',
         icon: <TheatersRoundedIcon />,
-        feature: 'campaigns',
+        // Abre no free em modo amostra (1 cena de produto pelo vídeo de
+        // cortesia); o cadeado por cena é decidido dentro da tela.
+        feature: 'campaigns_sample',
       },
       {
         to: '/estudio',

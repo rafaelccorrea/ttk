@@ -148,7 +148,7 @@ export function AppRoutes() {
             <Route
               path="/campanhas/:id?"
               element={
-                <PlanGate feature="campaigns">
+                <PlanGate feature="campaigns_sample">
                   <CampaignsPage />
                 </PlanGate>
               }

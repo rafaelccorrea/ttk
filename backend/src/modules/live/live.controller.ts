@@ -209,6 +209,36 @@ export class LiveController {
     return this.live.atualizarProduto(user.id, id, dto);
   }
 
+  /**
+   * Foto do produto — mesmos limites e validação das fotos de `user_products`
+   * (`CampaignsController.addPhoto`): teto de 8MB, e quem valida de verdade é
+   * a decodificação da imagem, dentro do espelhamento.
+   */
+  @Post('products/:id/photo')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({ summary: 'Troca a foto do produto (aparece na lista de fixar do app)' })
+  addPhoto(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: 8 * 1024 * 1024 })],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Envie uma imagem do produto.');
+    }
+    return this.live.adicionarFoto(user.id, id, file.buffer);
+  }
+
+  @Delete('products/:id/photo')
+  @ApiOperation({ summary: 'Remove a foto do produto' })
+  removePhoto(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.live.removerFoto(user.id, id);
+  }
+
   @Delete('products/:id')
   @HttpCode(204)
   @ApiOperation({ summary: 'Remove um produto da base' })

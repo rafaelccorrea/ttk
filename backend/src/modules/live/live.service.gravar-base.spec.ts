@@ -42,6 +42,7 @@ describe('LiveService.gravarBase', () => {
       undefined as never, // ai
       undefined as never, // billing
       { invalidarBasesDaSessao: () => undefined } as never, // replies
+      undefined as never, // mirror (só a foto do produto usa)
     );
 
     return { service, salvos };

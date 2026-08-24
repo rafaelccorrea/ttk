@@ -18,6 +18,7 @@ import { useFluxoDaLive } from '../hooks/useFluxoDaLive';
 import { cores } from '../theme/theme';
 import { LINKS } from '../links';
 import { SEM_PONTE, obterPonte } from '../ponte';
+import { formatarPrecoBrl, iniciaisDe } from '../produtos';
 
 /**
  * Tela 3 — o cockpit, ao lado da BrowserView do TikTok.
@@ -554,22 +555,96 @@ export function Cockpit({
           </Box>
           {mostrarProdutos ? (
             <>
+              {/*
+                Lista vertical com rolagem própria: foto, nome e preço são o
+                que o vendedor usa para RECONHECER o produto no meio da live —
+                em chip só cabia o nome, e nome de catálogo ninguém decora.
+                Continua leve: o teto de altura é da lista, não da coluna.
+              */}
               <Stack
-                direction="row"
-                flexWrap="wrap"
-                useFlexGap
-                spacing={0.75}
-                sx={{ mt: 0.5, maxHeight: 96, overflowY: 'auto' }}
+                spacing={0.25}
+                sx={{ mt: 0.5, maxHeight: 220, overflowY: 'auto', pr: 0.5 }}
               >
-                {produtos.map((p) => (
-                  <Chip
-                    key={p.id}
-                    label={fixando === p.title ? `Fixando…` : p.title}
-                    size="small"
-                    disabled={fixando !== null}
-                    onClick={() => void fixar(p.title)}
-                  />
-                ))}
+                {produtos.map((p) => {
+                  const fixandoEste = fixando === p.title;
+                  return (
+                    <Box
+                      key={p.id}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        py: 0.5,
+                        borderRadius: 1,
+                        '&:hover': { bgcolor: alpha(cores.ciano, 0.06) },
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          flex: '0 0 auto',
+                          borderRadius: 1,
+                          overflow: 'hidden',
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          bgcolor: p.imageUrl ? '#fff' : alpha(cores.ciano, 0.12),
+                          display: 'grid',
+                          placeItems: 'center',
+                          fontWeight: 800,
+                          fontSize: 16,
+                          color: cores.ciano,
+                          userSelect: 'none',
+                        }}
+                      >
+                        {p.imageUrl ? (
+                          <Box
+                            component="img"
+                            src={p.imageUrl}
+                            alt=""
+                            sx={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              display: 'block',
+                            }}
+                          />
+                        ) : (
+                          iniciaisDe(p.title)
+                        )}
+                      </Box>
+                      <Box sx={{ flex: '1 1 auto', minWidth: 0 }}>
+                        <Typography
+                          variant="body2"
+                          title={p.title}
+                          sx={{
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {p.title}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          color={p.priceBrl == null ? 'text.disabled' : 'text.secondary'}
+                        >
+                          {formatarPrecoBrl(p.priceBrl)}
+                        </Typography>
+                      </Box>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={fixando !== null}
+                        onClick={() => void fixar(p.title)}
+                        sx={{ flex: '0 0 auto', minWidth: 72, py: 0.25 }}
+                      >
+                        {fixandoEste ? 'Fixando…' : 'Fixar'}
+                      </Button>
+                    </Box>
+                  );
+                })}
               </Stack>
               {pinAviso ? (
                 <Typography
