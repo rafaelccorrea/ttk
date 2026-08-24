@@ -1,0 +1,119 @@
+import {
+  ajustarAoSilencio,
+  blocosDeTranscricao,
+  planejarRapido,
+  sobrepoe,
+  validarSugestoes,
+} from './cut-planner';
+
+describe('cut-planner — modo rápido', () => {
+  it('espalha as janelas pela fonte inteira, do começo ao fim', () => {
+    const cortes = planejarRapido(600, 5, 30, 60);
+    expect(cortes).toHaveLength(5);
+    expect(cortes[0].inicio).toBe(0);
+    expect(cortes[4].fim).toBe(600);
+    for (const c of cortes) {
+      expect(c.fim - c.inicio).toBeGreaterThanOrEqual(30);
+      expect(c.fim - c.inicio).toBeLessThanOrEqual(60);
+      expect(c.origem).toBe('rapido');
+    }
+  });
+
+  it('puxa as bordas para o silêncio mais próximo', () => {
+    // Alvo de 45 s; há um silêncio em 47–48 s, dentro da folga de 15 s.
+    const cortes = planejarRapido(600, 1, 30, 60, [{ inicio: 47, fim: 48 }]);
+    expect(cortes[0].fim).toBe(47.5);
+  });
+
+  it('nunca estoura a faixa mesmo com silêncio longe', () => {
+    const cortes = planejarRapido(600, 1, 30, 60, [{ inicio: 100, fim: 101 }]);
+    expect(cortes[0].fim - cortes[0].inicio).toBe(45);
+  });
+
+  it('não sobrepõe os trechos que a IA já escolheu', () => {
+    const daIa = [{ inicio: 0, fim: 45 }];
+    const cortes = planejarRapido(600, 3, 30, 60, [], daIa);
+    expect(cortes).toHaveLength(3);
+    for (const c of cortes) expect(sobrepoe(c, daIa)).toBe(false);
+  });
+
+  it('numa fonte mais curta que o alvo, entrega o que cabe', () => {
+    const cortes = planejarRapido(20, 3, 15, 30);
+    expect(cortes.length).toBeGreaterThanOrEqual(1);
+    expect(cortes[0].inicio).toBe(0);
+    expect(cortes[0].fim).toBe(20);
+  });
+});
+
+describe('cut-planner — sugestões da IA', () => {
+  it('aceita trechos válidos com título e gancho', () => {
+    const aceitos = validarSugestoes(
+      [{ inicio: 10, fim: 50, titulo: ' Preço  imbatível ', gancho: 'Olha isso', motivo: 'oferta' }],
+      600,
+      5,
+      30,
+      60,
+    );
+    expect(aceitos).toEqual([
+      {
+        inicio: 10,
+        fim: 50,
+        title: 'Preço imbatível',
+        hook: 'Olha isso',
+        reason: 'oferta',
+        origem: 'ia',
+      },
+    ]);
+  });
+
+  it('descarta trecho fora da fonte, invertido, fora da faixa ou sobreposto', () => {
+    const aceitos = validarSugestoes(
+      [
+        { inicio: 10, fim: 50 },
+        { inicio: 590, fim: 700 }, // passa do fim
+        { inicio: 80, fim: 70 }, // invertido
+        { inicio: 100, fim: 300 }, // 200 s > máx 60
+        { inicio: 20, fim: 55 }, // sobrepõe o primeiro
+        { inicio: 'x', fim: 5 }, // lixo
+        { inicio: 200, fim: 240 },
+      ],
+      600,
+      10,
+      30,
+      60,
+    );
+    expect(aceitos.map((a) => [a.inicio, a.fim])).toEqual([
+      [10, 50],
+      [200, 240],
+    ]);
+  });
+
+  it('para na quantidade pedida', () => {
+    const aceitos = validarSugestoes(
+      [
+        { inicio: 0, fim: 40 },
+        { inicio: 100, fim: 140 },
+        { inicio: 200, fim: 240 },
+      ],
+      600,
+      2,
+      30,
+      60,
+    );
+    expect(aceitos).toHaveLength(2);
+  });
+});
+
+describe('cut-planner — utilitários', () => {
+  it('ajustarAoSilencio devolve o alvo quando nada está na folga', () => {
+    expect(ajustarAoSilencio(45, [], 10)).toBe(45);
+    expect(ajustarAoSilencio(45, [{ inicio: 70, fim: 71 }], 10)).toBe(45);
+  });
+
+  it('blocos de transcrição arredondam para cima e nunca dão zero', () => {
+    expect(blocosDeTranscricao(0, 10)).toBe(1);
+    expect(blocosDeTranscricao(600, 10)).toBe(1);
+    expect(blocosDeTranscricao(601, 10)).toBe(2);
+    expect(blocosDeTranscricao(3600, 10)).toBe(6);
+  });
+});

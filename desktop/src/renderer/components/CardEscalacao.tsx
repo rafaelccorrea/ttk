@@ -13,6 +13,7 @@ import {
 import { useState } from 'react';
 import type { Escalacao } from '../hooks/useFluxoDaLive';
 import { brilho, cores } from '../theme/theme';
+import { BotaoBloquearAutor } from './BotaoBloquearAutor';
 
 /**
  * Uma pergunta que o copiloto NÃO sustentou.
@@ -34,6 +35,7 @@ export function CardEscalacao({
   aoResponder,
   aoDescartar,
   aoSalvarNaBase,
+  aoBloquearAutor,
 }: {
   readonly escalacao: Escalacao;
   readonly rascunho: string | null;
@@ -46,6 +48,10 @@ export function CardEscalacao({
   readonly aoResponder: () => void;
   readonly aoDescartar: () => void;
   readonly aoSalvarNaBase: (replyId: string, texto: string) => Promise<void>;
+  /** Recebe só o hash do autor; o @ é resolvido no processo principal. */
+  readonly aoBloquearAutor: (
+    authorHash: string,
+  ) => Promise<{ ok: boolean; motivo?: string }>;
 }): JSX.Element {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(rascunho ?? '');
@@ -133,6 +139,14 @@ export function CardEscalacao({
         >
           {emIdade(escalacao.idadeMs)}
         </Typography>
+        <Box sx={{ flex: 1 }} />
+        {/*
+          O card FICA depois do bloqueio (vira o chip "autor bloqueado") em vez
+          de sumir: a pergunta ainda pode ser legítima — bloquear é sobre as
+          PRÓXIMAS mensagens da pessoa. Sumir seria decidir pelo vendedor que
+          ela não merecia resposta, e ele resolve isso no Descartar.
+        */}
+        <BotaoBloquearAutor authorHash={escalacao.authorHash} aoBloquear={aoBloquearAutor} />
       </Stack>
 
       <Typography variant="subtitle1" fontWeight={800} sx={{ lineHeight: 1.35 }}>

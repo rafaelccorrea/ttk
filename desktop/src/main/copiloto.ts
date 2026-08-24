@@ -4,7 +4,7 @@ import { ApiClient } from './api-client';
 import { MODO_SIMULACAO, SimuladorChatSource } from './chat-simulado';
 import { EnviadorDeComentarios } from './comment-sender';
 import { fixarProduto, RotadorDeProdutos } from './product-pinner';
-import { usuarioEstaBloqueado } from './tiktok-chat';
+import { adicionarBloqueado, usuarioEstaBloqueado } from './tiktok-chat';
 import { DetectorDeAviso, scriptDeEncerrar } from './warning-detector';
 import { AgregadorDeMetricas } from './metricas';
 import { AcumuladorDeLote, JANELA_LOTE_MS } from './rate-limiter';
@@ -960,6 +960,34 @@ export class Copiloto {
     _desfecho: 'respondida' | 'descartada',
   ): void {
     // Sem efeito no backend por ora — ver o comentário acima.
+  }
+
+  /**
+   * O "bloquear autor" do card, com um clique.
+   *
+   * O painel só tem o hash; o @ mora no mapa em memória do anonimizador desta
+   * run e é resolvido AQUI, no processo principal — ele entra na lista de
+   * bloqueio e nunca atravessa o IPC de volta (nem o log: só o hash aparece).
+   * Sem nome é porque a run atual nunca viu esse hash: mensagem de antes da
+   * reconexão, de outra live, ou já podada do mapa. O bloqueio é local e
+   * reversível em Ajustes, por isso não pede confirmação.
+   */
+  bloquearAutor(authorHash: string): { ok: boolean; motivo?: string } {
+    const nome = authorHash ? this.anonimizador?.nomeDe(authorHash) : null;
+    if (!nome) {
+      console.info(`[chat] bloqueio pedido para hash desconhecido ${authorHash.slice(0, 12)}…`);
+      return {
+        ok: false,
+        motivo: 'Não achei quem escreveu (a mensagem é antiga ou de outra live).',
+      };
+    }
+    const atuais = this.lerConfiguracoes();
+    this.salvarConfiguracoes({
+      ...atuais,
+      usuariosBloqueados: adicionarBloqueado(atuais.usuariosBloqueados, nome),
+    });
+    console.info(`[chat] autor bloqueado pelo card (hash ${authorHash.slice(0, 12)}…)`);
+    return { ok: true };
   }
 
   // --------------------------------------------------------- configurações

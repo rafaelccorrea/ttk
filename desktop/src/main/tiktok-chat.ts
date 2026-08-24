@@ -114,6 +114,20 @@ export function usuarioEstaBloqueado(
 }
 
 /**
+ * A lista de bloqueio com mais um @, já na forma canônica e sem repetição.
+ *
+ * Pura de propósito: é o que o "bloquear autor" do card chama, e o mesmo @
+ * chegando de novo (o vendedor clicou em dois cards da mesma pessoa) não pode
+ * virar duas linhas em Ajustes. Nome vazio devolve a lista como está.
+ */
+export function adicionarBloqueado(lista: string[], nome: string): string[] {
+  const novo = normalizarUsuario(nome);
+  const atuais = lista.map(normalizarUsuario).filter(Boolean);
+  if (!novo || atuais.includes(novo)) return atuais;
+  return [...atuais, novo];
+}
+
+/**
  * Id sintético e ESTÁVEL para o `questionNew`, que chega sem `msgId`.
  *
  * O backend deduplica por `externalMessageId`, e a reconexão reenvia o

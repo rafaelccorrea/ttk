@@ -54,7 +54,10 @@ const discoDeLayout = new Store<{ larguraPainel?: number }>({ name: 'layout' });
 
 function larguraDoPainel(larguraDaJanela: number): number {
   const pedida = discoDeLayout.get('larguraPainel') ?? LARGURA_PAINEL_PADRAO;
-  const maxima = Math.round(larguraDaJanela * FRACAO_MAXIMA_DO_PAINEL);
+  // Janela sem moldura + maximizada faz o Electron devolver bounds errados às
+  // vezes (viu-se 199px para uma janela de 1920). Um teto menor que o mínimo
+  // é sinal de medida ruim: nesse caso o teto é ignorado e vale o pedido.
+  const maxima = Math.max(LARGURA_PAINEL_MINIMA, Math.round(larguraDaJanela * FRACAO_MAXIMA_DO_PAINEL));
   return Math.max(LARGURA_PAINEL_MINIMA, Math.min(maxima, Math.round(pedida)));
 }
 
@@ -680,18 +683,24 @@ function registrarIpc(): void {
     copiloto.pausarEnvio(Boolean(pausado)),
   );
 
-  ipcMain.handle('layout:painel:ler', () => {
+  // O renderer manda a própria innerWidth: é a medida em que o painel de fato
+  // é desenhado, e não sofre do bug de bounds da janela sem moldura.
+  const larguraDaJanela = (informada: unknown): number => {
     const j = janelaPrincipal;
-    return larguraDoPainel(j ? j.getContentBounds().width : LARGURA_INICIAL);
-  });
-  ipcMain.handle('layout:painel', (_evento, largura: unknown) => {
+    const doElectron = j ? j.getContentBounds().width : 0;
+    const doRenderer = Number(informada);
+    return Math.max(doElectron, Number.isFinite(doRenderer) ? doRenderer : 0, LARGURA_INICIAL);
+  };
+  ipcMain.handle('layout:painel:ler', (_evento, janelaW: unknown) =>
+    larguraDoPainel(larguraDaJanela(janelaW)),
+  );
+  ipcMain.handle('layout:painel', (_evento, largura: unknown, janelaW: unknown) => {
     // O renderer é conteúdo: número fora dos limites vira o limite, lixo vira
     // o padrão — e o disco só guarda o que a view de fato usou.
     const n = Number(largura);
     discoDeLayout.set('larguraPainel', Number.isFinite(n) ? n : LARGURA_PAINEL_PADRAO);
     reposicionarView?.();
-    const j = janelaPrincipal;
-    return larguraDoPainel(j ? j.getContentBounds().width : LARGURA_INICIAL);
+    return larguraDoPainel(larguraDaJanela(janelaW));
   });
   ipcMain.handle('layout:painel:arrastando', (_evento, arrastando: unknown) => {
     arrastandoDivisoria = arrastando === true;
@@ -707,6 +716,10 @@ function registrarIpc(): void {
   ipcMain.handle('produtos:fixar', (_evento, titulo: unknown) =>
     // O renderer é conteúdo: título vira string curta aqui, não lá.
     copiloto.fixarProduto(String(titulo ?? '').slice(0, 300)),
+  );
+  ipcMain.handle('autor:bloquear', (_evento, authorHash: unknown) =>
+    // Só o hash entra e só `{ ok, motivo }` sai: o @ resolvido fica no main.
+    copiloto.bloquearAutor(String(authorHash ?? '').slice(0, 128)),
   );
 }
 

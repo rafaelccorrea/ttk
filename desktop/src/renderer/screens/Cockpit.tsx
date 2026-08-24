@@ -572,6 +572,7 @@ export function Cockpit({
                       aoSalvarNaBase={(replyId, texto) =>
                         ponte.salvarNaBase(replyId, texto)
                       }
+                      aoBloquearAutor={(hash) => ponte.bloquearAutor(hash)}
                       aoCopiar={(texto) => {
                         if (rascunho) void ponte.copiarResposta(rascunho.id, texto);
                         else void ponte.copiarTexto(texto);
@@ -635,6 +636,7 @@ export function Cockpit({
                     key={r.id}
                     resposta={r}
                     aoCopiar={() => ponte.copiarResposta(r.id, r.text)}
+                    aoBloquearAutor={(hash) => ponte.bloquearAutor(hash)}
                   />
                 ))}
               </Stack>

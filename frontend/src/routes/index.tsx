@@ -28,6 +28,7 @@ import { LiveDetailPage } from '@/pages/Live/Detail';
 import { LiveRunPage } from '@/pages/Live/RunDetail';
 import { LoginPage } from '@/pages/Login';
 import { MultiplierPage } from '@/pages/Multiplier';
+import { CutsPage } from '@/pages/Cuts';
 import { PlansPage } from '@/pages/Plans';
 import { ProfilePage } from '@/pages/Profile';
 import { ReferralPage } from '@/pages/Referral';
@@ -162,6 +163,15 @@ export function AppRoutes() {
               element={
                 <PlanGate feature="multiplier">
                   <MultiplierPage />
+                </PlanGate>
+              }
+            />
+            {/* Cortes é Pro no backend (`cuts`), mesma régua do Multiplicador. */}
+            <Route
+              path="/cortes"
+              element={
+                <PlanGate feature="cuts">
+                  <CutsPage />
                 </PlanGate>
               }
             />

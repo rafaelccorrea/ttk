@@ -445,6 +445,11 @@ export class LiveRunController {
         this.eventos.publicar(runId, 'reply', {
           id: resposta.id,
           chatMessageId: resposta.chatMessageId,
+          // O hash do autor, nunca o @ (o backend nem o conhece): é o que o
+          // app usa para o "bloquear autor" do card — só o processo principal
+          // do desktop sabe traduzir o hash de volta. `processarLote` pendura
+          // a mensagem na resposta em memória; sem ela, o campo vai vazio.
+          authorHash: resposta.chatMessage?.authorHash ?? '',
           text: resposta.text,
           confidence: Number(resposta.confidence),
           decision: resposta.decision,
@@ -457,6 +462,8 @@ export class LiveRunController {
       for (const mensagem of escaladas) {
         this.eventos.publicar(runId, 'escalation', {
           chatMessageId: mensagem.id,
+          // Mesmo motivo do `reply`: hash, para o app poder bloquear o autor.
+          authorHash: mensagem.authorHash,
           text: mensagem.text,
           repeatCount: mensagem.repeatCount,
           receivedAt: mensagem.receivedAt,

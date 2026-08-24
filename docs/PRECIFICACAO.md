@@ -14,7 +14,7 @@ O PikPok cobra em duas moedas que **não se convertem uma na outra**.
 
 | Moeda | Campo | O que compra | Onde é vendida |
 |---|---|---|---|
-| Crédito de IA | `app_users.credits` | Roteiro, análise, transcrição, imagem, vídeo, montagem do Multiplicador, extração da base de conhecimento de uma live gravada | Cota mensal/anual do plano + `CREDIT_PACKS` |
+| Crédito de IA | `app_users.credits` | Roteiro, análise, transcrição, imagem, vídeo, montagem do Multiplicador, cortes de vídeo longo (rápido/inteligente), extração da base de conhecimento de uma live gravada | Cota mensal/anual do plano + `CREDIT_PACKS` |
 | Minuto de live | `app_users.liveMinutes` | Tempo de copiloto ao vivo conectado ao chat da transmissão | Bônus único de adesão do plano (`signupLiveHours`) + add-ons `LIVE_HOUR_PACKS` (para qualquer conta com a feature) + 10 min de cortesia (exclusivos da conta free) |
 
 **Por que separadas.** Crédito é uma unidade de *trabalho pedido item a item*: um roteiro, uma
@@ -150,6 +150,8 @@ Face = `créditos × R$ 0,10`. Margem = face ÷ custo. Mínimo exigido: 1,40.
 | `video` — Vídeo com IA | 60 | 6,00 | 3,60 | 1,67 | **0,0600** |
 | `assembly` — Vídeo montado (Multiplicador) | 1 | 0,10 | 0,05 | 2,00 | 0,0500 |
 | `live_extract` — Base de conhecimento da live | 17 | 1,70 | 1,00 | 1,70 | 0,0588 |
+| `cut` — Corte rápido (Cortes, sem IA) | 2 | 0,20 | 0,10 | 2,00 | 0,0500 |
+| `cut_ai` — Corte inteligente (Cortes, IA escolhe + título/gancho; Whisper cobrado à parte em `transcribe`) | 6 | 0,60 | 0,30 | 2,00 | 0,0500 |
 
 Três ações empatam no teto de R$ 0,0600/crédito — é esse empate que define
 `worstCostPerCredit() = 0,06`. Qualquer uma das três que fique mais cara sem ganhar créditos
@@ -317,7 +319,7 @@ Cada chamada de IA grava uma linha (`AiCostService.registrar()` / `registrarTran
 
 | Campo | O que guarda |
 |---|---|
-| `feature` | `script`, `campaign`, `analyze`, `transcribe`, `live_extract`, `live_reply` — a chave do relatório: margem se apura **por recurso vendido**, não por modelo nem por usuário |
+| `feature` | `script`, `campaign`, `analyze`, `transcribe`, `live_extract`, `live_reply`, `cuts` — a chave do relatório: margem se apura **por recurso vendido**, não por modelo nem por usuário |
 | `model` | o modelo exato que atendeu |
 | `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens` | o uso reportado pela própria API |
 | `audioSeconds` | segundos de áudio, quando é transcrição (Whisper cobra por minuto) |

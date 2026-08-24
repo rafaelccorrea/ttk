@@ -5,6 +5,7 @@ import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded';
 import AutoFixHighRoundedIcon from '@mui/icons-material/AutoFixHighRounded';
 import CardGiftcardRoundedIcon from '@mui/icons-material/CardGiftcardRounded';
 import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
+import ContentCutRoundedIcon from '@mui/icons-material/ContentCutRounded';
 import SchoolRoundedIcon from '@mui/icons-material/SchoolRounded';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded';
@@ -132,6 +133,12 @@ const NAV_SECTIONS: NavSection[] = [
         label: 'Multiplicador',
         icon: <DynamicFeedRoundedIcon />,
         feature: 'multiplier',
+      },
+      {
+        to: '/cortes',
+        label: 'Cortes',
+        icon: <ContentCutRoundedIcon />,
+        feature: 'cuts',
       },
       {
         to: '/copiloto',

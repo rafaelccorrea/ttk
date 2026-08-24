@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  adicionarBloqueado,
   AnonimizadorDeAutor,
   msgIdSintetico,
   RawChatMessage,
@@ -164,5 +165,24 @@ describe('bloqueio de espectador por @', () => {
   it('não bloqueia nome vazio nem explode com lista vazia', () => {
     expect(usuarioEstaBloqueado('', ['ana'])).toBe(false);
     expect(usuarioEstaBloqueado('ana', [])).toBe(false);
+  });
+});
+
+describe('bloquear autor pelo card', () => {
+  it('entra normalizado e sem repetir — dois cards da mesma pessoa, uma linha', () => {
+    const uma = adicionarBloqueado([], '@Maria_Vendas ');
+    expect(uma).toEqual(['maria_vendas']);
+    expect(adicionarBloqueado(uma, 'MARIA_VENDAS')).toEqual(['maria_vendas']);
+    expect(adicionarBloqueado(uma, 'curioso')).toEqual(['maria_vendas', 'curioso']);
+  });
+
+  it('nome vazio devolve a lista como está (já saneada)', () => {
+    expect(adicionarBloqueado(['@Ana', '', ' '], '')).toEqual(['ana']);
+  });
+
+  it('o resultado é reconhecido pelo bloqueio do chat', () => {
+    const lista = adicionarBloqueado([], '@Curioso');
+    expect(usuarioEstaBloqueado('curioso', lista)).toBe(true);
+    expect(usuarioEstaBloqueado('curiosa', lista)).toBe(false);
   });
 });

@@ -4,6 +4,7 @@ import { Box, Button, Stack, Typography, alpha } from '@mui/material';
 import { useState } from 'react';
 import type { LiveReplyEvent } from '@shared/live-events';
 import { cores } from '../theme/theme';
+import { BotaoBloquearAutor } from './BotaoBloquearAutor';
 
 /**
  * Uma resposta pronta, de alta confiança.
@@ -22,9 +23,14 @@ import { cores } from '../theme/theme';
 export function CardResposta({
   resposta,
   aoCopiar,
+  aoBloquearAutor,
 }: {
   readonly resposta: LiveReplyEvent;
   readonly aoCopiar: () => void | Promise<void>;
+  /** Recebe só o hash do autor; o @ é resolvido no processo principal. */
+  readonly aoBloquearAutor: (
+    authorHash: string,
+  ) => Promise<{ ok: boolean; motivo?: string }>;
 }): JSX.Element {
   const [copiado, setCopiado] = useState(false);
 
@@ -75,6 +81,7 @@ export function CardResposta({
         >
           {Math.round(resposta.confidence * 100)}% · {Math.round(resposta.latencyMs / 100) / 10}s
         </Typography>
+        <BotaoBloquearAutor authorHash={resposta.authorHash} aoBloquear={aoBloquearAutor} />
       </Stack>
     </Box>
   );

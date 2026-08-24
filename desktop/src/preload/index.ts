@@ -139,12 +139,17 @@ const api: PikPokDesktopApi = {
       ok: boolean;
       motivo?: string;
     }>,
+  bloquearAutor: (authorHash) =>
+    ipcRenderer.invoke('autor:bloquear', authorHash) as Promise<{
+      ok: boolean;
+      motivo?: string;
+    }>,
   aoRotacaoParada: (ouvinte) =>
     assinar<{ motivo: string }>('live:rotacao-parada', ouvinte),
   obterLarguraDoPainel: () =>
-    ipcRenderer.invoke('layout:painel:ler') as Promise<number>,
+    ipcRenderer.invoke('layout:painel:ler', window.innerWidth) as Promise<number>,
   definirLarguraDoPainel: (largura) =>
-    ipcRenderer.invoke('layout:painel', largura) as Promise<number>,
+    ipcRenderer.invoke('layout:painel', largura, window.innerWidth) as Promise<number>,
   arrastandoDivisoria: (arrastando) =>
     ipcRenderer.invoke('layout:painel:arrastando', arrastando) as Promise<void>,
 

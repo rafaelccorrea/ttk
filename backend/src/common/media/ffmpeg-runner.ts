@@ -115,6 +115,136 @@ export class FfmpegRunner {
   }
 
   /**
+   * Roda um ffmpeg que TERMINA BEM e devolve o stderr dele.
+   *
+   * Existe para os filtros de análise (`silencedetect`, `volumedetect`), que
+   * não produzem arquivo nenhum: o resultado é o relatório que o filtro
+   * escreve no stderr, e `rodar` descarta esse texto. Passa pela mesma fila.
+   */
+  async rodarLendoStderr(args: string[], timeoutMs = TIMEOUT_PADRAO_MS): Promise<string> {
+    if (!ffmpegPath) {
+      throw new Error('ffmpeg não está disponível neste ambiente.');
+    }
+    await this.garantirExecutavel();
+    try {
+      const { stderr } = await this.enfileirar(() =>
+        execFileAsync(ffmpegPath as string, args, {
+          timeout: timeoutMs,
+          maxBuffer: 32 * 1024 * 1024,
+        }),
+      );
+      return stderr ?? '';
+    } catch (error) {
+      const stderr = (error as { stderr?: string }).stderr ?? '';
+      const ultima = stderr.trim().split('\n').slice(-3).join(' ');
+      throw new Error(`ffmpeg falhou: ${ultima || (error as Error).message}`);
+    }
+  }
+
+  /**
+   * Os trechos de silêncio do áudio, em segundos desde o início.
+   *
+   * É a base do modo rápido dos Cortes: uma janela que termina dentro de um
+   * silêncio não corta ninguém no meio da frase. `ruidoDb` é o piso abaixo do
+   * qual o ffmpeg considera silêncio; `minSeg` é o mínimo de duração para um
+   * trecho contar — pausas de respiração (0,2 s) não servem para cortar, uma
+   * pausa entre assuntos (0,5 s+) serve.
+   *
+   * Um arquivo sem trilha de áudio devolve lista vazia, não erro: o chamador
+   * cai para janelas fixas.
+   */
+  async silencios(
+    arquivo: string,
+    opts: { ruidoDb?: number; minSeg?: number; timeoutMs?: number } = {},
+  ): Promise<Array<{ inicio: number; fim: number }>> {
+    const ruido = opts.ruidoDb ?? -35;
+    const minimo = opts.minSeg ?? 0.5;
+    let relatorio = '';
+    try {
+      relatorio = await this.rodarLendoStderr(
+        [
+          '-hide_banner',
+          '-i', arquivo,
+          '-vn',
+          '-af', `silencedetect=noise=${ruido}dB:d=${minimo}`,
+          '-f', 'null',
+          '-',
+        ],
+        opts.timeoutMs,
+      );
+    } catch (error) {
+      this.logger.warn(`silencedetect falhou em "${arquivo}": ${error}`);
+      return [];
+    }
+    const trechos: Array<{ inicio: number; fim: number }> = [];
+    let aberto: number | null = null;
+    for (const linha of relatorio.split('\n')) {
+      const ini = /silence_start:\s*(-?\d+(?:\.\d+)?)/.exec(linha);
+      if (ini) {
+        aberto = Math.max(0, Number(ini[1]));
+        continue;
+      }
+      const fim = /silence_end:\s*(-?\d+(?:\.\d+)?)/.exec(linha);
+      if (fim && aberto !== null) {
+        trechos.push({ inicio: aberto, fim: Math.max(aberto, Number(fim[1])) });
+        aberto = null;
+      }
+    }
+    return trechos;
+  }
+
+  /**
+   * Recorta `[inicioSeg, fimSeg]` da fonte num MP4 pronto para postar.
+   *
+   * Sempre re-codifica: `-c copy` só corta em keyframe e desloca o corte em
+   * até alguns segundos — num vídeo de 30 s isso é o gancho inteiro fora. O
+   * `-ss` vem ANTES do `-i` (busca rápida pelo índice) e o `-to` depois é
+   * relativo a esse ponto, por isso vai como duração.
+   *
+   * O enquadramento é crop central com `scale` para 720p na proporção pedida.
+   * `veryfast` + CRF 26 é o compromisso do host compartilhado: alguns segundos
+   * de CPU por corte e ~25 MB no pior caso (90 s), abaixo do teto do bucket.
+   */
+  async cortar(
+    fonte: string,
+    saida: string,
+    inicioSeg: number,
+    fimSeg: number,
+    formato: '9:16' | '16:9' | '1:1' = '9:16',
+    timeoutMs = TIMEOUT_PADRAO_MS,
+  ): Promise<void> {
+    const duracao = Math.max(0.5, fimSeg - inicioSeg);
+    const [larg, alt] =
+      formato === '16:9' ? [1280, 720] : formato === '1:1' ? [720, 720] : [720, 1280];
+    const filtro = [
+      `scale=${larg}:${alt}:force_original_aspect_ratio=increase`,
+      `crop=${larg}:${alt}`,
+      'setsar=1',
+      'fps=30',
+    ].join(',');
+    await this.rodar(
+      [
+        '-y',
+        '-hide_banner',
+        '-ss', inicioSeg.toFixed(3),
+        '-i', fonte,
+        '-t', duracao.toFixed(3),
+        '-vf', filtro,
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-crf', '26',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-ac', '2',
+        '-movflags', '+faststart',
+        saida,
+      ],
+      timeoutMs,
+    );
+  }
+
+  /**
    * O relatório que o `ffmpeg -i` escreve no stderr sobre o arquivo.
    *
    * Sem arquivo de saída o comando sempre termina em erro — é o modo dele de

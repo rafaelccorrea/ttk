@@ -117,13 +117,14 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 | 6.4 | Aba **Produtos** | Campo "Buscar produto…" no topo (filtra sem acento/caixa) + **lista em altura cheia** com rolagem própria: miniatura 40×40 (ou inicial do nome quando sem foto), nome em 1 linha, preço em R$ (ou "sem preço"), botão **Fixar** à direita; aviso de rotação parada troca para esta aba sozinho | ✅ 24/08 aba Produtos reconferida (busca 'a07' → 1 linha com foto, sem preço, Fixar) |
 | 6.4b | Clicar **Fixar** em um item | Botão vira "Fixando…" e os demais desabilitam; depois "Não encontrei este produto no painel… fixe manualmente" (esperado na simulação) e evento `pin_produto · falhou · painel_produtos` | ✅ 24/08 evento pin_produto · falhou · painel_produtos |
 | 6.4c | Produto com foto enviada pelo site (3b.1) | Miniatura carrega no cockpit (imagem vinda da API — se aparecer quebrada, é CSP `img-src` do renderer) | ✅ 24/08 screenshot: foto do Samsung A07 carregada (img.complete) |
-| 6.5 | Rotação ligada (2 min) | Após 3 falhas seguidas: linha discreta "rotação automática foi pausada" na seção de produtos — **sem** faixa vermelha | |
+| 6.5 | Rotação ligada (2 min) | Após 3 falhas seguidas: linha discreta "rotação automática foi pausada" na seção de produtos — **sem** faixa vermelha | ✅ 24/08 run 566a225c: giros a cada 2 min (S26 base → S25 FE) em live_run_events; pausa após 3 falhas coberta pelo teste unitário do RotadorDeProdutos |
 | 6.6 | Bloquear um @ do roteiro simulado | Mensagens dele não viram resposta nem entram em `live_chat_messages` | ✅ (não verificável no banco: autor anonimizado; coberto por teste unitário usuarioEstaBloqueado) |
-| 6.7 | Encerrar pelo botão do painel | Run `encerrada` com **`endReason='manual'`** (não `erro`); resumo da live na tela | ✅ 24/08 run 60b8563b: encerrada / endReason=manual (via ponte.encerrar) |
+| 6.7 | Encerrar pelo botão do painel | Run `encerrada` com **`endReason='manual'`** (não `erro`); resumo da live na tela | ✅ 24/08 reconfirmado (runs 60b8563b, 06c59bc3, 566a225c: encerrada/manual) |
 | 6.8 | Fechar o app com live aberta | Run `encerrada` / `manual`, motivo "O aplicativo foi fechado." | |
 | 6.9 | Lado esquerdo (simulação): vídeo em cima, chat embaixo | Vídeo ocupa ~65% da altura, chat em área DEDICADA abaixo (sem sobreposição); **divisória arrastável** entre os dois (proporção lembrada ao reabrir) | |
 | 6.10 | Rolar o chat para cima durante a live | O chat NÃO puxa de volta a cada mensagem; aparece o botão "↓ novas mensagens"; clicar volta ao fim | |
 | 6.11 | Arrastar a borda esquerda do painel da direita | Painel muda de largura (mín. 460px, máx. 70% da janela); padrão **640px** fixo (não muda ao maximizar); largura lembrada ao reabrir | |
+| 6.12 | Clicar **Bloquear autor** (ícone ⊘ no canto) num card de escalação/resposta | Card mostra o chip **"autor bloqueado"**; o @ aparece em Ajustes › Bloquear espectadores (normalizado, sem `@` e em minúsculas, sem duplicar); mensagens seguintes desse autor não entram (nem lote, nem resposta); num card de mensagem antiga/outra live → aviso "Não achei quem escreveu (a mensagem é antiga ou de outra live)." | |
 
 > Em dev, editar arquivo do `main` reinicia o Electron e derruba a run em curso — não é bug.
 

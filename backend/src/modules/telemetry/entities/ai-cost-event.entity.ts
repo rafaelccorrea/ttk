@@ -20,6 +20,8 @@ export type CostFeature =
   | 'transcribe'
   | 'live_extract'
   | 'live_reply'
+  // Cortes no modo inteligente: a escolha dos trechos + título/gancho.
+  | 'cuts'
   // Geração de mídia na Higgsfield. Não há tokens: o custo entra por unidade,
   // via `registrarMidia`, com o valor configurado por env — é o que permite
   // comparar o teto de R$ 3,60 da tabela com o gasto real da fatura.

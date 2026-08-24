@@ -394,6 +394,16 @@ export interface PikPokDesktopApi {
   readonly fixarProduto: (
     titulo: string,
   ) => Promise<{ ok: boolean; motivo?: string }>;
+  /**
+   * Bloqueia quem escreveu a mensagem por trás do hash — o "bloquear autor"
+   * dos cards do cockpit. O renderer só conhece o hash; o @ é resolvido no
+   * processo principal e entra em `usuariosBloqueados` sem nunca atravessar o
+   * IPC. `ok: false` vem com `motivo` pronto para a tela (hash de mensagem
+   * antiga ou de outra live, que a run atual não sabe traduzir).
+   */
+  readonly bloquearAutor: (
+    authorHash: string,
+  ) => Promise<{ ok: boolean; motivo?: string }>;
   /** A rotação automática parou sozinha (3 falhas seguidas) — aviso discreto. */
   readonly aoRotacaoParada: (
     ouvinte: (dados: { motivo: string }) => void,

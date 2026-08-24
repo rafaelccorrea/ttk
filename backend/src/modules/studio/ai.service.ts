@@ -487,6 +487,47 @@ const SCHEMA_PRODUTO = {
   additionalProperties: false,
 } as const;
 
+/** Cortes: o que a IA escolhe de um vídeo longo. Forma garantida por schema estrito. */
+const CORTES_SYSTEM = `Você é editor de vídeos curtos para TikTok, Reels e Shorts no Brasil. Recebe a transcrição de um vídeo longo em português, com o tempo de cada fala, e escolhe os trechos que funcionam SOZINHOS como vídeo curto.
+
+O que faz um bom trecho:
+- começa numa frase que prende (pergunta, afirmação forte, revelação, preço, "o segredo é"), nunca no meio de uma ideia;
+- termina numa conclusão, punchline ou chamada — não corta a frase pela metade;
+- é autocontido: quem não viu o resto entende;
+- em vídeo de venda, priorize demonstração do produto, oferta/preço, resposta a objeção e momento de humor/espontaneidade.
+
+Regras duras:
+- inicio e fim em SEGUNDOS, alinhados às marcas [início-fim] da transcrição (use o início de uma linha como inicio e o fim de outra como fim);
+- respeite a faixa de duração pedida; trechos não podem se sobrepor;
+- espalhe os trechos pelo vídeo inteiro — não concentre tudo nos primeiros minutos;
+- titulo: até 60 caracteres, sem hashtag, sem emoji, em português;
+- gancho: a frase de abertura para a legenda/capa, até 120 caracteres;
+- motivo: uma frase curta dizendo por que este trecho vale como corte.
+Devolva do melhor para o pior.`;
+
+const SCHEMA_CORTES = {
+  type: 'object',
+  properties: {
+    cortes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          inicio: { type: 'number' },
+          fim: { type: 'number' },
+          titulo: { type: 'string' },
+          gancho: { type: 'string' },
+          motivo: { type: 'string' },
+        },
+        required: ['inicio', 'fim', 'titulo', 'gancho', 'motivo'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['cortes'],
+  additionalProperties: false,
+} as const;
+
 const SCHEMA_MAP = {
   type: 'object',
   properties: {
@@ -1592,6 +1633,70 @@ export class AiService {
   }
 
   /** Com structured outputs o texto da resposta já é o JSON válido. */
+  /**
+   * Cortes no modo inteligente: dada a transcrição com tempo, os N melhores
+   * trechos para virar vídeo curto, cada um com título e gancho prontos.
+   *
+   * Roda no MODELO_FORTE e UMA vez por job — escolher "o que presta" numa
+   * hora de fala é julgamento, e julgamento é onde o modelo pequeno erra. A
+   * saída é forma garantida por schema; a SANIDADE (trecho dentro da fonte,
+   * dentro da faixa, sem sobreposição) é conferida por `validarSugestoes` no
+   * planner, não aqui — a IA propõe, o código decide.
+   *
+   * Pede `quantidade × 2` candidatos de propósito: parte cai na validação
+   * (duração fora da faixa é o erro mais comum) e o excedente evita voltar
+   * aqui uma segunda vez para completar.
+   */
+  async escolherCortes(params: {
+    segmentos: Array<{ inicio: number; fim: number; texto: string }>;
+    duracaoFonte: number;
+    quantidade: number;
+    minSeg: number;
+    maxSeg: number;
+    userId?: string | null;
+  }): Promise<
+    Array<{ inicio: number; fim: number; titulo: string; gancho: string; motivo: string }>
+  > {
+    if (!this.apiKey || !params.segmentos.length) return [];
+    // Uma linha por segmento, com o tempo em segundos inteiros: é o formato
+    // mais barato em tokens que ainda deixa a IA apontar início e fim.
+    const linhas = params.segmentos.map(
+      (s) => `[${Math.floor(s.inicio)}-${Math.ceil(s.fim)}] ${s.texto.trim()}`,
+    );
+    // Teto de segurança de tokens: 60 min de fala cabem folgados; acima disso
+    // o corte é por caractere e a IA trabalha com o que couber.
+    const transcricao = linhas.join('\n').slice(0, 120_000);
+    const pedidos = Math.min(params.quantidade * 2, 40);
+    try {
+      const response = await this.chamar(
+        'cuts',
+        {
+          model: MODELO_FORTE,
+          maxTokens: 6000,
+          system: CORTES_SYSTEM,
+          jsonSchema: { nome: 'cortes_escolhidos', schema: SCHEMA_CORTES },
+          conteudo: [
+            `Duração total do vídeo: ${Math.floor(params.duracaoFonte)} segundos.`,
+            `Escolha ${pedidos} trechos candidatos, do melhor para o pior. Cada trecho deve durar entre ${params.minSeg} e ${params.maxSeg} segundos, sem se sobrepor a outro.`,
+            '',
+            'Transcrição (cada linha: [início-fim em segundos] fala):',
+            transcricao,
+          ].join('\n'),
+        },
+        { userId: params.userId, chargedUnit: 'credit' },
+      );
+      if (response.recusado) {
+        this.logger.warn('Escolha de cortes recusada pelo modelo.');
+        return [];
+      }
+      const dados = this.lerJson<{ cortes?: unknown }>(response.texto);
+      return Array.isArray(dados?.cortes) ? (dados!.cortes as any[]) : [];
+    } catch (error) {
+      this.logger.error(`Falha ao escolher cortes: ${error}`);
+      return [];
+    }
+  }
+
   private lerJson<T>(texto: string): T | null {
     try {
       return JSON.parse(texto) as T;

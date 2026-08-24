@@ -45,7 +45,9 @@ export type BillableAction =
   | 'assembly' // Multiplicador: cada vídeo concatenado
   // O copiloto AO VIVO não entra aqui: ele gasta minutos de live, não crédito
   // de IA (ver "Horas de live — a segunda moeda", mais abaixo).
-  | 'live_extract'; // Live Copilot: base de conhecimento de uma live gravada
+  | 'live_extract' // Live Copilot: base de conhecimento de uma live gravada
+  | 'cut' // Cortes: um corte no modo rápido (só ffmpeg)
+  | 'cut_ai'; // Cortes: um corte no modo inteligente (IA escolhe o trecho e escreve o gancho)
 
 export interface ActionPrice {
   credits: number;
@@ -130,6 +132,25 @@ export const ACTION_PRICES: Record<BillableAction, ActionPrice> = {
     worstCaseCostBrl: 1.0,
     label: 'Base de conhecimento da live',
   },
+  /*
+   * Cortes — um vídeo longo vira N vídeos curtos. Cobrado POR CORTE entregue.
+   *
+   * `cut` (modo rápido) não tem IA: é ffmpeg re-codificando até 90 s em 720p
+   * e um MP4 de ~25 MB parado no S3. ~R$ 0,10 no pior caso; 2 créditos dão
+   * margem de 2× e ficam na mesma régua barata da montagem do Multiplicador —
+   * o valor está em rodar muitos cortes, não em pagar caro por um.
+   *
+   * `cut_ai` (modo inteligente) soma a escolha do trecho e o título/gancho
+   * pelo gpt-5.4: ~8k tokens de transcrição de 60 min + 2k de saída ≈ R$ 0,30
+   * por JOB, rateado pelo mínimo de 3 cortes ≈ R$ 0,10, mais o próprio corte.
+   * O Whisper NÃO está aqui — é cobrado à parte pela ação `transcribe`, por
+   * bloco de 10 min, que já acompanha a duração da fonte.
+   *
+   * Os dois ficam em R$ 0,05 por crédito, abaixo do vídeo (R$ 0,06): não
+   * mexem em `worstCostPerCredit()` e nenhum plano é afetado no boot.
+   */
+  cut: { credits: 2, worstCaseCostBrl: 0.1, label: 'Corte rápido' },
+  cut_ai: { credits: 6, worstCaseCostBrl: 0.3, label: 'Corte inteligente' },
 };
 
 /* ------------------------------------------------------------------ *
@@ -464,6 +485,7 @@ export const PLANS: Plan[] = [
       'Tudo do Essencial',
       'Vídeos com IA',
       'Multiplicador de conteúdo',
+      'Cortes automáticos: um vídeo longo vira vários curtos',
       /*
        * O gancho do funil, e é por isso que a redação é específica.
        *
@@ -767,6 +789,7 @@ export type PlanFeature =
   | 'ai_images' // imagens Higgsfield
   | 'ai_videos' // vídeos Higgsfield
   | 'multiplier' // multiplicador G×C×A
+  | 'cuts' // cortes automáticos de vídeo longo (com ou sem IA)
   | 'live_copilot' // base de conhecimento a partir de live gravada
   | 'campaigns' // campanhas com personas e cenas em vídeo
   | 'campaigns_sample' // a Fábrica em modo amostra: roteiro + 1 cena de produto (vídeo de cortesia)
@@ -812,6 +835,14 @@ export const FEATURE_MIN_PLAN: Record<PlanFeature, string> = {
   ai_images: 'free',
   ai_videos: 'pro',
   multiplier: 'pro',
+  /*
+   * Cortes acompanham o Multiplicador: é a mesma CPU de ffmpeg paga por nós e
+   * o mesmo perfil de quem produz volume. A conta continua sendo do usuário —
+   * cada corte é cobrado em crédito (`cut`/`cut_ai`) — mas a porta fica no Pro
+   * porque um job de 20 cortes segura o servidor por minutos, e isso não é
+   * coisa para abrir a quem não paga.
+   */
+  cuts: 'pro',
   /*
    * O Live Copilot abre no PRO — mas só o modo painel.
    *
@@ -872,6 +903,8 @@ export const ACTION_MIN_PLAN: Record<BillableAction, string> = {
   video: FEATURE_MIN_PLAN.ai_videos,
   assembly: FEATURE_MIN_PLAN.multiplier,
   live_extract: FEATURE_MIN_PLAN.live_copilot,
+  cut: FEATURE_MIN_PLAN.cuts,
+  cut_ai: FEATURE_MIN_PLAN.cuts,
 };
 
 export function planAllows(userPlan: string, feature: PlanFeature): boolean {

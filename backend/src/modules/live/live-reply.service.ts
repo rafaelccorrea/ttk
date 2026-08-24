@@ -1934,6 +1934,13 @@ export class LiveReplyService {
         modeloDe(mensagem.id),
         comecou,
       );
+      /*
+       * A mensagem vai PENDURADA na resposta, só em memória: o controller
+       * precisa do `authorHash` dela para o evento `reply`, e já a temos aqui —
+       * buscar de novo seria uma consulta por resposta num laço que roda a
+       * cada lote. Não passa por `save`, então o banco não vê nada disso.
+       */
+      resposta.chatMessage = mensagem;
       respostas.push(resposta);
       if (resposta.decision === 'escalar') escaladas.push(mensagem);
     }

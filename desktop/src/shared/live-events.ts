@@ -55,6 +55,12 @@ export type LiveDeliveryStatus =
 export interface LiveReplyEvent {
   id: string;
   chatMessageId: string;
+  /**
+   * O HASH de quem perguntou — nunca o @. É o que o card manda de volta no
+   * "bloquear autor"; só o processo principal sabe a que nome ele corresponde,
+   * e só durante a run em que ele nasceu. Pode vir vazio.
+   */
+  authorHash: string;
   text: string;
   /**
    * Vem `numeric` do Postgres, que o driver entrega como string; o controller
@@ -70,6 +76,8 @@ export interface LiveReplyEvent {
 /** A pergunta subiu para o humano — o modelo não a sustentou, ou o chat repetiu. */
 export interface LiveEscalationEvent {
   chatMessageId: string;
+  /** Hash do autor, nunca o @ — ver `LiveReplyEvent.authorHash`. */
+  authorHash: string;
   text: string;
   repeatCount: number;
   /** Serializado como string ISO na travessia do SSE. */

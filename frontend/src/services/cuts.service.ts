@@ -1,0 +1,140 @@
+import { api } from './api';
+
+export type CutMode = 'rapido' | 'inteligente';
+export type CutFormat = '9:16' | '16:9' | '1:1';
+export type CutJobStatus = 'pendente' | 'processando' | 'pronto' | 'falhou';
+export type CutClipStatus = 'pendente' | 'pronto' | 'falhou';
+
+/** Espelho de `LIMITES` em `backend/src/modules/cuts/cut-planner.ts`. */
+export const LIMITES_DE_CORTE = {
+  fonteMinSeg: 2 * 60,
+  fonteMaxSeg: 60 * 60,
+  qtdMin: 3,
+  qtdMax: 20,
+  corteMinSeg: 15,
+  corteMaxSeg: 90,
+} as const;
+
+export interface CutJob {
+  id: string;
+  status: CutJobStatus;
+  mode: CutMode;
+  format: CutFormat;
+  quantity: number;
+  minSeconds: number;
+  maxSeconds: number;
+  sourceName: string;
+  sourceDurationSeconds: number | null;
+  error: string | null;
+  createdAt: string;
+}
+
+export interface CutJobSummary extends CutJob {
+  clipsTotal: number;
+  clipsProntos: number;
+}
+
+export interface CutClip {
+  id: string;
+  position: number;
+  startSeconds: number;
+  endSeconds: number;
+  title: string | null;
+  hook: string | null;
+  reason: string | null;
+  origin: 'ia' | 'rapido';
+  url: string | null;
+  status: CutClipStatus;
+  error: string | null;
+}
+
+export interface CutJobDetail extends CutJob {
+  clips: CutClip[];
+}
+
+export interface CutQuote {
+  mode: CutMode;
+  quantity: number;
+  porCorte: number;
+  cortes: number;
+  blocosDeTranscricao: number;
+  transcricao: number;
+  total: number;
+}
+
+export interface CreateCutJobInput {
+  mode: CutMode;
+  format: CutFormat;
+  quantity: number;
+  minSeconds: number;
+  maxSeconds: number;
+}
+
+export const cutsService = {
+  async quote(mode: CutMode, quantity: number, durationSeconds?: number): Promise<CutQuote> {
+    const { data } = await api.get<CutQuote>('/cuts/quote', {
+      params: { mode, quantity, durationSeconds },
+    });
+    return data;
+  },
+
+  async list(): Promise<CutJobSummary[]> {
+    const { data } = await api.get<CutJobSummary[]>('/cuts');
+    return data;
+  },
+
+  async get(id: string): Promise<CutJobDetail> {
+    const { data } = await api.get<CutJobDetail>(`/cuts/${id}`);
+    return data;
+  },
+
+  async create(
+    input: CreateCutJobInput,
+    file: File,
+    onProgress?: (percentual: number) => void,
+  ): Promise<CutJob> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('mode', input.mode);
+    form.append('format', input.format);
+    form.append('quantity', String(input.quantity));
+    form.append('minSeconds', String(input.minSeconds));
+    form.append('maxSeconds', String(input.maxSeconds));
+    const { data } = await api.post<CutJob>('/cuts', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (evento) => {
+        if (!onProgress || !evento.total) return;
+        onProgress(Math.round((evento.loaded / evento.total) * 100));
+      },
+    });
+    return data;
+  },
+
+  async remove(id: string): Promise<void> {
+    await api.delete(`/cuts/${id}`);
+  },
+};
+
+/** Duração de um arquivo de vídeo lida no navegador, em segundos (ou null). */
+export function lerDuracaoDoVideo(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    const fim = (valor: number | null) => {
+      URL.revokeObjectURL(url);
+      resolve(valor);
+    };
+    video.onloadedmetadata = () =>
+      fim(Number.isFinite(video.duration) ? video.duration : null);
+    video.onerror = () => fim(null);
+    video.src = url;
+  });
+}
+
+export function formatarTempo(seg: number): string {
+  const total = Math.max(0, Math.round(seg));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
