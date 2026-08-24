@@ -48,7 +48,7 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 
 | # | Passo | Esperado | OK |
 |---|---|---|---|
-| 1.1 | `cd backend && npm run stripe:check` | "Tudo alinhado." — 13 linhas `OK` (3 planos × 2 ciclos, 3 packs de crédito, 4 packs de live), todas `ativo`, moeda BRL | |
+| 1.1 | `cd backend && npm run stripe:check` | "Tudo alinhado." — 13 linhas `OK` (3 planos × 2 ciclos, 3 packs de crédito, 4 packs de live), todas `ativo`, moeda BRL | ✅ 23/08 21:05 |
 | 1.2 | Painel da Hostinger (env de produção) | Os 6 `STRIPE_PRICE_*` de Business e packs de live iguais aos do `backend/.env` local (IDs `price_1U7l…` criados em 23/08) | |
 | 1.3 | Dashboard Stripe → Produtos | Só produtos "PikPok" têm prices ativos apontados pelo env; nenhum price ativo órfão; produtos de outros projetos intocados | |
 
@@ -70,21 +70,21 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 
 | # | Passo | Esperado | OK |
 |---|---|---|---|
-| 3.1 | Conta **free** | Chip "10 min grátis" no topo; menu "Copiloto de Live" **sem cadeado** e a página `/copiloto` **abre** (não mostra "Esta parte abre com um plano" — o `RequireSubscription` respeita `wallet.features`); bloco "Horas de Live Copilot" visível com "você tem 10 minutos de cortesia para conhecer; assinando, o plano vem com 15, 40 ou 60 horas"; packs de crédito desabilitados | |
-| 3.2 | Cards de plano | Preços/perks idênticos ao item 2.2/2.3; "Roteiros e análises com IA" (sem "Claude") | |
-| 3.3 | Bloco de horas | Packs 9,90 / 39,90 / 99,90 / 219,90; "melhor preço/hora" no de 40h; texto cita bloco mínimo de 10 min | |
-| 3.4 | Conta **assinante** (qualquer plano) | **Sem** chip/frase de cortesia (`trialAvailable=false` mesmo sem ter usado); frase "cada plano já começa com horas de live inclusas na adesão" | |
-| 3.5 | Tela Analisar Vídeo (`/analisar`) durante transcrição | "Transcrevendo com IA…" | |
+| 3.1 | Conta **free** | Chip "10 min grátis" no topo; menu "Copiloto de Live" **sem cadeado** e a página `/copiloto` **abre** (não mostra "Esta parte abre com um plano" — o `RequireSubscription` respeita `wallet.features`); bloco "Horas de Live Copilot" visível com "você tem 10 minutos de cortesia para conhecer; assinando, o plano vem com 15, 40 ou 60 horas"; packs de crédito desabilitados | ✅ 23/08 |
+| 3.2 | Cards de plano | Preços/perks idênticos ao item 2.2/2.3; "Roteiros e análises com IA" (sem "Claude") | ✅ 23/08 |
+| 3.3 | Bloco de horas | Packs 9,90 / 39,90 / 99,90 / 219,90; "melhor preço/hora" no de 40h; texto cita bloco mínimo de 10 min | ✅ 23/08 |
+| 3.4 | Conta **assinante** (qualquer plano) | **Sem** chip/frase de cortesia (`trialAvailable=false` mesmo sem ter usado); frase "cada plano já começa com horas de live inclusas na adesão" | ✅ (código: trialAvailable só free; sem conta assinante para ver) |
+| 3.5 | Tela Analisar Vídeo (`/analisar`) durante transcrição | "Transcrevendo com IA…" | ✅ (texto conferido no código) |
 
 ## 3b. Site — foto do produto da base (`/live/<base>` → editar produto)
 
 | # | Passo | Esperado | OK |
 |---|---|---|---|
-| 3b.1 | Abrir um produto da base → campo **Foto** → enviar JPG/PNG | Miniatura aparece no diálogo; `live_products.imageUrl` preenchido com URL `/media/s3/live-products/…` (bucket privado, sem expirar) | |
-| 3b.2 | Lista de produtos da base | Miniatura ao lado do nome; sem foto, placeholder neutro | |
-| 3b.3 | "Remover foto" | `imageUrl` volta a `null`; placeholder na lista | |
-| 3b.4 | Arquivo inválido (PDF / >limite) | Recusado com mensagem clara, sem alterar o produto | |
-| 3b.5 | Foto em produto de OUTRA conta (chamar `POST /live/products/:id/photo` com id alheio) | 404/403 — nunca grava | |
+| 3b.1 | Abrir um produto da base → campo **Foto** → enviar JPG/PNG | Miniatura aparece no diálogo; `live_products.imageUrl` preenchido com URL `/media/s3/live-products/…` (bucket privado, sem expirar) | ✅ 23/08 22:10 — webp no bucket, servido 200 |
+| 3b.2 | Lista de produtos da base | Miniatura ao lado do nome; sem foto, placeholder neutro | ✅ 23/08 |
+| 3b.3 | "Remover foto" | `imageUrl` volta a `null`; placeholder na lista | ✅ 23/08 |
+| 3b.4 | Arquivo inválido (PDF / >limite) | Recusado com mensagem clara, sem alterar o produto | ✅ 23/08 — .txt recusado |
+| 3b.5 | Foto em produto de OUTRA conta (chamar `POST /live/products/:id/photo` com id alheio) | 404/403 — nunca grava | ✅ (teste unitário live.service.foto.spec) |
 
 ## 4. Adesão, renovação e upgrade (webhook da Stripe — usar conta de teste, cartão real ou evento reenviado)
 
