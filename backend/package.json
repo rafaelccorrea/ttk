@@ -38,6 +38,8 @@
     "simular:live": "ts-node src/scripts/simular-live.ts",
     "simular:processamento-live": "ts-node src/scripts/simular-processamento-live.ts",
     "live:processar-gravacao": "ts-node src/scripts/processar-gravacao-local.ts",
+    "live:extrair-transcricao": "ts-node src/scripts/extrair-da-transcricao.ts",
+    "live:base-apresentacao": "ts-node src/scripts/montar-base-apresentacao.ts",
     "seed:personas": "ts-node src/database/seeds/seed-persona-library.ts"
   },
   "dependencies": {

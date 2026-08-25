@@ -94,7 +94,8 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 | 3c.2 | Abrir uma run (desktop) e perguntar algo que só o contexto explica ("quem tá apresentando?", "isso serve pra afiliado?") | A resposta usa o contexto para entender a pergunta; preço/detalhe continuam vindo só de produtos/FAQ (`live.contexto` vai dentro de `<base>`) | ⬜ |
 | 3c.3 | Editar o contexto com a run ABERTA | Próxima resposta já usa o texto novo (`invalidarBasesDaSessao`) | ⬜ |
 | 3c.4 | Apagar o texto e salvar | `context` volta a `null`; copiloto segue funcionando só com produtos/FAQ | ⬜ |
-| 3c.5 | `npm run live:processar-gravacao <email> <mp4> --contexto "..."` | Base criada na conta com o mesmo pipeline do upload; cobra transcrição por bloco + extração; imprime produtos, FAQ e transcrição | ✅ 25/08 — live de apresentação (22m42s, 35 cr) |
+| 3c.6 | Lápis ao lado do título → renomear → Enter/Salvar | `title` atualizado via `PATCH /live/sessions/:id`; vazio não salva; Esc cancela; nome novo aparece na lista "Minhas lives" | ⬜ |
+| 3c.5 | `npm run live:processar-gravacao <email> <mp4> --contexto "..."` | Base criada na conta com o mesmo pipeline do upload; cobra transcrição por bloco + extração; imprime produtos, FAQ e transcrição | ⚠️ 25/08 — live de apresentação (22m42s): transcreveu (18 cr), extração voltou VAZIA porque o prompt procura produto físico; base montada com `npm run live:base-apresentacao <sessionId>` (5 produtos = planos, 39 FAQ). `live:extrair-transcricao` retoma só a extração de uma sessão já transcrita |
 ## 4. Adesão, renovação e upgrade (webhook da Stripe — usar conta de teste, cartão real ou evento reenviado)
 
 | # | Passo | Esperado (extrato `live_minute_transactions` + `app_users`) | OK |

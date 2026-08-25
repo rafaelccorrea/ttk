@@ -57,6 +57,89 @@ import { CardDoApp } from './CardDoApp';
 import { EnvioDialog } from './EnvioDialog';
 
 /**
+ * O nome da base, editável no lugar: lápis ao lado do título abre o campo,
+ * Enter ou "Salvar" grava, Esc cancela. É o único jeito de renomear — a base
+ * nasce com o nome do arquivo, e "2026-08-25 18-40-09" não diz nada na lista.
+ */
+function TituloDaLive({
+  sessao,
+  onSalvo,
+}: {
+  sessao: LiveSession;
+  onSalvo: (salva: LiveSession) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState(sessao.title);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const abrir = () => {
+    setTexto(sessao.title);
+    setErro(null);
+    setEditando(true);
+  };
+
+  const salvar = async () => {
+    const title = texto.trim();
+    if (!title || title === sessao.title) {
+      setEditando(false);
+      return;
+    }
+    setSalvando(true);
+    setErro(null);
+    try {
+      onSalvo(await liveService.updateSession(sessao.id, { title }));
+      setEditando(false);
+    } catch (e) {
+      setErro(mensagemDeErro(e, 'Não deu para renomear a base.'));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  if (editando) {
+    return (
+      <Stack direction="row" alignItems="flex-start" spacing={1} flexWrap="wrap" useFlexGap>
+        <TextField
+          autoFocus
+          size="small"
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          inputProps={{ maxLength: 200 }}
+          error={Boolean(erro)}
+          helperText={erro}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void salvar();
+            if (e.key === 'Escape') setEditando(false);
+          }}
+          sx={{ minWidth: 280, flex: 1 }}
+        />
+        <Button variant="contained" onClick={() => void salvar()} disabled={salvando}>
+          {salvando ? 'Salvando…' : 'Salvar'}
+        </Button>
+        <Button onClick={() => setEditando(false)} disabled={salvando}>
+          Cancelar
+        </Button>
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap>
+      <Typography variant="h5" sx={{ minWidth: 0, wordBreak: 'break-word' }}>
+        {sessao.title}
+      </Typography>
+      <Tooltip title="Renomear a base">
+        <IconButton size="small" onClick={abrir} aria-label="Renomear a base">
+          <EditRoundedIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <StatusChip status={sessao.status} />
+    </Stack>
+  );
+}
+
+/**
  * "Sobre o que é esta live", nas palavras do vendedor.
  *
  * Produtos e FAQ dizem O QUE se vende; isto diz o que está acontecendo na
@@ -703,12 +786,10 @@ export function LiveDetailPage() {
         Minhas lives
       </Button>
 
-      <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" useFlexGap>
-        <Typography variant="h5" sx={{ minWidth: 0, wordBreak: 'break-word' }}>
-          {sessao.title}
-        </Typography>
-        <StatusChip status={sessao.status} />
-      </Stack>
+      <TituloDaLive
+        sessao={sessao}
+        onSalvo={(salva) => setSessao((atual) => (atual ? { ...atual, ...salva } : atual))}
+      />
       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2.5 }}>
         {sessao.creditsSpent > 0
           ? `${ui.dica} · ${sessao.creditsSpent} créditos usados nesta live.`
