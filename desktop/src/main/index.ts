@@ -788,6 +788,16 @@ app.on('second-instance', () => {
   janela.focus();
 });
 
+/*
+ * `PIKPOK_DEBUG_PORT=<porta>` abre o DevTools Protocol do Chromium para o QA
+ * automatizado dirigir o painel (clicar, ler a tela) sem mão humana. Só vale
+ * em desenvolvimento: no build empacotado a variável não existe, e o switch
+ * nunca é adicionado.
+ */
+if (process.env['PIKPOK_DEBUG_PORT'] && !app.isPackaged) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env['PIKPOK_DEBUG_PORT']);
+}
+
 void app.whenReady().then(() => {
   // A segunda instância já chamou `app.quit()` acima, mas o `whenReady` dela
   // ainda resolveria e criaria a janela antes de o encerramento concluir.

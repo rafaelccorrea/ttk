@@ -100,6 +100,12 @@ export interface CarteiraLive {
   minutos: number;
   trialMinutos: number;
   trialDisponivel: boolean;
+  /**
+   * Conta da equipe/admin: o backend não desconta minuto dela (`unlimited`
+   * da carteira). Sem isto a tela via "0 min" e bloqueava justamente a conta
+   * que mais entra em live para testar.
+   */
+  ilimitada: boolean;
 }
 
 /** Estado da conexão com o chat, do ponto de vista do painel. */

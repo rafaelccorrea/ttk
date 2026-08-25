@@ -88,6 +88,8 @@ interface CarteiraResposta {
     trialMinutes: number;
     trialAvailable: boolean;
   };
+  /** Conta da equipe/admin: o backend não debita nada dela. */
+  unlimited?: boolean;
 }
 
 /** Uma linha de `GET /live/sessions` (a entidade crua). */
@@ -303,6 +305,7 @@ export class ApiClient {
       minutos: carteira.liveCopilot?.minutes ?? 0,
       trialMinutos: carteira.liveCopilot?.trialMinutes ?? 0,
       trialDisponivel: carteira.liveCopilot?.trialAvailable ?? false,
+      ilimitada: carteira.unlimited === true,
     };
   }
 

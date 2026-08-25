@@ -293,7 +293,8 @@ export function ConectarLive({
     );
   }
 
-  const semSaldo = carteira.minutos <= 0 && !carteira.trialDisponivel;
+  const semSaldo =
+    !carteira.ilimitada && carteira.minutos <= 0 && !carteira.trialDisponivel;
   /*
    * Sem sessão do TikTok o copiloto não lê o chat nem digita nele: entrar na
    * live abriria uma run que COBRA minuto e não teria como entregar resposta
@@ -412,16 +413,18 @@ export function ConectarLive({
                 WebkitTextFillColor: carteira.trialDisponivel ? 'transparent' : undefined,
               }}
             >
-              {carteira.minutos}
+              {carteira.ilimitada ? '∞' : carteira.minutos}
             </Typography>
             <Typography variant="subtitle2" color="text.secondary">
-              min
+              {carteira.ilimitada ? 'ilimitado' : 'min'}
             </Typography>
           </Stack>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.85, lineHeight: 1.5 }}>
-            {carteira.trialDisponivel
-              ? `Os primeiros ${carteira.trialMinutos} minutos são por nossa conta — entram assim que você conectar.`
-              : 'Cada minuto no ar desconta um daqui.'}
+            {carteira.ilimitada
+              ? 'Conta da equipe: nenhum minuto é descontado.'
+              : carteira.trialDisponivel
+                ? `Os primeiros ${carteira.trialMinutos} minutos são por nossa conta — entram assim que você conectar.`
+                : 'Cada minuto no ar desconta um daqui.'}
           </Typography>
         </Box>
 

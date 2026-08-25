@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import type { AudienceEvent, ChatSource, RawChatMessage } from './tiktok-chat';
 
 /**
@@ -29,6 +30,23 @@ import type { AudienceEvent, ChatSource, RawChatMessage } from './tiktok-chat';
  * desenvolvimento nunca deve estar a um clique de um vendedor.
  */
 export const MODO_SIMULACAO = process.env['PIKPOK_SIMULAR_LIVE'] === '1';
+
+function roteiroDoArquivo(): string[] | null {
+  const caminho = process.env['PIKPOK_SIM_ROTEIRO'];
+  if (!caminho) return null;
+  try {
+    const linhas = readFileSync(caminho, 'utf8')
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'));
+    if (!linhas.length) return null;
+    console.log(`[sim] roteiro de ${linhas.length} mensagens lido de ${caminho}`);
+    return linhas;
+  } catch (erro) {
+    console.warn(`[sim] PIKPOK_SIM_ROTEIRO ilegível (${caminho}): ${String(erro)}`);
+    return null;
+  }
+}
 
 /**
  * As perguntas que a live faz sobre UM produto, pelo nome. É o que faz a demo
@@ -110,6 +128,16 @@ export class SimuladorChatSource implements ChatSource {
    * continuar parecendo um chat, não uma sabatina.
    */
   constructor(produtos: string[] = []) {
+    /*
+     * `PIKPOK_SIM_ROTEIRO=<arquivo.txt>`: uma pergunta por linha, no lugar do
+     * roteiro de loja. Serve para ensaiar uma live específica — a de
+     * apresentação do sistema pergunta por plano e copiloto, não por frete.
+     */
+    const doArquivo = roteiroDoArquivo();
+    if (doArquivo) {
+      this.roteiro = doArquivo;
+      return;
+    }
     if (produtos.length === 0) {
       this.roteiro = [...ROTEIRO];
       return;
