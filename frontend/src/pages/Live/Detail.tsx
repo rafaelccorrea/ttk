@@ -46,6 +46,7 @@ import {
   LiveFaq,
   LiveFaqKind,
   LiveProduct,
+  LiveSession,
   LiveSessionDetail,
   ProdutoInput,
   ResultadoDaImportacao,
@@ -54,6 +55,71 @@ import {
 import { STATUS_UI, StatusChip, OrigemChip, estaProcessando, mensagemDeErro } from './status';
 import { CardDoApp } from './CardDoApp';
 import { EnvioDialog } from './EnvioDialog';
+
+/**
+ * "Sobre o que é esta live", nas palavras do vendedor.
+ *
+ * Produtos e FAQ dizem O QUE se vende; isto diz o que está acontecendo na
+ * transmissão — quem apresenta, para quem, com que tom. Vai inteiro para o
+ * prompt do copiloto, e uma edição no meio da live vale na próxima resposta.
+ */
+function ContextoDaLive({
+  sessao,
+  onSalvo,
+}: {
+  sessao: LiveSession;
+  onSalvo: (salva: LiveSession) => void;
+}) {
+  const [texto, setTexto] = useState(sessao.context ?? '');
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const sujo = texto.trim() !== (sessao.context ?? '');
+
+  const salvar = async () => {
+    setSalvando(true);
+    setErro(null);
+    try {
+      onSalvo(await liveService.updateSession(sessao.id, { context: texto.trim() }));
+    } catch (e) {
+      setErro(mensagemDeErro(e, 'Não deu para salvar o contexto.'));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <Card sx={{ mb: 3 }}>
+      <CardContent>
+        <Typography fontWeight={800}>Sobre esta live</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          Conte ao copiloto o que é a transmissão: quem apresenta, para quem, o que vai mostrar.
+          Ele usa isso para entender as perguntas — preço e detalhe continuam vindo dos produtos e
+          da FAQ.
+        </Typography>
+        <TextField
+          fullWidth
+          multiline
+          minRows={3}
+          maxRows={10}
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          inputProps={{ maxLength: 4000 }}
+          placeholder="Ex.: Live de apresentação do PikPok para vendedores do TikTok Shop. Mostro a descoberta de produtos, o Estúdio e o Live Copilot, e ofereço os planos no final."
+        />
+        {erro && (
+          <Alert severity="error" sx={{ mt: 1.5 }}>
+            {erro}
+          </Alert>
+        )}
+        <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1.5 }}>
+          <Button variant="contained" onClick={() => void salvar()} disabled={!sujo || salvando}>
+            {salvando ? 'Salvando…' : 'Salvar contexto'}
+          </Button>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
 
 const POLL_MS = 8000;
 
@@ -725,6 +791,11 @@ export function LiveDetailPage() {
        * que existe uma segunda metade.
        */}
       {sessao.status === 'pronta' && <CardDoApp paraQuem="detalhe" />}
+
+      <ContextoDaLive
+        sessao={sessao}
+        onSalvo={(salva) => setSessao((atual) => (atual ? { ...atual, ...salva } : atual))}
+      />
 
       {/* ------------------------------------------------------- produtos */}
       <Card sx={{ mb: 3 }}>

@@ -220,3 +220,66 @@ export const adminService = {
       })
       .then((r) => r.data),
 };
+
+/* ------------------------------------------------------------------ */
+/* Auditoria                                                            */
+/* ------------------------------------------------------------------ */
+
+export interface AuditLog {
+  id: string;
+  userId: string | null;
+  userEmail: string | null;
+  categoria: string;
+  acao: string;
+  metodo: string;
+  rota: string;
+  alvoId: string | null;
+  statusCode: number;
+  resultado: 'ok' | 'erro';
+  erro: string | null;
+  detalhe: Record<string, unknown> | null;
+  ip: string | null;
+  userAgent: string | null;
+  duracaoMs: number;
+  admin: boolean;
+  createdAt: string;
+}
+
+export interface AuditParams {
+  busca?: string;
+  userId?: string;
+  categoria?: string;
+  acao?: string;
+  resultado?: 'ok' | 'erro';
+  /** 'true' = só equipe, 'false' = só clientes. */
+  admin?: 'true' | 'false';
+  desde?: string;
+  ate?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface AuditOpcao {
+  categoria: string;
+  acao: string;
+  total: number;
+}
+
+export interface AuditResumo {
+  dias: number;
+  porDia: Array<{ dia: string; total: number; erros: number }>;
+  porCategoria: Array<{ categoria: string; total: number }>;
+  usuariosAtivos: number;
+}
+
+export const auditService = {
+  listar: (params: AuditParams) =>
+    api
+      .get<{ items: AuditLog[]; total: number; page: number; limit: number }>('/admin/audit', {
+        params,
+      })
+      .then((r) => r.data),
+  opcoes: () => api.get<AuditOpcao[]>('/admin/audit/opcoes').then((r) => r.data),
+  resumo: (dias = 7) =>
+    api.get<AuditResumo>('/admin/audit/resumo', { params: { dias } }).then((r) => r.data),
+};

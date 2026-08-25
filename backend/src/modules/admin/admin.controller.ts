@@ -13,6 +13,9 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsBooleanString,
+  IsDateString,
+  IsUUID,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -28,6 +31,7 @@ import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { AdminService } from './admin.service';
 import { AdminGuard } from './admin.guard';
 import { SupportService } from '../support/support.service';
+import { AuditService } from '../audit/audit.service';
 
 class SupportReplyDto {
   @IsString()
@@ -126,6 +130,57 @@ class NotificarCreditoDto {
   mensagem?: string;
 }
 
+class ListAuditDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  busca?: string;
+
+  @IsOptional()
+  @IsUUID()
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  categoria?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  acao?: string;
+
+  @IsOptional()
+  @IsIn(['ok', 'erro'])
+  resultado?: 'ok' | 'erro';
+
+  /** 'true' = só ações da equipe; 'false' = só clientes. */
+  @IsOptional()
+  @IsBooleanString()
+  admin?: string;
+
+  @IsOptional()
+  @IsDateString()
+  desde?: string;
+
+  @IsOptional()
+  @IsDateString()
+  ate?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number;
+}
+
 /**
  * Área administrativa: ver e ajustar contas.
  *
@@ -140,7 +195,31 @@ export class AdminController {
   constructor(
     private readonly admin: AdminService,
     private readonly support: SupportService,
+    private readonly auditoria: AuditService,
   ) {}
+
+  @Get('audit')
+  @ApiOperation({
+    summary: 'Trilha de auditoria: tudo que todo usuário fez, com filtros',
+  })
+  audit(@Query() dto: ListAuditDto) {
+    return this.auditoria.listar({
+      ...dto,
+      admin: dto.admin === undefined ? undefined : dto.admin === 'true',
+    });
+  }
+
+  @Get('audit/opcoes')
+  @ApiOperation({ summary: 'Categorias e ações existentes (para os filtros)' })
+  auditOpcoes() {
+    return this.auditoria.opcoes();
+  }
+
+  @Get('audit/resumo')
+  @ApiOperation({ summary: 'Volume por dia/categoria e erros dos últimos N dias' })
+  auditResumo(@Query('dias') dias?: string) {
+    return this.auditoria.resumo(Math.min(90, Math.max(1, Number(dias) || 7)));
+  }
 
   @Get('overview')
   @ApiOperation({ summary: 'Números gerais: contas, planos, receita e consumo' })

@@ -37,6 +37,7 @@
     "backfill:periodos": "ts-node src/scripts/backfill-periodos.ts",
     "simular:live": "ts-node src/scripts/simular-live.ts",
     "simular:processamento-live": "ts-node src/scripts/simular-processamento-live.ts",
+    "live:processar-gravacao": "ts-node src/scripts/processar-gravacao-local.ts",
     "seed:personas": "ts-node src/database/seeds/seed-persona-library.ts"
   },
   "dependencies": {

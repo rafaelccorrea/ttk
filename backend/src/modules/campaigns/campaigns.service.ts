@@ -7,7 +7,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Cron } from '@nestjs/schedule';
 import { In, IsNull, Not, Repository } from 'typeorm';
+import type { JobContexto } from '../jobs/jobs.service';
 import { randomUUID } from 'node:crypto';
 import { garantirConteudoPermitido } from '../../common/moderacao';
 import { BillingService } from '../billing/billing.service';
@@ -1143,7 +1145,11 @@ export class CampaignsService {
    * Rodar de novo substitui o storyboard inteiro — por isso é bloqueado
    * depois que alguma cena já foi renderizada (seria jogar crédito fora).
    */
-  async gerarRoteiro(userId: string, campaignId: string) {
+  /**
+   * O que pode barrar a geração de roteiro — resolvido no request, antes de
+   * virar job em background, para o erro voltar como 4xx e não como job falhado.
+   */
+  async validarGeracaoDeRoteiro(userId: string, campaignId: string): Promise<Campaign> {
     const campanha = await this.campanhas.findOneBy({ id: campaignId, userId });
     if (!campanha) throw new NotFoundException('Campanha não encontrada.');
 
@@ -1155,6 +1161,11 @@ export class CampaignsService {
         'Esta campanha já tem cenas renderizadas. Crie uma nova campanha para mudar o roteiro.',
       );
     }
+    return campanha;
+  }
+
+  async gerarRoteiro(userId: string, campaignId: string, ctx?: JobContexto) {
+    const campanha = await this.validarGeracaoDeRoteiro(userId, campaignId);
 
     const produto = await this.produtos.findOneBy({ id: campanha.userProductId });
     const persona = await this.personaDaCampanha(campanha);
@@ -1183,6 +1194,7 @@ export class CampaignsService {
       semNarracao: campanha.vozNarrador === SEM_NARRACAO,
     };
 
+    await ctx?.progresso(15, 'Escrevendo o roteiro e o storyboard');
     const run = () => this.ai.generateCampaign(pedido);
     // Modo amostra: o roteiro do vídeo de cortesia também é cortesia — um por
     // conta (ver `consumirRoteiroDeCortesia`). Fora disso, cobra a tabela.
@@ -1190,7 +1202,12 @@ export class CampaignsService {
       this.ai.enabled && (await this.billing.consumirRoteiroDeCortesia(userId));
     const resultado = !this.ai.enabled || roteiroDeCortesia
       ? await run()
-      : await this.billing.withCharge(userId, 'script', run);
+      : await this.billing.withCharge(userId, 'script', async () => {
+          // Cobrado: se o servidor cair daqui até o fim, o cron devolve.
+          await ctx?.cobrado('script');
+          return run();
+        });
+    await ctx?.progresso(85, 'Montando as cenas');
 
     // Regerar o roteiro descarta as cenas antigas — e as gerações delas, que
     // sem isto ficariam órfãs em "Minhas Gerações".
@@ -1963,6 +1980,49 @@ export class CampaignsService {
   }
 
   /** Consulta as cenas em andamento e fecha a campanha quando todas concluem. */
+  /**
+   * A fila de cenas e a colheita das gerações avançavam SÓ dentro do polling
+   * da tela (`atualizarCampanha`): fechar a aba deixava a cena presa em
+   * 'renderizando', as pendentes nunca disparadas e o final nunca montado.
+   * Este cron faz o mesmo passo pelo servidor, para toda campanha com algo em
+   * voo — a tela aberta só deixa a atualização mais rápida.
+   */
+  @Cron('*/20 * * * * *')
+  async avancarCampanhasEmAndamento(): Promise<number> {
+    const emRender = await this.cenas
+      .createQueryBuilder('c')
+      .select('DISTINCT c.campaignId', 'campaignId')
+      .where('c.status = :s', { s: 'renderizando' })
+      .getRawMany<{ campaignId: string }>();
+    const comFila = await this.campanhas.find({
+      where: { renderQueue: true },
+      select: { id: true },
+    });
+    const ids = new Set<string>([
+      ...emRender.map((r) => r.campaignId),
+      ...comFila.map((c) => c.id),
+    ]);
+    let tocadas = 0;
+    for (const id of ids) {
+      if (this.refreshPeloCron.has(id)) continue;
+      const campanha = await this.campanhas.findOneBy({ id });
+      if (!campanha) continue;
+      this.refreshPeloCron.add(id);
+      try {
+        await this.atualizarCampanha(campanha.userId, id);
+        tocadas++;
+      } catch (error) {
+        this.logger.warn(`Cron da Fábrica: campanha ${id} falhou ao avançar: ${error}`);
+      } finally {
+        this.refreshPeloCron.delete(id);
+      }
+    }
+    return tocadas;
+  }
+
+  /** Campanhas que o cron está avançando agora — um tique não pisa no outro. */
+  private readonly refreshPeloCron = new Set<string>();
+
   async atualizarCampanha(userId: string, campaignId: string) {
     const campanha = await this.campanhas.findOneBy({ id: campaignId, userId });
     if (!campanha) throw new NotFoundException('Campanha não encontrada.');
@@ -2137,7 +2197,8 @@ export class CampaignsService {
    * as cenas prontas de propósito — montar pela metade entrega um vídeo que
    * corta no meio da frase, e o vendedor publicaria sem perceber.
    */
-  async montar(userId: string, campaignId: string) {
+  /** Barreiras da montagem, para o request responder 4xx antes de virar job. */
+  async validarMontagem(userId: string, campaignId: string): Promise<Campaign> {
     const campanha = await this.campanhas.findOneBy({ id: campaignId, userId });
     if (!campanha) throw new NotFoundException('Campanha não encontrada.');
     if (!this.assembly.enabled) {
@@ -2148,6 +2209,21 @@ export class CampaignsService {
     if (this.montagensEmVoo.has(campaignId)) {
       throw new ConflictException('A montagem já está em andamento — aguarde.');
     }
+    const total = await this.cenas.count({ where: { campaignId } });
+    if (!total) throw new ConflictException('Gere o roteiro antes de montar.');
+    const pendentes = await this.cenas.count({
+      where: { campaignId, status: Not('pronta') },
+    });
+    if (pendentes) {
+      throw new ConflictException(
+        `Faltam ${pendentes} cena(s) para renderizar antes de montar.`,
+      );
+    }
+    return campanha;
+  }
+
+  async montar(userId: string, campaignId: string) {
+    const campanha = await this.validarMontagem(userId, campaignId);
     this.montagensEmVoo.add(campaignId);
     try {
       return await this.montarInterno(userId, campanha, campaignId);

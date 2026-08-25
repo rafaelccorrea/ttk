@@ -30,6 +30,7 @@ import {
 } from '../billing/plan-feature.guard';
 import {
   AtualizarFaqDto,
+  AtualizarLiveSessionDto,
   AtualizarProdutoDto,
   CriarFaqDto,
   CriarLiveSessionDto,
@@ -113,6 +114,16 @@ export class LiveController {
   @ApiOperation({ summary: 'Live com produtos e FAQ (é por aqui que a tela faz polling do status)' })
   getSession(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.live.obterSessao(user.id, id);
+  }
+
+  @Patch('sessions/:id')
+  @ApiOperation({ summary: 'Edita título e contexto ("sobre o que é a live") da base' })
+  updateSession(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AtualizarLiveSessionDto,
+  ) {
+    return this.live.atualizarSessao(user.id, id, dto);
   }
 
   @Delete('sessions/:id')

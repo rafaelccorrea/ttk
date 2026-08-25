@@ -265,6 +265,21 @@ release de app nem de o usuário aceitar atualizar.
 `DESKTOP_DOWNLOAD_WINDOWS` para ele. Sem assinatura de código, o Windows exibe o
 SmartScreen — a tela avisa antes, mas assinar é o que resolve.
 
+**Contexto da live (`live_sessions.context`).** Produtos e FAQ dizem o que se
+vende; o contexto diz o que está acontecendo na transmissão — quem apresenta,
+para quem, com que tom. O vendedor escreve no card "Sobre esta live" da base
+(`PATCH /live/sessions/:id`) e o texto vai inteiro para o `<base>` do prompt,
+antes dos produtos, como `live.contexto`. É instrução de leitura, não fonte de
+fato: preço e detalhe continuam vindo só de produto e FAQ. Editar no meio da
+live derruba a base em memória da run, igual a produto e FAQ.
+
+**Processar uma gravação que está na sua máquina:**
+`npm run live:processar-gravacao <email> <arquivo.mp4> --titulo "..." --contexto "..."`
+roda o mesmo pipeline do upload (ffmpeg → Whisper → Claude) contra o banco do
+`.env`, cobra os créditos da conta (transcrição por bloco de 10 min + extração)
+e imprime produtos, FAQ e transcrição. Serve para montar a base de uma live de
+apresentação sem subir 200 MB pelo navegador.
+
 ---
 
 ## 7. Riscos assumidos

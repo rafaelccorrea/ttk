@@ -62,6 +62,15 @@ export class LiveSession {
   @Column({ type: 'text', nullable: true })
   transcript: string | null;
 
+  /**
+   * Sobre o que é esta live, nas palavras do vendedor: quem apresenta, para
+   * quem, o que vai mostrar, o tom. Vai inteiro para o prompt do copiloto — é
+   * o que permite entender uma pergunta que a lista de produtos sozinha não
+   * explica.
+   */
+  @Column({ type: 'text', nullable: true })
+  context: string | null;
+
   @Column({ type: 'int', default: 0 })
   creditsSpent: number;
 

@@ -2282,7 +2282,7 @@ export class LiveReplyService {
       return cacheada;
     }
 
-    const [produtos, faq] = await Promise.all([
+    const [produtos, faq, sessao] = await Promise.all([
       this.produtos.find({
         where: { userId: run.userId, liveSessionId: run.knowledgeSessionId, active: true },
         order: { id: 'ASC' },
@@ -2291,9 +2291,19 @@ export class LiveReplyService {
         where: { userId: run.userId, liveSessionId: run.knowledgeSessionId },
         order: { id: 'ASC' },
       }),
+      this.sessoes.findOne({
+        where: { id: run.knowledgeSessionId, userId: run.userId },
+        select: { id: true, title: true, context: true },
+      }),
     ]);
 
     const serializada = JSON.stringify({
+      // O "sobre o que é esta live" vem ANTES dos produtos e é estável durante
+      // a run (editar derruba esta base): prefixo cacheável, como o resto.
+      live: {
+        titulo: sessao?.title ?? null,
+        contexto: sessao?.context ?? null,
+      },
       produtos: produtos.map((p) => ({
         id: p.id,
         nome: p.name,

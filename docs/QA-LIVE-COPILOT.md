@@ -86,6 +86,15 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 | 3b.4 | Arquivo inválido (PDF / >limite) | Recusado com mensagem clara, sem alterar o produto | ✅ 23/08 — .txt recusado |
 | 3b.5 | Foto em produto de OUTRA conta (chamar `POST /live/products/:id/photo` com id alheio) | 404/403 — nunca grava | ✅ (teste unitário live.service.foto.spec) |
 
+## 3c. Site — contexto da live (`/live/<base>` → card "Sobre esta live")
+
+| # | Passo | Esperado | OK |
+|---|---|---|---|
+| 3c.1 | Escrever "sobre o que é a live" e salvar | `live_sessions.context` gravado; `PATCH /live/sessions/:id`; botão só habilita com mudança | ⬜ |
+| 3c.2 | Abrir uma run (desktop) e perguntar algo que só o contexto explica ("quem tá apresentando?", "isso serve pra afiliado?") | A resposta usa o contexto para entender a pergunta; preço/detalhe continuam vindo só de produtos/FAQ (`live.contexto` vai dentro de `<base>`) | ⬜ |
+| 3c.3 | Editar o contexto com a run ABERTA | Próxima resposta já usa o texto novo (`invalidarBasesDaSessao`) | ⬜ |
+| 3c.4 | Apagar o texto e salvar | `context` volta a `null`; copiloto segue funcionando só com produtos/FAQ | ⬜ |
+| 3c.5 | `npm run live:processar-gravacao <email> <mp4> --contexto "..."` | Base criada na conta com o mesmo pipeline do upload; cobra transcrição por bloco + extração; imprime produtos, FAQ e transcrição | ✅ 25/08 — live de apresentação (22m42s, 35 cr) |
 ## 4. Adesão, renovação e upgrade (webhook da Stripe — usar conta de teste, cartão real ou evento reenviado)
 
 | # | Passo | Esperado (extrato `live_minute_transactions` + `app_users`) | OK |

@@ -33,6 +33,7 @@ import {
   type AdminUser,
 } from '@/services/admin.service';
 import { SupportPanel } from './SupportPanel';
+import { AuditPanel } from './AuditPanel';
 import { UserDrawer } from './UserDrawer';
 import { PLANO_COR, brl, data, dataHora, diasDesde, relativo } from './formato';
 
@@ -305,6 +306,8 @@ export function AdminPage() {
       )}
 
       <SupportPanel />
+
+      <AuditPanel />
 
       <Card sx={{ borderRadius: 3 }}>
         <CardContent>

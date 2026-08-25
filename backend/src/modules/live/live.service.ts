@@ -24,6 +24,7 @@ import { LiveReplyService } from './live-reply.service';
 import { lerCatalogo } from './csv';
 import {
   AtualizarFaqDto,
+  AtualizarLiveSessionDto,
   AtualizarProdutoDto,
   CriarFaqDto,
   CriarLiveSessionDto,
@@ -163,10 +164,24 @@ export class LiveService {
       this.sessoes.create({
         userId,
         title: dto.title.trim(),
+        context: dto.context?.trim() || null,
         status: 'rascunho',
         sourceKind: 'gravada',
       }),
     );
+  }
+
+  /**
+   * Título e contexto. O contexto entra no prompt de toda run desta base, então
+   * a edição derruba a base em memória das runs ativas — igual a produto e FAQ.
+   */
+  async atualizarSessao(userId: string, id: string, dto: AtualizarLiveSessionDto) {
+    const sessao = await this.acharSessao(userId, id);
+    if (dto.title !== undefined) sessao.title = dto.title.trim();
+    if (dto.context !== undefined) sessao.context = dto.context.trim() || null;
+    const salva = await this.sessoes.save(sessao);
+    this.replies.invalidarBasesDaSessao(id);
+    return salva;
   }
 
   async listarSessoes(userId: string) {

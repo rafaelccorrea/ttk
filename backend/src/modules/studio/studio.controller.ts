@@ -25,6 +25,7 @@ import {
   transcribeBlocks,
 } from '../billing/billing.config';
 import { BillingService } from '../billing/billing.service';
+import { JobsService } from '../jobs/jobs.service';
 import { VideoAssemblyService } from '../campaigns/video-assembly.service';
 import { AnalyzeDto } from './dto/analyze.dto';
 import { GenerateScriptDto } from './dto/generate-script.dto';
@@ -60,6 +61,7 @@ export class StudioController {
     private readonly transcriptionService: TranscriptionService,
     private readonly billing: BillingService,
     private readonly promptRefresh: PromptRefreshService,
+    private readonly jobs: JobsService,
     // Só pela leitura de duração do arquivo enviado — é o único lugar do
     // projeto que já sabe conversar com o ffmpeg.
     private readonly assembly: VideoAssemblyService,
@@ -112,11 +114,31 @@ export class StudioController {
 
     const blocos = transcribeBlocks(segundos);
     // Whisper custa dinheiro real → cobra créditos; estorna se a API falhar.
-    return this.billing.withCharge(
-      user.id,
-      'transcribe',
-      () => this.transcriptionService.transcribe(file),
-      blocos,
+    // Roda como job em background: fechar a aba não mata a transcrição — a
+    // tela reconecta pelo progresso global e lê `resultado.transcript`.
+    const { buffer, originalname, mimetype } = file;
+    return this.jobs.iniciar(
+      {
+        userId: user.id,
+        tipo: 'transcribe',
+        titulo: `Transcrevendo ${originalname || 'vídeo'}`,
+      },
+      async (ctx) => {
+        await ctx.progresso(10, 'Ouvindo o áudio');
+        return this.billing.withCharge(
+          user.id,
+          'transcribe',
+          async () => {
+            await ctx.cobrado('transcribe', blocos);
+            return this.transcriptionService.transcribe({
+              buffer,
+              originalname,
+              mimetype,
+            } as Express.Multer.File);
+          },
+          blocos,
+        );
+      },
     );
   }
 
@@ -149,19 +171,40 @@ export class StudioController {
     summary: 'Decompõe a transcrição de um vídeo viral e adapta ao produto',
   })
   analyze(@CurrentUser() user: AuthUser, @Body() dto: AnalyzeDto) {
-    return this.studioService.analyze(
-      user.id,
-      dto.transcript,
-      dto.productId,
-      dto.userProductId,
+    // Job em background (resultado = Script salvo). Ver `transcribe`.
+    return this.jobs.iniciar(
+      { userId: user.id, tipo: 'analyze', titulo: 'Analisando vídeo viral' },
+      async (ctx) => {
+        await ctx.progresso(15, 'Decompondo o roteiro');
+        return this.studioService.analyze(
+          user.id,
+          dto.transcript,
+          dto.productId,
+          dto.userProductId,
+          ctx,
+        );
+      },
     );
   }
 
   @UseInterceptors(SingleFlightInterceptor)
   @Post('scripts/generate')
   @ApiOperation({ summary: 'Gera um roteiro de live ou vídeo com IA' })
-  generate(@CurrentUser() user: AuthUser, @Body() dto: GenerateScriptDto) {
-    return this.studioService.generate(user.id, dto);
+  async generate(@CurrentUser() user: AuthUser, @Body() dto: GenerateScriptDto) {
+    // A validação (produto existe, conteúdo permitido) acontece ANTES de
+    // criar o job, para o erro voltar como 4xx e não como job falhado.
+    const preparado = await this.studioService.prepararGeracao(user.id, dto);
+    return this.jobs.iniciar(
+      {
+        userId: user.id,
+        tipo: 'script',
+        titulo: `Roteiro: ${preparado.productName || (dto.type === 'live' ? 'live' : 'vídeo')}`,
+      },
+      async (ctx) => {
+        await ctx.progresso(15, 'Escrevendo o roteiro');
+        return this.studioService.generate(user.id, dto, preparado, ctx);
+      },
+    );
   }
 
   @Get('scripts')

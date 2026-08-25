@@ -43,6 +43,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { SupportFab } from '@/components/ui/SupportFab';
+import { JobsTray } from '@/components/layout/JobsTray';
 import { ConsumoToast } from '@/components/layout/ConsumoToast';
 import { NovasContasToast } from '@/components/layout/NovasContasToast';
 import { WelcomeModal } from '@/components/layout/WelcomeModal';
@@ -1093,6 +1094,7 @@ export function AppLayout() {
         </Box>
       </Box>
       <SupportFab />
+      <JobsTray />
       <WelcomeModal carteira={carteira} email={email} />
       <ConsumoToast carteira={carteira} email={email} />
       {/* Aviso de conta nova, só para a equipe — o backend barra quem não é. */}

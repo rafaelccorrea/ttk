@@ -23,6 +23,30 @@ export class CriarLiveSessionDto {
   @IsNotEmpty()
   @MaxLength(200)
   title: string;
+
+  @ApiPropertyOptional({
+    description: 'Sobre o que é a live — vai inteiro para o prompt do copiloto',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  context?: string;
+}
+
+/** O que o vendedor edita na sessão depois de criada. */
+export class AtualizarLiveSessionDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  title?: string;
+
+  @ApiPropertyOptional({ description: 'String vazia apaga o contexto' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  context?: string;
 }
 
 /**

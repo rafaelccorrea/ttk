@@ -25,6 +25,7 @@ import { proxyImage } from '@/utils/tiktok';
 import { productsService, RankedProduct } from '@/services/products.service';
 import { campaignsService, UserProduct } from '@/services/campaigns.service';
 import { Script } from '@/services/studio.service';
+import { AiJob, jobsService } from '@/services/jobs.service';
 
 export function AnalyzePage() {
   // A análise é cobrada como `analyze` (12 créditos); a transcrição, como
@@ -50,9 +51,70 @@ export function AnalyzePage() {
   const [error, setError] = useState<string | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  /** Etapa que o job em background reporta ("Ouvindo o áudio"). */
+  const [etapa, setEtapa] = useState<string | null>(null);
+
+  // Travas síncronas. `transcribing`/`analyzing` só desabilitam o controle no
+  // próximo render — um duplo-clique cabe nessa janela, e cada disparo extra
+  // é uma chamada paga (Whisper/Claude) cobrada de novo do usuário.
+  const transcribingRef = useRef(false);
+  const analyzingRef = useRef(false);
 
   useEffect(() => {
     campaignsService.listProducts().then(setMeusProdutos).catch(console.error);
+  }, []);
+
+  // Retomada: se o usuário saiu com uma transcrição/análise rodando (ou que
+  // terminou sem ser lida), reconecta ao job e entrega o resultado aqui.
+  useEffect(() => {
+    let cancelado = false;
+    const transcricao = jobsService.pendente('transcribe');
+    if (transcricao) {
+      setTranscribing(true);
+      transcribingRef.current = true;
+      jobsService
+        .esperar<{ transcript: string }>(transcricao, (job) => {
+          if (!cancelado) setEtapa(job.etapa);
+        })
+        .then((data) => {
+          if (!cancelado) setTranscript(data.transcript);
+        })
+        .catch((err) => {
+          if (!cancelado) setError(apiErrorMessage(err));
+        })
+        .finally(() => {
+          jobsService.esquecer('transcribe');
+          if (!cancelado) {
+            setTranscribing(false);
+            transcribingRef.current = false;
+          }
+        });
+    }
+    const analise = jobsService.pendente('analyze');
+    if (analise) {
+      setAnalyzing(true);
+      analyzingRef.current = true;
+      jobsService
+        .esperar<Script>(analise, (job) => {
+          if (!cancelado) setEtapa(job.etapa);
+        })
+        .then((data) => {
+          if (!cancelado) setResult(data);
+        })
+        .catch((err) => {
+          if (!cancelado) setError(apiErrorMessage(err));
+        })
+        .finally(() => {
+          jobsService.esquecer('analyze');
+          if (!cancelado) {
+            setAnalyzing(false);
+            analyzingRef.current = false;
+          }
+        });
+    }
+    return () => {
+      cancelado = true;
+    };
   }, []);
 
   // A lista é só o topo do catálogo: um produto fora dos 50 mais vendidos
@@ -78,11 +140,6 @@ export function AnalyzePage() {
     };
   }, [busca]);
 
-  // Travas síncronas. `transcribing`/`analyzing` só desabilitam o controle no
-  // próximo render — um duplo-clique cabe nessa janela, e cada disparo extra
-  // é uma chamada paga (Whisper/Claude) cobrada de novo do usuário.
-  const transcribingRef = useRef(false);
-  const analyzingRef = useRef(false);
 
   async function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -110,10 +167,16 @@ export function AnalyzePage() {
     try {
       const form = new FormData();
       form.append('file', file);
-      const { data } = await api.post<{ transcript: string }>(
-        '/studio/transcribe',
-        form,
-        { headers: { 'Content-Type': 'multipart/form-data' } },
+      // O servidor responde um job e transcreve em background: sair da tela
+      // não mata a transcrição — ao voltar, o efeito de retomada reconecta.
+      const data = await jobsService.rodar<{ transcript: string }>(
+        async () =>
+          (
+            await api.post<AiJob>('/studio/transcribe', form, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+            })
+          ).data,
+        (job) => setEtapa(job.etapa),
       );
       setTranscript(data.transcript);
       saldoTranscricao.recarregar();
@@ -138,13 +201,19 @@ export function AnalyzePage() {
     setAnalyzing(true);
     setResult(null);
     try {
-      const { data } = await api.post<Script>('/studio/analyze', {
-        transcript,
-        productId: selecao.startsWith('cat:') ? selecao.slice(4) : undefined,
-        userProductId: selecao.startsWith('meu:')
-          ? selecao.slice(4)
-          : undefined,
-      });
+      const data = await jobsService.rodar<Script>(
+        async () =>
+          (
+            await api.post<AiJob>('/studio/analyze', {
+              transcript,
+              productId: selecao.startsWith('cat:') ? selecao.slice(4) : undefined,
+              userProductId: selecao.startsWith('meu:')
+                ? selecao.slice(4)
+                : undefined,
+            })
+          ).data,
+        (job) => setEtapa(job.etapa),
+      );
       setResult(data);
       // Gastou: o botão precisa saber, senão só um F5 revelaria o novo saldo.
       saldoAnalise.recarregar();
@@ -301,7 +370,7 @@ export function AnalyzePage() {
         </Grid>
 
         <Grid item xs={12} md={7}>
-          {analyzing && <BrandLoader label="Decompondo o vídeo..." />}
+          {analyzing && <BrandLoader label={etapa ?? 'Decompondo o vídeo...'} />}
           {result && !analyzing && (
             <Card>
               <CardContent>

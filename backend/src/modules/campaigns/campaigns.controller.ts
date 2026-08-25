@@ -28,6 +28,7 @@ import {
 } from '../billing/plan-feature.guard';
 import { catalogoDeModelos } from '../videogen/modelos-de-video';
 import { CampaignsService } from './campaigns.service';
+import { JobsService } from '../jobs/jobs.service';
 import {
   CloneCampaignDto,
   CreateCampaignDto,
@@ -61,7 +62,10 @@ import {
 @RequiresPlanFeature('campaigns_sample')
 @Controller('campaigns')
 export class CampaignsController {
-  constructor(private readonly campaigns: CampaignsService) {}
+  constructor(
+    private readonly campaigns: CampaignsService,
+    private readonly jobs: JobsService,
+  ) {}
 
   // -------------------------------------------------------------- referência
   @Get('video-models')
@@ -256,16 +260,43 @@ export class CampaignsController {
   @Post(':id/script')
   @UseInterceptors(SingleFlightInterceptor)
   @ApiOperation({ summary: 'Gera roteiro e storyboard (cobra créditos)' })
-  script(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.campaigns.gerarRoteiro(user.id, id);
+  async script(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    // Job em background: fechar a aba não perde o roteiro. A validação roda
+    // antes (4xx normal); o resultado do job é o detalhe da campanha.
+    const campanha = await this.campaigns.validarGeracaoDeRoteiro(user.id, id);
+    const emVoo = await this.jobs.emVoo(user.id, 'campaign_script', id);
+    if (emVoo) return emVoo;
+    return this.jobs.iniciar(
+      {
+        userId: user.id,
+        tipo: 'campaign_script',
+        titulo: `Roteiro da campanha ${campanha.title ?? ''}`.trim(),
+        referenciaId: id,
+      },
+      (ctx) => this.campaigns.gerarRoteiro(user.id, id, ctx),
+    );
   }
 
   @Post(':id/assemble')
   @RequiresPlanFeature('campaigns')
   @UseInterceptors(SingleFlightInterceptor)
   @ApiOperation({ summary: 'Junta as cenas num único vídeo (não cobra créditos)' })
-  assemble(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.campaigns.montar(user.id, id);
+  async assemble(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    const campanha = await this.campaigns.validarMontagem(user.id, id);
+    const emVoo = await this.jobs.emVoo(user.id, 'campaign_assemble', id);
+    if (emVoo) return emVoo;
+    return this.jobs.iniciar(
+      {
+        userId: user.id,
+        tipo: 'campaign_assemble',
+        titulo: `Montando o vídeo final ${campanha.title ?? ''}`.trim(),
+        referenciaId: id,
+      },
+      async (ctx) => {
+        await ctx.progresso(20, 'Juntando as cenas');
+        return this.campaigns.montar(user.id, id);
+      },
+    );
   }
 
   @Post(':id/render-all')

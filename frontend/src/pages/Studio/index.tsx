@@ -45,6 +45,7 @@ import {
   studioService,
 } from '@/services/studio.service';
 import { campaignsService, UserProduct } from '@/services/campaigns.service';
+import { jobsService } from '@/services/jobs.service';
 
 /**
  * Tons sugeridos para o roteiro.
@@ -253,6 +254,10 @@ export function StudioPage() {
   const resultRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Trava síncrona: `busy` só desabilita o botão no próximo render. Num
+  // formulário isso é ainda mais fácil de disparar duas vezes (clique + Enter),
+  // e cada envio extra é um roteiro cobrado de novo do usuário.
+  const busyRef = useRef(false);
   /*
    * Conta gratuita: tem as ferramentas de IA, não tem o catálogo. `null`
    * enquanto a carteira não chega — a lista só carrega depois, para não
@@ -290,6 +295,40 @@ export function StudioPage() {
     const min = Math.max(1, Math.round((Date.now() - new Date(s.createdAt).getTime()) / 60000));
     return { ha: min < 2 ? 'instantes' : `${min} min` };
   })();
+
+  // Retomada: roteiro que ficou gerando quando o usuário saiu da tela (o job
+  // continua no servidor) volta a aparecer aqui, sem cobrar de novo.
+  useEffect(() => {
+    const pendente = jobsService.pendente('script');
+    if (!pendente) return;
+    let cancelado = false;
+    setBusy(true);
+    busyRef.current = true;
+    jobsService
+      .esperar<Script>(pendente)
+      .then((script) => {
+        if (cancelado) return;
+        setResult(script);
+        setScripts((prev) =>
+          prev.some((s) => s.id === script.id) ? prev : [script, ...prev],
+        );
+        saldo.recarregar();
+      })
+      .catch((err) => {
+        if (!cancelado) setError(apiErrorMessage(err));
+      })
+      .finally(() => {
+        jobsService.esquecer('script');
+        if (!cancelado) {
+          setBusy(false);
+          busyRef.current = false;
+        }
+      });
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     studioService.listScripts().then(setScripts).catch(console.error);
@@ -374,10 +413,6 @@ export function StudioPage() {
     });
   }, [productId, userProductId, topProducts, escolhido, meusProdutos]);
 
-  // Trava síncrona: `busy` só desabilita o botão no próximo render. Num
-  // formulário isso é ainda mais fácil de disparar duas vezes (clique + Enter),
-  // e cada envio extra é um roteiro cobrado de novo do usuário.
-  const busyRef = useRef(false);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();

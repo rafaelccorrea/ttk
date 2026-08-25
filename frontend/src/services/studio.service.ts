@@ -1,4 +1,5 @@
 import { api } from './api';
+import { AiJob, jobsService } from './jobs.service';
 
 export interface Script {
   id: string;
@@ -55,9 +56,16 @@ export const PECAS_PADRAO = { hooks: 5, bodies: 2, ctas: 2 } as const;
 export const PECAS_MAX = { hooks: 10, bodies: 5, ctas: 3 } as const;
 
 export const studioService = {
+  /**
+   * O servidor responde um job e escreve o roteiro em background; aqui se
+   * espera o resultado. Fechar a aba não perde nada — ao voltar, a tela
+   * retoma com `jobsService.pendente('script')`.
+   */
   async generate(input: GenerateScriptInput): Promise<Script> {
-    const { data } = await api.post<Script>('/studio/scripts/generate', input);
-    return data;
+    return jobsService.rodar<Script>(async () => {
+      const { data } = await api.post<AiJob>('/studio/scripts/generate', input);
+      return data;
+    });
   },
 
   /** Sobe a foto do produto e devolve a URL para mandar junto do roteiro. */

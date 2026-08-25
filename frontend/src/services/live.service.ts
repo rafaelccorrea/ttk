@@ -22,6 +22,8 @@ export type LiveFaqKind = 'faq' | 'objecao' | 'politica';
 export interface LiveSession {
   id: string;
   title: string;
+  /** Sobre o que é a live — vai inteiro para o prompt do copiloto. */
+  context: string | null;
   status: LiveSessionStatus;
   sourceKind: LiveSessionSourceKind;
   durationSeconds: number | null;
@@ -293,6 +295,9 @@ export const liveService = {
 
   createSession: (title: string) =>
     api.post<LiveSession>('/live/sessions', { title }).then((r) => r.data),
+
+  updateSession: (id: string, dto: { title?: string; context?: string }) =>
+    api.patch<LiveSession>(`/live/sessions/${id}`, dto).then((r) => r.data),
 
   deleteSession: (id: string) => api.delete(`/live/sessions/${id}`).then(() => undefined),
 

@@ -12,6 +12,14 @@ import { UserProduct } from '../campaigns/entities/user-product.entity';
 import { MEDIA_ROUTE, MediaMirrorService } from '../media/media-mirror.service';
 import { AiService } from './ai.service';
 import { GenerateScriptDto } from './dto/generate-script.dto';
+import type { JobContexto } from '../jobs/jobs.service';
+
+/** O que `prepararGeracao` resolve antes de o roteiro virar job. */
+export interface GeracaoPreparada {
+  productName: string;
+  productDescription?: string;
+  price?: number;
+}
 import { PromptTemplate } from './entities/prompt-template.entity';
 import { Script } from './entities/script.entity';
 
@@ -106,7 +114,14 @@ export class StudioService {
     return { name: produto.name, price, description };
   }
 
-  async generate(userId: string, dto: GenerateScriptDto): Promise<Script> {
+  /**
+   * Tudo que pode dar erro de validação na geração de roteiro — resolvido no
+   * request, antes de virar job, para o usuário receber um 4xx normal.
+   */
+  async prepararGeracao(
+    userId: string,
+    dto: GenerateScriptDto,
+  ): Promise<GeracaoPreparada> {
     // O nome e a descrição digitados viram prompt sem outra revisão.
     garantirConteudoPermitido({
       productName: dto.productName,
@@ -135,12 +150,25 @@ export class StudioService {
       price = ficha.price;
       productDescription = productDescription ?? (ficha.description || undefined);
     }
+    return { productName, productDescription, price };
+  }
+
+  async generate(
+    userId: string,
+    dto: GenerateScriptDto,
+    preparado?: GeracaoPreparada,
+    ctx?: JobContexto,
+  ): Promise<Script> {
+    const { productName, productDescription, price } =
+      preparado ?? (await this.prepararGeracao(userId, dto));
 
     const productImage = await this.fotoParaModelo(dto.productImageUrl);
 
     // Gerador local (sem chave de IA) é gratuito; Claude real cobra créditos.
-    const run = () =>
-      this.aiService.generateScript({
+    const run = async () => {
+      // Cobrado: se o servidor cair daqui até o fim, o cron devolve.
+      await ctx?.cobrado('script');
+      return this.aiService.generateScript({
         type: dto.type,
         productName,
         productDescription,
@@ -154,10 +182,12 @@ export class StudioService {
           ctas: dto.ctasCount,
         },
       });
+    };
     const result = this.aiService.enabled
       ? await this.billing.withCharge(userId, 'script', run, 1, undefined, productName)
       : await run();
 
+    await ctx?.progresso(90, 'Salvando');
     return this.scripts.save(
       this.scripts.create({
         userId,
@@ -176,6 +206,7 @@ export class StudioService {
     transcript: string,
     productId?: string,
     userProductId?: string,
+    ctx?: JobContexto,
   ): Promise<Script> {
     let productName: string | undefined;
     let price: number | undefined;
@@ -193,11 +224,14 @@ export class StudioService {
       price = Number(product.price);
     }
 
-    const run = () =>
-      this.aiService.analyzeTranscript(transcript, productName, price);
+    const run = async () => {
+      await ctx?.cobrado('analyze');
+      return this.aiService.analyzeTranscript(transcript, productName, price);
+    };
     const result = this.aiService.enabled
       ? await this.billing.withCharge(userId, 'analyze', run)
       : await run();
+    await ctx?.progresso(90, 'Salvando');
     return this.scripts.save(
       this.scripts.create({
         userId,

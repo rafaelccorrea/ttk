@@ -1,4 +1,5 @@
 import { api } from './api';
+import { AiJob, jobsService } from './jobs.service';
 
 export interface AttributeOption {
   id: string;
@@ -315,14 +316,23 @@ export const campaignsService = {
     return data;
   },
 
+  /**
+   * Roteiro e montagem rodam como job no servidor (fechar a aba não perde
+   * nada); aqui se espera o job terminar e devolve o detalhe da campanha.
+   * A bandeja global mostra o progresso em qualquer página.
+   */
   async generateScript(id: string): Promise<CampaignDetail> {
-    const { data } = await api.post<CampaignDetail>(`/campaigns/${id}/script`);
-    return data;
+    return jobsService.rodar<CampaignDetail>(async () => {
+      const { data } = await api.post<AiJob>(`/campaigns/${id}/script`);
+      return data;
+    });
   },
 
   async assemble(id: string): Promise<CampaignDetail> {
-    const { data } = await api.post<CampaignDetail>(`/campaigns/${id}/assemble`);
-    return data;
+    return jobsService.rodar<CampaignDetail>(async () => {
+      const { data } = await api.post<AiJob>(`/campaigns/${id}/assemble`);
+      return data;
+    });
   },
 
   /**
