@@ -1041,6 +1041,7 @@ export function AppLayout() {
                       to="/planos"
                       clickable
                       size="small"
+                      aria-label={titulo}
                       icon={<BoltRoundedIcon sx={{ fontSize: 16 }} />}
                       label={
                         ilimitado

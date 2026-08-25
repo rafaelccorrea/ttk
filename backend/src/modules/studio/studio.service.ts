@@ -155,7 +155,7 @@ export class StudioService {
         },
       });
     const result = this.aiService.enabled
-      ? await this.billing.withCharge(userId, 'script', run)
+      ? await this.billing.withCharge(userId, 'script', run, 1, undefined, productName)
       : await run();
 
     return this.scripts.save(

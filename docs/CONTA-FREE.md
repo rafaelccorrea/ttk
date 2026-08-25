@@ -294,6 +294,20 @@ olhar é invisível. Regras (valem para todo plano; a free é onde doem):
   por e-mail + `desde`). Tom de informação, não de bronca — 50% diz quantos roteiros ainda
   cabem; 75% lembra que editar é grátis; 100% diz que tudo o que foi gerado continua salvo e
   aponta o plano (free) ou a recarga (pago). Só o de 100% fica até ser fechado.
+- **O resultado aparece antes do próximo clique.** No Estúdio, o roteiro gerado rola para a
+  tela (`scrollIntoView`) e o botão vira secundário com "Gerar outro roteiro · 8 créditos".
+- **Preço em todo botão que cobra**: Analisar (12), Montar vídeos (N × 1), Gerar cortes
+  (total do orçamento). Conta ilimitada não vê preço.
+- **402 vem com saída.** O erro de saldo no Estúdio traz o botão "Assinar um plano" /
+  "Comprar créditos" e reconsulta a carteira para travar o botão principal.
+- **Boas-vindas dizem o que os créditos compram**: "cada roteiro custa 8 — dão para 3",
+  calculado da tabela de preços, e que editar um roteiro pronto é grátis.
+- **Extrato diz onde gastou**: o débito de roteiro leva o nome do produto ("Roteiro com IA —
+  Liquidificador Mondial"), via o parâmetro `detalhe` de `withCharge`/`charge`.
+- **/planos mostra o ciclo**: barra "usou X de Y neste ciclo (N%)" sob o saldo.
+- **Recarga é boa notícia**: quando o saldo sobe em relação ao último visto (localStorage por
+  e-mail), o `ConsumoToast` mostra "Você recebeu N créditos. Saldo atual: X" — inclusive se o
+  crédito entrou com a pessoa offline (caso do ajuste do suporte).
 
 ---
 

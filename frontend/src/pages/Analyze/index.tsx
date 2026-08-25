@@ -275,7 +275,13 @@ export function AnalyzePage() {
                     onClick={handleAnalyze}
                     sx={{ mt: 2 }}
                   >
-                    {analyzing ? 'Analisando...' : 'Analisar e gerar roteiro'}
+                    {analyzing
+                      ? 'Analisando...'
+                      : `Analisar e gerar roteiro${
+                          saldoAnalise.ilimitado || saldoAnalise.custo === null
+                            ? ''
+                            : ` · ${saldoAnalise.custo} créditos`
+                        }`}
                   </Button>
                 </span>
               </Tooltip>

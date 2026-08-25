@@ -367,6 +367,12 @@ export class BillingService implements OnModuleInit {
      * de texto genérico não é a demonstração que a cortesia existe para dar.
      */
     permitirCortesia = true,
+    /**
+     * Complemento do lançamento no extrato ("Roteiro com IA — Liquidificador
+     * Mondial"). Sem isto o extrato lista "Roteiro com IA" três vezes e a
+     * pessoa não sabe onde gastou.
+     */
+    detalhe?: string,
   ): Promise<ChargeReceipt> {
     const usuarios = manager ? manager.getRepository(AppUser) : this.users;
     const lancamentos = manager
@@ -483,7 +489,9 @@ export class BillingService implements OnModuleInit {
         balanceAfter: user?.credits ?? 0,
         kind: 'spend',
         action,
-        description: itens > 1 ? `${price.label} × ${itens}` : price.label,
+        description: `${price.label}${itens > 1 ? ` × ${itens}` : ''}${
+          detalhe ? ` — ${detalhe.slice(0, 120)}` : ''
+        }`,
       }),
     );
     return { cortesia: false };
@@ -835,6 +843,7 @@ export class BillingService implements OnModuleInit {
     fn: () => Promise<T>,
     quantidade = 1,
     creditosUnitarios?: number,
+    detalhe?: string,
   ): Promise<T> {
     const { resultado } = await this.withChargeReceipt(
       userId,
@@ -842,6 +851,8 @@ export class BillingService implements OnModuleInit {
       fn,
       quantidade,
       creditosUnitarios,
+      true,
+      detalhe,
     );
     return resultado;
   }
@@ -859,6 +870,7 @@ export class BillingService implements OnModuleInit {
     quantidade = 1,
     creditosUnitarios?: number,
     permitirCortesia = true,
+    detalhe?: string,
   ): Promise<{ resultado: T; cortesia: boolean }> {
     const { cortesia } = await this.charge(
       userId,
@@ -867,6 +879,7 @@ export class BillingService implements OnModuleInit {
       undefined,
       creditosUnitarios,
       permitirCortesia,
+      detalhe,
     );
     try {
       return { resultado: await fn(), cortesia };

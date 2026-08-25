@@ -46,10 +46,31 @@ export function ConsumoToast({
   email: string | null;
 }) {
   const [aberto, setAberto] = useState<Marco | null>(null);
+  // Saldo subiu (compra, plano, ajuste do suporte): fechar o ciclo com uma
+  // boa notícia — inclusive quando o crédito entrou com a pessoa offline.
+  const [recarga, setRecarga] = useState<number | null>(null);
 
   const consumo = carteira?.consumo;
   const pct = consumo?.percentual ?? 0;
   const desde = consumo?.desde ?? null;
+
+  useEffect(() => {
+    if (!carteira || carteira.unlimited || !email) return;
+    const k = `pikpok:saldo-visto:${email}`;
+    let anterior: number | null = null;
+    try {
+      const v = localStorage.getItem(k);
+      anterior = v === null ? null : Number(v);
+    } catch {
+      anterior = null;
+    }
+    if (anterior !== null && carteira.credits > anterior) setRecarga(carteira.credits - anterior);
+    try {
+      localStorage.setItem(k, String(carteira.credits));
+    } catch {
+      /* sem storage não há comparação — só não avisa */
+    }
+  }, [carteira, email]);
 
   useEffect(() => {
     if (!carteira || carteira.unlimited || !consumo || !email) return;
@@ -61,6 +82,30 @@ export function ConsumoToast({
     alcancados.forEach((m) => marcar(chave(email, desde, m)));
     setAberto(pendente);
   }, [carteira, consumo, email, pct, desde]);
+
+  if (recarga !== null && carteira) {
+    return (
+      <Snackbar
+        open
+        autoHideDuration={10000}
+        onClose={(_, motivo) => motivo !== 'clickaway' && setRecarga(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity="success"
+          variant="filled"
+          sx={{ maxWidth: 560, alignItems: 'center', fontWeight: 500 }}
+          action={
+            <IconButton size="small" color="inherit" onClick={() => setRecarga(null)} aria-label="Fechar">
+              <CloseRoundedIcon fontSize="small" />
+            </IconButton>
+          }
+        >
+          Você recebeu {recarga} créditos. Saldo atual: {carteira.credits}.
+        </Alert>
+      </Snackbar>
+    );
+  }
 
   if (!aberto || !consumo) return null;
 

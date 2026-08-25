@@ -2887,7 +2887,11 @@ export function MultiplierPage() {
                           ? 'Montando...'
                           : saldoInsuficiente
                             ? 'Créditos insuficientes'
-                            : 'Montar vídeos'}
+                            : `Montar vídeos${
+                                ilimitado || custoEmCreditos === 0
+                                  ? ''
+                                  : ` · ${custoEmCreditos} créditos`
+                              }`}
                       </Button>
                     </Stack>
                   </Stack>
@@ -3126,6 +3130,9 @@ export function MultiplierPage() {
                                 onClick={() => void handleRender(plan.id)}
                               >
                                 Montar vídeos
+                                {ilimitado
+                                  ? ''
+                                  : ` · ${plan.total * CREDITOS_POR_VIDEO} créditos`}
                               </Button>
                             </Stack>
                             {renderCombinationsTable(expandedDetail.combinations)}

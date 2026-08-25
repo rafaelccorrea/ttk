@@ -246,6 +246,11 @@ export function StudioPage() {
   const [escolhido, setEscolhido] = useState<RankedProduct | null>(null);
   const [scripts, setScripts] = useState<Script[]>([]);
   const [result, setResult] = useState<Script | null>(null);
+  // Saldo acabou no meio do caminho (402): o erro vem com o caminho para resolver.
+  const [semSaldo, setSemSaldo] = useState(false);
+  // O resultado entra ABAIXO do formulário; em tela pequena a pessoa não vê
+  // nada mudar e clica de novo — cada clique um roteiro cobrado.
+  const resultRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   /*
@@ -406,7 +411,12 @@ export function StudioPage() {
         tone: tone || undefined,
       });
       setResult(script);
+      setSemSaldo(false);
       setScripts((prev) => [script, ...prev]);
+      setTimeout(
+        () => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+        80,
+      );
       // O saldo acabou de mudar: sem recarregar, o botão continuaria liberado
       // até um F5 — e a trava só serve se souber do gasto que ela mesma causou.
       saldo.recarregar();
@@ -419,6 +429,10 @@ export function StudioPage() {
        * envio custa 8 e você tem 2…"), que é a única que serve para alguém.
        */
       setError(apiErrorMessage(err));
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      setSemSaldo(status === 402);
+      // O saldo pode ter mudado em outra aba: reconsultar trava o botão certo.
+      if (status === 402) saldo.recarregar();
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -794,7 +808,23 @@ export function StudioPage() {
                 )}
 
                 {error && (
-                  <Alert severity="error" sx={{ mt: 2 }}>
+                  <Alert
+                    severity="error"
+                    sx={{ mt: 2 }}
+                    action={
+                      semSaldo ? (
+                        <Button
+                          component={Link}
+                          to="/planos"
+                          color="inherit"
+                          size="small"
+                          sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}
+                        >
+                          {saldo.semPlano ? 'Assinar um plano' : 'Comprar créditos'}
+                        </Button>
+                      ) : undefined
+                    }
+                  >
                     {error}
                   </Alert>
                 )}
@@ -824,7 +854,9 @@ export function StudioPage() {
                     <Box component="span" sx={{ display: 'block', width: { xs: '100%', sm: 'auto' } }}>
                       <Button
                         type="submit"
-                        variant="contained"
+                        // Depois do primeiro roteiro o botão vira secundário:
+                        // "gerar outro" é uma escolha, não o próximo passo.
+                        variant={result && !busy ? 'outlined' : 'contained'}
                         size="large"
                         disabled={busy || enviandoImagem || saldo.insuficiente}
                         startIcon={<AutoAwesomeRoundedIcon />}
@@ -839,8 +871,12 @@ export function StudioPage() {
                           ? 'Gerando…'
                           : `${
                               type === 'video' && formato === 'pecas'
-                                ? 'Gerar peças'
-                                : `Gerar roteiro ${type === 'live' ? 'de live' : 'do vídeo'}`
+                                ? result
+                                  ? 'Gerar outras peças'
+                                  : 'Gerar peças'
+                                : result
+                                  ? 'Gerar outro roteiro'
+                                  : `Gerar roteiro ${type === 'live' ? 'de live' : 'do vídeo'}`
                             }${saldo.ilimitado || saldo.custo === null ? '' : ` · ${saldo.custo} créditos`}`}
                       </Button>
                     </Box>
@@ -891,7 +927,7 @@ export function StudioPage() {
           </Card>
 
           {result && (
-            <Card sx={{ mt: 3, borderRadius: 3 }}>
+            <Card ref={resultRef} sx={{ mt: 3, borderRadius: 3, scrollMarginTop: 88 }}>
               <CardContent>
                 <Stack
                   direction="row"

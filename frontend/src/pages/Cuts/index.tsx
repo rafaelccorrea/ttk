@@ -403,6 +403,7 @@ export function CutsPage() {
                   onClick={() => void enviar()}
                 >
                   Gerar {quantity} cortes
+                  {quote ? ` · ${quote.total} créditos` : ''}
                 </Button>
               </Stack>
             </CardContent>

@@ -105,7 +105,12 @@ export function WelcomeModal({ carteira, email }: Props) {
     {
       icone: <AutoAwesomeRoundedIcon />,
       titulo: `${carteira.credits} créditos de boas-vindas`,
-      texto: 'Dão para uns três roteiros, ou uma análise de vídeo viral e um roteiro, ou duas imagens. Use com o SEU produto.',
+      texto: (() => {
+        const roteiro = carteira.prices?.script?.credits ?? 8;
+        const analise = carteira.prices?.analyze?.credits ?? 12;
+        const n = Math.floor(carteira.credits / roteiro);
+        return `Cada roteiro custa ${roteiro} créditos — dão para ${n} ${n === 1 ? 'roteiro' : 'roteiros'} (ou uma análise de vídeo viral, ${analise}, e um roteiro). O preço aparece no botão e você confirma antes de gastar; editar um roteiro pronto não custa nada. Use com o SEU produto.`;
+      })(),
     },
     live?.trialAvailable
       ? {

@@ -28,6 +28,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
+  LinearProgress,
   Typography,
 } from '@mui/material';
 import { useEffect, useState } from 'react';
@@ -287,6 +288,26 @@ export function PlansPage() {
                     <Typography variant="h4" lineHeight={1.1}>
                       {wallet.unlimited ? '∞' : wallet.credits}
                     </Typography>
+                    {!wallet.unlimited && wallet.consumo && wallet.consumo.concedidos > 0 && (
+                      <Box mt={0.75} minWidth={160}>
+                        <LinearProgress
+                          variant="determinate"
+                          value={wallet.consumo.percentual}
+                          color={
+                            wallet.consumo.percentual >= 100
+                              ? 'error'
+                              : wallet.consumo.percentual >= 50
+                                ? 'warning'
+                                : 'primary'
+                          }
+                          sx={{ height: 6, borderRadius: 3 }}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          Usou {wallet.consumo.usados} de {wallet.consumo.concedidos} neste ciclo (
+                          {wallet.consumo.percentual}%)
+                        </Typography>
+                      </Box>
+                    )}
                   </Box>
                 </Stack>
               </Grid>
