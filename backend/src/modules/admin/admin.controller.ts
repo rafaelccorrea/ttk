@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -26,6 +27,14 @@ import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { AdminService } from './admin.service';
 import { AdminGuard } from './admin.guard';
+import { SupportService } from '../support/support.service';
+
+class SupportReplyDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(4000)
+  text: string;
+}
 
 class ListUsersDto {
   @IsOptional()
@@ -97,6 +106,24 @@ class AdjustCreditsDto {
   @IsNotEmpty()
   @MaxLength(200)
   motivo: string;
+
+  /** Avisa o cliente por e-mail (só faz sentido quando `amount` > 0). */
+  @IsOptional()
+  @IsBoolean()
+  notificar?: boolean;
+}
+
+class NotificarCreditoDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  amount: number;
+
+  /** Texto livre do suporte que vai destacado no e-mail. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  mensagem?: string;
 }
 
 /**
@@ -110,7 +137,10 @@ class AdjustCreditsDto {
 @UseGuards(SupabaseAuthGuard, AdminGuard)
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly support: SupportService,
+  ) {}
 
   @Get('overview')
   @ApiOperation({ summary: 'Números gerais: contas, planos, receita e consumo' })
@@ -170,6 +200,54 @@ export class AdminController {
     @Body() dto: AdjustCreditsDto,
     @CurrentUser() admin: AuthUser,
   ) {
-    return this.admin.adjustCredits(id, dto.amount, dto.motivo, admin.email);
+    return this.admin.adjustCredits(
+      id,
+      dto.amount,
+      dto.motivo,
+      admin.email,
+      dto.notificar ?? false,
+    );
+  }
+
+  @Post('users/:id/aviso-credito')
+  @ApiOperation({
+    summary: 'Envia e-mail avisando o cliente de créditos concedidos (não altera o saldo)',
+  })
+  avisoCredito(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: NotificarCreditoDto,
+    @CurrentUser() admin: AuthUser,
+  ) {
+    return this.admin.notificarCredito(id, dto.amount, dto.mensagem, admin.email);
+  }
+
+  // ---------- chat de suporte: só o admin vê e responde ----------
+
+  @Get('support/conversas')
+  @ApiOperation({ summary: 'Conversas do chat de suporte, com não lidas' })
+  supportConversas() {
+    return this.support.listConversations();
+  }
+
+  @Get('support/nao-lidas')
+  @ApiOperation({ summary: 'Total de mensagens de suporte não lidas (badge)' })
+  async supportNaoLidas() {
+    return { total: await this.support.unreadCount() };
+  }
+
+  @Get('support/conversas/:userId')
+  @ApiOperation({ summary: 'Abre a conversa de um usuário e marca como lida' })
+  supportConversa(@Param('userId', ParseUUIDPipe) userId: string) {
+    return this.support.conversation(userId);
+  }
+
+  @Post('support/conversas/:userId/mensagens')
+  @ApiOperation({ summary: 'Responde o usuário no chat de suporte' })
+  supportResponder(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: SupportReplyDto,
+    @CurrentUser() admin: AuthUser,
+  ) {
+    return this.support.reply(userId, dto.text, admin.email);
   }
 }

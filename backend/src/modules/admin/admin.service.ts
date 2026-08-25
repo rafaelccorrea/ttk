@@ -16,6 +16,7 @@ import {
 import { AiCostService } from '../telemetry/ai-cost.service';
 import { BillingService } from '../billing/billing.service';
 import { StripeService } from '../billing/stripe.service';
+import { MailService } from '../auth/mail.service';
 import { CreditTransaction } from '../billing/entities/credit-transaction.entity';
 import { AppUser } from '../users/entities/app-user.entity';
 import { isAdmin } from './admin.access';
@@ -67,6 +68,7 @@ export class AdminService {
     private readonly billing: BillingService,
     private readonly stripe: StripeService,
     private readonly custos: AiCostService,
+    private readonly mail: MailService,
     /**
      * Para as contagens de atividade (campanhas, vídeos, lives...). São só
      * COUNTs agrupados por "userId" em tabelas de outros módulos; importar cada
@@ -686,6 +688,7 @@ export class AdminService {
     amount: number,
     motivo: string,
     porQuem: string,
+    notificar = false,
   ) {
     const user = await this.users.findOneBy({ id });
     if (!user) throw new NotFoundException('Conta não encontrada');
@@ -707,6 +710,41 @@ export class AdminService {
     this.logger.log(
       `${porQuem} ajustou os créditos de ${user.email} em ${amount}: ${motivo}`,
     );
+    if (notificar && amount > 0) {
+      // O ajuste já está lançado; falha no e-mail não pode desfazê-lo nem
+      // virar 500 para o admin. Fica no log e o botão "Avisar por e-mail"
+      // permite reenviar depois.
+      await this.notificarCredito(id, amount, motivo, porQuem).catch((err) =>
+        this.logger.error(
+          `Créditos lançados, mas o aviso por e-mail para ${user.email} falhou: ${err?.message ?? err}`,
+        ),
+      );
+    }
     return this.userDetail(id);
+  }
+
+  /**
+   * Avisa o cliente por e-mail que recebeu créditos. Separado do ajuste para
+   * cobrir o caso de um crédito lançado antes sem aviso (ou um reenvio) —
+   * não mexe no saldo, só informa o saldo atual.
+   */
+  async notificarCredito(
+    id: string,
+    amount: number,
+    mensagem: string | undefined,
+    porQuem: string,
+  ) {
+    const user = await this.users.findOneBy({ id });
+    if (!user) throw new NotFoundException('Conta não encontrada');
+    await this.mail.sendCreditGrantEmail(user.email, {
+      displayName: user.displayName,
+      amount,
+      saldo: user.credits,
+      mensagem,
+    });
+    this.logger.log(
+      `${porQuem} avisou ${user.email} por e-mail sobre ${amount} créditos`,
+    );
+    return { enviado: true, para: user.email };
   }
 }

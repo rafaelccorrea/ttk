@@ -80,6 +80,9 @@ export function useConfirmarGasto(): {
   const [pedido, setPedido] = useState<PedidoDeGasto | null>(null);
   const [custo, setCusto] = useState<number | null>(null);
   const [saldo, setSaldo] = useState<number | null>(null);
+  // Conta free tem 25 créditos: três roteiros. Dispensar o aviso ali é
+  // exatamente como alguém gasta tudo sem ver — a caixa só aparece com plano.
+  const [semPlano, setSemPlano] = useState(false);
   const [naoPerguntar, setNaoPerguntar] = useState(false);
 
   /*
@@ -114,6 +117,7 @@ export function useConfirmarGasto(): {
         (unitario === null ? null : unitario * (novo.quantidade ?? 1)),
     );
     setSaldo(carteira ? carteira.credits : null);
+    setSemPlano(carteira?.plan === 'free');
     setNaoPerguntar(false);
     setPedido(novo);
 
@@ -165,15 +169,17 @@ export function useConfirmarGasto(): {
             </Alert>
           )}
 
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={naoPerguntar}
-                onChange={(e) => setNaoPerguntar(e.target.checked)}
-              />
-            }
-            label="Não perguntar de novo nesta sessão"
-          />
+          {!semPlano && (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={naoPerguntar}
+                  onChange={(e) => setNaoPerguntar(e.target.checked)}
+                />
+              }
+              label="Não perguntar de novo nesta sessão"
+            />
+          )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>

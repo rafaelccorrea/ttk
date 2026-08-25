@@ -261,6 +261,31 @@ export function StudioPage() {
   const saldo = useSaldo('script');
   const { confirmar, dialogo } = useConfirmarGasto();
 
+  // Roteiro do mesmo produto e tipo gerado nos últimos 30 min.
+  const roteiroRecente = (() => {
+    const nome = (
+      productId
+        ? ((escolhido?.id === productId ? escolhido : topProducts.find((p) => p.id === productId))
+            ?.title ?? '')
+        : userProductId
+          ? (meusProdutos.find((p) => p.id === userProductId)?.name ?? '')
+          : productName
+    )
+      .trim()
+      .toLowerCase();
+    if (!nome) return null;
+    const limite = Date.now() - 30 * 60 * 1000;
+    const s = scripts.find(
+      (x) =>
+        x.type === type &&
+        x.productName.trim().toLowerCase() === nome &&
+        new Date(x.createdAt).getTime() > limite,
+    );
+    if (!s) return null;
+    const min = Math.max(1, Math.round((Date.now() - new Date(s.createdAt).getTime()) / 60000));
+    return { ha: min < 2 ? 'instantes' : `${min} min` };
+  })();
+
   useEffect(() => {
     studioService.listScripts().then(setScripts).catch(console.error);
     campaignsService.listProducts().then(setMeusProdutos).catch(console.error);
@@ -774,6 +799,17 @@ export function StudioPage() {
                   </Alert>
                 )}
 
+                {roteiroRecente && !saldo.ilimitado && (
+                  /* O caso real: três roteiros iguais em 72 s, 24 créditos.
+                     Gerar de novo é legítimo (outro tom, outro formato), mas
+                     precisa ser uma escolha — não um clique a mais. */
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    Você gerou um roteiro deste produto há {roteiroRecente.ha}. Gerar outro
+                    custa mais {saldo.custo ?? 8} créditos; editar o texto do roteiro que já
+                    existe não custa nada.
+                  </Alert>
+                )}
+
                 <Stack
                   direction="row"
                   alignItems="center"
@@ -801,9 +837,11 @@ export function StudioPage() {
                       >
                         {busy
                           ? 'Gerando…'
-                          : type === 'video' && formato === 'pecas'
-                            ? 'Gerar peças'
-                            : `Gerar roteiro ${type === 'live' ? 'de live' : 'do vídeo'}`}
+                          : `${
+                              type === 'video' && formato === 'pecas'
+                                ? 'Gerar peças'
+                                : `Gerar roteiro ${type === 'live' ? 'de live' : 'do vídeo'}`
+                            }${saldo.ilimitado || saldo.custo === null ? '' : ` · ${saldo.custo} créditos`}`}
                       </Button>
                     </Box>
                   </Tooltip>

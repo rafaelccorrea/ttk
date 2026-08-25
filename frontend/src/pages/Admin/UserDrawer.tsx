@@ -4,8 +4,10 @@ import {
   Avatar,
   Box,
   Button,
+  Checkbox,
   Chip,
   Divider,
+  FormControlLabel,
   Drawer,
   Grid,
   IconButton,
@@ -73,6 +75,10 @@ export function UserDrawer({
   const [novoPlano, setNovoPlano] = useState('');
   const [valor, setValor] = useState('');
   const [motivo, setMotivo] = useState('');
+  const [avisarJunto, setAvisarJunto] = useState(true);
+  // Aviso avulso: crédito lançado antes sem e-mail, ou reenvio.
+  const [avisoQtd, setAvisoQtd] = useState('');
+  const [avisoMsg, setAvisoMsg] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -94,6 +100,27 @@ export function UserDrawer({
       })
       .catch((e) => setErro(apiErrorMessage(e)));
   }, [userId]);
+
+  async function enviarAviso() {
+    if (!user) return;
+    const n = Number(avisoQtd);
+    if (!Number.isInteger(n) || n <= 0) {
+      setErro('Informe quantos créditos foram concedidos (inteiro positivo).');
+      return;
+    }
+    setSalvando(true);
+    setErro(null);
+    try {
+      const r = await adminService.notificarCredito(user.id, n, avisoMsg.trim());
+      setAvisoQtd('');
+      setAvisoMsg('');
+      setOk(`Aviso de ${n} créditos enviado para ${r.para}.`);
+    } catch (e) {
+      setErro(apiErrorMessage(e));
+    } finally {
+      setSalvando(false);
+    }
+  }
 
   async function trocarPlano() {
     if (!user || novoPlano === user.plan) return;
@@ -125,11 +152,16 @@ export function UserDrawer({
     setSalvando(true);
     setErro(null);
     try {
-      const atualizado = await adminService.adjustCredits(user.id, n, motivo.trim());
+      const notificar = n > 0 && avisarJunto;
+      const atualizado = await adminService.adjustCredits(user.id, n, motivo.trim(), notificar);
       setUser(atualizado);
       setValor('');
       setMotivo('');
-      setOk(`${n > 0 ? 'Creditados' : 'Retirados'} ${Math.abs(n)} créditos.`);
+      setOk(
+        `${n > 0 ? 'Creditados' : 'Retirados'} ${Math.abs(n)} créditos.${
+          notificar ? ' Cliente avisado por e-mail.' : ''
+        }`,
+      );
       onChanged();
     } catch (e) {
       setErro(apiErrorMessage(e));
@@ -276,8 +308,52 @@ export function UserDrawer({
                     value={motivo}
                     onChange={(e) => setMotivo(e.target.value)}
                   />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={avisarJunto}
+                        onChange={(e) => setAvisarJunto(e.target.checked)}
+                      />
+                    }
+                    label={
+                      <Typography fontSize={13}>
+                        Avisar o cliente por e-mail (só quando for crédito)
+                      </Typography>
+                    }
+                  />
                   <Button variant="contained" disabled={salvando} onClick={() => void ajustarCreditos()}>
                     Lançar ajuste
+                  </Button>
+                </Stack>
+
+                <Divider sx={{ my: 2.5 }} />
+
+                <Typography fontWeight={700} fontSize={14} mb={0.5}>
+                  Avisar crédito por e-mail
+                </Typography>
+                <Typography fontSize={11.5} color="text.secondary" mb={1}>
+                  Para crédito já lançado sem aviso, ou reenvio. Não altera o saldo — o
+                  e-mail informa a quantidade abaixo e o saldo atual ({user.credits}).
+                </Typography>
+                <Stack spacing={1}>
+                  <TextField
+                    size="small"
+                    label="Créditos concedidos"
+                    value={avisoQtd}
+                    onChange={(e) => setAvisoQtd(e.target.value)}
+                    placeholder="ex.: 100"
+                  />
+                  <TextField
+                    size="small"
+                    label="Mensagem (opcional, vai destacada no e-mail)"
+                    value={avisoMsg}
+                    onChange={(e) => setAvisoMsg(e.target.value)}
+                    multiline
+                    minRows={2}
+                  />
+                  <Button variant="outlined" disabled={salvando} onClick={() => void enviarAviso()}>
+                    Enviar aviso por e-mail
                   </Button>
                 </Stack>
               </>

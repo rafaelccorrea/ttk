@@ -43,6 +43,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { SupportFab } from '@/components/ui/SupportFab';
+import { ConsumoToast } from '@/components/layout/ConsumoToast';
 import { NovasContasToast } from '@/components/layout/NovasContasToast';
 import { WelcomeModal } from '@/components/layout/WelcomeModal';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1010,37 +1011,79 @@ export function AppLayout() {
                 </Tooltip>
               );
             })()}
-          {credits !== null && (
-            <Tooltip
-              title={
-                ilimitado
-                  ? 'Conta interna: os recursos de IA não consomem créditos.'
-                  : 'Créditos de IA: roteiro, imagem, vídeo, transcrição e a base de conhecimento da live.'
-              }
-            >
-              <Chip
-                component={Link}
-                to="/planos"
-                clickable
-                size="small"
-                icon={<BoltRoundedIcon sx={{ fontSize: 16 }} />}
-                label={ilimitado ? 'créditos ilimitados' : `${credits} créditos`}
-                sx={{
-                  flexShrink: 0,
-                  bgcolor: 'rgba(254,44,85,0.10)',
-                  color: red,
-                  fontWeight: 700,
-                  height: 26,
-                  fontSize: { xs: 11, sm: 13 },
-                  '& .MuiChip-label': { px: { xs: 0.75, sm: 1 } },
-                  '& .MuiChip-icon': {
-                    color: red,
-                    display: { xs: 'none', sm: 'inline-flex' },
-                  },
-                }}
-              />
-            </Tooltip>
-          )}
+          {credits !== null &&
+            (() => {
+              /*
+               * O chip muda de cor conforme o consumo do ciclo: rosa da marca
+               * até a metade, âmbar de 50 a 99%, vermelho quando acabou. A
+               * barra fina embaixo é o mesmo dado em forma — dá para ver que
+               * está acabando sem ler o número. Ver ConsumoToast para os avisos.
+               */
+              const consumo = carteira?.consumo;
+              const pct = ilimitado ? 0 : (consumo?.percentual ?? 0);
+              const tinta = pct >= 100 ? '#d32f2f' : pct >= 50 ? '#c77700' : red;
+              const fundo =
+                pct >= 100
+                  ? 'rgba(211,47,47,0.12)'
+                  : pct >= 50
+                    ? 'rgba(199,119,0,0.12)'
+                    : 'rgba(254,44,85,0.10)';
+              const titulo = ilimitado
+                ? 'Conta interna: os recursos de IA não consomem créditos.'
+                : consumo
+                  ? `Você usou ${consumo.usados} de ${consumo.concedidos} créditos neste ciclo (${pct}%). Restam ${consumo.restantes}. Clique para ver o extrato.`
+                  : 'Créditos de IA: roteiro, imagem, vídeo, transcrição e a base de conhecimento da live.';
+              return (
+                <Tooltip title={titulo}>
+                  <Box component="span" sx={{ position: 'relative', flexShrink: 0, display: 'inline-flex' }}>
+                    <Chip
+                      component={Link}
+                      to="/planos"
+                      clickable
+                      size="small"
+                      icon={<BoltRoundedIcon sx={{ fontSize: 16 }} />}
+                      label={
+                        ilimitado
+                          ? 'créditos ilimitados'
+                          : pct >= 100
+                            ? 'créditos esgotados'
+                            : `${credits} créditos`
+                      }
+                      sx={{
+                        bgcolor: fundo,
+                        color: tinta,
+                        fontWeight: 700,
+                        height: 26,
+                        fontSize: { xs: 11, sm: 13 },
+                        '& .MuiChip-label': { px: { xs: 0.75, sm: 1 } },
+                        '& .MuiChip-icon': {
+                          color: tinta,
+                          display: { xs: 'none', sm: 'inline-flex' },
+                        },
+                      }}
+                    />
+                    {!ilimitado && consumo && (
+                      <Box
+                        aria-hidden
+                        sx={{
+                          position: 'absolute',
+                          left: 8,
+                          right: 8,
+                          bottom: 2,
+                          height: 2,
+                          borderRadius: 1,
+                          bgcolor: 'rgba(127,127,127,0.25)',
+                          overflow: 'hidden',
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        <Box sx={{ width: `${pct}%`, height: '100%', bgcolor: tinta, transition: 'width .4s' }} />
+                      </Box>
+                    )}
+                  </Box>
+                </Tooltip>
+              );
+            })()}
         </Box>
 
         {/* Sem maxWidth: o conteúdo ocupa toda a largura, colado às margens */}
@@ -1050,6 +1093,7 @@ export function AppLayout() {
       </Box>
       <SupportFab />
       <WelcomeModal carteira={carteira} email={email} />
+      <ConsumoToast carteira={carteira} email={email} />
       {/* Aviso de conta nova, só para a equipe — o backend barra quem não é. */}
       {isAdmin && <NovasContasToast />}
     </Box>

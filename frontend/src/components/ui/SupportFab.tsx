@@ -49,6 +49,31 @@ export function SupportFab() {
       .catch(() => setLoaded(true));
   }, [open, loaded]);
 
+  // Respostas do admin chegam por polling: mais rápido com o chat aberto,
+  // de vez em quando fechado (aí só acende o ponto de "não lida").
+  useEffect(() => {
+    if (!loaded) return;
+    const tick = async () => {
+      try {
+        const history = await supportService.list();
+        if (!history.length) return;
+        setMessages((atual) => {
+          const known = new Set(atual.map((m) => m.id));
+          const novas = history.filter((m) => !known.has(m.id));
+          if (novas.length === 0) return atual;
+          if (!open && novas.some((m) => m.sender === 'agent')) setUnread(true);
+          // Mantém as otimistas ainda não confirmadas.
+          const locais = atual.filter((m) => m.id.startsWith('local-'));
+          return [...history, ...locais];
+        });
+      } catch {
+        /* sem rede: tenta no próximo tick */
+      }
+    };
+    const t = setInterval(() => void tick(), open ? 10_000 : 60_000);
+    return () => clearInterval(t);
+  }, [loaded, open]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, open, sending]);

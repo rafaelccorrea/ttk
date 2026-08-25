@@ -310,6 +310,77 @@ export class MailService {
     });
   }
 
+  /**
+   * Aviso de créditos concedidos pelo suporte.
+   *
+   * Existe porque o ajuste manual do admin mexia no saldo em silêncio: o
+   * cliente só descobria abrindo a carteira — e quem acabou de ficar sem
+   * crédito não volta para olhar. `mensagem` é o texto livre do suporte
+   * (escapado: vai como texto, nunca como HTML).
+   */
+  async sendCreditGrantEmail(
+    to: string,
+    opts: {
+      displayName?: string | null;
+      amount: number;
+      saldo: number;
+      mensagem?: string;
+    },
+  ): Promise<SentMail> {
+    const appUrl = this.appUrl();
+    const primeiroNome = (opts.displayName ?? '').trim().split(/\s+/)[0];
+    const saudacao = primeiroNome ? `Olá, ${escapeHtml(primeiroNome)}!` : 'Olá!';
+    const mensagem = (opts.mensagem ?? '').trim();
+    const mensagemHtml = mensagem
+      ? escapeHtml(mensagem).replace(/\r?\n/g, '<br>')
+      : '';
+
+    const html = this.layoutEscuro({
+      titulo: 'Créditos adicionados — PikPok',
+      preheader: `Adicionamos ${opts.amount} créditos à sua conta.`,
+      secoes: `
+        <tr><td style="padding:0 32px">
+          <h1 style="margin:0 0 12px;font-size:24px;line-height:1.25;font-weight:800;color:#ffffff">${saudacao}<br>Você ganhou créditos 🎁</h1>
+          <p style="margin:0 0 24px;font-size:16px;line-height:1.6;color:#c9c9ce">Adicionamos <strong style="color:#25f4ee">${opts.amount} créditos</strong> à sua conta do PikPok. Seu saldo agora é de <strong style="color:#ffffff">${opts.saldo} créditos</strong>.</p>
+        </td></tr>
+        ${
+          mensagemHtml
+            ? `<tr><td style="padding:0 32px 24px">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#16161b;border-radius:14px;border-left:3px solid #fe2c55">
+            <tr><td style="padding:16px 18px;font-size:15px;line-height:1.6;color:#e3e3e6">${mensagemHtml}</td></tr>
+          </table>
+        </td></tr>`
+            : ''
+        }
+        <tr><td align="center" style="padding:0 32px 28px">${this.botao(`${appUrl}/estudio`, 'Usar meus créditos')}</td></tr>
+        <tr><td style="padding:0 32px 36px">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#0b1f1f;border-radius:14px;border:1px solid #1b3d3c">
+            <tr><td style="padding:16px 18px;font-size:14px;line-height:1.55;color:#c9c9ce">
+              💡 <strong style="color:#25f4ee">Como funciona:</strong> cada ação com IA (roteiro, análise, vídeo) consome créditos, e o valor aparece antes de você confirmar. Você acompanha o saldo e o extrato em <a href="${appUrl}/planos" style="color:#fe2c55;text-decoration:none;font-weight:600">Planos &amp; Créditos</a>.
+            </td></tr>
+          </table>
+        </td></tr>`,
+      rodape: 'Você recebeu este e-mail porque o suporte do PikPok adicionou créditos à sua conta.',
+    });
+
+    return this.send({
+      to,
+      subject: `${primeiroNome ? `${primeiroNome}, adicionamos` : 'Adicionamos'} ${opts.amount} créditos à sua conta 🎁`,
+      text: [
+        saudacao,
+        '',
+        `Adicionamos ${opts.amount} créditos à sua conta do PikPok. Seu saldo agora é de ${opts.saldo} créditos.`,
+        ...(mensagem ? ['', mensagem] : []),
+        '',
+        `Usar meus créditos: ${appUrl}/estudio`,
+        `Saldo e extrato: ${appUrl}/planos`,
+        '',
+        'Você recebeu este e-mail porque o suporte do PikPok adicionou créditos à sua conta.',
+      ].join('\n'),
+      html,
+    });
+  }
+
   /** Redefinição de senha. Link de uso único, válido por 1 hora. */
   async sendPasswordResetEmail(to: string, link: string): Promise<SentMail> {
     const html = this.layoutEscuro({

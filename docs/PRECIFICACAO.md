@@ -406,6 +406,26 @@ que um modelo novo não passado por `MODEL_PRICING` **apareça no topo da lista 
 sumir do relatório; e `USD_BRL` é o mesmo nos dois arquivos de propósito — se divergirem, a margem
 medida deixa de falar da margem precificada.
 
+### 6.5 Crédito manual pelo admin — e o aviso ao cliente
+
+O suporte concede crédito em `/admin` → ficha da conta → aba **Ações** → "Ajustar créditos"
+(`POST /api/v1/admin/users/:id/credits`). O lançamento entra no extrato como `purchase` com
+`Ajuste manual (<admin>): <motivo>`.
+
+Um crédito lançado em silêncio não resolve o caso que o motivou: quem acabou de zerar o saldo
+não volta para olhar a carteira. Por isso:
+
+- **"Avisar o cliente por e-mail"** (marcado por padrão) no próprio ajuste — só dispara quando
+  o valor é positivo; falha no envio fica no log e **não** desfaz o lançamento.
+- **"Avisar crédito por e-mail"** (`POST /api/v1/admin/users/:id/aviso-credito`,
+  `{ amount, mensagem? }`) — avulso, para crédito já lançado sem aviso ou reenvio. Não altera o
+  saldo: o e-mail informa a quantidade digitada e o saldo atual da conta. `mensagem` é texto
+  livre do suporte, escapado, e aparece destacado no corpo.
+
+O template (`MailService.sendCreditGrantEmail`) sempre fecha com "como funciona": cada ação
+consome créditos e o valor aparece antes de confirmar — é a orientação que faltou no caso de
+2026-08-24 (conta free gastou os 25 de boas-vindas em 3 roteiros iguais em 72 s).
+
 ---
 
 ## 7. Riscos conhecidos da precificação

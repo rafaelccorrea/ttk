@@ -28,6 +28,17 @@ export interface Wallet {
   credits: number;
   plan: string;
   /**
+   * Consumo do ciclo atual (desde o último crédito de plano / bônus de
+   * cadastro): alimenta a barra e os avisos de 50/75/100% do cabeçalho.
+   */
+  consumo?: {
+    concedidos: number;
+    usados: number;
+    restantes: number;
+    percentual: number;
+    desde: string | null;
+  };
+  /**
    * Conta interna: nada é debitado dela.
    *
    * Sem isto o cabeçalho mostraria um saldo parado para sempre — e um número

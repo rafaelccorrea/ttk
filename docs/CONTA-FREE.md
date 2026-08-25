@@ -272,6 +272,29 @@ O detalhe de um produto fora da amostra vira **tela de upgrade, não erro**: que
 um link antigo bateu no limite do plano, não num bug, e a tela nomeia o que falta (loja,
 números exatos, série diária, criadores, IA) em vez de dizer "assine para ver mais".
 
+### 8.1 O gasto é dito antes, durante e no fim
+
+Caso de 2026-08-24: uma conta free gastou os 25 créditos em três roteiros iguais em 72 s e
+só percebeu no 402. O saldo estava no cabeçalho o tempo todo — um número que ninguém mandou
+olhar é invisível. Regras (valem para todo plano; a free é onde doem):
+
+- **Preço no botão.** "Gerar roteiro de live · 8 créditos" no Estúdio, como já era na Fábrica.
+- **Confirmação sem atalho na free.** O diálogo de gasto (`useConfirmarGasto`) esconde o
+  "não perguntar de novo nesta sessão" quando `plan === 'free'` — 25 créditos são três
+  cliques; dispensar o aviso ali é como se gasta tudo sem ver.
+- **Regerar é uma escolha.** Se existe roteiro do mesmo produto e tipo nos últimos 30 min, o
+  Estúdio mostra "você gerou um roteiro deste produto há N min; gerar outro custa +8; editar
+  o que existe não custa nada".
+- **Consumo do ciclo no cabeçalho.** `getWallet.consumo` = `{ concedidos, usados,
+  restantes, percentual, desde }`, ciclo ancorado no último `plan_grant`/`signup_bonus`
+  (pacote avulso e ajuste do suporte não reiniciam o ciclo — fazem a barra recuar). O chip
+  de créditos tem barra fina de progresso e muda de cor: rosa até 49%, âmbar de 50 a 99%,
+  vermelho ("créditos esgotados") em 100%. Tooltip diz "usou X de Y (N%)".
+- **Aviso em 50 / 75 / 100 %** (`ConsumoToast`): um por marco, por ciclo (localStorage
+  por e-mail + `desde`). Tom de informação, não de bronca — 50% diz quantos roteiros ainda
+  cabem; 75% lembra que editar é grátis; 100% diz que tudo o que foi gerado continua salvo e
+  aponta o plano (free) ou a recarga (pago). Só o de 100% fica até ser fechado.
+
 ---
 
 ## 9. O que os testes travam

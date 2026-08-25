@@ -157,7 +157,43 @@ export interface AdminUserDetail {
   historicoMinutos: LiveMinuteTransaction[];
 }
 
+export interface SupportConversation {
+  userId: string;
+  email: string | null;
+  displayName: string | null;
+  plan: string | null;
+  ultimaMensagem: string;
+  ultimaEm: string;
+  naoLidas: number;
+  total: number;
+}
+
+export interface SupportChatMessage {
+  id: string;
+  sender: 'user' | 'agent';
+  text: string;
+  createdAt: string;
+}
+
+export interface SupportConversationDetail {
+  user: { id: string; email: string; displayName: string | null; plan: string };
+  mensagens: SupportChatMessage[];
+}
+
 export const adminService = {
+  /** Chat de suporte — só admins enxergam e respondem. */
+  supportConversas: () =>
+    api.get<SupportConversation[]>('/admin/support/conversas').then((r) => r.data),
+  supportNaoLidas: () =>
+    api.get<{ total: number }>('/admin/support/nao-lidas').then((r) => r.data.total),
+  supportConversa: (userId: string) =>
+    api
+      .get<SupportConversationDetail>(`/admin/support/conversas/${userId}`)
+      .then((r) => r.data),
+  supportResponder: (userId: string, text: string) =>
+    api
+      .post<SupportChatMessage>(`/admin/support/conversas/${userId}/mensagens`, { text })
+      .then((r) => r.data),
   overview: () => api.get<AdminOverview>('/admin/overview').then((r) => r.data),
   users: (params: AdminUsersParams) =>
     api
@@ -171,8 +207,16 @@ export const adminService = {
     api
       .patch<AdminUserDetail>(`/admin/users/${id}/plan`, { plano })
       .then((r) => r.data),
-  adjustCredits: (id: string, amount: number, motivo: string) =>
+  adjustCredits: (id: string, amount: number, motivo: string, notificar = false) =>
     api
-      .post<AdminUserDetail>(`/admin/users/${id}/credits`, { amount, motivo })
+      .post<AdminUserDetail>(`/admin/users/${id}/credits`, { amount, motivo, notificar })
+      .then((r) => r.data),
+  /** E-mail avisando de créditos já concedidos — não mexe no saldo. */
+  notificarCredito: (id: string, amount: number, mensagem?: string) =>
+    api
+      .post<{ enviado: boolean; para: string }>(`/admin/users/${id}/aviso-credito`, {
+        amount,
+        mensagem: mensagem || undefined,
+      })
       .then((r) => r.data),
 };

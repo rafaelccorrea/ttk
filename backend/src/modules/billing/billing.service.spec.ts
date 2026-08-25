@@ -81,6 +81,9 @@ function repositorioDeLancamentos(existente: unknown = null) {
   };
   return {
     findOneBy: jest.fn(async () => existente),
+    // Âncora do ciclo de consumo (`consumoDoCiclo`): sem lançamento, o ciclo
+    // começa do zero e a carteira reporta 0% usado.
+    findOne: jest.fn(async () => null),
     create: jest.fn((x: unknown) => x),
     save: jest.fn(async (x: unknown) => {
       salvos.push(x);

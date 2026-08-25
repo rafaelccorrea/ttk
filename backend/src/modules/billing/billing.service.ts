@@ -67,6 +67,46 @@ export class BillingService implements OnModuleInit {
     this.logger.log('Tabela de preços validada: todas as margens ≥ mínimo.');
   }
 
+  /**
+   * "Quanto do que você tinha já foi usado" — a barra de 50/75/100% do front.
+   *
+   * O ciclo começa no último crédito de plano (ou no bônus de cadastro, para a
+   * conta free). Pacotes avulsos e ajustes do suporte NÃO reiniciam o ciclo:
+   * entram no `concedidos` e fazem a barra recuar, que é o efeito que a pessoa
+   * espera ao comprar. Só `spend` conta como uso; `refund` devolve.
+   *
+   * `percentual` é calculado sobre `usados / (restantes + usados)` e não sobre
+   * o valor do plano, para que saldo que sobrou do ciclo anterior não apareça
+   * como "acima de 100%".
+   */
+  private async consumoDoCiclo(userId: string, restantes: number) {
+    const ancora = await this.transactions.findOne({
+      where: [
+        { userId, kind: 'plan_grant' },
+        { userId, kind: 'signup_bonus' },
+      ],
+      order: { createdAt: 'DESC' },
+    });
+    const qb = this.transactions
+      .createQueryBuilder('t')
+      .select(
+        `COALESCE(SUM(CASE WHEN t.kind = 'spend' THEN -t.amount WHEN t.kind = 'refund' THEN -t.amount ELSE 0 END),0)::int`,
+        'usados',
+      )
+      .where('t."userId" = :userId', { userId });
+    if (ancora) qb.andWhere('t."createdAt" >= :desde', { desde: ancora.createdAt });
+    const linha = await qb.getRawOne<{ usados: number }>();
+    const usados = Math.max(0, Number(linha?.usados ?? 0));
+    const concedidos = restantes + usados;
+    return {
+      concedidos,
+      usados,
+      restantes,
+      percentual: concedidos > 0 ? Math.min(100, Math.round((usados / concedidos) * 100)) : 0,
+      desde: ancora?.createdAt ?? null,
+    };
+  }
+
   async getWallet(userId: string) {
     await this.ensureSignupBonus(userId);
     const user = await this.users.findOneBy({ id: userId });
@@ -102,6 +142,7 @@ export class BillingService implements OnModuleInit {
     return {
       credits: user.credits,
       plan: user.plan,
+      consumo: await this.consumoDoCiclo(userId, user.credits),
       /**
        * A cortesia de vídeo (`SAMPLE_VIDEOS_PER_ACCOUNT`): a interface mostra
        * "por nossa conta" no lugar do preço enquanto ela existe, e o preço de
