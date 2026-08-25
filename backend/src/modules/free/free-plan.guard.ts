@@ -31,7 +31,8 @@ export class FreePlanGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     if (!request.user?.id) return true; // o auth guard já barrou antes
-    const user = await this.users.findOneBy({ id: request.user.id });
+    const user: AppUser | null =
+      request.appUser ?? (await this.users.findOneBy({ id: request.user.id }));
     /*
      * `free` é o único plano que entra. Conta inexistente cai no mesmo caminho
      * (`?? 'free'`) porque a amostra não expõe nada que valha proteger — negar

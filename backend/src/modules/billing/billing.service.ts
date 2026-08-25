@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, IsNull, Not, Repository } from 'typeorm';
 import { AppUser } from '../users/entities/app-user.entity';
+import { UsersService } from '../users/users.service';
 import {
   ACTION_MIN_PLAN,
   ACTION_PRICES,
@@ -54,6 +55,7 @@ export class BillingService implements OnModuleInit {
     private readonly transactions: Repository<CreditTransaction>,
     @InjectRepository(LiveMinuteTransaction)
     private readonly liveTransactions: Repository<LiveMinuteTransaction>,
+    private readonly usersService: UsersService,
   ) {}
 
   // Servidor não sobe com tabela de preços que dá prejuízo.
@@ -109,13 +111,17 @@ export class BillingService implements OnModuleInit {
 
   async getWallet(userId: string) {
     await this.ensureSignupBonus(userId);
-    const user = await this.users.findOneBy({ id: userId });
+    // Leituras independentes numa ida só de latência, não três.
+    const [user, history] = await Promise.all([
+      this.users.findOneBy({ id: userId }),
+      this.transactions.find({
+        where: { userId },
+        order: { createdAt: 'DESC' },
+        take: 30,
+      }),
+    ]);
     if (!user) throw new NotFoundException('Usuário não encontrado');
-    const history = await this.transactions.find({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-      take: 30,
-    });
+    const consumo = await this.consumoDoCiclo(userId, user.credits);
     /*
      * É este mapa que o front usa para montar o menu e bloquear tela, então a
      * trava de lançamento precisa entrar AQUI também — não basta o guard negar
@@ -142,7 +148,7 @@ export class BillingService implements OnModuleInit {
     return {
       credits: user.credits,
       plan: user.plan,
-      consumo: await this.consumoDoCiclo(userId, user.credits),
+      consumo,
       /**
        * A cortesia de vídeo (`SAMPLE_VIDEOS_PER_ACCOUNT`): a interface mostra
        * "por nossa conta" no lugar do preço enquanto ela existe, e o preço de
@@ -208,8 +214,12 @@ export class BillingService implements OnModuleInit {
   }
 
   /** Bloqueia o recurso se o plano do usuário não alcança o mínimo (403). */
-  async assertFeature(userId: string, feature: PlanFeature): Promise<void> {
-    const user = await this.users.findOneBy({ id: userId });
+  async assertFeature(
+    userId: string,
+    feature: PlanFeature,
+    carregado?: AppUser | null,
+  ): Promise<void> {
+    const user = carregado ?? (await this.users.findOneBy({ id: userId }));
     const plan = user?.plan ?? 'free';
     /*
      * A trava de lançamento vem ANTES da de plano, e a ordem importa: o
@@ -929,6 +939,7 @@ export class BillingService implements OnModuleInit {
       );
     }
     await this.users.update({ id: userId }, { plan: plan.id });
+    this.usersService.invalidar(userId);
     await this.addCredits(
       userId,
       planCredits(plan, cycle),
@@ -977,6 +988,7 @@ export class BillingService implements OnModuleInit {
 
   async setPlan(userId: string, planId: string) {
     await this.users.update({ id: userId }, { plan: planId });
+    this.usersService.invalidar(userId);
     // O "já começa com X horas" nasce aqui: o mesmo webhook que ativa (ou
     // renova) o plano concede o bônus de adesão — o delta interno garante que
     // renovação não concede de novo e upgrade concede só a diferença.
@@ -1022,6 +1034,7 @@ export class BillingService implements OnModuleInit {
     }
     if (user.plan === 'free') return;
     await this.users.update({ id: userId }, { plan: 'free' });
+    this.usersService.invalidar(userId);
     this.logger.log(
       `Assinatura encerrada: ${user.email} saiu de "${user.plan}" para "free" (${reason}).`,
     );

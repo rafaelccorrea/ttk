@@ -34,7 +34,7 @@ export class PlanFeatureGuard implements CanActivate {
     if (!feature) return true;
     const request = context.switchToHttp().getRequest();
     if (!request.user?.id) return true; // o auth guard já barrou antes
-    await this.billing.assertFeature(request.user.id, feature);
+    await this.billing.assertFeature(request.user.id, feature, request.appUser);
     return true;
   }
 }

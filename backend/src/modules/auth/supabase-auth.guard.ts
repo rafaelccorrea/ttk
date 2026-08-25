@@ -53,7 +53,9 @@ export class SupabaseAuthGuard implements CanActivate {
     }
 
     // Garante o registro de perfil (multi-usuário: nada é fixo).
-    await this.usersService.ensure(user);
+    // O registro carregado vai junto: os guards de plano (PlanFeatureGuard,
+    // FreePlanGuard) leem daqui em vez de repetir o SELECT.
+    request.appUser = await this.usersService.ensure(user);
     request.user = user;
     return true;
   }

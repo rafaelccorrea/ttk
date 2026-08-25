@@ -22,7 +22,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrandLoader } from '@/components/ui/BrandLoader';
 import { apiErrorMessage } from '@/contexts/AuthContext';
 import {
@@ -104,8 +104,12 @@ export function AdminPage() {
   const carregarTudo = useCallback(async () => {
     setAtualizando(true);
     try {
-      setOverview(await adminService.overview());
-      await carregarUsuarios();
+      // Duas chamadas independentes: em paralelo, não uma atrás da outra.
+      const [overview] = await Promise.all([
+        adminService.overview(),
+        carregarUsuarios(),
+      ]);
+      setOverview(overview);
       setErro(null);
     } catch (e) {
       setErro(apiErrorMessage(e));
@@ -121,7 +125,14 @@ export function AdminPage() {
   }, []);
 
   // A busca espera a digitação parar: sem isso, cada tecla vira uma consulta.
+  // Na montagem o `carregarTudo` já buscou: sem esta guarda a lista vinha
+  // duas vezes a cada abertura da tela.
+  const primeiraBusca = useRef(true);
   useEffect(() => {
+    if (primeiraBusca.current) {
+      primeiraBusca.current = false;
+      return;
+    }
     const t = setTimeout(() => void carregarUsuarios(), 350);
     return () => clearTimeout(t);
   }, [carregarUsuarios]);

@@ -21,7 +21,28 @@ export class AnalyticsService {
     private readonly creators: Repository<Creator>,
   ) {}
 
+  /**
+   * Seis agregações por visita ao painel, sobre dados que mudam uma vez por
+   * dia. Cache curto por usuário (o `isFavorite` dos produtos é pessoal).
+   */
+  private readonly overviewCache = new Map<
+    string,
+    { value: unknown; expiresAt: number }
+  >();
+
   async overview(userId: string) {
+    const hit = this.overviewCache.get(userId);
+    if (hit && hit.expiresAt > Date.now()) return hit.value;
+    const value = await this.calcularOverview(userId);
+    this.overviewCache.set(userId, { value, expiresAt: Date.now() + 60_000 });
+    if (this.overviewCache.size > 500) {
+      const primeiro = this.overviewCache.keys().next().value;
+      if (primeiro) this.overviewCache.delete(primeiro);
+    }
+    return value;
+  }
+
+  private async calcularOverview(userId: string) {
     const [totals, productCount, categoryCount, top, topVideos, topCreators] =
       await Promise.all([
       this.metrics

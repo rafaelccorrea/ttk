@@ -53,7 +53,22 @@ export class TrendsService {
    * Tendências derivadas dos dados reais: compara os últimos 7 dias com os 7
    * anteriores (relativo à data mais recente da série) por categoria e produto.
    */
+  /**
+   * A série diária muda uma vez por dia (ingestão); recalcular três
+   * agregações por visita à tela era só latência. Cinco minutos de cache.
+   */
+  private overviewCache: { value: unknown; expiresAt: number } | null = null;
+
   async overview() {
+    if (this.overviewCache && this.overviewCache.expiresAt > Date.now()) {
+      return this.overviewCache.value;
+    }
+    const value = await this.calcularOverview();
+    this.overviewCache = { value, expiresAt: Date.now() + 5 * 60 * 1000 };
+    return value;
+  }
+
+  private async calcularOverview() {
     const latestRow = await this.metrics
       .createQueryBuilder('m')
       .select('MAX(m.date)', 'max')
@@ -66,7 +81,7 @@ export class TrendsService {
     const mid = this.shiftDate(latest, -7);
     const start = this.shiftDate(latest, -14);
 
-    const categoriesRaw = await this.metrics
+    const categoriesQb = this.metrics
       .createQueryBuilder('m')
       .innerJoin('m.product', 'p')
       .select('p.category', 'category')
@@ -74,10 +89,9 @@ export class TrendsService {
       .addSelect('SUM(CASE WHEN m.date <= :mid THEN m.sales ELSE 0 END)', 'previousSales')
       .addSelect('SUM(CASE WHEN m.date > :mid THEN m.revenue ELSE 0 END)', 'recentRevenue')
       .where('m.date > :start', { start, mid })
-      .groupBy('p.category')
-      .getRawMany();
+      .groupBy('p.category');
 
-    const productsRaw = await this.metrics
+    const productsQb = this.metrics
       .createQueryBuilder('m')
       .innerJoin('m.product', 'p')
       .select('p.id', 'id')
@@ -89,8 +103,14 @@ export class TrendsService {
       .where('m.date > :start', { start, mid })
       .groupBy('p.id')
       .addGroupBy('p.title')
-      .addGroupBy('p.category')
-      .getRawMany();
+      .addGroupBy('p.category');
+
+    // As três leituras são independentes: uma ida de latência em vez de três.
+    const [categoriesRaw, productsRaw, curated] = await Promise.all([
+      categoriesQb.getRawMany(),
+      productsQb.getRawMany(),
+      this.findAll(),
+    ]);
 
     const risingProducts: RisingProduct[] = productsRaw
       .map((r) => ({
@@ -126,7 +146,7 @@ export class TrendsService {
       referenceDate: latest,
       categories,
       risingProducts,
-      curated: await this.findAll(),
+      curated,
     };
   }
 

@@ -120,6 +120,7 @@ function montar(estado: {
     users as never,
     creditos as never,
     minutos as never,
+    { invalidar: () => undefined } as never,
   );
   return { servico, users, creditos, minutos };
 }

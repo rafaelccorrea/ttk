@@ -19,14 +19,34 @@ import { NovaContaService } from './nova-conta.service';
 /** Intervalo mínimo entre duas gravações de `lastSeenAt` da mesma conta. */
 const LAST_SEEN_FOLGA_MS = 5 * 60 * 1000;
 
+/**
+ * Quanto tempo o registro carregado pelo guard vale sem voltar ao banco.
+ *
+ * O banco fica em outro continente (~160 ms por ida), e o guard roda em TODA
+ * requisição autenticada — antes deste cache, cada clique pagava essa ida só
+ * para confirmar que a conta existe. Quem escreve plano chama `invalidar()`;
+ * o resto (nome, foto, lastSeen) tolera 30 s de atraso.
+ */
+const ENSURE_CACHE_TTL_MS = 30 * 1000;
+
 @Injectable()
 export class UsersService {
+  private readonly ensureCache = new Map<
+    string,
+    { user: AppUser; expiresAt: number }
+  >();
+
   constructor(
     @InjectRepository(AppUser)
     private readonly repository: Repository<AppUser>,
     private readonly mirror: MediaMirrorService,
     private readonly novaConta: NovaContaService,
   ) {}
+
+  /** Esquece a cópia em memória — chamar depois de escrever plano. */
+  invalidar(id: string): void {
+    this.ensureCache.delete(id);
+  }
 
   /**
    * Upsert leve chamado pelo guard a cada requisição autenticada.
@@ -36,10 +56,14 @@ export class UsersService {
    * o login passava a encontrar a errada ("e-mail ou senha incorretos" numa
    * conta válida). Por isso conferimos o e-mail antes de inserir.
    */
-  async ensure(user: AuthUser): Promise<void> {
-    const existing = await this.repository.findOne({
-      where: [{ id: user.id }, { email: user.email }],
-    });
+  async ensure(user: AuthUser): Promise<AppUser | null> {
+    const cached = this.ensureCache.get(user.id);
+    if (cached && cached.expiresAt > Date.now()) return cached.user;
+    // Primeiro pelo id (chave primária, uma ida); o e-mail só entra quando o
+    // id não existe — caso raro do cadastro, não o caminho de cada clique.
+    const existing =
+      (await this.repository.findOneBy({ id: user.id })) ??
+      (await this.repository.findOneBy({ email: user.email }));
     const comp = isCompAccount(user.email);
     if (existing) {
       // Conta de cortesia entra aqui a cada request, mas só escreve quando o
@@ -51,14 +75,23 @@ export class UsersService {
           { id: existing.id },
           { plan: COMP_ACCOUNT_PLAN },
         );
+        existing.plan = COMP_ACCOUNT_PLAN;
       }
       // "Visto por último", com folga: um UPDATE a cada request seria escrever
       // a cada clique; a cada 5 minutos já diz quem usa o app e quem sumiu.
       const visto = existing.lastSeenAt?.getTime() ?? 0;
       if (Date.now() - visto > LAST_SEEN_FOLGA_MS) {
-        await this.repository.update({ id: existing.id }, { lastSeenAt: new Date() });
+        existing.lastSeenAt = new Date();
+        // Sem await: o carimbo não muda a resposta desta requisição.
+        void this.repository
+          .update({ id: existing.id }, { lastSeenAt: existing.lastSeenAt })
+          .catch(() => undefined);
       }
-      return;
+      this.ensureCache.set(user.id, {
+        user: existing,
+        expiresAt: Date.now() + ENSURE_CACHE_TTL_MS,
+      });
+      return existing;
     }
     const inserido = await this.repository
       .createQueryBuilder()
@@ -75,6 +108,7 @@ export class UsersService {
     if ((inserido.raw as unknown[]).length > 0) {
       this.novaConta.avisar({ id: user.id, email: user.email, origem: 'supabase' });
     }
+    return this.repository.findOneBy({ id: user.id });
   }
 
   async findById(id: string): Promise<AppUser> {
@@ -87,6 +121,7 @@ export class UsersService {
 
   async updateProfile(id: string, displayName: string): Promise<AppUser> {
     await this.repository.update({ id }, { displayName });
+    this.invalidar(id);
     return this.findById(id);
   }
 

@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, CREDITS_CHANGED_EVENT, TOKEN_STORAGE_KEY } from './api';
 
 export interface CreditTransaction {
   id: string;
@@ -125,8 +125,53 @@ export interface ReferralStats {
   recompensa: { indicador: number; indicado: number };
 }
 
+/**
+ * Uma carteira por navegação, não uma por componente.
+ *
+ * `wallet()` é chamada pelo layout, pelos três gates de rota, pelo `useSaldo`
+ * de cada botão e por várias páginas — na pior tela eram quatro GETs
+ * idênticos, dois deles segurando a renderização. Aqui a primeira chamada
+ * vira a promessa compartilhada (quem chega enquanto ela voa recebe a mesma)
+ * e o resultado vale por alguns segundos. Qualquer POST que gasta ou compra
+ * crédito dispara `CREDITS_CHANGED_EVENT`, que zera o cache — o saldo do
+ * cabeçalho continua atualizando na hora.
+ */
+const WALLET_TTL_MS = 15_000;
+let walletCache: { token: string | null; value: Wallet; expiresAt: number } | null =
+  null;
+let walletEmVoo: { token: string | null; promise: Promise<Wallet> } | null = null;
+
+export function invalidarWallet() {
+  walletCache = null;
+  walletEmVoo = null;
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(CREDITS_CHANGED_EVENT, invalidarWallet);
+}
+
+function walletCompartilhada(): Promise<Wallet> {
+  // A chave é o token: trocar de conta na mesma aba não pode herdar saldo.
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (walletCache && walletCache.token === token && walletCache.expiresAt > Date.now()) {
+    return Promise.resolve(walletCache.value);
+  }
+  if (walletEmVoo && walletEmVoo.token === token) return walletEmVoo.promise;
+  const promise = api
+    .get<Wallet>('/billing/wallet')
+    .then((r) => {
+      walletCache = { token, value: r.data, expiresAt: Date.now() + WALLET_TTL_MS };
+      return r.data;
+    })
+    .finally(() => {
+      if (walletEmVoo?.promise === promise) walletEmVoo = null;
+    });
+  walletEmVoo = { token, promise };
+  return promise;
+}
+
 export const billingService = {
-  wallet: () => api.get<Wallet>('/billing/wallet').then((r) => r.data),
+  wallet: walletCompartilhada,
   referrals: () =>
     api.get<ReferralStats>('/billing/referrals').then((r) => r.data),
   plans: () => api.get<Plan[]>('/billing/plans').then((r) => r.data),

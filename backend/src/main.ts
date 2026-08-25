@@ -1,6 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import compression from 'compression';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -45,6 +46,10 @@ async function bootstrap() {
       contentSecurityPolicy: isProduction ? undefined : false,
     }),
   );
+
+  // Respostas JSON grandes (vitrine, campanhas, wallet) viajam gzip/brotli.
+  // Mídia (/media/*) já é binário comprimido: o filtro padrão a deixa passar.
+  app.use(compression({ threshold: 1024 }));
 
   app.setGlobalPrefix('api/v1');
 

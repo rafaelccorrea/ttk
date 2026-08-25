@@ -35,6 +35,22 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: { '@': '/src' },
     },
+    build: {
+      /*
+       * O bundle era um único arquivo de 1,2 MB: toda tela pagava o parse das
+       * 30 páginas antes de pintar. As páginas pesadas viram `lazy` em
+       * `routes/index.tsx`; aqui as bibliotecas ficam em chunks próprios, que
+       * o navegador guarda em cache entre deploys enquanto elas não mudam.
+       */
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            react: ['react', 'react-dom', 'react-router-dom'],
+            mui: ['@mui/material', '@emotion/react', '@emotion/styled'],
+          },
+        },
+      },
+    },
     server: {
       port: 5173,
       proxy: {

@@ -22,6 +22,20 @@ export const typeOrmConfig = (
 
   const common = {
     autoLoadEntities: true,
+    /*
+     * Pool. O banco é remoto (~160 ms por ida), então cada requisição segura a
+     * conexão por mais tempo do que num Postgres local — com o padrão de 10 do
+     * node-pg, uma tela que dispara 8 chamadas em paralelo já enfileira as
+     * demais. Teto de 30 s por statement evita uma query travada prender a
+     * conexão para sempre.
+     */
+    extra: {
+      max: Number(config.get('DB_POOL_MAX') ?? 20),
+      idleTimeoutMillis: 60_000,
+      connectionTimeoutMillis: 10_000,
+      statement_timeout: 30_000,
+      keepAlive: true,
+    },
     synchronize:
       !isProduction && config.get('NODE_ENV') === 'development' && bancoLocal,
     migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
