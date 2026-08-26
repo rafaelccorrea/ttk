@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { access, mkdir, readdir } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { access, chmod, mkdir, readdir } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 /**
@@ -137,11 +137,17 @@ export class VideoDownloaderService {
       this.binario = (async () => {
         const fixo = process.env.YT_DLP_PATH;
         if (fixo) return fixo;
-        const pasta = process.env.YT_DLP_DIR || join(tmpdir(), 'pikpok-bin');
+        /*
+         * NÃO em /tmp: na Hostinger ele é montado sem permissão de execução e o
+         * spawn morre com EACCES mesmo com o arquivo lá. A home do usuário
+         * sobrevive aos deploys (cada versão vai para uma pasta nova) e executa.
+         */
+        const pasta = process.env.YT_DLP_DIR || join(homedir() || tmpdir(), '.pikpok-bin');
         const nome = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
         const caminho = join(pasta, nome);
         try {
           await access(caminho);
+          await this.tornarExecutavel(caminho);
           return caminho;
         } catch {
           /* ainda não baixado */
@@ -150,6 +156,7 @@ export class VideoDownloaderService {
           await mkdir(pasta, { recursive: true });
           const { default: YTDlpWrap } = await import('yt-dlp-wrap');
           await YTDlpWrap.downloadFromGithub(caminho);
+          await this.tornarExecutavel(caminho);
           this.logger.log(`yt-dlp baixado em ${caminho}`);
           return caminho;
         } catch (error) {
@@ -162,6 +169,12 @@ export class VideoDownloaderService {
     }
     return this.binario;
   }
+
+  /** Idempotente; o bit de execução some em extração de deploy (mesmo caso do ffmpeg). */
+  private async tornarExecutavel(caminho: string): Promise<void> {
+    if (process.platform === 'win32') return;
+    await chmod(caminho, 0o755).catch((e) => this.logger.warn(`chmod no yt-dlp falhou: ${e}`));
+  }
 }
 
 /** As mensagens do yt-dlp são para dev; o usuário vê uma frase em português. */
@@ -169,6 +182,9 @@ function traduzirErro(error: unknown): string {
   const texto = String((error as Error)?.message ?? error);
   if (/confirm you.re not a bot|sign in to confirm/i.test(texto)) {
     return 'O YouTube bloqueou o download a partir do nosso servidor. Baixe o vídeo e envie o arquivo.';
+  }
+  if (/EACCES|EPERM/i.test(texto)) {
+    return 'O servidor não conseguiu executar o baixador de vídeo. Envie o arquivo do vídeo.';
   }
   if (/javascript runtime|js runtime/i.test(texto)) {
     return 'O servidor não conseguiu preparar o download do YouTube agora. Envie o arquivo do vídeo.';
