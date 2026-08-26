@@ -22,6 +22,7 @@ import type { LiveRunMode } from '../shared/live-events';
 import { MODO_SIMULACAO } from './chat-simulado';
 import { Copiloto } from './copiloto';
 import { ModoFoco } from './foco';
+import { definirMexedorDeMouse } from './mexedor-de-mouse';
 import {
   estadoDaAtualizacao,
   iniciarAtualizador,
@@ -713,9 +714,11 @@ function registrarIpc(): void {
   });
 
   ipcMain.handle('config:ler', () => copiloto.lerConfiguracoes());
-  ipcMain.handle('config:salvar', (_evento, valores: ConfiguracoesCopiloto) =>
-    copiloto.salvarConfiguracoes(valores),
-  );
+  ipcMain.handle('config:salvar', (_evento, valores: ConfiguracoesCopiloto) => {
+    const salvas = copiloto.salvarConfiguracoes(valores);
+    definirMexedorDeMouse(salvas.mexerMouseAutomatico);
+    return salvas;
+  });
 
   ipcMain.handle('produtos:listar', () => copiloto.listarProdutosDaLive());
   ipcMain.handle('produtos:fixar', (_evento, titulo: unknown) =>
@@ -810,6 +813,8 @@ void app.whenReady().then(() => {
 
   // Antes de tudo: qualquer erro daqui em diante já fica registrado.
   iniciarDiario(join(app.getPath('userData'), 'logs'));
+  // O ajuste vale desde a abertura do app, não só depois de salvar.
+  definirMexedorDeMouse(copiloto.lerConfiguracoes().mexerMouseAutomatico);
 
   registrarIpc();
   registrarAtalhoDePausa();
@@ -865,4 +870,5 @@ app.on('before-quit', (evento) => {
 // Atalho global que sobrevive ao app seria uma tecla sequestrada do sistema.
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  definirMexedorDeMouse(false);
 });

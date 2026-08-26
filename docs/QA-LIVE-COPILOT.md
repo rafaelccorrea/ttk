@@ -117,6 +117,7 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 | 5.1 | Abrir Configurações | Tela densa em seções: **Respostas** (responder a partir de / descartar abaixo de / tamanho do lote, valor atual à direita), **Chat** (lista negra, **Bloquear espectadores**), **Vitrine** (**Rotação automática de produtos** — slider 2–60 min só aparece com o switch ligado), **Proteção** (**Detectar avisos do TikTok** ligado, **Encerrar a live ao detectar aviso** desligado, com alerta), **Sistema** (atualizar + conta). Botão **Salvar ajustes** fixo no rodapé, sempre visível | ✅ 24/08 screenshot: seções Respostas/Chat/Vitrine/Proteção/Sistema, Salvar fixo |
 | 5.2 | Digitar `@teste, curioso` em Bloquear e salvar | Reabrir mostra `teste, curioso` (normalizado) | ✅ 24/08 via ponte: '@curioso_chato' → 'curioso_chato' |
 | 5.3 | Ligar rotação com 2 min e salvar | Chip "valendo no próximo lote" | ✅ 24/08 via ponte (rotação 2 min salva) |
+| 5.5 | Ligar **Manter o computador ativo** (Sistema) e salvar | Log `[mouse] mexedor automático ligado`; a cada 60 s o cursor vai 1 px e volta (imperceptível); reabrir o app já começa ligado; desligar e salvar → log `desligado` e o cursor para. Linux exige `xdotool` (sem ele, um único aviso no log); macOS só registra "sem suporte" | ⬜ |
 | 5.4 | Detector desligado | Switch "Encerrar ao detectar" desabilitado | ✅ 24/08 detector desligado → switch 'Encerrar' disabled=true (3 switches na tela) |
 
 ## 6. Desktop — live simulada (cockpit)

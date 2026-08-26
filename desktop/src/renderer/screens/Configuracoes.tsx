@@ -322,6 +322,17 @@ export function Configuracoes({
             <BlocoDeAtualizacao />
           </Linha>
           <Linha
+            titulo="Manter o computador ativo"
+            explicacao="Mexe o mouse 1 pixel a cada minuto enquanto o app estiver aberto, para o sistema não te dar como ausente numa live longa."
+            detalhe="Você não percebe o movimento. Vale desde que o app abre, sem precisar entrar na live. No Linux precisa do xdotool instalado."
+            controle={
+              <Switch
+                checked={valores.mexerMouseAutomatico}
+                onChange={(_, ligado) => alterar({ mexerMouseAutomatico: ligado })}
+              />
+            }
+          />
+          <Linha
             titulo="Registro de erros"
             explicacao="O app anota sozinho todo erro num arquivo local. Se algo der errado numa live, é este arquivo que o suporte vai pedir."
             ultima

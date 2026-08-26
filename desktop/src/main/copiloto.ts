@@ -59,6 +59,7 @@ const CONFIG_PADRAO: ConfiguracoesCopiloto = {
   // e começa desligado — ver o comentário no tipo (`desktop-api.ts`).
   detectorAvisoAtivo: true,
   encerrarAoDetectarAviso: false,
+  mexerMouseAutomatico: false,
   usuariosBloqueados: [],
   // Rotação começa desligada: fixar produto mexe na vitrine do vendedor, e
   // vitrine girando sozinha sem ele ter pedido é surpresa, não feature.
@@ -1033,6 +1034,7 @@ export class Copiloto {
       ),
       detectorAvisoAtivo: valores.detectorAvisoAtivo !== false,
       encerrarAoDetectarAviso: valores.encerrarAoDetectarAviso === true,
+      mexerMouseAutomatico: valores.mexerMouseAutomatico === true,
       usuariosBloqueados: (valores.usuariosBloqueados ?? [])
         .map((u) => String(u).trim().replace(/^@/, '').toLowerCase())
         .filter(Boolean)

@@ -210,6 +210,13 @@ export interface ConfiguracoesCopiloto {
    * noite; ligar é decisão consciente, com aviso na tela de configurações.
    */
   encerrarAoDetectarAviso: boolean;
+  /**
+   * Mexe o mouse 1 px (e volta) a cada minuto enquanto o app está aberto, para
+   * o sistema e o TikTok Studio não tratarem a máquina como ausente numa live
+   * longa em que o vendedor não encosta no computador. Desligado por padrão.
+   * Windows: PowerShell. Linux: `xdotool` (se instalado). macOS: sem suporte.
+   */
+  mexerMouseAutomatico: boolean;
 }
 
 /**
