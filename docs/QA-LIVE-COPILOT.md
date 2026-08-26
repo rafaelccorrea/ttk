@@ -206,3 +206,9 @@ Outros:
 - `live_replies` ganhou `promptTokens/cachedTokens/completionTokens` (parte da resposta na chamada do lote; nulo sem modelo) e `baseHash`. Migração `1786671300000-AddLiveReplyCostAndBaseHash`. Custo por live: `select "liveRunId", model, sum("promptTokens"-"cachedTokens") entrada, sum("cachedTokens") cache, sum("completionTokens") saida from live_replies group by 1,2`.
 - Desktop: lote mínimo **4** (configs com 1 são saneadas), padrão 12; fila do envio consultada a cada 5 s; a tela de conectar mostra "~N tokens/chamada" por base.
 - Como testar a FAQ direta: cadastrar FAQ "Qual o valor do plano?" → perguntar "valor do plano?" na live → `live_replies.model = 'faq'` e nenhuma chamada na OpenAI.
+
+## Eco e post duplicado (2026-08-26, live real)
+
+- **Eco**: o que a conta do vendedor escreve no chat (inclusive o que o app acabou de postar) nunca sobe ao backend — o desktop descarta após usar como confirmação de entrega (`copiloto.ts`). No backend, texto igual a uma resposta emitida nos últimos 10 min (com ou sem "@fulano: " na frente) vira `ignorada` (`ehEcoDeResposta`). Antes disso o modelo respondia à própria resposta, em cadeia.
+- **Post duplicado**: depois do Enter, o envio sonda o campo por até 2 s (10 × 200 ms) e só clica no botão se ele **não** esvaziou. Antes eram 400 ms fixos e, com o TikTok lento, saía duas vezes.
+- Como testar: com envio automático ligado, uma pergunta → exatamente um comentário no chat, e a linha do eco aparece em `live_chat_messages` com `status='ignorada'` (ou não aparece, se o desktop filtrou).
