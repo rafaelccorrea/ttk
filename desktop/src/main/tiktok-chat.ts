@@ -266,9 +266,10 @@ export class WebcastChatSource implements ChatSource {
     await this.abrir();
   }
 
+  on(evt: 'message', cb: (m: RawChatMessage) => void): void;
   on(evt: 'audience', cb: (a: AudienceEvent) => void): void;
   on(evt: 'disconnect' | 'error', cb: (e: Error) => void): void;
-  on(evt: 'disconnect' | 'error', cb: (e: Error) => void): void;
+  on(evt: 'streamEnd', cb: () => void): void;
   on(
     evt: 'message' | 'audience' | 'disconnect' | 'streamEnd' | 'error',
     cb:
