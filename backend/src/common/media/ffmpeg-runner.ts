@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { execFile } from 'node:child_process';
-import { access, chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -201,7 +201,13 @@ export class FfmpegRunner {
    * `-ss` vem ANTES do `-i` (busca rápida pelo índice) e o `-to` depois é
    * relativo a esse ponto, por isso vai como duração.
    *
-   * O enquadramento é o vídeo inteiro centralizado sobre fundo desfocado, em 720p.
+   * Enquadramento (720p na proporção pedida), por `opcoes.rosto`:
+   * - sem trilha: o vídeo inteiro centralizado sobre uma cópia ampliada e
+   *   desfocada — o layout dos apps de corte para horizontal em 9:16. Fonte já
+   *   na proporção sai idêntica a um crop.
+   * - com trilha: a fonte é escalada para preencher a altura e um `crop`
+   *   animado segue o centro do rosto (interpolação linear entre amostras).
+   *
    * `veryfast` + CRF 26 é o compromisso do host compartilhado: alguns segundos
    * de CPU por corte e ~25 MB no pior caso (90 s), abaixo do teto do bucket.
    */
@@ -214,29 +220,17 @@ export class FfmpegRunner {
     timeoutMs = TIMEOUT_PADRAO_MS,
     /**
      * Arquivo .srt com os tempos RELATIVOS ao início do corte, para queimar a
-     * legenda no vídeo (filtro `subtitles`, libass). O estilo é fixo: branco
-     * com contorno preto, centralizado no terço de baixo — o padrão que os
-     * apps de corte usam e que sobrevive a qualquer fundo.
+     * legenda no vídeo (filtro `subtitles`, libass). O visual vem de
+     * `opcoes.estilo`; o padrão é branco com contorno preto no terço de baixo.
      */
     legendaSrt?: string,
+    opcoes: OpcoesDeCorte = {},
   ): Promise<void> {
     const duracao = Math.max(0.5, fimSeg - inicioSeg);
     const [larg, alt] =
       formato === '16:9' ? [1280, 720] : formato === '1:1' ? [720, 720] : [720, 1280];
-    /*
-     * Enquadramento sem cortar nada: o vídeo inteiro encaixado no centro
-     * (`decrease`) e, atrás dele, uma cópia ampliada e desfocada preenchendo
-     * o quadro — o layout que os apps de corte usam para vídeo horizontal em
-     * 9:16. O crop central de antes jogava fora ~70% da largura de um 16:9 e
-     * deixava só o miolo. Quando a fonte já tem a proporção pedida, a frente
-     * cobre tudo e o fundo nem aparece — resultado idêntico ao crop.
-     */
-    const fundo =
-      `[bg]scale=${larg}:${alt}:force_original_aspect_ratio=increase,` +
-      `crop=${larg}:${alt},boxblur=20:5[bgb]`;
-    const frente = `[fg]scale=${larg}:${alt}:force_original_aspect_ratio=decrease[fgs]`;
     const etapas = [
-      `split=2[bg][fg];${fundo};${frente};[bgb][fgs]overlay=(W-w)/2:(H-h)/2`,
+      opcoes.rosto?.length ? enquadrarNoRosto(larg, alt, opcoes.rosto) : enquadrarComBlur(larg, alt),
       'setsar=1',
       'fps=30',
     ];
@@ -260,30 +254,7 @@ export class FfmpegRunner {
       const pastaDeFontes =
         process.env.CUTS_FONTS_DIR || join(__dirname, '..', '..', '..', 'assets', 'fonts');
       const fontsdir = `:fontsdir='${pastaDeFontes.replace(/\\/g, '/').replace(/:/g, '\\:')}'`;
-      /*
-       * As medidas do `force_style` NÃO são pixels: um SRT vira ASS com
-       * PlayResX=384 / PlayResY=288 e o libass escala tudo a partir daí. Em
-       * 720×1280, FontSize=16 dá ~70 px de altura de letra e MarginV=48 põe a
-       * linha a ~17% do fundo — o terço de baixo, fora do rosto e acima da
-       * barra de legenda do TikTok. (Com 180 "pensando em pixels" o texto
-       * caía no meio da tela.)
-       */
-      const vertical = formato === '9:16';
-      const estilo = [
-        `FontName=${process.env.CUTS_FONT_NAME || 'DejaVu Sans'}`,
-        `FontSize=${vertical ? 16 : 13}`,
-        'Bold=1',
-        'PrimaryColour=&H00FFFFFF',
-        'OutlineColour=&H00000000',
-        'BackColour=&H80000000',
-        'BorderStyle=1',
-        'Outline=2',
-        'Shadow=0',
-        'Alignment=2',
-        `MarginV=${vertical ? 48 : 24}`,
-        'MarginL=20',
-        'MarginR=20',
-      ].join(',');
+      const estilo = estiloDeLegenda(opcoes.estilo ?? 'classico', formato === '9:16');
       etapas.push(`subtitles='${caminho}'${fontsdir}:force_style='${estilo}'`);
     }
     const filtro = etapas.join(',');
@@ -307,6 +278,38 @@ export class FfmpegRunner {
       ],
       timeoutMs,
     );
+  }
+
+  /**
+   * Amostra quadros da fonte a `fps` por segundo, em JPEG pequeno, para
+   * análise (detecção de rosto). Devolve os caminhos em ordem de tempo; o
+   * quadro `i` está em `inicioSeg + i / fps`.
+   */
+  async amostrarQuadros(
+    fonte: string,
+    pasta: string,
+    inicioSeg: number,
+    duracaoSeg: number,
+    opts: { fps?: number; largura?: number; timeoutMs?: number } = {},
+  ): Promise<string[]> {
+    const fps = opts.fps ?? 1;
+    const largura = opts.largura ?? 320;
+    const padrao = join(pasta, 'q-%04d.jpg');
+    await this.rodar(
+      [
+        '-y',
+        '-hide_banner',
+        '-ss', inicioSeg.toFixed(3),
+        '-i', fonte,
+        '-t', duracaoSeg.toFixed(3),
+        '-vf', `fps=${fps},scale=${largura}:-2`,
+        '-q:v', '5',
+        padrao,
+      ],
+      opts.timeoutMs ?? TIMEOUT_PADRAO_MS,
+    );
+    const nomes = (await readdir(pasta)).filter((n) => /^q-\d{4}\.jpg$/.test(n)).sort();
+    return nomes.map((n) => join(pasta, n));
   }
 
   /**
@@ -446,4 +449,121 @@ export class FfmpegRunner {
       await rm(pasta, { recursive: true, force: true }).catch(() => undefined);
     }
   }
+}
+
+/** Perfis da legenda queimada — espelho de `CAPTION_STYLES` no planner dos cortes. */
+export type EstiloDeLegenda = 'classico' | 'karaoke' | 'impacto' | 'minimal' | 'oferta';
+
+/** Centro do rosto ao longo do corte: `t` em segundos desde o início, `cx` em 0–1 da largura. */
+export interface PontoDeRosto {
+  t: number;
+  cx: number;
+}
+
+export interface OpcoesDeCorte {
+  estilo?: EstiloDeLegenda;
+  /** Trilha do rosto; presente = crop animado em vez de fundo desfocado. */
+  rosto?: PontoDeRosto[];
+}
+
+/**
+ * Vídeo inteiro encaixado no centro (`decrease`) sobre uma cópia ampliada e
+ * desfocada (`increase` + crop + boxblur). O crop central de antes jogava fora
+ * ~70% da largura de um 16:9 e deixava só o miolo.
+ */
+function enquadrarComBlur(larg: number, alt: number): string {
+  const fundo =
+    `[bg]scale=${larg}:${alt}:force_original_aspect_ratio=increase,` +
+    `crop=${larg}:${alt},boxblur=20:5[bgb]`;
+  const frente = `[fg]scale=${larg}:${alt}:force_original_aspect_ratio=decrease[fgs]`;
+  return `split=2[bg][fg];${fundo};${frente};[bgb][fgs]overlay=(W-w)/2:(H-h)/2`;
+}
+
+/**
+ * Escala a fonte para preencher a altura e recorta `larg` px seguindo o rosto.
+ *
+ * O `x` do crop é uma expressão em `t`: interpolação linear entre as amostras
+ * da trilha (aninhando `if(lt(t,…))`), com o centro convertido em pixels da
+ * largura ESCALADA (`in_w`) e preso às bordas. Antes da primeira amostra vale
+ * a primeira; depois da última, a última. A trilha já chega suavizada pelo
+ * detector, então aqui é só geometria. `force_original_aspect_ratio=increase`
+ * garante que, mesmo numa fonte quase quadrada, o quadro cobre o formato.
+ */
+export function enquadrarNoRosto(larg: number, alt: number, trilha: PontoDeRosto[]): string {
+  const pontos = [...trilha].sort((a, b) => a.t - b.t);
+  const n = (v: number) => v.toFixed(4);
+  let expr = n(pontos[pontos.length - 1].cx);
+  for (let i = pontos.length - 2; i >= 0; i -= 1) {
+    const p = pontos[i];
+    const q = pontos[i + 1];
+    const dt = Math.max(0.001, q.t - p.t);
+    const lerp = `${n(p.cx)}+(${n(q.cx - p.cx)})*(t-${n(p.t)})/${n(dt)}`;
+    expr = `if(lt(t,${n(q.t)}),${lerp},${expr})`;
+  }
+  const x = `clip((${expr})*in_w-${larg}/2,0,in_w-${larg})`;
+  return (
+    `scale=${larg}:${alt}:force_original_aspect_ratio=increase,` +
+    `crop=${larg}:${alt}:x='${x}':y=(in_h-${alt})/2`
+  );
+}
+
+/**
+ * `force_style` do libass por perfil.
+ *
+ * As medidas NÃO são pixels: um SRT vira ASS com PlayResX=384 / PlayResY=288
+ * e o libass escala tudo a partir daí. Em 720×1280, FontSize=16 dá ~70 px de
+ * altura de letra e MarginV=48 põe a linha a ~17% do fundo — o terço de
+ * baixo, fora do rosto e acima da barra do TikTok. Cores são &HAABBGGRR.
+ * Karaokê e oferta fazem o destaque no próprio SRT (`<font color>`), então
+ * aqui só mudam a base.
+ */
+export function estiloDeLegenda(estilo: EstiloDeLegenda, vertical: boolean): string {
+  const fonte = `FontName=${process.env.CUTS_FONT_NAME || 'DejaVu Sans'}`;
+  const base = [fonte, 'Alignment=2', `MarginV=${vertical ? 48 : 24}`, 'MarginL=20', 'MarginR=20', 'Shadow=0'];
+  const porEstilo: Record<EstiloDeLegenda, string[]> = {
+    classico: [
+      `FontSize=${vertical ? 16 : 13}`,
+      'Bold=1',
+      'PrimaryColour=&H00FFFFFF',
+      'OutlineColour=&H00000000',
+      'BorderStyle=1',
+      'Outline=2',
+    ],
+    karaoke: [
+      `FontSize=${vertical ? 17 : 13}`,
+      'Bold=1',
+      'PrimaryColour=&H00FFFFFF',
+      'OutlineColour=&H00000000',
+      'BorderStyle=1',
+      'Outline=2',
+    ],
+    impacto: [
+      `FontSize=${vertical ? 19 : 14}`,
+      'Bold=1',
+      'PrimaryColour=&H0000D5FF',
+      'OutlineColour=&H00000000',
+      'BorderStyle=1',
+      'Outline=3',
+      'Spacing=1',
+    ],
+    minimal: [
+      `FontSize=${vertical ? 13 : 11}`,
+      'Bold=0',
+      'PrimaryColour=&H00FFFFFF',
+      'BackColour=&H99000000',
+      'OutlineColour=&H99000000',
+      // BorderStyle=3 desenha uma caixa opaca atrás do texto (a "tarja").
+      'BorderStyle=3',
+      'Outline=3',
+    ],
+    oferta: [
+      `FontSize=${vertical ? 18 : 14}`,
+      'Bold=1',
+      'PrimaryColour=&H00FFFFFF',
+      'OutlineColour=&H00000000',
+      'BorderStyle=1',
+      'Outline=3',
+    ],
+  };
+  return [...base, ...porEstilo[estilo]].join(',');
 }

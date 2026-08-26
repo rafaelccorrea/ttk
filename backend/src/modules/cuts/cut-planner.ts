@@ -9,6 +9,14 @@
 export type CutMode = 'rapido' | 'inteligente';
 export type CutFormat = '9:16' | '16:9' | '1:1';
 
+/** Perfis da legenda queimada — espelhados na tela (`ESTILOS_DE_LEGENDA`). */
+export const CAPTION_STYLES = ['classico', 'karaoke', 'impacto', 'minimal', 'oferta'] as const;
+export type CaptionStyle = (typeof CAPTION_STYLES)[number];
+
+/** Como enquadrar fonte mais larga que o formato pedido. */
+export const REFRAME_MODES = ['rosto', 'blur'] as const;
+export type ReframeMode = (typeof REFRAME_MODES)[number];
+
 export interface Trecho {
   inicio: number;
   fim: number;
@@ -18,6 +26,8 @@ export interface TrechoPlanejado extends Trecho {
   title: string | null;
   hook: string | null;
   reason: string | null;
+  /** Nota 0–10 da IA; nula no modo rápido. */
+  score: number | null;
   /** De onde veio: escolhido pela IA ou preenchido pelo modo rápido. */
   origem: 'ia' | 'rapido';
 }
@@ -135,7 +145,14 @@ export function planejarRapido(
       }
       const trecho = { inicio: arred(inicio), fim: arred(fim) };
       if (sobrepoe(trecho, resultado) || sobrepoe(trecho, evitar)) continue;
-      resultado.push({ ...trecho, title: null, hook: null, reason: null, origem: 'rapido' });
+      resultado.push({
+        ...trecho,
+        title: null,
+        hook: null,
+        reason: null,
+        score: null,
+        origem: 'rapido',
+      });
     }
   }
   return resultado.slice(0, n);
@@ -164,6 +181,7 @@ export interface SugestaoDaIa {
   titulo?: unknown;
   gancho?: unknown;
   motivo?: unknown;
+  score?: unknown;
 }
 
 /**
@@ -202,10 +220,18 @@ export function validarSugestoes(
       title: texto(s.titulo, 80),
       hook: texto(s.gancho, 200),
       reason: texto(s.motivo, 200),
+      score: nota(s.score),
       origem: 'ia',
     });
   }
   return aceitos;
+}
+
+/** Nota da IA saneada para 0–10 inteiro; qualquer coisa estranha vira nula. */
+function nota(valor: unknown): number | null {
+  const n = Number(valor);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(10, Math.round(n)));
 }
 
 /**
@@ -216,11 +242,20 @@ export function blocosDeTranscricao(duracaoSeg: number, blocoMin: number): numbe
   return Math.max(1, Math.ceil(duracaoSeg / (blocoMin * 60)));
 }
 
+/** Uma palavra com tempo absoluto na fonte (só quando o Whisper devolveu). */
+export interface PalavraDeFala {
+  inicio: number;
+  fim: number;
+  texto: string;
+}
+
 /** Um segmento de fala com tempo absoluto na fonte. */
 export interface SegmentoDeFala {
   inicio: number;
   fim: number;
   texto: string;
+  /** Palavras com tempo — o que o estilo karaokê precisa. Ausente = sem karaokê. */
+  palavras?: PalavraDeFala[];
 }
 
 /**
@@ -234,15 +269,30 @@ export interface SegmentoDeFala {
  * 9:16, o libass re-quebrava a "segunda linha" em mais cinco e o bloco cobria
  * o rosto de quem fala.
  */
-export function srtDoTrecho(segmentos: SegmentoDeFala[], inicio: number, fim: number): string {
+export function srtDoTrecho(
+  segmentos: SegmentoDeFala[],
+  inicio: number,
+  fim: number,
+  estilo: CaptionStyle = 'classico',
+): string {
   const blocos: string[] = [];
   let n = 0;
+  const cue = (a: number, b: number, texto: string) => {
+    n += 1;
+    blocos.push(`${n}\n${tempoSrt(a)} --> ${tempoSrt(b)}\n${texto}\n`);
+  };
   for (const s of segmentos) {
     if (s.fim <= inicio || s.inicio >= fim) continue;
     const texto = s.texto.replace(/\s+/g, ' ').trim();
     if (!texto) continue;
     const a = Math.max(0, s.inicio - inicio);
     const b = Math.max(a + 0.3, Math.min(fim, s.fim) - inicio);
+
+    if (estilo === 'karaoke' && s.palavras?.length) {
+      cuesKaraoke(s.palavras, inicio, a, b, cue);
+      continue;
+    }
+
     const fatias = fatiar(texto, MAX_POR_CUE);
     const totalChars = fatias.reduce((acc, f) => acc + f.length, 0);
     let cursor = a;
@@ -250,12 +300,96 @@ export function srtDoTrecho(segmentos: SegmentoDeFala[], inicio: number, fim: nu
       const ultima = i === fatias.length - 1;
       const dur = ((b - a) * fatia.length) / totalChars;
       const fimCue = ultima ? b : Math.min(b, Math.max(cursor + 0.3, cursor + dur));
-      n += 1;
-      blocos.push(`${n}\n${tempoSrt(cursor)} --> ${tempoSrt(fimCue)}\n${quebrar(fatia)}\n`);
+      cue(cursor, fimCue, decorar(quebrar(fatia), estilo));
       cursor = fimCue;
     });
   }
   return blocos.join('\n');
+}
+
+/** Cor de destaque (palavra ativa no karaokê, preço na oferta). */
+const COR_DESTAQUE = '#FFD500';
+
+/**
+ * Karaokê: a mesma fatia de ≤ 2 linhas, mas um cue POR PALAVRA, com a palavra
+ * falada naquele instante em destaque. O libass entende `<font color>` em SRT,
+ * então não precisa de ASS. A fatia é montada a partir das palavras com tempo
+ * (não do texto do segmento) para o destaque bater com o áudio.
+ */
+function cuesKaraoke(
+  palavras: PalavraDeFala[],
+  offset: number,
+  a: number,
+  b: number,
+  cue: (a: number, b: number, texto: string) => void,
+): void {
+  const grupos: PalavraDeFala[][] = [];
+  let atual: PalavraDeFala[] = [];
+  let chars = 0;
+  for (const p of palavras) {
+    const t = p.texto.trim();
+    if (!t) continue;
+    if (chars + t.length + (atual.length ? 1 : 0) > MAX_POR_CUE && atual.length) {
+      grupos.push(atual);
+      atual = [];
+      chars = 0;
+    }
+    atual.push({ ...p, texto: t });
+    chars += t.length + (atual.length > 1 ? 1 : 0);
+  }
+  if (atual.length) grupos.push(atual);
+
+  for (const grupo of grupos) {
+    const linhas = linhasDePalavras(grupo.map((p) => p.texto));
+    const fimGrupo = Math.min(b, Math.max(a, grupo[grupo.length - 1].fim - offset));
+    grupo.forEach((p, i) => {
+      const ini = Math.max(a, Math.min(b, p.inicio - offset));
+      const proximo = grupo[i + 1];
+      const fimCue = proximo ? Math.max(ini + 0.05, proximo.inicio - offset) : fimGrupo;
+      if (fimCue <= ini) return;
+      const texto = linhas
+        .map((linha) =>
+          linha
+            .map((idx) =>
+              idx === i ? `<font color="${COR_DESTAQUE}">${grupo[idx].texto}</font>` : grupo[idx].texto,
+            )
+            .join(' '),
+        )
+        .join('\n');
+      cue(ini, Math.min(b, fimCue), texto);
+    });
+  }
+}
+
+/** Índices das palavras por linha (≤ 2 linhas, tamanhos parecidos). */
+function linhasDePalavras(palavras: string[]): number[][] {
+  const total = palavras.join(' ').length;
+  if (total <= MAX_POR_LINHA) return [palavras.map((_, i) => i)];
+  const alvo = Math.ceil(total / 2);
+  const primeira: number[] = [];
+  let len = 0;
+  for (let i = 0; i < palavras.length; i += 1) {
+    const novo = len + palavras[i].length + (primeira.length ? 1 : 0);
+    if (novo > alvo && primeira.length) break;
+    primeira.push(i);
+    len = novo;
+  }
+  const segunda = palavras.map((_, i) => i).filter((i) => !primeira.includes(i));
+  return segunda.length ? [primeira, segunda] : [primeira];
+}
+
+/** Preços e percentuais: o que o estilo "oferta" põe em destaque. */
+const PRECO = /(R\$\s?\d[\d.,]*|\d[\d.,]*\s?(?:reais|%)|\d+\s?x\s?de\s?R?\$?\s?\d[\d.,]*)/gi;
+
+/** Ajustes de texto por estilo: caixa alta no impacto/oferta, preço em destaque na oferta. */
+function decorar(texto: string, estilo: CaptionStyle): string {
+  if (estilo === 'impacto') return texto.toUpperCase();
+  if (estilo === 'oferta') {
+    return texto
+      .toUpperCase()
+      .replace(PRECO, (m) => `<font color="${COR_DESTAQUE}">${m}</font>`);
+  }
+  return texto;
 }
 
 /** Largura de uma linha: em 720 px com a fonte do corte cabem ~26 letras. */

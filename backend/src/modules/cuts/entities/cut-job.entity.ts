@@ -5,7 +5,7 @@ import {
   Index,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import type { CutFormat, CutMode } from '../cut-planner';
+import type { CaptionStyle, CutFormat, CutMode, ReframeMode } from '../cut-planner';
 
 export type CutJobStatus = 'pendente' | 'processando' | 'pronto' | 'falhou';
 
@@ -49,6 +49,18 @@ export class CutJob {
   /** Queimar a legenda da fala no vídeo (só faz sentido no modo inteligente). */
   @Column({ type: 'boolean', default: false })
   captions: boolean;
+
+  /** Perfil visual da legenda queimada. */
+  @Column({ length: 20, default: 'classico' })
+  captionStyle: CaptionStyle;
+
+  /** Como enquadrar fonte mais larga que o formato: seguir o rosto ou fundo desfocado. */
+  @Column({ length: 20, default: 'rosto' })
+  reframe: ReframeMode;
+
+  /** Link de origem quando a fonte foi baixada (YouTube) em vez de enviada. */
+  @Column({ type: 'text', nullable: true })
+  sourceUrl: string | null;
 
   @Column({ length: 255 })
   sourceName: string;

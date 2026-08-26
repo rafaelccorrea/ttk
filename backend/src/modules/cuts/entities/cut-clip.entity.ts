@@ -42,6 +42,10 @@ export class CutClip {
   @Column({ type: 'text', nullable: true })
   reason: string | null;
 
+  /** Nota 0–10 que a IA deu ao trecho (nula no modo rápido). A grade ordena por ela. */
+  @Column({ type: 'int', nullable: true })
+  score: number | null;
+
   /** `ia` = trecho escolhido pela IA; `rapido` = janela do modo rápido. */
   @Column({ length: 10, default: 'rapido' })
   origin: 'ia' | 'rapido';

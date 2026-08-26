@@ -9,6 +9,7 @@ import { AiCostService } from '../telemetry/ai-cost.service';
 
 /** Trecho de fala com marcação de tempo, já reduzido ao que interessa. */
 export type WhisperSegment = { start: number; end: number; text: string };
+export type WhisperWord = { start: number; end: number; word: string };
 
 /** Transcrição de áudio/vídeo via OpenAI Whisper. */
 @Injectable()
@@ -41,13 +42,15 @@ export class TranscriptionService {
     opts: {
       mimetype?: string;
       verboseTimestamps?: boolean;
+      /** Também devolver `words` (tempo por palavra). Só com `verboseTimestamps`. */
+      wordTimestamps?: boolean;
       prompt?: string;
       /** Duração conhecida, para medir o custo quando não há timestamps. */
       durationSeconds?: number;
       /** Dono da chamada, só para o relatório de custo. */
       userId?: string | null;
     } = {},
-  ): Promise<{ transcript: string; segments?: WhisperSegment[] }> {
+  ): Promise<{ transcript: string; segments?: WhisperSegment[]; words?: WhisperWord[] }> {
     if (!this.isConfigured) {
       throw new ServiceUnavailableException(
         'Transcrição indisponível: OPENAI_API_KEY não configurada.',
@@ -67,6 +70,8 @@ export class TranscriptionService {
     if (opts.verboseTimestamps) {
       form.append('response_format', 'verbose_json');
       form.append('timestamp_granularities[]', 'segment');
+      // Palavras com tempo custam o mesmo e são o que a legenda karaokê usa.
+      if (opts.wordTimestamps) form.append('timestamp_granularities[]', 'word');
     } else {
       form.append('response_format', 'json');
     }
@@ -104,6 +109,14 @@ export class TranscriptionService {
           text: String(s.text ?? '').trim(),
         }))
       : undefined;
+    const words: WhisperWord[] | undefined =
+      opts.verboseTimestamps && opts.wordTimestamps && Array.isArray(body?.words)
+        ? body.words.map((w: any) => ({
+            start: Number(w.start ?? 0),
+            end: Number(w.end ?? 0),
+            word: String(w.word ?? '').trim(),
+          }))
+        : undefined;
 
     /*
      * O Whisper cobra por minuto de áudio, então a medição não sai de `usage`:
@@ -123,6 +136,6 @@ export class TranscriptionService {
       });
     }
 
-    return { transcript: String(body.text ?? '').trim(), segments };
+    return { transcript: String(body.text ?? '').trim(), segments, words };
   }
 }

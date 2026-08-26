@@ -505,7 +505,8 @@ Regras duras:
 - espalhe os trechos pelo vídeo inteiro — não concentre tudo nos primeiros minutos;
 - titulo: até 60 caracteres, sem hashtag, sem emoji, em português;
 - gancho: a frase de abertura para a legenda/capa, até 120 caracteres;
-- motivo: uma frase curta dizendo por que este trecho vale como corte.
+- motivo: uma frase curta dizendo por que este trecho vale como corte;
+- score: nota inteira de 0 a 10 do potencial do trecho como vídeo curto (10 = gancho forte, autocontido, com produto/preço/emoção; 5 = ok; 2 = enchimento). Use a escala inteira — não dê 8 para tudo.
 Devolva do melhor para o pior.`;
 
 const SCHEMA_CORTES = {
@@ -521,8 +522,9 @@ const SCHEMA_CORTES = {
           titulo: { type: 'string' },
           gancho: { type: 'string' },
           motivo: { type: 'string' },
+          score: { type: 'integer' },
         },
-        required: ['inicio', 'fim', 'titulo', 'gancho', 'motivo'],
+        required: ['inicio', 'fim', 'titulo', 'gancho', 'motivo', 'score'],
         additionalProperties: false,
       },
     },
@@ -1664,7 +1666,14 @@ export class AiService {
     maxSeg: number;
     userId?: string | null;
   }): Promise<
-    Array<{ inicio: number; fim: number; titulo: string; gancho: string; motivo: string }>
+    Array<{
+      inicio: number;
+      fim: number;
+      titulo: string;
+      gancho: string;
+      motivo: string;
+      score?: number;
+    }>
   > {
     if (!this.apiKey || !params.segmentos.length) return [];
     // Uma linha por segmento, com o tempo em segundos inteiros: é o formato
