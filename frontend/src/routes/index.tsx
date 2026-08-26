@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
-import { BrandLoader } from "@/components/ui/BrandLoader";
+import { GlobalLoader } from "@/components/ui/GlobalLoader";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { FreeSampleGate } from "@/components/ui/FreeSampleGate";
 import { PlanGate } from "@/components/ui/PlanGate";
@@ -124,7 +124,7 @@ function ProtectedRoutes() {
 
 export function AppRoutes() {
   return (
-    <Suspense fallback={<BrandLoader label="Carregando..." />}>
+    <Suspense fallback={<GlobalLoader variante="leve" />}>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />

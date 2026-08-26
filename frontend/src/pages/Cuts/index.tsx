@@ -28,10 +28,15 @@ import ContentCutRoundedIcon from '@mui/icons-material/ContentCutRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
+import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
+import MovieRoundedIcon from '@mui/icons-material/MovieRounded';
+import PsychologyRoundedIcon from '@mui/icons-material/PsychologyRounded';
+import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import SubtitlesRoundedIcon from '@mui/icons-material/SubtitlesRounded';
 import UploadRoundedIcon from '@mui/icons-material/UploadRounded';
 import { ChangeEvent, MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
+import { GlobalLoader } from '@/components/ui/GlobalLoader';
 import { useConfirmarGasto } from '@/hooks/useConfirmarGasto';
 import { CREDITS_CHANGED_EVENT, resolveApiUrl } from '@/services/api';
 import {
@@ -505,13 +510,7 @@ function DetalheDoJob({ job }: { job: CutJobDetail }) {
             {job.error ?? 'O processamento falhou.'}
           </Alert>
         )}
-        {job.status === 'processando' && job.clips.length === 0 && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            {job.mode === 'inteligente'
-              ? 'Transcrevendo o vídeo e escolhendo os melhores trechos. Isso leva alguns minutos.'
-              : 'Analisando o vídeo e planejando os cortes…'}
-          </Alert>
-        )}
+        {job.status === 'processando' && <LoaderDoJob job={job} />}
 
         <Grid container spacing={2}>
           {job.clips.map((c) => (
@@ -522,6 +521,43 @@ function DetalheDoJob({ job }: { job: CutJobDetail }) {
         </Grid>
       </CardContent>
     </Card>
+  );
+}
+
+// O backend só expõe pendente/processando/pronto/falhou no job + status por
+// clip; as etapas são derivadas daí. O % é interpolado dentro da etapa.
+const ETAPAS_DE_CORTE = [
+  { label: 'Carregando seu vídeo', icone: <UploadRoundedIcon /> },
+  { label: 'Entendendo o vídeo', icone: <PsychologyRoundedIcon /> },
+  { label: 'Buscando os melhores momentos', icone: <SearchRoundedIcon /> },
+  { label: 'Montando os cortes', icone: <MovieRoundedIcon /> },
+  { label: 'Quase pronto', icone: <CheckCircleOutlineRoundedIcon /> },
+];
+
+function etapaDoJob(job: CutJobDetail): { etapa: number; progresso?: number } {
+  if (job.status === 'pendente') return { etapa: 0 };
+  const total = job.clips.length || job.quantity || 1;
+  if (job.clips.length === 0) return { etapa: job.mode === 'inteligente' ? 1 : 2 };
+  const feitos = job.clips.filter((c) => c.status !== 'pendente').length;
+  if (feitos > 0 && feitos >= total - 1) return { etapa: 4, progresso: 80 + (feitos / total) * 17 };
+  // "Montando" ocupa 60–80% e anda junto com os cortes concluídos.
+  return { etapa: 3, progresso: 60 + (feitos / total) * 20 };
+}
+
+function LoaderDoJob({ job }: { job: CutJobDetail }) {
+  const { etapa, progresso } = etapaDoJob(job);
+  return (
+    <Box sx={{ mb: 2 }}>
+      <GlobalLoader
+        titulo="Estamos preparando seus cortes…"
+        etapas={ETAPAS_DE_CORTE}
+        etapaAtual={etapa}
+        progresso={progresso}
+        tempoEstimado={job.mode === 'inteligente' ? '10 min' : '4 min'}
+        dica="veja o que está viralizando agora e separe ideias para os próximos vídeos."
+        linkExplorar="/tendencias"
+      />
+    </Box>
   );
 }
 

@@ -127,3 +127,15 @@ Observações da rodada:
 - Backend deployado com `CutsController` (rota `/api/v1/cuts/*` respondendo), frontend estático subido.
 - Job inteligente com legenda (2:31, 6 pedidos): Whisper + IA em prod, 3 cortes (2 da IA com título/gancho + 1 rápido), **legenda queimada renderizada no Linux com a fonte embarcada** (`backend/assets/fonts`), job `Pronto`. Tempo total ≈ 2 min.
 - Pendência menor: `lerDuracaoDoVideo` no navegador falha às vezes (só afeta a estimativa de blocos na cotação; o servidor mede de verdade).
+
+## Loader de progresso (GlobalLoader) — como testar
+
+Componente: `frontend/src/components/ui/GlobalLoader.tsx` (variantes `completo` e `leve`); contexto `frontend/src/contexts/GlobalLoadingContext.tsx` (`useGlobalLoading().show()/hide()`), montado em `App.tsx`. O Suspense das rotas usa a variante leve.
+
+1. **Variante leve**: navegar entre páginas pesadas (ex.: Estúdio → Cortes) com rede lenta (DevTools › Slow 3G). Deve aparecer "PikPok…" com reticências pulsando em tela cheia, sem etapas.
+2. **Variante completa em Cortes**: enviar um vídeo. Enquanto o job estiver `processando`, o card do job mostra: pill "Tempo estimado 10 min" (Inteligente) ou "4 min" (Rápido), título "Estamos preparando seus cortes…", barra com % e 5 etapas.
+   - Sem clips ainda: etapa 2 "Entendendo o vídeo" (Inteligente) ou 3 "Buscando os melhores momentos" (Rápido); o % sobe sozinho até o teto da etapa e nunca recua.
+   - Com clips: etapa 4 "Montando os cortes" (60–80%, avançando com cada corte concluído); no penúltimo/último corte, etapa 5 "Quase pronto".
+   - Título da aba deve virar "(N/5) <etapa> — PikPok" e voltar ao normal quando o job termina.
+   - Link "Explorar →" leva a /tendencias. Ao ficar `pronto` ou `falhou`, o loader some e a grade de cortes/alerta de erro continua como antes.
+3. Com `prefers-reduced-motion`, spinner e reticências ficam estáticos.

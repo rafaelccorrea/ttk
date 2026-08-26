@@ -35,6 +35,27 @@ type F = { q: string; a: string; kind?: LiveFaqKind; produto: string };
 
 const DIGITAL = 'Produto digital: acesso imediato após o pagamento, sem frete.';
 
+/**
+ * As "variações" de cada produto — o equivalente a tamanho e cor numa loja.
+ * Vão no campo `variants` e o modelo as usa para "tem no anual?", "qual
+ * qualidade de vídeo?", "quantos tamanhos de pacote?".
+ */
+const VARIANTES: Record<string, string[]> = {
+  'Plano Essencial': ['Mensal R$ 39,90 (450 créditos/mês)', 'Anual R$ 399,90 (4.600 créditos, 2 meses grátis)'],
+  'Plano Pro': ['Mensal R$ 89,90 (1.000 créditos/mês)', 'Anual R$ 899,90 (10.400 créditos, 2 meses grátis)', 'Oferta da live com código "mestre": 2.000 créditos + 80 h de live'],
+  'Plano Business': ['Mensal R$ 249,90 (2.800 créditos/mês)', 'Anual R$ 2.499,90 (28.800 créditos, 2 meses grátis)'],
+  'Pacotes extras de créditos': ['100 créditos — R$ 14,90', '300 créditos — R$ 39,90', '1.000 créditos — R$ 119,90'],
+  'Horas de live avulsas': ['1 hora — R$ 9,90', '5 horas — R$ 39,90', '15 horas — R$ 99,90', '40 horas — R$ 219,90'],
+  'Live Copilot (copiloto da live)': ['Modo painel (todos os planos): a resposta aparece pra você copiar/falar', 'Modo automático (só Business, com termo): o app envia no chat', 'Teto por live: Essencial e Pro 6 h, Business 24 h', 'App Windows (Mac em breve)'],
+  'Base de conhecimento da live': ['Da gravação da live (IA extrai)', 'À mão (cadastro produto a produto)', 'Por planilha CSV (catálogo inteiro)', 'Aprendida no painel (respostas salvas durante a live)'],
+  'Descoberta de produtos, vídeos e criadores': ['Produtos mais vendidos (top 50 geral e por categoria)', 'Vídeos que vendem', 'Criadores que mais vendem', 'Categorias: saúde, bem-estar, casa, cozinha, beleza, moda, eletrônicos e mais'],
+  'Estúdio: roteiros e análise de vídeo': ['Roteiro de vídeo curto (8 cr)', 'Roteiro de live (8 cr)', 'Peças pro multiplicador (8 cr)', 'Análise de vídeo viral (12 cr)', 'Imagem com IA (12 cr)', 'Transcrição avulsa (6 cr / 10 min)'],
+  'Fábrica de criativos (vídeo com IA e apresentador)': ['Cena com apresentador falando (lábios sincronizados)', 'Cena só com as mãos e o produto (unboxing)', 'Cena close do produto', 'Cena só produto', 'Qualidade: natural, alta ou ultra', 'Duração por cena: 5 a 15 s', 'Vertical 9:16 pronto pro TikTok'],
+  'Multiplicador de conteúdo': ['Até 150 variações por vídeo', 'Recombina gancho, corpo e CTA', '1 crédito por vídeo montado'],
+  'Cortes automáticos de vídeo longo': ['Corte rápido — 2 cr por corte', 'Corte inteligente (IA escolhe) — 6 cr por corte', 'Vertical 9:16 com legenda queimada', 'Vídeo de até 5 h / 2 GB'],
+  'Conta, pagamento e suporte': ['Pagamento: cartão de crédito via Stripe', 'Ciclo: mensal ou anual', 'Suporte: chat no sistema (todos); onboarding e prioridade no Business'],
+};
+
 const PRODUTOS: P[] = [
   // ------------------------------------------------------------- planos
   {
@@ -264,6 +285,53 @@ const FAQ: F[] = [
   { q: 'Isso funciona mesmo? Alguém já usou?', a: 'Funciona — está funcionando com você agora. Testa no Essencial com 15 h de live inclusas.', kind: 'objecao', produto: 'Plano Essencial' },
   { q: 'Não vendo no TikTok ainda', a: 'Então começa pela Descoberta: ela mostra o que já vende e o roteiro sai pronto. A live vem depois.', kind: 'objecao', produto: 'Descoberta de produtos, vídeos e criadores' },
 
+  // ------------------------------------------- conta, requisitos e limites
+  { q: 'Como crio a conta?', a: 'No site (link na bio): e-mail e senha, escolhe o plano, paga no cartão e já entra. Leva 2 minutos.', produto: 'Conta, pagamento e suporte' },
+  { q: 'Preciso de conta no TikTok Shop pra usar?', a: 'Pra Descoberta, roteiros e vídeos, não. Pro Copiloto na live, sim — é a sua conta do TikTok logada no app.', produto: 'Live Copilot (copiloto da live)' },
+  { q: 'Como o app entra na minha conta do TikTok?', a: 'Você faz login no TikTok dentro do app, do lado esquerdo, como no navegador. A senha fica no seu computador — o servidor nunca vê.', produto: 'Live Copilot (copiloto da live)' },
+  { q: 'Como ativo o app no computador?', a: 'Instala, ele mostra um código PIKPOK-XXXX; você aprova no site com a sua conta e o app entra sozinho. Sem digitar senha no app.', produto: 'Live Copilot (copiloto da live)' },
+  { q: 'Quais os requisitos do computador?', a: 'Windows 10 ou 11 e internet estável. Não precisa de placa de vídeo: a IA roda nos nossos servidores.', produto: 'Live Copilot (copiloto da live)' },
+  { q: 'O app atualiza sozinho?', a: 'Sim, o app avisa e atualiza sozinho. E os ajustes pro chat do TikTok chegam do servidor, sem você reinstalar.', produto: 'Live Copilot (copiloto da live)' },
+  { q: 'Quantas horas pode durar uma live?', a: 'Teto por live: Essencial e Pro 6 h, Business 24 h. É um freio pra não esquecer o copiloto ligado.', produto: 'Live Copilot (copiloto da live)' },
+  { q: 'Posso pausar o copiloto no meio da live?', a: 'Pode: botão Pausar no app para as respostas na hora e Encerrar fecha a sessão e para de contar minutos.', produto: 'Live Copilot (copiloto da live)' },
+  { q: 'O que acontece se minha internet cair na live?', a: 'O app reconecta sozinho e retoma do ponto; nada é enviado em dobro.', produto: 'Live Copilot (copiloto da live)' },
+  { q: 'Posso bloquear alguém do chat?', a: 'Pode: em Ajustes você põe os @ que o copiloto deve ignorar.', produto: 'Live Copilot (copiloto da live)' },
+  { q: 'Posso ajustar o quanto ela responde?', a: 'Pode: em Ajustes você define a confiança mínima pra responder, o tamanho do lote e a rotação de produtos fixados.', produto: 'Live Copilot (copiloto da live)' },
+  { q: 'Tem limite de lives por mês?', a: 'Não. O que conta é o saldo de horas: usa quantas lives quiser até acabar, e compra mais hora quando precisar.', produto: 'Horas de live avulsas' },
+  { q: 'Tem limite de bases de conhecimento?', a: 'Não — uma base por live gravada, quantas quiser. Cada extração cobra os créditos dela.', produto: 'Base de conhecimento da live' },
+  { q: 'Posso usar a mesma base em várias lives?', a: 'Pode e deve: a base é sua, não expira, e melhora a cada live com o que você responde no painel.', produto: 'Base de conhecimento da live' },
+  { q: 'Qual tamanho máximo de vídeo pra subir?', a: 'Até 2 GB e 5 horas (live ou vídeo longo pra cortes). Mínimo de 10 minutos pra virar base.', produto: 'Base de conhecimento da live' },
+  { q: 'Em quanto tempo a base fica pronta?', a: 'Alguns minutos por hora de gravação; a tela mostra o progresso e avisa quando terminar.', produto: 'Base de conhecimento da live' },
+  { q: 'Se a extração falhar eu perco os créditos?', a: 'Não: se der erro, os créditos voltam pra sua conta automaticamente.', produto: 'Base de conhecimento da live' },
+  { q: 'Consigo baixar os vídeos e os cortes?', a: 'Sim, tudo que é gerado fica em Minhas gerações pra baixar em MP4 e postar onde quiser.', produto: 'Fábrica de criativos (vídeo com IA e apresentador)' },
+  { q: 'Os vídeos são meus? Posso usar comercialmente?', a: 'São seus: usa em anúncio, loja, TikTok, onde quiser, sem marca d’água.', produto: 'Fábrica de criativos (vídeo com IA e apresentador)' },
+  { q: 'O apresentador fala português?', a: 'Fala português do Brasil, com sotaque natural, e a boca sincroniza com a fala.', produto: 'Fábrica de criativos (vídeo com IA e apresentador)' },
+  { q: 'Posso salvar o apresentador pra usar sempre?', a: 'Pode: o apresentador fica salvo e você usa em todos os vídeos, pra manter a mesma cara na sua marca.', produto: 'Fábrica de criativos (vídeo com IA e apresentador)' },
+  { q: 'Quantas cenas um vídeo pode ter?', a: 'Você escolhe: 1 cena só ou várias; cada cena de 5 a 15 s. Mais cenas, mais créditos.', produto: 'Fábrica de criativos (vídeo com IA e apresentador)' },
+  { q: 'Qual a diferença de qualidade natural, alta e ultra?', a: 'Muda o realismo e o custo por cena; natural já fica bom pra TikTok e é a mais barata.', produto: 'Fábrica de criativos (vídeo com IA e apresentador)' },
+  { q: 'Posso escrever meu próprio roteiro no vídeo?', a: 'Pode: ou pede pra IA gerar, ou escreve a fala e a ação de cada cena na mão.', produto: 'Fábrica de criativos (vídeo com IA e apresentador)' },
+  { q: 'Cadastro meus produtos com foto?', a: 'Sim: nome, preço, benefício, problema que resolve e fotos (png/jpg/webp). É desse cadastro que sai o vídeo.', produto: 'Fábrica de criativos (vídeo com IA e apresentador)' },
+  { q: 'Os cortes vêm com legenda?', a: 'Vêm com legenda queimada, em vertical, prontos pra postar.', produto: 'Cortes automáticos de vídeo longo' },
+  { q: 'Posso escolher os trechos do corte?', a: 'O corte inteligente escolhe pela transcrição; o rápido corta por tempo. Você vê a lista e baixa os que quiser.', produto: 'Cortes automáticos de vídeo longo' },
+  { q: 'O multiplicador precisa de vídeo gravado por mim?', a: 'Precisa de um vídeo base — pode ser o seu ou um gerado na Fábrica. Daí ele multiplica.', produto: 'Multiplicador de conteúdo' },
+  { q: 'Dá pra filtrar produto por categoria e preço?', a: 'Dá: por categoria, faturamento, preço médio e período; e abre cada produto com os vídeos e criadores dele.', produto: 'Descoberta de produtos, vídeos e criadores' },
+  { q: 'Vejo o link do produto pra vender como afiliado?', a: 'Vê: cada produto tem o link pra abrir no TikTok Shop, onde você pega o link de afiliado.', produto: 'Descoberta de produtos, vídeos e criadores' },
+  { q: 'Dá pra gerar roteiro direto de um produto da descoberta?', a: 'Dá, com um clique: escolhe o produto (ou o vídeo que vende) e pede roteiro ou análise.', produto: 'Estúdio: roteiros e análise de vídeo' },
+  { q: 'Posso colar link de vídeo do TikTok pra analisar?', a: 'Pode colar o vídeo ou a transcrição; a IA analisa e adapta pro seu produto.', produto: 'Estúdio: roteiros e análise de vídeo' },
+  { q: 'Tem programa de afiliados do PikPok?', a: 'Ainda não tem programa de afiliados público. Quer indicar? Chama no direct que a gente conversa.', produto: 'Conta, pagamento e suporte' },
+  { q: 'Tem plano pra agência ou vários vendedores?', a: 'O Business atende equipe (2.800 créditos, 60 h, onboarding). Pra várias contas, chama no direct pra montar.', produto: 'Plano Business' },
+  { q: 'O que é onboarding dedicado?', a: 'No Business a gente monta sua primeira base e configura o app junto com você, numa chamada.', produto: 'Plano Business' },
+  { q: 'O que é coleta de dados automatizada?', a: 'No Business o sistema coleta e atualiza os dados de produtos e concorrência pra você, sem você buscar à mão.', produto: 'Plano Business' },
+  { q: 'Meus dados ficam onde? É seguro?', a: 'Servidores na nuvem com backup; sua senha do TikTok nunca sai do seu computador; o chat é anonimizado. Segue a LGPD.', produto: 'Conta, pagamento e suporte' },
+  { q: 'Posso apagar minha conta e meus dados?', a: 'Pode: pede no suporte e a conta e as bases são apagadas.', produto: 'Conta, pagamento e suporte' },
+  { q: 'Tem app no celular?', a: 'Ainda não. O site abre no celular; o Copiloto da live é o app de computador.', produto: 'Conta, pagamento e suporte' },
+  { q: 'Tem em outro idioma?', a: 'Hoje tudo é em português do Brasil, feito pro TikTok Shop Brasil.', produto: 'Conta, pagamento e suporte' },
+  { q: 'Já tenho conta gratuita antiga, continua?', a: 'Continua valendo. Pra ter vídeo com IA, cortes e mais horas, é só assinar um plano na sua conta.', produto: 'Conta, pagamento e suporte' },
+  { q: 'Posso pagar no cartão de outra pessoa?', a: 'Pode, o pagamento é pela Stripe em qualquer cartão de crédito válido.', produto: 'Conta, pagamento e suporte' },
+  { q: 'Quando renova a assinatura?', a: 'Todo mês na data que você assinou (ou por ano no anual). Os créditos entram na renovação.', produto: 'Conta, pagamento e suporte' },
+  { q: 'Se eu cancelar perco minhas bases?', a: 'As bases e gerações ficam na conta; você só perde o acesso às ferramentas até assinar de novo.', produto: 'Conta, pagamento e suporte' },
+  { q: 'Como falo com o suporte?', a: 'Pelo chat dentro do sistema, ou no direct do TikTok. Business tem prioridade.', produto: 'Conta, pagamento e suporte' },
+
   // ----------------------------------------------------------- políticas
   { q: 'Política de reembolso', a: 'Sem fidelidade: cancela quando quiser e mantém o acesso até o fim do período. Dúvida sobre cobrança, fala com o suporte no chat do sistema.', kind: 'politica', produto: 'Conta, pagamento e suporte' },
   { q: 'Política de créditos', a: 'Créditos do plano renovam por mês e não acumulam; créditos de pacote não vencem; crédito e hora de live não se convertem.', kind: 'politica', produto: 'Pacotes extras de créditos' },
@@ -302,7 +370,7 @@ async function main() {
           liveSessionId: sessionId,
           name: p.name,
           priceBrl: p.priceBrl ?? null,
-          variants: [],
+          variants: VARIANTES[p.name] ?? [],
           shippingInfo: p.shippingInfo ?? null,
           promo: p.promo ?? null,
           details: p.details ?? null,
