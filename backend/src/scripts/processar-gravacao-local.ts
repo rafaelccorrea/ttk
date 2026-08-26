@@ -1,5 +1,7 @@
 import 'dotenv/config';
-import { stat } from 'node:fs/promises';
+import { copyFile, mkdtemp, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { basename, resolve } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -62,8 +64,15 @@ async function main() {
     });
     log.log(`Sessão ${sessao.id} criada. Processando ${(tamanho / 1024 / 1024).toFixed(0)} MB...`);
 
+    // O pipeline apaga o arquivo de entrada ao terminar (é dono do upload).
+    // O original do vendedor NÃO é upload: trabalhamos numa cópia temporária.
+    const pastaTmp = await mkdtemp(join(tmpdir(), 'pikpok-gravacao-'));
+    const copia = join(pastaTmp, basename(arquivo));
+    await copyFile(arquivo, copia);
+    log.log(`Cópia de trabalho em ${copia} (o original fica intacto).`);
+
     await live.processarUpload(user.id, sessao.id, {
-      path: arquivo,
+      path: copia,
       size: tamanho,
       originalname: basename(arquivo),
       mimetype: 'video/mp4',
