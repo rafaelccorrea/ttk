@@ -275,11 +275,9 @@ export function srtDoTrecho(
   fim: number,
   estilo: CaptionStyle = 'classico',
 ): string {
-  const blocos: string[] = [];
-  let n = 0;
+  const cues: Array<{ a: number; b: number; texto: string }> = [];
   const cue = (a: number, b: number, texto: string) => {
-    n += 1;
-    blocos.push(`${n}\n${tempoSrt(a)} --> ${tempoSrt(b)}\n${texto}\n`);
+    cues.push({ a, b, texto });
   };
   for (const s of segmentos) {
     if (s.fim <= inicio || s.inicio >= fim) continue;
@@ -308,7 +306,21 @@ export function srtDoTrecho(
       cursor = fimCue;
     });
   }
-  return blocos.join('\n');
+  /*
+   * NUNCA dois cues ao mesmo tempo. Os segmentos do Whisper se sobrepõem nas
+   * bordas (o fim de uma frase passa do início da próxima) e, com dois cues
+   * simultâneos, o libass empilha o segundo ACIMA do primeiro — a legenda
+   * "pula para o meio" justamente na transição. Cada cue termina, no máximo,
+   * onde o seguinte começa; o que ficar sem duração some.
+   */
+  cues.sort((x, y) => x.a - y.a);
+  for (let i = 0; i < cues.length - 1; i += 1) {
+    if (cues[i].b > cues[i + 1].a) cues[i].b = cues[i + 1].a;
+  }
+  return cues
+    .filter((c) => c.b - c.a >= 0.05)
+    .map((c, i) => `${i + 1}\n${tempoSrt(c.a)} --> ${tempoSrt(c.b)}\n${c.texto}\n`)
+    .join('\n');
 }
 
 /** Cor de destaque (palavra ativa no karaokê, preço na oferta). */

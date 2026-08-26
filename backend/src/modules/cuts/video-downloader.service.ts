@@ -53,6 +53,8 @@ export class VideoDownloaderService {
       ]);
       info = JSON.parse(json);
     } catch (error) {
+      // A frase para o usuário é genérica de propósito; a causa real vai para o log.
+      this.logger.warn(`yt-dlp falhou em ${url}: ${String((error as Error)?.message ?? error).slice(0, 600)}`);
       throw new BadRequestException(traduzirErro(error));
     }
     if (info?.is_live) {
@@ -95,6 +97,8 @@ export class VideoDownloaderService {
     try {
       await cli.execPromise(args);
     } catch (error) {
+      // A frase para o usuário é genérica de propósito; a causa real vai para o log.
+      this.logger.warn(`yt-dlp falhou em ${url}: ${String((error as Error)?.message ?? error).slice(0, 600)}`);
       throw new BadRequestException(traduzirErro(error));
     }
     const arquivos = (await readdir(pasta)).filter((n) => n.startsWith('fonte.'));

@@ -262,3 +262,38 @@ describe('cut-planner — estilos de legenda', () => {
     expect(srt).not.toContain('<font');
   });
 });
+
+describe('cut-planner — cues nunca se sobrepõem', () => {
+  it('segmentos do Whisper que se sobrepõem viram cues encadeados', () => {
+    const seg = [
+      { inicio: 0, fim: 3.2, texto: 'primeira frase' },
+      { inicio: 2.8, fim: 6, texto: 'segunda frase' },
+    ];
+    const srt = srtDoTrecho(seg, 0, 10);
+    expect(srt).toContain('00:00:00,000 --> 00:00:02,800\nprimeira frase');
+    expect(srt).toContain('00:00:02,800 --> 00:00:06,000\nsegunda frase');
+  });
+
+  it('no karaokê a última palavra não invade a frase seguinte', () => {
+    const seg = [
+      {
+        inicio: 0,
+        fim: 3,
+        texto: 'olha isso',
+        palavras: [
+          { inicio: 0, fim: 0.5, texto: 'olha' },
+          { inicio: 0.5, fim: 3, texto: 'isso' },
+        ],
+      },
+      { inicio: 2, fim: 4, texto: 'agora', palavras: [{ inicio: 2, fim: 4, texto: 'agora' }] },
+    ];
+    const srt = srtDoTrecho(seg, 0, 10, 'karaoke');
+    const tempos = srt
+      .trim()
+      .split('\n\n')
+      .map((b) => b.split('\n')[1].split(' --> ').map((t) => t.replace(',', '.')));
+    for (let i = 0; i < tempos.length - 1; i += 1) {
+      expect(tempos[i][1] <= tempos[i + 1][0]).toBe(true);
+    }
+  });
+});
