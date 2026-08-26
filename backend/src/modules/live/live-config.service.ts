@@ -42,7 +42,7 @@ import {
  *
  * SUBA ESTE NÚMERO SEMPRE que mexer nos seletores abaixo.
  */
-const VERSAO_DOS_SELETORES = 2;
+const VERSAO_DOS_SELETORES = 3;
 
 /**
  * A cascata do campo de comentário, em ordem de preferência.
@@ -70,6 +70,10 @@ const VERSAO_DOS_SELETORES = 2;
  * trabalho de publicar seletor novo.
  */
 const SELETORES_CAMPO = [
+  // Layout da live web em 2026-08: o campo é 'contenteditable="plaintext-only"'
+  // com placeholder "Tipo..." — nem 'true' nem rótulo de "comentário".
+  '[data-e2e="room-chat-input-field"]',
+  'div[contenteditable="plaintext-only"][placeholder]',
   '[data-e2e="comment-text-input"]',
   '[data-e2e="comment-input"]',
   'div[contenteditable="true"][role="textbox"]',
@@ -80,6 +84,7 @@ const SELETORES_CAMPO = [
 
 /** Mesma lógica de ordem do campo: `data-e2e`, depois papel, depois classe. */
 const SELETORES_BOTAO_ENVIAR = [
+  '[data-e2e="room-chat-send-btn"]',
   '[data-e2e="comment-post"]',
   '[data-e2e="comment-submit"]',
   'button[type="submit"][aria-label*="nvia"]',

@@ -829,14 +829,14 @@ function scriptDeDescoberta(seletoresDoBackend: string[]): string {
     };
 
     const candidatos = Array.from(
-      document.querySelectorAll('[contenteditable="true"], textarea, input[type="text"]')
+      document.querySelectorAll('[contenteditable="true"], [contenteditable="plaintext-only"], textarea, input[type="text"]')
     ).filter(visivel);
 
     // (b) Estrutural: entre os campos visíveis, o de MAIOR ÁREA no terço
     //     inferior da tela cujo rótulo fale de comentário. Área e posição juntas
     //     porque a barra de comentário de uma live é, por desenho, o campo grande
     //     embaixo — e o rótulo evita casar com a busca do topo da página.
-    const rotulo = /coment|comment|diga algo|say something/i;
+    const rotulo = /coment|comment|diga algo|say something|^\s*tipo|^\s*type/i;
     const corte = window.innerHeight * (2 / 3);
 
     const comRotulo = candidatos
