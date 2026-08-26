@@ -182,3 +182,10 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 - Erros de produto (`avisarErro`: chat caiu, lote falhou, SSE; e degradação do envio para painel) também sobem como evento `erro_desktop` em `live_run_events` da run em curso — deduplicados por 5 min e com teto de 30 por run. Sem run aberta, ficam só no arquivo.
 - Como testar: conectar numa live com o backend fora do ar → `copiloto.log` recebe `[copiloto] ...`; com backend no ar, `select * from live_run_events where tipo='erro_desktop'` mostra a linha.
 - Contexto: em 2026-08-26 o webcast falhou a live inteira em silêncio (sign server 404) e ninguém teve rastro; esta é a resposta.
+
+## Pergunta repetida: janela de 3 min e reaproveitamento (2026-08-26)
+
+- Cluster já respondido silencia repetições por **3 min** (era 90 s): a repetição só incrementa `repeatCount`.
+- Passados os 3 min, a pergunta volta ao painel **com a resposta anterior do cluster copiada** (`model = 'reaproveitada'`, mesmo texto/fontes/confiança) — **sem chamada ao modelo**. Só vai ao modelo se o cluster nunca teve resposta aprovada (`decision = 'enviar'`).
+- Antes, a re-resposta chamava o modelo e o banco descartava o resultado (uma resposta por mensagem). Não existe mais esse gasto.
+- Como testar: perguntar o preço, esperar 3 min, perguntar de novo com outro @ → nova linha em `live_replies` com `model='reaproveitada'` e nenhuma chamada na OpenAI.

@@ -2,7 +2,7 @@ import { HttpException, Injectable, Logger, NotFoundException } from '@nestjs/co
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'node:crypto';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { LIVE_MIN_MINUTES, PLAN_RANK } from '../billing/billing.config';
 import { BillingService } from '../billing/billing.service';
 import { AiCostService } from '../telemetry/ai-cost.service';
@@ -147,10 +147,21 @@ const JANELA_DO_CLUSTER_MS = 30 * 60_000;
 /**
  * Por quanto tempo um cluster já respondido silencia as repetições.
  *
- * Depois disso o assunto voltou por conta própria e merece resposta nova — o
- * preço pode ter mudado ao vivo, e responder de novo custa uma linha de lote.
+ * Dentro da janela a repetição é só contada (`repeatCount`) — a resposta já
+ * está na tela. Passada a janela, o assunto voltou por conta própria e merece
+ * aparecer de novo no painel: mas com a RESPOSTA ANTERIOR do cluster
+ * reaproveitada (ver `reaproveitarResposta`), sem chamada ao modelo. Só vai
+ * ao modelo quando o cluster nunca teve resposta aprovada.
+ *
+ * Era 90s e cada repetição depois disso custava uma chamada — cujo resultado,
+ * ainda por cima, o banco descartava (uma resposta por mensagem). Três minutos
+ * é o tempo de quem entrou agora não ter visto a resposta; o preço que muda ao
+ * vivo é coberto pelo vendedor editando a base, o que invalida o cluster.
  */
-const JANELA_DE_DUPLICADA_MS = 90_000;
+const JANELA_DE_DUPLICADA_MS = 3 * 60_000;
+
+/** Marca de modelo das respostas reaproveitadas — não gastaram token. */
+const MODELO_REAPROVEITADO = 'reaproveitada';
 
 /**
  * Quando a repetição deixa de ser ruído e vira sinal.
@@ -1833,6 +1844,7 @@ export class LiveReplyService {
      */
     const paraResponder = new Map<string, LiveChatMessage>();
     const escaladas: LiveChatMessage[] = [];
+    const reaproveitadas: LiveReply[] = [];
 
     for (const entrada of ordenarPorPrioridade(lote)) {
       const normalizado = normalizarTexto(entrada.text);
@@ -1898,8 +1910,28 @@ export class LiveReplyService {
           escaladas.push(original);
           continue;
         }
-        // Cluster antigo o suficiente: responde de novo, com o peso da fila.
-        paraResponder.set(original.id, original);
+        /*
+         * Cluster antigo o suficiente para voltar ao painel. Se o cluster já
+         * teve uma resposta APROVADA, ela serve de novo: mesma pergunta, mesma
+         * base, mesmo preço — chamar o modelo seria pagar pela mesma frase.
+         * A resposta nova nasce presa à mensagem NOVA (uma resposta por
+         * mensagem é restrição do banco), com o mesmo texto e as mesmas fontes.
+         */
+        const anterior = await this.ultimaRespostaAprovada(
+          run.id,
+          irmas.map((m) => m.id),
+        );
+        if (anterior) {
+          const reuso = await this.reaproveitarResposta(run, mensagem, anterior, comecou);
+          if (reuso) {
+            reaproveitadas.push(reuso);
+            continue;
+          }
+        }
+        // Nunca respondida (ou só escalada): vai ao modelo, carregando o peso
+        // do cluster — é o `repeatCount` que o prompt usa como pressão.
+        mensagem.repeatCount = original.repeatCount;
+        paraResponder.set(mensagem.id, mensagem);
         continue;
       }
 
@@ -1916,7 +1948,7 @@ export class LiveReplyService {
       if (escaladas.length) {
         await this.runs.increment({ id: run.id }, 'escalations', escaladas.length);
       }
-      return { respostas: [], escaladas };
+      return { respostas: reaproveitadas, escaladas };
     }
 
     const geradas = await this.gerarRespostas(
@@ -1925,7 +1957,10 @@ export class LiveReplyService {
       [...paraResponder.values()],
       comecou,
     );
-    return { respostas: geradas.respostas, escaladas: [...escaladas, ...geradas.escaladas] };
+    return {
+      respostas: [...reaproveitadas, ...geradas.respostas],
+      escaladas: [...escaladas, ...geradas.escaladas],
+    };
   }
 
   /**
@@ -2102,6 +2137,30 @@ export class LiveReplyService {
     if (contemMetaLinguagem(texto)) decisao = 'escalar';
     if (!texto) decisao = 'silenciar';
 
+    return this.gravarResposta(run, mensagem, {
+      texto,
+      confianca,
+      decisao,
+      fontes,
+      model,
+      comecou,
+    });
+  }
+
+  /** A persistência da resposta — gerada pelo modelo ou reaproveitada. */
+  private async gravarResposta(
+    run: LiveRun,
+    mensagem: LiveChatMessage,
+    dados: {
+      texto: string;
+      confianca: number;
+      decisao: LiveReplyDecision;
+      fontes: string[];
+      model: string;
+      comecou: number;
+    },
+  ): Promise<LiveReply> {
+    const { texto, confianca, decisao, fontes, model, comecou } = dados;
     mensagem.status = decisao === 'enviar' ? 'respondida' : 'escalada';
     if (decisao === 'silenciar') mensagem.status = 'ignorada';
     await this.mensagens.save(mensagem);
@@ -2575,6 +2634,55 @@ export class LiveReplyService {
       .andWhere('r."createdAt" >= :desde', { desde })
       .getCount();
     return quantas > 0;
+  }
+
+  /** A resposta aprovada mais recente do cluster, dentro da janela dele. */
+  private async ultimaRespostaAprovada(
+    runId: string,
+    idsDasIrmas: string[],
+  ): Promise<LiveReply | null> {
+    if (!idsDasIrmas.length) return null;
+    const [ultima] = await this.respostas.find({
+      where: {
+        liveRunId: runId,
+        chatMessageId: In(idsDasIrmas),
+        decision: 'enviar',
+      },
+      order: { createdAt: 'DESC' },
+      take: 1,
+    });
+    return ultima && ultima.text ? ultima : null;
+  }
+
+  /**
+   * Grava, para a mensagem nova, uma cópia da resposta anterior do cluster.
+   *
+   * Sem modelo, sem preço para resolver, sem decisão para tomar: tudo isso já
+   * foi feito quando a resposta original passou. O que se repete é só a
+   * persistência — com o mesmo respeito ao modo atual da run que a resposta
+   * gerada tem (`gravarResposta`).
+   */
+  private async reaproveitarResposta(
+    run: LiveRun,
+    mensagem: LiveChatMessage,
+    anterior: LiveReply,
+    comecou: number,
+  ): Promise<LiveReply | null> {
+    try {
+      return await this.gravarResposta(run, mensagem, {
+        texto: anterior.text,
+        confianca: Number(anterior.confidence) || 0,
+        decisao: 'enviar',
+        fontes: anterior.sourceProductIds ?? [],
+        model: MODELO_REAPROVEITADO,
+        comecou,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Run ${run.id}: falhou ao reaproveitar resposta ${anterior.id}: ${(error as Error).message}`,
+      );
+      return null;
+    }
   }
 
   // ------------------------------------------------------------------- cron
