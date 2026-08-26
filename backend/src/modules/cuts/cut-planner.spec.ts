@@ -163,7 +163,7 @@ describe('cut-planner — legenda (SRT)', () => {
 
   it('inclui só os segmentos do trecho, com tempo relativo ao corte', () => {
     const srt = srtDoTrecho(fala, 10, 30);
-    expect(srt).toContain('1\n00:00:00,000 --> 00:00:02,000\nOlha só esse preço');
+    expect(srt).toContain('1\n00:00:00,000 --> 00:00:02,000\nOlha só esse\npreço');
     expect(srt).toContain('2\n00:00:02,000 --> ');
     expect(srt).toContain(' --> 00:00:10,000\n');
     expect(srt).not.toContain('antes do corte');
@@ -251,7 +251,9 @@ describe('cut-planner — estilos de legenda', () => {
 
   it('oferta: caixa alta e preço em destaque', () => {
     const srt = srtDoTrecho([{ inicio: 0, fim: 2, texto: 'só hoje por R$ 49,90' }], 0, 10, 'oferta');
-    expect(srt).toContain('SÓ HOJE POR <font color="#FFD500">R$ 49,90</font>');
+    expect(srt).toContain('SÓ HOJE POR');
+    // "R$" colado ao valor com espaço não separável: nunca quebra linha no meio.
+    expect(srt).toContain('<font color="#FFD500">R$ 49,90</font>');
   });
 
   it('impacto: só caixa alta', () => {

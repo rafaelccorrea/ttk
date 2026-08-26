@@ -283,24 +283,28 @@ export function srtDoTrecho(
   };
   for (const s of segmentos) {
     if (s.fim <= inicio || s.inicio >= fim) continue;
-    const texto = s.texto.replace(/\s+/g, ' ').trim();
+    let texto = s.texto.replace(/\s+/g, ' ').trim();
     if (!texto) continue;
+    // "R$ 49,90" é uma unidade: espaço não separável para a quebra de linha
+    // não deixar o "R$" numa linha e o valor na outra (o libass desenha o
+    // NBSP como espaço normal).
+    if (estilo === 'oferta') texto = texto.replace(/R\$\s+(?=\d)/gi, 'R$ ');
     const a = Math.max(0, s.inicio - inicio);
     const b = Math.max(a + 0.3, Math.min(fim, s.fim) - inicio);
 
     if (estilo === 'karaoke' && s.palavras?.length) {
-      cuesKaraoke(s.palavras, inicio, a, b, cue);
+      cuesKaraoke(s.palavras, inicio, a, b, cue, larguraDaLinha(estilo));
       continue;
     }
 
-    const fatias = fatiar(texto, MAX_POR_CUE);
+    const fatias = fatiar(texto, larguraDaLinha(estilo) * LINHAS_POR_CUE);
     const totalChars = fatias.reduce((acc, f) => acc + f.length, 0);
     let cursor = a;
     fatias.forEach((fatia, i) => {
       const ultima = i === fatias.length - 1;
       const dur = ((b - a) * fatia.length) / totalChars;
       const fimCue = ultima ? b : Math.min(b, Math.max(cursor + 0.3, cursor + dur));
-      cue(cursor, fimCue, decorar(quebrar(fatia), estilo));
+      cue(cursor, fimCue, decorar(quebrar(fatia, larguraDaLinha(estilo)), estilo));
       cursor = fimCue;
     });
   }
@@ -322,6 +326,7 @@ function cuesKaraoke(
   a: number,
   b: number,
   cue: (a: number, b: number, texto: string) => void,
+  largura: number,
 ): void {
   const grupos: PalavraDeFala[][] = [];
   let atual: PalavraDeFala[] = [];
@@ -329,7 +334,7 @@ function cuesKaraoke(
   for (const p of palavras) {
     const t = p.texto.trim();
     if (!t) continue;
-    if (chars + t.length + (atual.length ? 1 : 0) > MAX_POR_CUE && atual.length) {
+    if (chars + t.length + (atual.length ? 1 : 0) > largura * LINHAS_POR_CUE && atual.length) {
       grupos.push(atual);
       atual = [];
       chars = 0;
@@ -340,7 +345,7 @@ function cuesKaraoke(
   if (atual.length) grupos.push(atual);
 
   for (const grupo of grupos) {
-    const linhas = linhasDePalavras(grupo.map((p) => p.texto));
+    const linhas = linhasDePalavras(grupo.map((p) => p.texto), largura);
     const fimGrupo = Math.min(b, Math.max(a, grupo[grupo.length - 1].fim - offset));
     grupo.forEach((p, i) => {
       const ini = Math.max(a, Math.min(b, p.inicio - offset));
@@ -362,9 +367,9 @@ function cuesKaraoke(
 }
 
 /** Índices das palavras por linha (≤ 2 linhas, tamanhos parecidos). */
-function linhasDePalavras(palavras: string[]): number[][] {
+function linhasDePalavras(palavras: string[], largura: number): number[][] {
   const total = palavras.join(' ').length;
-  if (total <= MAX_POR_LINHA) return [palavras.map((_, i) => i)];
+  if (total <= largura) return [palavras.map((_, i) => i)];
   const alvo = Math.ceil(total / 2);
   const primeira: number[] = [];
   let len = 0;
@@ -392,10 +397,23 @@ function decorar(texto: string, estilo: CaptionStyle): string {
   return texto;
 }
 
-/** Largura de uma linha: em 720 px com a fonte do corte cabem ~26 letras. */
-const MAX_POR_LINHA = 26;
+/**
+ * Letras por linha em 720 px, POR ESTILO — medido no vídeo, não estimado: com
+ * 26 o libass re-quebrava e o cue virava 4 linhas subindo até o meio do
+ * quadro. Fonte maior = menos letras.
+ */
+const LARGURA_POR_ESTILO: Record<CaptionStyle, number> = {
+  classico: 17,
+  karaoke: 16,
+  impacto: 14,
+  minimal: 22,
+  oferta: 15,
+};
 /** Duas linhas por cue — o que se lê de relance sem tapar o vídeo. */
-const MAX_POR_CUE = MAX_POR_LINHA * 2;
+const LINHAS_POR_CUE = 2;
+function larguraDaLinha(estilo: CaptionStyle): number {
+  return LARGURA_POR_ESTILO[estilo] ?? 17;
+}
 
 /** Parte o texto em pedaços de até `max` caracteres, sem cortar palavra. */
 function fatiar(texto: string, max: number): string[] {
@@ -424,7 +442,7 @@ function tempoSrt(seg: number): string {
 }
 
 /** Quebra uma fatia (≤ 2 linhas de `max`) em linhas de tamanho parecido. */
-function quebrar(texto: string, max = MAX_POR_LINHA): string {
+function quebrar(texto: string, max: number): string {
   if (texto.length <= max) return texto;
   const linhas = fatiar(texto, Math.max(max, Math.ceil(texto.length / 2)));
   // No máximo duas linhas por bloco: acima disso tapa o vídeo.
