@@ -201,7 +201,7 @@ export class FfmpegRunner {
    * `-ss` vem ANTES do `-i` (busca rápida pelo índice) e o `-to` depois é
    * relativo a esse ponto, por isso vai como duração.
    *
-   * O enquadramento é crop central com `scale` para 720p na proporção pedida.
+   * O enquadramento é o vídeo inteiro centralizado sobre fundo desfocado, em 720p.
    * `veryfast` + CRF 26 é o compromisso do host compartilhado: alguns segundos
    * de CPU por corte e ~25 MB no pior caso (90 s), abaixo do teto do bucket.
    */
@@ -223,9 +223,20 @@ export class FfmpegRunner {
     const duracao = Math.max(0.5, fimSeg - inicioSeg);
     const [larg, alt] =
       formato === '16:9' ? [1280, 720] : formato === '1:1' ? [720, 720] : [720, 1280];
+    /*
+     * Enquadramento sem cortar nada: o vídeo inteiro encaixado no centro
+     * (`decrease`) e, atrás dele, uma cópia ampliada e desfocada preenchendo
+     * o quadro — o layout que os apps de corte usam para vídeo horizontal em
+     * 9:16. O crop central de antes jogava fora ~70% da largura de um 16:9 e
+     * deixava só o miolo. Quando a fonte já tem a proporção pedida, a frente
+     * cobre tudo e o fundo nem aparece — resultado idêntico ao crop.
+     */
+    const fundo =
+      `[bg]scale=${larg}:${alt}:force_original_aspect_ratio=increase,` +
+      `crop=${larg}:${alt},boxblur=20:5[bgb]`;
+    const frente = `[fg]scale=${larg}:${alt}:force_original_aspect_ratio=decrease[fgs]`;
     const etapas = [
-      `scale=${larg}:${alt}:force_original_aspect_ratio=increase`,
-      `crop=${larg}:${alt}`,
+      `split=2[bg][fg];${fundo};${frente};[bgb][fgs]overlay=(W-w)/2:(H-h)/2`,
       'setsar=1',
       'fps=30',
     ];

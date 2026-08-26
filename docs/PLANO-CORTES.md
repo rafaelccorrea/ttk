@@ -139,3 +139,10 @@ Componente: `frontend/src/components/ui/GlobalLoader.tsx` — variante `completo
    - Título da aba deve virar "(N/5) <etapa> — PikPok" e voltar ao normal quando o job termina.
    - Link "Explorar →" leva a /tendencias. Ao ficar `pronto` ou `falhou`, o loader some e a grade de cortes/alerta de erro continua como antes.
 3. Com `prefers-reduced-motion`, spinner e reticências ficam estáticos.
+
+## Correções de 2026-08-26 — enquadramento, legenda e duplo clique
+
+1. **Fonte horizontal em 9:16** (`FfmpegRunner.cortar`): o crop central jogava fora ~70% da largura de um 16:9. Agora o vídeo inteiro fica encaixado no centro sobre uma cópia ampliada e desfocada (`split` → `boxblur` + `overlay`). Fonte já vertical sai idêntica a antes. Teste: enviar um vídeo gravado na horizontal, formato 9:16 — o corte deve mostrar o quadro completo com fundo borrado em cima e embaixo; em 16:9 nada muda.
+2. **Legenda tapando o vídeo** (`srtDoTrecho`): um segmento do Whisper (frase inteira) virava um bloco de 6–8 linhas. Agora cada segmento é fatiado em cues de até 2 linhas × 26 caracteres, com o tempo repartido em proporção ao texto. Teste: job inteligente com legenda — nenhum cue pode ter mais de duas linhas.
+3. **"Gerar cortes" clicável várias vezes** (`pages/Cuts`): a trava era só o estado `enviando`, ligado depois do diálogo de gasto; cliques nesse intervalo criavam jobs (e cobranças) repetidos. Agora trava síncrona por `ref` no primeiro clique, botão desabilitado com spinner e "Enviando…". Teste: clicar 5× rápido — um único job.
+4. **Apagar sem confirmação**: o ícone de lixeira agora abre o `ConfirmDialog` destrutivo ("Apagar este vídeo e os cortes?").

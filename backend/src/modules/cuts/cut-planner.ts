@@ -228,8 +228,11 @@ export interface SegmentoDeFala {
  * deslocados para o zero do corte e recortados nas bordas. Devolve string
  * vazia quando não há fala no trecho — o chamador então não queima nada.
  *
- * Linhas longas são quebradas em duas: legenda de corte é lida num celular,
- * e 80 caracteres numa linha só viram letra miúda ou texto cortado.
+ * Cada segmento é FATIADO em cues de no máximo duas linhas curtas, com o
+ * tempo repartido em proporção ao texto. Um segmento do Whisper costuma ser a
+ * frase inteira (60–120 caracteres); queimado de uma vez com a fonte grande do
+ * 9:16, o libass re-quebrava a "segunda linha" em mais cinco e o bloco cobria
+ * o rosto de quem fala.
  */
 export function srtDoTrecho(segmentos: SegmentoDeFala[], inicio: number, fim: number): string {
   const blocos: string[] = [];
@@ -240,10 +243,40 @@ export function srtDoTrecho(segmentos: SegmentoDeFala[], inicio: number, fim: nu
     if (!texto) continue;
     const a = Math.max(0, s.inicio - inicio);
     const b = Math.max(a + 0.3, Math.min(fim, s.fim) - inicio);
-    n += 1;
-    blocos.push(`${n}\n${tempoSrt(a)} --> ${tempoSrt(b)}\n${quebrar(texto)}\n`);
+    const fatias = fatiar(texto, MAX_POR_CUE);
+    const totalChars = fatias.reduce((acc, f) => acc + f.length, 0);
+    let cursor = a;
+    fatias.forEach((fatia, i) => {
+      const ultima = i === fatias.length - 1;
+      const dur = ((b - a) * fatia.length) / totalChars;
+      const fimCue = ultima ? b : Math.min(b, Math.max(cursor + 0.3, cursor + dur));
+      n += 1;
+      blocos.push(`${n}\n${tempoSrt(cursor)} --> ${tempoSrt(fimCue)}\n${quebrar(fatia)}\n`);
+      cursor = fimCue;
+    });
   }
   return blocos.join('\n');
+}
+
+/** Largura de uma linha: em 720 px com a fonte do corte cabem ~26 letras. */
+const MAX_POR_LINHA = 26;
+/** Duas linhas por cue — o que se lê de relance sem tapar o vídeo. */
+const MAX_POR_CUE = MAX_POR_LINHA * 2;
+
+/** Parte o texto em pedaços de até `max` caracteres, sem cortar palavra. */
+function fatiar(texto: string, max: number): string[] {
+  const pedacos: string[] = [];
+  let atual = '';
+  for (const p of texto.split(' ')) {
+    if ((atual + ' ' + p).trim().length > max && atual) {
+      pedacos.push(atual);
+      atual = p;
+    } else {
+      atual = (atual + ' ' + p).trim();
+    }
+  }
+  if (atual) pedacos.push(atual);
+  return pedacos;
 }
 
 function tempoSrt(seg: number): string {
@@ -256,20 +289,10 @@ function tempoSrt(seg: number): string {
   return `${p(h)}:${p(m)}:${p(s)},${p(r, 3)}`;
 }
 
-function quebrar(texto: string, max = 38): string {
+/** Quebra uma fatia (≤ 2 linhas de `max`) em linhas de tamanho parecido. */
+function quebrar(texto: string, max = MAX_POR_LINHA): string {
   if (texto.length <= max) return texto;
-  const palavras = texto.split(' ');
-  const linhas: string[] = [];
-  let atual = '';
-  for (const p of palavras) {
-    if ((atual + ' ' + p).trim().length > max && atual) {
-      linhas.push(atual);
-      atual = p;
-    } else {
-      atual = (atual + ' ' + p).trim();
-    }
-  }
-  if (atual) linhas.push(atual);
+  const linhas = fatiar(texto, Math.max(max, Math.ceil(texto.length / 2)));
   // No máximo duas linhas por bloco: acima disso tapa o vídeo.
   return linhas.length <= 2 ? linhas.join('\n') : `${linhas[0]}\n${linhas.slice(1).join(' ')}`;
 }

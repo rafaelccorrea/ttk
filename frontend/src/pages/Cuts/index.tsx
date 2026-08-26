@@ -37,6 +37,7 @@ import UploadRoundedIcon from '@mui/icons-material/UploadRounded';
 import { ChangeEvent, MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { GlobalLoader } from '@/components/ui/GlobalLoader';
+import { useConfirmacao } from '@/components/ui/ConfirmDialog';
 import { useConfirmarGasto } from '@/hooks/useConfirmarGasto';
 import { CREDITS_CHANGED_EVENT, resolveApiUrl } from '@/services/api';
 import {
@@ -87,6 +88,7 @@ const STATUS_LABEL: Record<CutJobSummary['status'], string> = {
 
 export function CutsPage() {
   const { confirmar, dialogo } = useConfirmarGasto();
+  const { confirmar: confirmarApagar, dialogoDeConfirmacao } = useConfirmacao();
 
   const [mode, setMode] = useState<CutMode>('rapido');
   const [format, setFormat] = useState<CutFormat>('9:16');
@@ -97,6 +99,13 @@ export function CutsPage() {
   const [duracao, setDuracao] = useState<number | null>(null);
   const [quote, setQuote] = useState<CutQuote | null>(null);
   const [enviando, setEnviando] = useState(false);
+  /*
+   * Trava síncrona contra o duplo clique. O `enviando` do estado só chega ao
+   * botão na próxima renderização, e entre o clique e o diálogo de gasto há
+   * um `await` (consulta de carteira) — cada clique nesse intervalo abria
+   * outro envio e cobrava os mesmos cortes de novo.
+   */
+  const enviandoRef = useRef(false);
   const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -160,23 +169,24 @@ export function CutsPage() {
     (duracao < LIMITES_DE_CORTE.fonteMinSeg || duracao > LIMITES_DE_CORTE.fonteMaxSeg);
 
   async function enviar() {
-    if (!file || !quote) return;
-    setErro(null);
-    const autorizado = await confirmar({
-      acao: mode === 'inteligente' ? 'cut_ai' : 'cut',
-      titulo: `Gerar ${quantity} cortes`,
-      quantidade: quantity,
-      custoTotal: quote.total,
-      detalhe:
-        mode === 'inteligente'
-          ? `${quote.cortes} cr pelos cortes + ${quote.transcricao} cr pela transcrição (${quote.blocosDeTranscricao} bloco${quote.blocosDeTranscricao > 1 ? 's' : ''} de 10 min). Cortes que não saírem são devolvidos.`
-          : `${quote.porCorte} cr por corte. Cortes que não saírem são devolvidos.`,
-    });
-    if (!autorizado) return;
-
+    if (!file || !quote || enviandoRef.current) return;
+    enviandoRef.current = true;
     setEnviando(true);
-    setProgresso(0);
+    setErro(null);
     try {
+      const autorizado = await confirmar({
+        acao: mode === 'inteligente' ? 'cut_ai' : 'cut',
+        titulo: `Gerar ${quantity} cortes`,
+        quantidade: quantity,
+        custoTotal: quote.total,
+        detalhe:
+          mode === 'inteligente'
+            ? `${quote.cortes} cr pelos cortes + ${quote.transcricao} cr pela transcrição (${quote.blocosDeTranscricao} bloco${quote.blocosDeTranscricao > 1 ? 's' : ''} de 10 min). Cortes que não saírem são devolvidos.`
+            : `${quote.porCorte} cr por corte. Cortes que não saírem são devolvidos.`,
+      });
+      if (!autorizado) return;
+
+      setProgresso(0);
       const job = await cutsService.create(
         {
           mode,
@@ -196,6 +206,7 @@ export function CutsPage() {
     } catch (error) {
       setErro(mensagemDeErro(error, 'Não consegui enviar o vídeo. Tente de novo.'));
     } finally {
+      enviandoRef.current = false;
       setEnviando(false);
     }
   }
@@ -209,6 +220,13 @@ export function CutsPage() {
   }
 
   async function apagar(id: string) {
+    const ok = await confirmarApagar({
+      titulo: 'Apagar este vídeo e os cortes?',
+      mensagem: 'Os cortes gerados somem junto. Não dá para desfazer.',
+      textoConfirmar: 'Apagar',
+      destrutivo: true,
+    });
+    if (!ok) return;
     try {
       await cutsService.remove(id);
       if (selecionado?.id === id) setSelecionado(null);
@@ -403,12 +421,15 @@ export function CutsPage() {
                 <Button
                   variant="contained"
                   size="large"
-                  startIcon={<ContentCutRoundedIcon />}
+                  startIcon={
+                    enviando ? <CircularProgress size={18} color="inherit" /> : <ContentCutRoundedIcon />
+                  }
                   disabled={!file || duracaoFora || enviando || !quote}
                   onClick={() => void enviar()}
                 >
-                  Gerar {quantity} cortes
-                  {quote ? ` · ${quote.total} créditos` : ''}
+                  {enviando
+                    ? 'Enviando…'
+                    : `Gerar ${quantity} cortes${quote ? ` · ${quote.total} créditos` : ''}`}
                 </Button>
               </Stack>
             </CardContent>
@@ -484,6 +505,7 @@ export function CutsPage() {
         </Grid>
       </Grid>
       {dialogo}
+      {dialogoDeConfirmacao}
     </Box>
   );
 }

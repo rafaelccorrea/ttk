@@ -140,7 +140,8 @@ describe('cut-planner — legenda (SRT)', () => {
   it('inclui só os segmentos do trecho, com tempo relativo ao corte', () => {
     const srt = srtDoTrecho(fala, 10, 30);
     expect(srt).toContain('1\n00:00:00,000 --> 00:00:02,000\nOlha só esse preço');
-    expect(srt).toContain('2\n00:00:02,000 --> 00:00:10,000');
+    expect(srt).toContain('2\n00:00:02,000 --> ');
+    expect(srt).toContain(' --> 00:00:10,000\n');
     expect(srt).not.toContain('antes do corte');
     expect(srt).not.toContain('depois do corte');
   });
@@ -149,6 +150,26 @@ describe('cut-planner — legenda (SRT)', () => {
     const srt = srtDoTrecho(fala, 12, 20);
     const bloco = srt.trim().split('\n\n')[0].split('\n');
     expect(bloco.length).toBe(4); // índice, tempo, 2 linhas
+  });
+
+  it('fatia frase comprida em vários cues curtos, sem cue de mais de duas linhas', () => {
+    const longa = [
+      {
+        inicio: 0,
+        fim: 6,
+        texto:
+          'Bom, basicamente, é um vídeo curto, um vídeo rápido, só que bem intuitivo, né? Então, a gente, o que que a gente',
+      },
+    ];
+    const srt = srtDoTrecho(longa, 0, 10);
+    const blocos = srt.trim().split('\n\n');
+    expect(blocos.length).toBeGreaterThan(1);
+    for (const b of blocos) {
+      const linhas = b.split('\n').slice(2);
+      expect(linhas.length).toBeLessThanOrEqual(2);
+      for (const l of linhas) expect(l.length).toBeLessThanOrEqual(30);
+    }
+    expect(blocos[blocos.length - 1]).toContain(' --> 00:00:06,000');
   });
 
   it('devolve vazio quando não há fala no trecho', () => {
