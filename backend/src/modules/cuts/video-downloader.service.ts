@@ -63,7 +63,8 @@ export class VideoDownloaderService {
       info = JSON.parse(json);
     } catch (error) {
       // A frase para o usuário é genérica de propósito; a causa real vai para o log.
-      this.logger.warn(`yt-dlp falhou em ${url}: ${String((error as Error)?.message ?? error).slice(0, 600)}`);
+      // ERROR de propósito: o painel da Hostinger só mostra stderr.
+      this.logger.error(`yt-dlp falhou em ${url}: ${String((error as Error)?.message ?? error).slice(0, 600)}`);
       throw new BadRequestException(traduzirErro(error));
     }
     if (info?.is_live) {
@@ -108,7 +109,8 @@ export class VideoDownloaderService {
       await cli.execPromise(args);
     } catch (error) {
       // A frase para o usuário é genérica de propósito; a causa real vai para o log.
-      this.logger.warn(`yt-dlp falhou em ${url}: ${String((error as Error)?.message ?? error).slice(0, 600)}`);
+      // ERROR de propósito: o painel da Hostinger só mostra stderr.
+      this.logger.error(`yt-dlp falhou em ${url}: ${String((error as Error)?.message ?? error).slice(0, 600)}`);
       throw new BadRequestException(traduzirErro(error));
     }
     const arquivos = (await readdir(pasta)).filter((n) => n.startsWith('fonte.'));
@@ -151,7 +153,7 @@ export class VideoDownloaderService {
           this.logger.log(`yt-dlp baixado em ${caminho}`);
           return caminho;
         } catch (error) {
-          this.logger.warn(`yt-dlp indisponível (${error}); import por link desligado.`);
+          this.logger.error(`yt-dlp indisponível (${error}); import por link desligado.`);
           // Deixa tentar de novo na próxima chamada em vez de fixar o "não".
           this.binario = null;
           return null;
