@@ -1,6 +1,6 @@
 {
   "name": "pikpok-desktop",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": true,
   "description": "Copiloto ao vivo do PikPok — modo somente-painel",
   "main": "out/main/index.js",
