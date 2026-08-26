@@ -170,12 +170,14 @@ export class SimuladorChatSource implements ChatSource {
   on(evt: 'message', cb: (m: RawChatMessage) => void): void;
   on(evt: 'audience', cb: (a: AudienceEvent) => void): void;
   on(evt: 'disconnect' | 'error', cb: (e: Error) => void): void;
+  on(evt: 'streamEnd', cb: () => void): void;
   on(
-    evt: 'message' | 'audience' | 'disconnect' | 'error',
+    evt: 'message' | 'audience' | 'disconnect' | 'streamEnd' | 'error',
     cb:
       | ((m: RawChatMessage) => void)
       | ((a: AudienceEvent) => void)
-      | ((e: Error) => void),
+      | ((e: Error) => void)
+      | (() => void),
   ): void {
     if (evt === 'message') this.aoReceber = cb as (m: RawChatMessage) => void;
     if (evt === 'audience') this.aoMedir = cb as (a: AudienceEvent) => void;

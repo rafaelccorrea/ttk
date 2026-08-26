@@ -341,8 +341,8 @@ export class EncerrarLiveRunDto {
    */
   @ApiPropertyOptional({ example: 'aviso_tiktok' })
   @IsOptional()
-  @IsIn(['manual', 'aviso_tiktok'])
-  endReason?: 'manual' | 'aviso_tiktok';
+  @IsIn(['manual', 'aviso_tiktok', 'live_encerrada'])
+  endReason?: 'manual' | 'aviso_tiktok' | 'live_encerrada';
 }
 
 /**
@@ -354,8 +354,8 @@ export class EncerrarLiveRunDto {
  */
 export class RegistrarEventoDaRunDto {
   @ApiProperty({ example: 'aviso_tiktok' })
-  @IsIn(['aviso_tiktok', 'pin_produto'])
-  tipo: 'aviso_tiktok' | 'pin_produto';
+  @IsIn(['aviso_tiktok', 'pin_produto', 'erro_desktop'])
+  tipo: 'aviso_tiktok' | 'pin_produto' | 'erro_desktop';
 
   @ApiPropertyOptional({ example: 'pausado' })
   @IsOptional()

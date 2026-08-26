@@ -57,6 +57,8 @@ export interface EstadoAtualizacao {
   situacao: 'ociosa' | 'baixando' | 'pronta' | 'falhou' | 'atualizada';
   /** A versão que está vindo, quando já se sabe qual é. */
   versao: string | null;
+  /** 0–100 enquanto `baixando`; null nos demais estados. */
+  progresso: number | null;
   erro: string | null;
 }
 
@@ -324,6 +326,8 @@ export interface PikPokDesktopApi {
   readonly sair: () => Promise<void>;
   /** Abre a URL no navegador do sistema (nunca numa janela do app). */
   readonly abrirNoNavegador: (url: string) => Promise<void>;
+  /** Mostra o arquivo de log do app na pasta do sistema (para o suporte). */
+  readonly abrirLogs: () => Promise<void>;
 
   // ---------------------------------------------------------- atualização
   readonly obterEstadoAtualizacao: () => Promise<EstadoAtualizacao>;

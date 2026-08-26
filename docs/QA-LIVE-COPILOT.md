@@ -137,6 +137,7 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 | 6.10 | Rolar o chat para cima durante a live | O chat NÃO puxa de volta a cada mensagem; aparece o botão "↓ novas mensagens"; clicar volta ao fim | ✅ 24/08 rolou ao topo, não foi puxado por 12 s de mensagens; botão '↓ novas mensagens' apareceu e voltou ao fim |
 | 6.11 | Arrastar a borda esquerda do painel da direita | Painel muda de largura (mín. 460px, máx. 70% da janela); padrão **640px** fixo (não muda ao maximizar); largura lembrada ao reabrir | ✅ 24/08 via ponte: 640 → marginLeft 800 (janela 1440); 860 → 580; padrão 640 |
 | 6.12 | Clicar **Bloquear autor** (ícone ⊘ no canto) num card de escalação/resposta | Card mostra o chip **"autor bloqueado"**; o @ aparece em Ajustes › Bloquear espectadores (normalizado, sem `@` e em minúsculas, sem duplicar); mensagens seguintes desse autor não entram (nem lote, nem resposta); num card de mensagem antiga/outra live → aviso "Não achei quem escreveu (a mensagem é antiga ou de outra live)." | ✅ 24/08 run 08008865: clique no ⊘ → chip 'autor bloqueado'; usuariosBloqueados 1→2 |
+| 6.13 | Abrir o app instalado com versão nova publicada em `/app/latest.yml` (~20 s após abrir, ou **Verificar atualização** nos ajustes) | Faixa no rodapé aparece **assim que a versão é reconhecida**: "Nova versão X disponível. Baixando em segundo plano… N%" com barra de progresso; ao terminar vira "Versão X pronta. Ela entra sozinha quando você fechar o app." + **Reiniciar agora**; em Ajustes › Sistema a linha mostra o mesmo percentual. Nunca reinicia sozinho; entrar na live com update pronta é travado até reiniciar | ⬜ |
 
 > Em dev, editar arquivo do `main` reinicia o Electron e derruba a run em curso — não é bug.
 
@@ -173,3 +174,10 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 - `cd desktop && npx tsc --noEmit && npx vitest run` → verde (54+ testes).
 - `cd frontend && npx tsc --noEmit -p tsconfig.json && npx vitest run` → verde.
 - `cd backend && npm run stripe:check` → "Tudo alinhado."
+
+## Registro automático de erros do desktop (0.2.5)
+
+- Todo `console.warn`/`console.error` do processo principal, exceção não tratada e rejeição perdida vão para `%APPDATA%\pikpok-desktop\logs\copiloto.log` (rotaciona em 2 MB, guarda um `.1.log`). Ajustes → Sistema → **Abrir pasta de logs** abre o arquivo no Explorer.
+- Erros de produto (`avisarErro`: chat caiu, lote falhou, SSE; e degradação do envio para painel) também sobem como evento `erro_desktop` em `live_run_events` da run em curso — deduplicados por 5 min e com teto de 30 por run. Sem run aberta, ficam só no arquivo.
+- Como testar: conectar numa live com o backend fora do ar → `copiloto.log` recebe `[copiloto] ...`; com backend no ar, `select * from live_run_events where tipo='erro_desktop'` mostra a linha.
+- Contexto: em 2026-08-26 o webcast falhou a live inteira em silêncio (sign server 404) e ninguém teve rastro; esta é a resposta.

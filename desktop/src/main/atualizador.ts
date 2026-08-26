@@ -47,7 +47,7 @@ const ATRASO_INICIAL_MS = 20_000;
  */
 const INTERVALO_MS = 6 * 60 * 60 * 1000;
 
-let estado: EstadoAtualizacao = { situacao: 'ociosa', versao: null, erro: null };
+let estado: EstadoAtualizacao = { situacao: 'ociosa', versao: null, progresso: null, erro: null };
 
 export function estadoDaAtualizacao(): EstadoAtualizacao {
   return estado;
@@ -77,18 +77,24 @@ export function iniciarAtualizador(obterJanela: () => BrowserWindow | null): voi
   };
 
   autoUpdater.on('update-available', (info) => {
-    anunciar({ situacao: 'baixando', versao: info.version ?? null, erro: null });
+    anunciar({ situacao: 'baixando', versao: info.version ?? null, progresso: 0, erro: null });
   });
 
   autoUpdater.on('update-not-available', () => {
     // 'atualizada', e não 'ociosa': é a resposta que o botão "verificar" dos
     // ajustes precisa mostrar — "você já está na mais recente" é informação,
     // silêncio é dúvida. O rodapé e a trava da live só olham 'pronta'.
-    anunciar({ situacao: 'atualizada', versao: null, erro: null });
+    anunciar({ situacao: 'atualizada', versao: null, progresso: null, erro: null });
+  });
+
+  autoUpdater.on('download-progress', (p) => {
+    // "baixando X%" é o que diz ao vendedor que a versão nova existe e está a
+    // caminho — 85 MB numa conexão de live, em silêncio, parecem "não tem".
+    anunciar({ ...estado, situacao: 'baixando', progresso: Math.round(p.percent) });
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    anunciar({ situacao: 'pronta', versao: info.version ?? null, erro: null });
+    anunciar({ situacao: 'pronta', versao: info.version ?? null, progresso: null, erro: null });
   });
 
   autoUpdater.on('error', (erro: Error) => {
@@ -101,7 +107,7 @@ export function iniciarAtualizador(obterJanela: () => BrowserWindow | null): voi
      * gastar a atenção dele com o único problema da tela que não é dele.
      * O estado fica guardado para o rodapé e para o relato de suporte.
      */
-    anunciar({ situacao: 'falhou', versao: null, erro: erro.message });
+    anunciar({ situacao: 'falhou', versao: null, progresso: null, erro: erro.message });
   });
 
   const checar = (): void => {
@@ -139,6 +145,7 @@ export async function verificarAgora(): Promise<EstadoAtualizacao> {
     return {
       situacao: 'falhou',
       versao: null,
+      progresso: null,
       erro: 'A verificação só existe no app instalado — em desenvolvimento não há pacote para atualizar.',
     };
   }

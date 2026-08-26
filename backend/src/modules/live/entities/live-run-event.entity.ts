@@ -16,7 +16,7 @@ import { LiveRun } from './live-run.entity';
  *    vendedor — `acao` diz o que o app fez a respeito;
  *  - `pin_produto`: uma tentativa de fixar produto na live, com o desfecho.
  */
-export type LiveRunEventTipo = 'aviso_tiktok' | 'pin_produto';
+export type LiveRunEventTipo = 'aviso_tiktok' | 'pin_produto' | 'erro_desktop';
 
 /**
  * Trilha de auditoria da run.

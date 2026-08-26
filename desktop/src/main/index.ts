@@ -11,6 +11,7 @@ import {
   shell,
 } from 'electron';
 import Store from 'electron-store';
+import { caminhoDoDiario, iniciarDiario } from './diario';
 import {
   FRACAO_MAXIMA_DO_PAINEL,
   LARGURA_PAINEL_MINIMA,
@@ -598,6 +599,10 @@ const copiloto = new Copiloto(
  */
 function registrarIpc(): void {
   ipcMain.handle('app:versao', () => app.getVersion());
+  ipcMain.handle('app:abrirLogs', async () => {
+    const caminho = caminhoDoDiario();
+    if (caminho) await shell.showItemInFolder(caminho);
+  });
   ipcMain.handle('app:abrirNoNavegador', (_evento, url: string) => {
     // Só http(s) sai daqui: um `file://` ou um esquema de app registrado no SO,
     // vindo do renderer, seria execução de coisa arbitrária na máquina do
@@ -802,6 +807,9 @@ void app.whenReady().then(() => {
   // A segunda instância já chamou `app.quit()` acima, mas o `whenReady` dela
   // ainda resolveria e criaria a janela antes de o encerramento concluir.
   if (!app.hasSingleInstanceLock()) return;
+
+  // Antes de tudo: qualquer erro daqui em diante já fica registrado.
+  iniciarDiario(join(app.getPath('userData'), 'logs'));
 
   registrarIpc();
   registrarAtalhoDePausa();

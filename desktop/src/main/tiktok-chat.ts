@@ -83,6 +83,8 @@ export interface ChatSource {
   on(evt: 'message', cb: (m: RawChatMessage) => void): void;
   on(evt: 'audience', cb: (a: AudienceEvent) => void): void;
   on(evt: 'disconnect' | 'error', cb: (e: Error) => void): void;
+  /** A transmissão terminou no TikTok (fim normal, não queda). */
+  on(evt: 'streamEnd', cb: () => void): void;
   disconnect(): void;
 }
 
@@ -250,6 +252,7 @@ export class WebcastChatSource implements ChatSource {
   private aoReceber: ((m: RawChatMessage) => void) | null = null;
   private aoMedir: ((a: AudienceEvent) => void) | null = null;
   private aoCair: ((e: Error) => void) | null = null;
+  private aoAcabar: (() => void) | null = null;
   private aoErrar: ((e: Error) => void) | null = null;
 
   private backoffMs = BACKOFF_INICIAL_MS;
@@ -267,15 +270,17 @@ export class WebcastChatSource implements ChatSource {
   on(evt: 'audience', cb: (a: AudienceEvent) => void): void;
   on(evt: 'disconnect' | 'error', cb: (e: Error) => void): void;
   on(
-    evt: 'message' | 'audience' | 'disconnect' | 'error',
+    evt: 'message' | 'audience' | 'disconnect' | 'streamEnd' | 'error',
     cb:
       | ((m: RawChatMessage) => void)
       | ((a: AudienceEvent) => void)
-      | ((e: Error) => void),
+      | ((e: Error) => void)
+      | (() => void),
   ): void {
     if (evt === 'message') this.aoReceber = cb as (m: RawChatMessage) => void;
     else if (evt === 'audience') this.aoMedir = cb as (a: AudienceEvent) => void;
     else if (evt === 'disconnect') this.aoCair = cb as (e: Error) => void;
+    else if (evt === 'streamEnd') this.aoAcabar = cb as () => void;
     else this.aoErrar = cb as (e: Error) => void;
   }
 
@@ -392,7 +397,10 @@ export class WebcastChatSource implements ChatSource {
     conexao.on(WebcastEvent.STREAM_END, () => {
       if (this.conexao !== conexao) return;
       this.ativo = false;
-      this.aoCair?.(new Error('A transmissão foi encerrada.'));
+      // Fim normal da transmissão: quem escuta encerra a run do nosso lado
+      // também — sem isso o painel ficava "lendo o chat" de uma live que já
+      // não existe, e a run seguia aberta no backend.
+      this.aoAcabar?.();
     });
     conexao.on(ControlEvent.ERROR, (erro: WebcastErrorPayload) => {
       if (this.conexao !== conexao) return;

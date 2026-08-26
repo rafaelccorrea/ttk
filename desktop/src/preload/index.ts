@@ -93,6 +93,7 @@ const api: PikPokDesktopApi = {
   sair: () => ipcRenderer.invoke('sessao:sair') as Promise<void>,
   abrirNoNavegador: (url) =>
     ipcRenderer.invoke('app:abrirNoNavegador', url) as Promise<void>,
+  abrirLogs: () => ipcRenderer.invoke('app:abrirLogs') as Promise<void>,
 
   obterEstadoAtualizacao: () =>
     ipcRenderer.invoke('atualizacao:obter') as Promise<EstadoAtualizacao>,

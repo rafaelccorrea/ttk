@@ -51,6 +51,8 @@ export type LiveRunEndReason =
   | 'limite_duracao'
   | 'creditos'
   | 'aviso_tiktok'
+  /** A transmissão terminou no TikTok e o desktop encerrou junto. */
+  | 'live_encerrada'
   | 'erro';
 
 /**

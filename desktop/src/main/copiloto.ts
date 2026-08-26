@@ -6,6 +6,7 @@ import { EnviadorDeComentarios } from './comment-sender';
 import { fixarProduto, RotadorDeProdutos } from './product-pinner';
 import { adicionarBloqueado, usuarioEstaBloqueado } from './tiktok-chat';
 import { DetectorDeAviso, scriptDeEncerrar } from './warning-detector';
+import { definirRemetente, novaRunNoDiario, registrarErro } from './diario';
 import { AgregadorDeMetricas } from './metricas';
 import { AcumuladorDeLote, JANELA_LOTE_MS } from './rate-limiter';
 import {
@@ -190,6 +191,11 @@ export class Copiloto {
         this.api.reportarFalhaDeSeletor(html, versao),
       aoCairParaPainel: (motivo) => this.degradarParaPainel(motivo),
     });
+    // A auditoria de erro sobe pelo mesmo canal dos eventos da run; sem run
+    // aberta o cliente ignora, e o arquivo local continua com o registro.
+    definirRemetente((origem, mensagem) =>
+      this.api.registrarEventoDaRun('erro_desktop', origem, mensagem),
+    );
   }
 
   // -------------------------------------------------------------- ativação
@@ -337,6 +343,7 @@ export class Copiloto {
         });
         this.rotador.iniciar();
       }
+      novaRunNoDiario();
       this.acumulador = new AcumuladorDeLote<ChatMessageAnonima>(
         async (lote) => {
           /*
@@ -478,6 +485,9 @@ export class Copiloto {
     // Queda do webcast não derruba a run: a `WebcastChatSource` reconecta
     // sozinha com backoff, e o vendedor só precisa saber que o chat oscilou.
     chat.on('disconnect', (erro) => this.avisarErro(erro.message));
+    chat.on('streamEnd', () => {
+      void this.encerrar('A live foi encerrada no TikTok.', 'live_encerrada');
+    });
     chat.on('error', (erro) => this.avisarErro(erro.message));
 
     await chat.connect(alvo);
@@ -521,7 +531,7 @@ export class Copiloto {
      * motivo em texto fazia o backend classificar o fim normal como `erro`,
      * e o histórico contava desistência como falha.
      */
-    fim: 'manual' | 'aviso_tiktok' = 'manual',
+    fim: 'manual' | 'aviso_tiktok' | 'live_encerrada' = 'manual',
   ): Promise<EstadoConexao> {
     // A cauda do lote vai junto: são as últimas perguntas da live, geralmente
     // as de "ainda dá tempo de comprar?".
@@ -755,6 +765,7 @@ export class Copiloto {
    * a do app que digita, e ele parou de digitar.
    */
   degradarParaPainel(motivo: string): void {
+    registrarErro('envio', motivo);
     this.atualizarEnvio({ modo: 'painel', degradacao: motivo });
     // Degradar sem derrubar o laço deixaria o app consultando (e tentando) uma
     // fila que ele acabou de declarar que não consegue entregar.
@@ -1048,6 +1059,7 @@ export class Copiloto {
   }
 
   private avisarErro(motivo: string): void {
+    registrarErro('copiloto', motivo);
     // Não muda o status: o chat e o SSE reconectam sozinhos, e derrubar a tela
     // para 'erro' a cada oscilação de wi-fi treinaria o vendedor a ignorar o
     // aviso justamente quando ele for real.

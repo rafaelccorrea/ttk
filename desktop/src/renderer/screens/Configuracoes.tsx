@@ -318,9 +318,21 @@ export function Configuracoes({
             titulo="Atualizar sistema"
             explicacao="Baixa sozinho e instala ao fechar. O botão só adianta a conferência."
             detalhe="Útil antes de começar uma live."
-            ultima
           >
             <BlocoDeAtualizacao />
+          </Linha>
+          <Linha
+            titulo="Registro de erros"
+            explicacao="O app anota sozinho todo erro num arquivo local. Se algo der errado numa live, é este arquivo que o suporte vai pedir."
+            ultima
+          >
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => void ponte?.abrirLogs()}
+            >
+              Abrir pasta de logs
+            </Button>
           </Linha>
         </Secao>
 
@@ -535,7 +547,7 @@ function BlocoDeAtualizacao(): JSX.Element {
     situacao === 'pronta'
       ? `Versão ${estado?.versao ?? 'nova'} baixada — reinicie para aplicar.`
       : situacao === 'baixando'
-        ? `Baixando a versão ${estado?.versao ?? 'nova'}…`
+        ? `Baixando a versão ${estado?.versao ?? 'nova'}… ${estado?.progresso ?? 0}%`
         : situacao === 'atualizada'
           ? 'Você já está na versão mais recente.'
           : situacao === 'falhou' && checou

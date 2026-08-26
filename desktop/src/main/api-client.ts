@@ -538,7 +538,7 @@ export class ApiClient {
 
   async encerrarRun(
     motivo?: string,
-    endReason?: 'manual' | 'aviso_tiktok',
+    endReason?: 'manual' | 'aviso_tiktok' | 'live_encerrada',
   ): Promise<void> {
     const id = this.runId;
     this.pararHeartbeat();
@@ -635,7 +635,7 @@ export class ApiClient {
    * vira no-op: evento de auditoria sem transmissão não tem onde morar.
    */
   async registrarEventoDaRun(
-    tipo: 'aviso_tiktok' | 'pin_produto',
+    tipo: 'aviso_tiktok' | 'pin_produto' | 'erro_desktop',
     acao?: string,
     detalhe?: string,
   ): Promise<void> {
