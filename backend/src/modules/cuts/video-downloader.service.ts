@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { access, chmod, mkdir, readdir } from 'node:fs/promises';
+import { access, chmod, mkdir, readdir, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+
+import { FfmpegRunner } from '../../common/media/ffmpeg-runner';
 
 /**
  * O YouTube exige que o yt-dlp resolva um desafio em JavaScript; sem runtime
@@ -10,7 +12,6 @@ import { dirname, join } from 'node:path';
  * filho não necessariamente inclui a pasta do node.
  */
 const JS_RUNTIME = ['--js-runtimes', `node:${dirname(process.execPath)}`];
-import { FfmpegRunner } from '../../common/media/ffmpeg-runner';
 
 export interface InfoDoLink {
   titulo: string;
@@ -64,7 +65,7 @@ export class VideoDownloaderService {
     } catch (error) {
       // A frase para o usuário é genérica de propósito; a causa real vai para o log.
       // ERROR de propósito: o painel da Hostinger só mostra stderr.
-      this.logger.error(`yt-dlp falhou em ${url}: ${String((error as Error)?.message ?? error).slice(0, 600)}`);
+      this.logger.error(`yt-dlp falhou em ${url}: ${String((error as Error)?.message ?? error).slice(0, 1500)}`);
       throw new BadRequestException(traduzirErro(error));
     }
     if (info?.is_live) {
@@ -110,7 +111,7 @@ export class VideoDownloaderService {
     } catch (error) {
       // A frase para o usuário é genérica de propósito; a causa real vai para o log.
       // ERROR de propósito: o painel da Hostinger só mostra stderr.
-      this.logger.error(`yt-dlp falhou em ${url}: ${String((error as Error)?.message ?? error).slice(0, 600)}`);
+      this.logger.error(`yt-dlp falhou em ${url}: ${String((error as Error)?.message ?? error).slice(0, 1500)}`);
       throw new BadRequestException(traduzirErro(error));
     }
     const arquivos = (await readdir(pasta)).filter((n) => n.startsWith('fonte.'));
@@ -143,8 +144,15 @@ export class VideoDownloaderService {
          * sobrevive aos deploys (cada versão vai para uma pasta nova) e executa.
          */
         const pasta = process.env.YT_DLP_DIR || join(homedir() || tmpdir(), '.pikpok-bin');
-        const nome = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-        const caminho = join(pasta, nome);
+        /*
+         * No Linux o asset chamado só `yt-dlp` é um SCRIPT Python (zipimport)
+         * que exige Python 3.9+ — o host tem 3.6 e ele morre num traceback.
+         * `yt-dlp_linux` é o binário standalone (PyInstaller), sem Python.
+         * O nome do arquivo local muda junto para não reaproveitar o script
+         * que uma versão anterior já tinha baixado.
+         */
+        const asset = assetDoYtDlp();
+        const caminho = join(pasta, asset);
         try {
           await access(caminho);
           await this.tornarExecutavel(caminho);
@@ -154,8 +162,7 @@ export class VideoDownloaderService {
         }
         try {
           await mkdir(pasta, { recursive: true });
-          const { default: YTDlpWrap } = await import('yt-dlp-wrap');
-          await YTDlpWrap.downloadFromGithub(caminho);
+          await baixarAsset(asset, caminho);
           await this.tornarExecutavel(caminho);
           this.logger.log(`yt-dlp baixado em ${caminho}`);
           return caminho;
@@ -202,4 +209,21 @@ function traduzirErro(error: unknown): string {
     return 'O vídeo passa do tamanho máximo (2 GB). Envie um arquivo menor.';
   }
   return 'Não consegui baixar o vídeo desse link. Tente outro ou envie o arquivo.';
+}
+
+/** Nome do asset da release do yt-dlp para esta plataforma/arquitetura. */
+function assetDoYtDlp(): string {
+  if (process.platform === 'win32') return 'yt-dlp.exe';
+  if (process.platform === 'darwin') return 'yt-dlp_macos';
+  return process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux';
+}
+
+/** Baixa um asset da release mais recente do yt-dlp (segue o redirect do GitHub). */
+async function baixarAsset(asset: string, destino: string): Promise<void> {
+  const url = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${asset}`;
+  const resposta = await fetch(url, { redirect: 'follow' });
+  if (!resposta.ok) {
+    throw new Error(`download do ${asset} falhou: HTTP ${resposta.status}`);
+  }
+  await writeFile(destino, Buffer.from(await resposta.arrayBuffer()));
 }
