@@ -9,6 +9,7 @@ import {
   VERSAO_DO_TERMO_AUTO,
   contemLinkOuMencao,
   contemPrecoLiteral,
+  ancoradaNaFaq,
   decidirResposta,
   ehAltoValor,
   ehListaNegra,
@@ -753,5 +754,33 @@ describe('sanitização da pergunta que vira base', () => {
 
   it('aguenta texto vazio sem explodir', () => {
     expect(sanitizarPerguntaDaBase('')).toBe('');
+  });
+});
+
+describe('ancoradaNaFaq', () => {
+  const faq = [
+    'e gravada e roda em loop e quem responde agora e o copiloto do pikpok',
+    'no painel nao toca no chat risco zero o automatico e opcional so no business',
+  ];
+
+  it('aceita a resposta que encurta uma resposta da FAQ', () => {
+    expect(ancoradaNaFaq('e gravada e roda em loop e o copiloto responde', faq)).toBe(true);
+  });
+
+  it('recusa a resposta que a FAQ nao diz', () => {
+    expect(ancoradaNaFaq('entrega em tres dias uteis para todo o brasil', faq)).toBe(false);
+  });
+
+  it('recusa resposta curta demais para ser evidencia', () => {
+    expect(ancoradaNaFaq('sim', faq)).toBe(false);
+  });
+
+  it('a ancora conta como fonte na decisao', () => {
+    expect(
+      decidirResposta({ confianca: 0.95, sourceProductIds: [], perguntaNormalizada: 'isso e live gravada', ancoradaNaFaq: true }),
+    ).toBe('enviar');
+    expect(
+      decidirResposta({ confianca: 0.95, sourceProductIds: [], perguntaNormalizada: 'isso e live gravada', ancoradaNaFaq: false }),
+    ).toBe('escalar');
   });
 });

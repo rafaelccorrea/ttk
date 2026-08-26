@@ -317,6 +317,34 @@ const PALAVRAS_INTERROGATIVAS = [
   'vem',
   'dura',
   'ainda',
+  /*
+   * Objeção também é pergunta — é a que mais decide compra. "tá caro", "é
+   * golpe", "não confio" chegam sem interrogação e sem palavra interrogativa,
+   * e ficavam de fora da triagem: a base tem respostas de tipo `objecao`
+   * exatamente para elas, e nunca eram acionadas.
+   */
+  'caro',
+  'barato',
+  'desconto',
+  'cupom',
+  'promocao',
+  'golpe',
+  'confio',
+  'confiavel',
+  'funciona',
+  'vale a pena',
+  'garantia',
+  'reembolso',
+  'cancelar',
+  'gratis',
+  'teste',
+  'pix',
+  'boleto',
+  'cartao',
+  'parcela',
+  'dificil',
+  'complicado',
+  'nao sei',
 ];
 
 /** Abaixo disto, sem interrogação e sem palavra-chave, é ruído garantido. */
@@ -365,6 +393,8 @@ interface BaseEmMemoria {
    * dentro do caminho quente do motor.
    */
   valoresPermitidos: Set<string>;
+  /** Respostas da FAQ, normalizadas — a âncora de `ancoradaNaFaq`. */
+  respostasFaq: string[];
   /** Quantas chamadas já foram feitas nesta run (o alerta de cache olha as primeiras). */
   chamadas: number;
   /** Último uso, em ms — é o que a varredura de ociosas olha para expulsar. */
@@ -447,15 +477,65 @@ export function ehListaNegra(textoNormalizado: string): boolean {
  * retrato da alucinação de preço, e nenhuma instrução de prompt segura isso tão
  * bem quanto recusar a resposta que não consegue apontar de onde veio.
  */
+/**
+ * Quanto das palavras da resposta já estava numa resposta da FAQ para ela
+ * contar como ANCORADA — isto é, como reprodução do que o vendedor escreveu,
+ * e não invenção do modelo.
+ *
+ * A medida é contenção (palavras da resposta que aparecem na FAQ ÷ palavras
+ * da resposta), não Jaccard: a resposta é quase sempre uma versão encurtada
+ * da FAQ, e Jaccard puniria justamente o encurtamento. 0,6 deixa o modelo
+ * reescrever um terço (conectivos, ordem, tom) sem soltar a âncora; abaixo
+ * disso ele está dizendo algo que a FAQ não diz.
+ */
+const CONTENCAO_MIN_NA_FAQ = 0.6;
+
+/** Palavras curtas demais para servir de evidência de que a frase é a mesma. */
+const MIN_LETRAS_DE_PALAVRA = 3;
+
+function palavrasDe(textoNormalizado: string): Set<string> {
+  return new Set(
+    textoNormalizado.split(' ').filter((p) => p.length >= MIN_LETRAS_DE_PALAVRA),
+  );
+}
+
+/**
+ * A resposta é, na prática, uma resposta da FAQ?
+ *
+ * Existe porque "resposta pronta exige fonte citada" e o modelo só cita
+ * `productIds` — e uma base com muita FAQ conceitual ("isso é live gravada?",
+ * "é seguro?") gerava respostas com 0,99 de confiança, copiadas da FAQ, que
+ * escalavam para o painel por não terem produto. A FAQ É fonte: o vendedor a
+ * escreveu. Casamento por palavras, não pelo modelo, para a âncora não
+ * depender de ele lembrar de citar.
+ */
+export function ancoradaNaFaq(
+  respostaNormalizada: string,
+  respostasFaqNormalizadas: readonly string[],
+): boolean {
+  const palavras = palavrasDe(respostaNormalizada);
+  if (palavras.size < 3) return false;
+  for (const faq of respostasFaqNormalizadas) {
+    const daFaq = palavrasDe(faq);
+    let comuns = 0;
+    for (const p of palavras) if (daFaq.has(p)) comuns += 1;
+    if (comuns / palavras.size >= CONTENCAO_MIN_NA_FAQ) return true;
+  }
+  return false;
+}
+
 export function decidirResposta(entrada: {
   confianca: number;
   sourceProductIds: string[];
   perguntaNormalizada: string;
+  /** A resposta reproduz uma resposta da FAQ — conta como fonte citada. */
+  ancoradaNaFaq?: boolean;
 }): LiveReplyDecision {
   const { confianca, sourceProductIds, perguntaNormalizada } = entrada;
   if (confianca < CONFIANCA_ESCALAR) return 'silenciar';
   if (ehListaNegra(perguntaNormalizada)) return 'escalar';
-  if (confianca >= CONFIANCA_ENVIAR && sourceProductIds.length > 0) {
+  const temFonte = sourceProductIds.length > 0 || entrada.ancoradaNaFaq === true;
+  if (confianca >= CONFIANCA_ENVIAR && temFonte) {
     return 'enviar';
   }
   return 'escalar';
@@ -1982,6 +2062,9 @@ export class LiveReplyService {
       confianca,
       sourceProductIds: fontes,
       perguntaNormalizada: normalizado,
+      ancoradaNaFaq:
+        fontes.length === 0 &&
+        ancoradaNaFaq(normalizarTexto(texto), base.respostasFaq),
     });
 
     // Marcador sobrando quer dizer preço que a base não confirma. Vai ao humano
@@ -2336,6 +2419,7 @@ export class LiveReplyService {
        * escreveu no frete, na promoção ou numa resposta de FAQ. É o que separa
        * "reproduziu o que está cadastrado" de "tirou um número do nada".
        */
+      respostasFaq: faq.map((f) => normalizarTexto(f.answer ?? '')).filter(Boolean),
       valoresPermitidos: valoresPermitidos({
         precos: produtos
           .map((p) => p.priceBrl)
