@@ -81,3 +81,7 @@ Custo quase zero, muda a percepção na hora.
 - Face tracking em CPU na Hostinger: medir custo; se pesar, rodar só em cortes escolhidos ou a 1 fps.
 - Publicação automática exige app aprovado no TikTok; começar o processo agora.
 - Banco em ca-central-1: novas telas de grade devem evitar N+1 (`banco-em-outro-continente`).
+
+## Andamento — 2026-08-26
+- ✅ Fase 0.1 score + "por que esse" · ✅ Fase 0.2 banner de resultado · ✅ Fase 1.1 import por URL (YouTube) · ✅ Fase 1.3 estilos de legenda (5) · ✅ Fase 1.4 reenquadramento por rosto (1 rosto; tela dividida fica pra depois). Detalhes e teste em `docs/PLANO-CORTES.md` ("Rodada ser melhor").
+- ⏳ Fase 0.3 e-mail ao concluir · Fase 1.2 slider "quanto analisar" · Fase 1.5 fila paralela · Fase 2 inteira.

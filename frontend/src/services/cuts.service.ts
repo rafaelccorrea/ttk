@@ -2,6 +2,9 @@ import { api } from './api';
 
 export type CutMode = 'rapido' | 'inteligente';
 export type CutFormat = '9:16' | '16:9' | '1:1';
+/** Espelho de `CAPTION_STYLES` / `REFRAME_MODES` no backend. */
+export type CaptionStyle = 'classico' | 'karaoke' | 'impacto' | 'minimal' | 'oferta';
+export type ReframeMode = 'rosto' | 'blur';
 export type CutJobStatus = 'pendente' | 'processando' | 'pronto' | 'falhou';
 export type CutClipStatus = 'pendente' | 'pronto' | 'falhou';
 
@@ -21,13 +24,32 @@ export interface CutJob {
   mode: CutMode;
   format: CutFormat;
   captions: boolean;
+  captionStyle: CaptionStyle;
+  reframe: ReframeMode;
   quantity: number;
   minSeconds: number;
   maxSeconds: number;
   sourceName: string;
+  sourceUrl: string | null;
   sourceDurationSeconds: number | null;
   error: string | null;
   createdAt: string;
+}
+
+/** O que este servidor oferece — decide se a aba de link e o "seguir rosto" aparecem. */
+export interface CutCapabilities {
+  urlImport: boolean;
+  faceTracking: boolean;
+}
+
+/** Prévia de um link antes de confirmar. */
+export interface InfoDoLink {
+  titulo: string;
+  duracaoSeg: number | null;
+  thumb: string | null;
+  plataforma: string;
+  cabe: boolean;
+  motivo: string | null;
 }
 
 export interface CutJobSummary extends CutJob {
@@ -43,6 +65,8 @@ export interface CutClip {
   title: string | null;
   hook: string | null;
   reason: string | null;
+  /** Nota 0–10 da IA (nula no modo rápido). */
+  score: number | null;
   origin: 'ia' | 'rapido';
   captions: boolean;
   url: string | null;
@@ -72,6 +96,8 @@ export interface CreateCutJobInput {
   maxSeconds: number;
   /** Queimar legenda (só no modo inteligente). */
   captions?: boolean;
+  captionStyle?: CaptionStyle;
+  reframe?: ReframeMode;
 }
 
 export type ClipRole = 'hook' | 'body' | 'cta';
@@ -116,12 +142,34 @@ export const cutsService = {
     form.append('minSeconds', String(input.minSeconds));
     form.append('maxSeconds', String(input.maxSeconds));
     form.append('captions', input.captions ? 'true' : 'false');
+    if (input.captionStyle) form.append('captionStyle', input.captionStyle);
+    if (input.reframe) form.append('reframe', input.reframe);
     const { data } = await api.post<CutJob>('/cuts', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (evento) => {
         if (!onProgress || !evento.total) return;
         onProgress(Math.round((evento.loaded / evento.total) * 100));
       },
+    });
+    return data;
+  },
+
+  async capabilities(): Promise<CutCapabilities> {
+    const { data } = await api.get<CutCapabilities>('/cuts/capabilities');
+    return data;
+  },
+
+  /** Prévia (título, duração, capa) de um link antes de gerar. */
+  async urlInfo(url: string): Promise<InfoDoLink> {
+    const { data } = await api.get<InfoDoLink>('/cuts/url-info', { params: { url } });
+    return data;
+  },
+
+  /** Job a partir de um link; o download acontece no servidor. */
+  async createFromUrl(input: CreateCutJobInput & { url: string }): Promise<CutJob> {
+    const { data } = await api.post<CutJob>('/cuts/from-url', {
+      ...input,
+      captions: Boolean(input.captions),
     });
     return data;
   },

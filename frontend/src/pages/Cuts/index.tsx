@@ -34,6 +34,8 @@ import PsychologyRoundedIcon from '@mui/icons-material/PsychologyRounded';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import SubtitlesRoundedIcon from '@mui/icons-material/SubtitlesRounded';
 import UploadRoundedIcon from '@mui/icons-material/UploadRounded';
+import LinkRoundedIcon from '@mui/icons-material/LinkRounded';
+import EmojiEventsRoundedIcon from '@mui/icons-material/EmojiEventsRounded';
 import { ChangeEvent, MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { GlobalLoader } from '@/components/ui/GlobalLoader';
@@ -48,6 +50,10 @@ import {
   CutJobSummary,
   CutMode,
   CutQuote,
+  CutCapabilities,
+  CaptionStyle,
+  InfoDoLink,
+  ReframeMode,
   cutsService,
   formatarTempo,
   lerDuracaoDoVideo,
@@ -79,6 +85,55 @@ const MODOS: Array<{
   },
 ];
 
+/**
+ * Perfis de legenda — espelho de `CAPTION_STYLES` no backend. O `preview` é
+ * só CSS imitando o que o libass desenha; a legenda de verdade é queimada no
+ * servidor, então o objetivo aqui é dar para escolher sem gerar.
+ */
+const ESTILOS_DE_LEGENDA: Array<{
+  id: CaptionStyle;
+  nome: string;
+  dica: string;
+  exemplo: string;
+  preview: Record<string, string | number>;
+}> = [
+  {
+    id: 'classico',
+    nome: 'Clássico',
+    dica: 'Branco com contorno preto. Funciona em qualquer fundo.',
+    exemplo: 'Olha só esse preço',
+    preview: { color: '#fff', fontWeight: 800, WebkitTextStroke: '0.6px #000', textShadow: '0 0 3px #000' },
+  },
+  {
+    id: 'karaoke',
+    nome: 'Karaokê',
+    dica: 'Cada palavra acende na hora em que é falada.',
+    exemplo: 'Olha só esse preço',
+    preview: { color: '#fff', fontWeight: 800, WebkitTextStroke: '0.6px #000', textShadow: '0 0 3px #000' },
+  },
+  {
+    id: 'impacto',
+    nome: 'Impacto',
+    dica: 'Caixa alta, amarelo, contorno grosso. Para gancho e reação.',
+    exemplo: 'OLHA SÓ ESSE PREÇO',
+    preview: { color: '#FFD500', fontWeight: 900, WebkitTextStroke: '0.8px #000', textShadow: '0 0 4px #000', letterSpacing: 0.5 },
+  },
+  {
+    id: 'minimal',
+    nome: 'Minimal',
+    dica: 'Letra menor numa tarja escura. Discreto, para conteúdo falado.',
+    exemplo: 'Olha só esse preço',
+    preview: { color: '#fff', fontWeight: 500, fontSize: 11, bgcolor: 'rgba(0,0,0,.6)', px: 0.75, py: 0.25, borderRadius: 0.5 },
+  },
+  {
+    id: 'oferta',
+    nome: 'Oferta',
+    dica: 'Caixa alta com o preço em destaque. Feito para vídeo de venda.',
+    exemplo: 'SÓ HOJE POR R$ 49,90',
+    preview: { color: '#fff', fontWeight: 900, WebkitTextStroke: '0.7px #000', textShadow: '0 0 4px #000' },
+  },
+];
+
 const STATUS_LABEL: Record<CutJobSummary['status'], string> = {
   pendente: 'Na fila',
   processando: 'Cortando…',
@@ -97,6 +152,17 @@ export function CutsPage() {
   const [faixa, setFaixa] = useState<[number, number]>([30, 60]);
   const [file, setFile] = useState<File | null>(null);
   const [duracao, setDuracao] = useState<number | null>(null);
+  // Fonte por arquivo ou por link — só um dos dois vale na hora de gerar.
+  const [origem, setOrigem] = useState<'arquivo' | 'link'>('arquivo');
+  const [url, setUrl] = useState('');
+  const [infoLink, setInfoLink] = useState<InfoDoLink | null>(null);
+  const [buscandoLink, setBuscandoLink] = useState(false);
+  const [captionStyle, setCaptionStyle] = useState<CaptionStyle>('classico');
+  const [reframe, setReframe] = useState<ReframeMode>('rosto');
+  const [capacidades, setCapacidades] = useState<CutCapabilities>({
+    urlImport: false,
+    faceTracking: false,
+  });
   const [quote, setQuote] = useState<CutQuote | null>(null);
   const [enviando, setEnviando] = useState(false);
   /*
@@ -125,17 +191,53 @@ export function CutsPage() {
     void carregarJobs();
   }, [carregarJobs]);
 
-  // Cotação: muda com o modo, a quantidade e a duração lida do arquivo.
+  // O que o servidor oferece (aba de link, seguir rosto) — uma vez.
+  useEffect(() => {
+    cutsService
+      .capabilities()
+      .then(setCapacidades)
+      .catch(() => undefined);
+  }, []);
+
+  // Duração da fonte escolhida: do arquivo (lida no navegador) ou do link.
+  const duracaoDaFonte = origem === 'link' ? (infoLink?.duracaoSeg ?? null) : duracao;
+
+  // Cotação: muda com o modo, a quantidade e a duração da fonte.
   useEffect(() => {
     let vivo = true;
     cutsService
-      .quote(mode, quantity, duracao ?? undefined)
+      .quote(mode, quantity, duracaoDaFonte ?? undefined)
       .then((q) => vivo && setQuote(q))
       .catch(() => vivo && setQuote(null));
     return () => {
       vivo = false;
     };
-  }, [mode, quantity, duracao]);
+  }, [mode, quantity, duracaoDaFonte]);
+
+  // Prévia do link, com atraso para não consultar a cada tecla.
+  useEffect(() => {
+    if (origem !== 'link') return;
+    const limpo = url.trim();
+    setInfoLink(null);
+    if (!/^https?:\/\/\S+$/i.test(limpo)) return;
+    let vivo = true;
+    setBuscandoLink(true);
+    const timer = setTimeout(() => {
+      cutsService
+        .urlInfo(limpo)
+        .then((info) => {
+          if (!vivo) return;
+          setInfoLink(info);
+          setErro(info.cabe ? null : info.motivo);
+        })
+        .catch((error) => vivo && setErro(mensagemDeErro(error)))
+        .finally(() => vivo && setBuscandoLink(false));
+    }, 600);
+    return () => {
+      vivo = false;
+      clearTimeout(timer);
+    };
+  }, [origem, url]);
 
   // Polling do job aberto enquanto ele processa; a lista acompanha.
   useEffect(() => {
@@ -169,7 +271,8 @@ export function CutsPage() {
     (duracao < LIMITES_DE_CORTE.fonteMinSeg || duracao > LIMITES_DE_CORTE.fonteMaxSeg);
 
   async function enviar() {
-    if (!file || !quote || enviandoRef.current) return;
+    const fontePronta = origem === 'link' ? Boolean(infoLink?.cabe) : Boolean(file);
+    if (!fontePronta || !quote || enviandoRef.current) return;
     enviandoRef.current = true;
     setEnviando(true);
     setErro(null);
@@ -187,20 +290,24 @@ export function CutsPage() {
       if (!autorizado) return;
 
       setProgresso(0);
-      const job = await cutsService.create(
-        {
-          mode,
-          format,
-          quantity,
-          minSeconds: faixa[0],
-          maxSeconds: faixa[1],
-          captions: mode === 'inteligente' && captions,
-        },
-        file,
-        setProgresso,
-      );
+      const pedido = {
+        mode,
+        format,
+        quantity,
+        minSeconds: faixa[0],
+        maxSeconds: faixa[1],
+        captions: mode === 'inteligente' && captions,
+        captionStyle,
+        reframe,
+      };
+      const job =
+        origem === 'link'
+          ? await cutsService.createFromUrl({ ...pedido, url: url.trim() })
+          : await cutsService.create(pedido, file as File, setProgresso);
       setFile(null);
       setDuracao(null);
+      setUrl('');
+      setInfoLink(null);
       await carregarJobs();
       setSelecionado(await cutsService.get(job.id));
     } catch (error) {
@@ -310,30 +417,94 @@ export function CutsPage() {
 
                 <Box>
                   <Typography variant="subtitle2" sx={{ mb: 1 }}>2. O vídeo</Typography>
-                  <input
-                    ref={inputRef}
-                    type="file"
-                    accept="video/*"
-                    hidden
-                    onChange={(e) => void escolherArquivo(e)}
-                  />
-                  <Button
-                    variant="outlined"
-                    startIcon={<UploadRoundedIcon />}
-                    onClick={() => inputRef.current?.click()}
-                    disabled={enviando}
-                    fullWidth
-                  >
-                    {file ? file.name : 'Escolher vídeo (mp4, mov, mkv, webm)'}
-                  </Button>
-                  {file && (
-                    <Typography variant="caption" color={duracaoFora ? 'error' : 'text.secondary'}>
-                      {duracao !== null
-                        ? `Duração: ${formatarTempo(duracao)}${duracaoFora ? ` — precisa ter entre ${LIMITES_DE_CORTE.fonteMinSeg / 60} e ${LIMITES_DE_CORTE.fonteMaxSeg / 60} min` : ''}`
-                        : 'Não consegui ler a duração aqui; o servidor confere ao processar.'}
-                      {' · '}
-                      {(file.size / 1024 / 1024).toFixed(0)} MB
-                    </Typography>
+                  {capacidades.urlImport && (
+                    <ToggleButtonGroup
+                      exclusive
+                      size="small"
+                      value={origem}
+                      onChange={(_, v: 'arquivo' | 'link' | null) => v && setOrigem(v)}
+                      sx={{ mb: 1.5 }}
+                    >
+                      <ToggleButton value="arquivo">
+                        <UploadRoundedIcon fontSize="small" sx={{ mr: 0.5 }} /> Enviar arquivo
+                      </ToggleButton>
+                      <ToggleButton value="link">
+                        <LinkRoundedIcon fontSize="small" sx={{ mr: 0.5 }} /> Link do YouTube
+                      </ToggleButton>
+                    </ToggleButtonGroup>
+                  )}
+                  {origem === 'arquivo' ? (
+                    <>
+                      <input
+                        ref={inputRef}
+                        type="file"
+                        accept="video/*"
+                        hidden
+                        onChange={(e) => void escolherArquivo(e)}
+                      />
+                      <Button
+                        variant="outlined"
+                        startIcon={<UploadRoundedIcon />}
+                        onClick={() => inputRef.current?.click()}
+                        disabled={enviando}
+                        fullWidth
+                      >
+                        {file ? file.name : 'Escolher vídeo (mp4, mov, mkv, webm)'}
+                      </Button>
+                      {file && (
+                        <Typography variant="caption" color={duracaoFora ? 'error' : 'text.secondary'}>
+                          {duracao !== null
+                            ? `Duração: ${formatarTempo(duracao)}${duracaoFora ? ` — precisa ter entre ${LIMITES_DE_CORTE.fonteMinSeg / 60} e ${LIMITES_DE_CORTE.fonteMaxSeg / 60} min` : ''}`
+                            : 'Não consegui ler a duração aqui; o servidor confere ao processar.'}
+                          {' · '}
+                          {(file.size / 1024 / 1024).toFixed(0)} MB
+                        </Typography>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        placeholder="https://www.youtube.com/watch?v=…"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        disabled={enviando}
+                        InputProps={{
+                          endAdornment: buscandoLink ? <CircularProgress size={16} /> : undefined,
+                        }}
+                        helperText="Vídeo público de 2 a 60 min. O download acontece no servidor."
+                      />
+                      {infoLink && (
+                        <Stack
+                          direction="row"
+                          spacing={1.25}
+                          alignItems="center"
+                          sx={{ mt: 1, p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}
+                        >
+                          {infoLink.thumb && (
+                            <Box
+                              component="img"
+                              src={infoLink.thumb}
+                              alt=""
+                              sx={{ width: 96, height: 54, objectFit: 'cover', borderRadius: 1, flexShrink: 0 }}
+                            />
+                          )}
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+                              {infoLink.titulo}
+                            </Typography>
+                            <Typography variant="caption" color={infoLink.cabe ? 'text.secondary' : 'error'}>
+                              {infoLink.duracaoSeg !== null
+                                ? `Duração: ${formatarTempo(infoLink.duracaoSeg)}`
+                                : 'Duração desconhecida'}
+                              {' · '}
+                              {infoLink.plataforma}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      )}
+                    </>
                   )}
                 </Box>
 
@@ -380,6 +551,29 @@ export function CutsPage() {
                       <ToggleButton value="1:1">1:1</ToggleButton>
                       <ToggleButton value="16:9">16:9</ToggleButton>
                     </ToggleButtonGroup>
+                    {format !== '16:9' && (
+                      <Box>
+                        <Typography variant="body2" sx={{ mb: 0.5 }}>
+                          Vídeo gravado na horizontal
+                        </Typography>
+                        <ToggleButtonGroup
+                          exclusive
+                          size="small"
+                          value={capacidades.faceTracking ? reframe : 'blur'}
+                          onChange={(_, v: ReframeMode | null) => v && setReframe(v)}
+                        >
+                          <ToggleButton value="rosto" disabled={!capacidades.faceTracking}>
+                            Seguir quem fala
+                          </ToggleButton>
+                          <ToggleButton value="blur">Vídeo inteiro + fundo desfocado</ToggleButton>
+                        </ToggleButtonGroup>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                          {reframe === 'rosto' && capacidades.faceTracking
+                            ? 'O corte acompanha o rosto de quem aparece. Se não achar rosto, usa o fundo desfocado.'
+                            : 'Nada é cortado: o vídeo fica centralizado sobre uma versão desfocada dele mesmo.'}
+                        </Typography>
+                      </Box>
+                    )}
                     {mode === 'inteligente' && (
                       <FormControlLabel
                         control={
@@ -394,6 +588,74 @@ export function CutsPage() {
                           </Box>
                         }
                       />
+                    )}
+                    {mode === 'inteligente' && captions && (
+                      <Box>
+                        <Typography variant="body2" sx={{ mb: 0.75 }}>
+                          Estilo da legenda
+                        </Typography>
+                        <Grid container spacing={1}>
+                          {ESTILOS_DE_LEGENDA.map((e) => {
+                            const ativo = captionStyle === e.id;
+                            return (
+                              <Grid item xs={6} sm={4} key={e.id}>
+                                <Tooltip title={e.dica}>
+                                  <Box
+                                    onClick={() => setCaptionStyle(e.id)}
+                                    sx={{
+                                      cursor: 'pointer',
+                                      border: '2px solid',
+                                      borderColor: ativo ? 'primary.main' : 'divider',
+                                      borderRadius: 1.5,
+                                      overflow: 'hidden',
+                                    }}
+                                  >
+                                    <Box
+                                      sx={{
+                                        height: 56,
+                                        display: 'grid',
+                                        placeItems: 'center',
+                                        px: 1,
+                                        background:
+                                          'linear-gradient(135deg, #3a3f63 0%, #6b4a7a 60%, #2a4a5c 100%)',
+                                      }}
+                                    >
+                                      <Box
+                                        sx={{
+                                          fontSize: 12,
+                                          lineHeight: 1.15,
+                                          textAlign: 'center',
+                                          fontFamily: '"DejaVu Sans", Arial, sans-serif',
+                                          ...e.preview,
+                                        }}
+                                      >
+                                        {e.id === 'karaoke' ? (
+                                          <>
+                                            Olha <Box component="span" sx={{ color: '#FFD500' }}>só</Box> esse preço
+                                          </>
+                                        ) : e.id === 'oferta' ? (
+                                          <>
+                                            SÓ HOJE POR{' '}
+                                            <Box component="span" sx={{ color: '#FFD500' }}>R$ 49,90</Box>
+                                          </>
+                                        ) : (
+                                          e.exemplo
+                                        )}
+                                      </Box>
+                                    </Box>
+                                    <Typography
+                                      variant="caption"
+                                      sx={{ display: 'block', textAlign: 'center', py: 0.5, fontWeight: ativo ? 700 : 500 }}
+                                    >
+                                      {e.nome}
+                                    </Typography>
+                                  </Box>
+                                </Tooltip>
+                              </Grid>
+                            );
+                          })}
+                        </Grid>
+                      </Box>
                     )}
                   </Stack>
                 </Box>
@@ -424,7 +686,11 @@ export function CutsPage() {
                   startIcon={
                     enviando ? <CircularProgress size={18} color="inherit" /> : <ContentCutRoundedIcon />
                   }
-                  disabled={!file || duracaoFora || enviando || !quote}
+                  disabled={
+                    (origem === 'link' ? !infoLink?.cabe : !file || duracaoFora) ||
+                    enviando ||
+                    !quote
+                  }
                   onClick={() => void enviar()}
                 >
                   {enviando
@@ -512,6 +778,14 @@ export function CutsPage() {
 
 function DetalheDoJob({ job }: { job: CutJobDetail }) {
   const prontos = job.clips.filter((c) => c.status === 'pronto').length;
+  // Melhor primeiro quando há nota (modo inteligente); senão a ordem da fonte.
+  const ordenados = [...job.clips].sort(
+    (a, b) => (b.score ?? -1) - (a.score ?? -1) || a.position - b.position,
+  );
+  const melhor =
+    job.status === 'pronto'
+      ? (ordenados.find((c) => c.status === 'pronto' && c.score !== null) ?? null)
+      : null;
   return (
     <Card>
       <CardContent>
@@ -534,10 +808,24 @@ function DetalheDoJob({ job }: { job: CutJobDetail }) {
         )}
         {job.status === 'processando' && <LoaderDoJob job={job} />}
 
+        {job.status === 'pronto' && prontos > 0 && (
+          <Alert
+            severity="success"
+            icon={<EmojiEventsRoundedIcon fontSize="inherit" />}
+            sx={{ mb: 2 }}
+          >
+            Encontramos {prontos} {prontos === 1 ? 'corte' : 'cortes'}
+            {melhor?.score !== null && melhor?.score !== undefined
+              ? ` — o melhor é o #${melhor.position} (nota ${melhor.score}/10)`
+              : ''}
+            {melhor?.reason ? `: ${melhor.reason}` : '.'}
+          </Alert>
+        )}
+
         <Grid container spacing={2}>
-          {job.clips.map((c) => (
+          {ordenados.map((c) => (
             <Grid item xs={12} sm={6} key={c.id}>
-              <CardDoCorte clip={c} job={job} />
+              <CardDoCorte clip={c} job={job} melhor={melhor?.id === c.id} />
             </Grid>
           ))}
         </Grid>
@@ -583,7 +871,16 @@ function LoaderDoJob({ job }: { job: CutJobDetail }) {
   );
 }
 
-function CardDoCorte({ clip, job }: { clip: CutClip; job: CutJobDetail }) {
+function CardDoCorte({
+  clip,
+  job,
+  melhor = false,
+}: {
+  clip: CutClip;
+  job: CutJobDetail;
+  /** Destaque visual do corte com a maior nota do job. */
+  melhor?: boolean;
+}) {
   const [copiado, setCopiado] = useState(false);
   const [menu, setMenu] = useState<HTMLElement | null>(null);
   const [enviando, setEnviando] = useState<ClipRole | null>(null);
@@ -666,7 +963,13 @@ function CardDoCorte({ clip, job }: { clip: CutClip; job: CutJobDetail }) {
           </Typography>
           {clip.origin === 'ia' && (
             <Tooltip title={clip.reason ?? 'Escolhido pela IA'}>
-              <Chip size="small" variant="outlined" icon={<AutoAwesomeRoundedIcon />} label="IA" />
+              <Chip
+                size="small"
+                variant={melhor ? 'filled' : 'outlined'}
+                color={melhor ? 'success' : 'default'}
+                icon={melhor ? <EmojiEventsRoundedIcon /> : <AutoAwesomeRoundedIcon />}
+                label={clip.score !== null ? `${melhor ? 'Melhor · ' : ''}${clip.score}/10` : 'IA'}
+              />
             </Tooltip>
           )}
           {clip.captions && (
@@ -737,6 +1040,11 @@ function CardDoCorte({ clip, job }: { clip: CutClip; job: CutJobDetail }) {
         {clip.hook && (
           <Typography variant="body2" color="text.secondary">
             {clip.hook}
+          </Typography>
+        )}
+        {clip.reason && (
+          <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'success.main' }}>
+            Por que esse: {clip.reason}
           </Typography>
         )}
         {legenda && (

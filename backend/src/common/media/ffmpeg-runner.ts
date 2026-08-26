@@ -405,6 +405,22 @@ export class FfmpegRunner {
   }
 
   /** Duração do arquivo em segundos, ou `null` quando não der para ler. */
+  /**
+   * Largura × altura do primeiro stream de vídeo, já corrigidas pela rotação
+   * dos metadados (celular grava "deitado" e marca rotate=90: o arquivo diz
+   * 1920×1080, mas o que se vê é 1080×1920).
+   */
+  async dimensoes(arquivo: string): Promise<{ largura: number; altura: number } | null> {
+    const saida = await this.inspecionar(arquivo);
+    const m = /Stream #\d+:\d+.*Video:.*?\s(\d{2,5})x(\d{2,5})[\s,]/.exec(saida);
+    if (!m) return null;
+    let largura = Number(m[1]);
+    let altura = Number(m[2]);
+    const rot = /rotate\s*:\s*(-?\d+)/i.exec(saida) ?? /displaymatrix:.*?(-?\d+)\.\d+ degrees/i.exec(saida);
+    if (rot && Math.abs(Number(rot[1])) % 180 === 90) [largura, altura] = [altura, largura];
+    return { largura, altura };
+  }
+
   async duracao(arquivo: string): Promise<number | null> {
     const saida = await this.inspecionar(arquivo);
     const m = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(saida);

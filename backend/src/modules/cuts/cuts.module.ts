@@ -12,6 +12,8 @@ import { CutsController } from './cuts.controller';
 import { CutsService } from './cuts.service';
 import { CutClip } from './entities/cut-clip.entity';
 import { CutJob } from './entities/cut-job.entity';
+import { FaceTrackerService } from './face-tracker.service';
+import { VideoDownloaderService } from './video-downloader.service';
 
 @Module({
   imports: [
@@ -28,6 +30,15 @@ import { CutJob } from './entities/cut-job.entity';
   ],
   controllers: [CutsController],
   // Chunker e transcrição não têm estado: instância própria, como no LiveModule.
-  providers: [CutsService, FfmpegRunner, AudioChunkerService, TranscriptionService],
+  providers: [
+    CutsService,
+    FfmpegRunner,
+    AudioChunkerService,
+    TranscriptionService,
+    // Rosto (BlazeFace) e download por link (yt-dlp): os dois degradam
+    // sozinhos — sem modelo/binário o corte sai como antes, nunca falha.
+    FaceTrackerService,
+    VideoDownloaderService,
+  ],
 })
 export class CutsModule {}

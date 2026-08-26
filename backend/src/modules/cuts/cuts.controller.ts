@@ -26,7 +26,7 @@ import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { PlanFeatureGuard, RequiresPlanFeature } from '../billing/plan-feature.guard';
 import { CutsService } from './cuts.service';
-import { CreateCutJobDto } from './dto/create-cut-job.dto';
+import { CreateCutJobDto, CreateCutJobFromUrlDto } from './dto/create-cut-job.dto';
 import { LIMITES } from './cut-planner';
 
 /** Mesmo teto do Live Copilot: 60 min em 1080p cabem com folga. */
@@ -48,6 +48,27 @@ mkdirSync(PASTA_DE_UPLOAD, { recursive: true });
 @Controller('cuts')
 export class CutsController {
   constructor(private readonly cuts: CutsService) {}
+
+  @Get('capabilities')
+  @ApiOperation({ summary: 'O que este servidor oferece (import por link, seguir rosto)' })
+  capabilities() {
+    return this.cuts.capacidades();
+  }
+
+  @Get('url-info')
+  @ApiOperation({ summary: 'Título, duração e capa de um link antes de confirmar' })
+  urlInfo(@Query('url') url?: string) {
+    if (!url || !/^https?:\/\//i.test(url)) {
+      throw new BadRequestException('Cole o link completo do vídeo (começando com https://).');
+    }
+    return this.cuts.inspecionarLink(url.trim());
+  }
+
+  @Post('from-url')
+  @ApiOperation({ summary: 'Cria o job a partir de um link (YouTube); baixa no pipeline' })
+  createFromUrl(@CurrentUser() user: AuthUser, @Body() dto: CreateCutJobFromUrlDto) {
+    return this.cuts.criarPorUrl(user.id, dto);
+  }
 
   @Get('quote')
   @ApiOperation({ summary: 'Estimativa de créditos antes de enviar o vídeo' })

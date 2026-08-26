@@ -7,10 +7,11 @@ import {
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DataSource, LessThan, Repository } from 'typeorm';
-import { FfmpegRunner } from '../../common/media/ffmpeg-runner';
+import { FfmpegRunner, OpcoesDeCorte, PontoDeRosto } from '../../common/media/ffmpeg-runner';
 import {
   ACTION_PRICES,
   BillableAction,
@@ -37,7 +38,9 @@ import {
 } from './cut-planner';
 import { CutClip } from './entities/cut-clip.entity';
 import { CutJob } from './entities/cut-job.entity';
-import { CreateCutJobDto } from './dto/create-cut-job.dto';
+import { CreateCutJobDto, CreateCutJobFromUrlDto } from './dto/create-cut-job.dto';
+import { FaceTrackerService } from './face-tracker.service';
+import { VideoDownloaderService } from './video-downloader.service';
 
 /**
  * Um job de cortes por vez neste processo.
@@ -60,6 +63,9 @@ const SEGUNDOS_POR_FATIA = 900;
 
 const PREFIXO_S3 = 'cuts';
 
+/** Mesmo teto do upload (2 GB): um link não pode trazer mais do que um arquivo. */
+const MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+
 @Injectable()
 export class CutsService {
   private readonly logger = new Logger(CutsService.name);
@@ -77,7 +83,17 @@ export class CutsService {
     private readonly ai: AiService,
     private readonly mirror: MediaMirrorService,
     private readonly combinations: CombinationsService,
+    private readonly faces: FaceTrackerService,
+    private readonly downloader: VideoDownloaderService,
   ) {}
+
+  /** O que a tela precisa saber antes de mostrar opções (aba de link, rosto). */
+  capacidades() {
+    return {
+      urlImport: this.downloader.enabled,
+      faceTracking: this.faces.enabled,
+    };
+  }
 
   // ----------------------------------------------------------------- cotação
 
@@ -169,6 +185,55 @@ export class CutsService {
       if (!caminho || !file.size) {
         throw new BadRequestException('Envie o vídeo que você quer cortar.');
       }
+      await this.validarPedido(userId, dto);
+      return await this.abrirJob(userId, dto, {
+        sourceName: (file.originalname || 'video.mp4').slice(0, 255),
+        sourcePath: caminho,
+        sourceUrl: null,
+      });
+    } catch (error) {
+      if (caminho) await unlink(caminho).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /** O que a tela mostra antes de confirmar um link: título, duração, capa e se cabe. */
+  async inspecionarLink(url: string) {
+    if (!this.downloader.enabled) {
+      throw new BadRequestException('Importar por link está desligado neste servidor.');
+    }
+    const info = await this.downloader.inspecionar(url);
+    const dur = info.duracaoSeg;
+    const cabe = dur === null || (dur >= LIMITES.fonteMinSeg && dur <= LIMITES.fonteMaxSeg);
+    return {
+      ...info,
+      cabe,
+      motivo: cabe
+        ? null
+        : `O vídeo tem ${formatarDuracao(dur as number)}; os cortes aceitam de ${LIMITES.fonteMinSeg / 60} a ${LIMITES.fonteMaxSeg / 60} minutos.`,
+    };
+  }
+
+  /**
+   * Job a partir de um link. Responde na hora; o download acontece no
+   * pipeline (o loader mostra "Carregando seu vídeo" enquanto isso). A
+   * duração informada pelo site é conferida aqui para não abrir job de 3 h;
+   * a medida de verdade continua sendo a do ffmpeg, depois do download.
+   */
+  async criarPorUrl(userId: string, dto: CreateCutJobFromUrlDto) {
+    await this.validarPedido(userId, dto);
+    const info = await this.inspecionarLink(dto.url);
+    if (!info.cabe) throw new BadRequestException(info.motivo as string);
+    return this.abrirJob(userId, dto, {
+      sourceName: info.titulo || 'video',
+      sourcePath: null,
+      sourceUrl: dto.url,
+    });
+  }
+
+  /** Regras comuns a upload e link — tudo o que pode ser recusado antes de gastar disco. */
+  private async validarPedido(userId: string, dto: CreateCutJobDto): Promise<void> {
+    {
       if (dto.minSeconds > dto.maxSeconds) {
         throw new BadRequestException('A duração mínima do corte não pode passar da máxima.');
       }
@@ -213,40 +278,48 @@ export class CutsService {
           ? [{ action: 'transcribe' as BillableAction, quantidade: 1 }]
           : []),
       ]);
-
-      const job = await this.jobs.save(
-        this.jobs.create({
-          userId,
-          status: 'processando',
-          mode: dto.mode,
-          format: dto.format ?? '9:16',
-          // Legenda vem da transcrição; sem ela (modo rápido) não há o que queimar.
-          captions: dto.mode === 'inteligente' && Boolean(dto.captions),
-          quantity: dto.quantity,
-          minSeconds: dto.minSeconds,
-          maxSeconds: dto.maxSeconds,
-          sourceName: (file.originalname || 'video.mp4').slice(0, 255),
-          sourcePath: caminho,
-          processingStartedAt: new Date(),
-        }),
-      );
-
-      this.emAndamento.add(job.id);
-      void this.executar(job).catch((error) => {
-        this.logger.error(`Pipeline de cortes ${job.id} falhou: ${error}`);
-      });
-      return this.publico(job);
-    } catch (error) {
-      if (caminho) await unlink(caminho).catch(() => undefined);
-      throw error;
     }
+  }
+
+  private async abrirJob(
+    userId: string,
+    dto: CreateCutJobDto,
+    fonte: { sourceName: string; sourcePath: string | null; sourceUrl: string | null },
+  ) {
+    const job = await this.jobs.save(
+      this.jobs.create({
+        userId,
+        status: 'processando',
+        mode: dto.mode,
+        format: dto.format ?? '9:16',
+        // Legenda vem da transcrição; sem ela (modo rápido) não há o que queimar.
+        captions: dto.mode === 'inteligente' && Boolean(dto.captions),
+        captionStyle: dto.captionStyle ?? 'classico',
+        reframe: dto.reframe ?? 'rosto',
+        quantity: dto.quantity,
+        minSeconds: dto.minSeconds,
+        maxSeconds: dto.maxSeconds,
+        sourceName: fonte.sourceName.slice(0, 255),
+        sourcePath: fonte.sourcePath,
+        sourceUrl: fonte.sourceUrl,
+        processingStartedAt: new Date(),
+      }),
+    );
+
+    this.emAndamento.add(job.id);
+    void this.executar(job).catch((error) => {
+      this.logger.error(`Pipeline de cortes ${job.id} falhou: ${error}`);
+    });
+    return this.publico(job);
   }
 
   // ----------------------------------------------------------------- pipeline
 
   private async executar(job: CutJob): Promise<void> {
     const { id, userId } = job;
-    const fonte = job.sourcePath as string;
+    let fonte = job.sourcePath as string;
+    // Pasta própria quando a fonte vem por link — apagada inteira no fim.
+    let pastaDoDownload: string | null = null;
     const batimento = setInterval(() => {
       void this.jobs
         .update({ id }, { processingStartedAt: new Date() })
@@ -254,6 +327,17 @@ export class CutsService {
     }, INTERVALO_DE_BATIMENTO_MS);
 
     try {
+      // 0. Fonte por link: baixa primeiro. O batimento já está rodando, então
+      // um download de 20 min não vira "job travado" para o cron.
+      if (!fonte && job.sourceUrl) {
+        pastaDoDownload = join(tmpdir(), 'pikpok-cuts-uploads', id);
+        await mkdir(pastaDoDownload, { recursive: true });
+        fonte = await this.downloader.baixar(job.sourceUrl, pastaDoDownload, MAX_DOWNLOAD_BYTES);
+        job.sourcePath = fonte;
+        await this.jobs.update({ id }, { sourcePath: fonte });
+      }
+      if (!fonte) throw new Error('Este job não tem vídeo de origem.');
+
       // 1. O arquivo é vídeo mesmo? Quanto dura?
       const streams = await this.ffmpeg.streamsDe(fonte);
       if (!streams.sondou) {
@@ -337,6 +421,7 @@ export class CutsService {
             title: t.title,
             hook: t.hook,
             reason: t.reason,
+            score: t.score,
             origin: t.origem,
             status: 'pendente',
           }),
@@ -346,10 +431,36 @@ export class CutsService {
       // 4. Corta, um por vez, e sobe cada um assim que sai — a tela vê o
       // progresso e uma falha isolada não derruba o resto.
       let prontos = 0;
+      /*
+       * Seguir o rosto só faz sentido quando a fonte é mais larga que o
+       * formato pedido (16:9 → 9:16 ou 1:1); numa fonte já vertical o
+       * enquadramento sem crop é igual e não vale a análise.
+       */
+      const seguirRosto =
+        job.reframe === 'rosto' &&
+        job.format !== '16:9' &&
+        this.faces.enabled &&
+        (await this.fonteMaisLargaQue(fonte, job.format as CutFormat));
       await this.ffmpeg.comTmp('pikpok-cuts-', async (pasta) => {
         for (const clip of registros) {
           const saida = join(pasta, `${clip.position}.mp4`);
           try {
+            let rosto: PontoDeRosto[] | undefined;
+            if (seguirRosto) {
+              try {
+                rosto =
+                  (await this.faces.rastrear(
+                    fonte,
+                    clip.startSeconds,
+                    clip.endSeconds - clip.startSeconds,
+                  )) ?? undefined;
+              } catch (error) {
+                this.logger.warn(
+                  `Rastreio de rosto do corte ${clip.position} (job ${id}) falhou; usando fundo desfocado: ${error}`,
+                );
+              }
+            }
+            const opcoes: OpcoesDeCorte = { estilo: job.captionStyle, rosto };
             /*
              * Legenda queimada é tentativa, não promessa: o filtro `subtitles`
              * depende do libass e de uma fonte no servidor, e o host
@@ -358,7 +469,9 @@ export class CutsService {
              * que aconteceu de verdade.
              */
             let comLegenda = false;
-            const srt = job.captions ? srtDoTrecho(fala, clip.startSeconds, clip.endSeconds) : '';
+            const srt = job.captions
+              ? srtDoTrecho(fala, clip.startSeconds, clip.endSeconds, job.captionStyle)
+              : '';
             if (srt) {
               const srtPath = join(pasta, `${clip.position}.srt`);
               await writeFile(srtPath, srt, 'utf8');
@@ -371,6 +484,7 @@ export class CutsService {
                   job.format as CutFormat,
                   TIMEOUT_POR_CORTE_MS,
                   srtPath,
+                  opcoes,
                 );
                 comLegenda = true;
               } catch (error) {
@@ -389,6 +503,8 @@ export class CutsService {
                 clip.endSeconds,
                 job.format as CutFormat,
                 TIMEOUT_POR_CORTE_MS,
+                undefined,
+                opcoes,
               );
             }
             const buffer = await readFile(saida);
@@ -435,9 +551,18 @@ export class CutsService {
     } finally {
       clearInterval(batimento);
       this.emAndamento.delete(id);
-      await unlink(fonte).catch(() => undefined);
+      if (fonte) await unlink(fonte).catch(() => undefined);
+      if (pastaDoDownload) await rm(pastaDoDownload, { recursive: true, force: true }).catch(() => undefined);
       await this.jobs.update({ id }, { sourcePath: null }).catch(() => undefined);
     }
+  }
+
+  /** A fonte é mais larga que o formato pedido? (É quando o crop/rosto tem efeito.) */
+  private async fonteMaisLargaQue(fonte: string, formato: CutFormat): Promise<boolean> {
+    const dim = await this.ffmpeg.dimensoes(fonte).catch(() => null);
+    if (!dim || !dim.altura) return false;
+    const alvo = formato === '1:1' ? 1 : 9 / 16;
+    return dim.largura / dim.altura > alvo + 0.05;
   }
 
   /**
@@ -454,17 +579,20 @@ export class CutsService {
       job.sourceName,
       async ({ audioPath, pasta }) => {
         const fatias = await this.chunker.fatiar(audioPath, pasta, SEGUNDOS_POR_FATIA);
-        const todos: Array<{ inicio: number; fim: number; texto: string }> = [];
+        const todos: SegmentoDeFala[] = [];
         let offset = 0;
         let contexto = '';
+        // Palavras com tempo só quando a legenda karaokê vai usá-las.
+        const querPalavras = job.captions && job.captionStyle === 'karaoke';
         for (let i = 0; i < fatias.length; i += 1) {
           const conteudo = await readFile(fatias[i].caminho);
-          const { segments, transcript } = await this.transcricao.transcribeBuffer(
+          const { segments, transcript, words } = await this.transcricao.transcribeBuffer(
             conteudo,
             `fatia-${String(i).padStart(3, '0')}.ogg`,
             {
               mimetype: 'audio/ogg',
               verboseTimestamps: true,
+              wordTimestamps: querPalavras,
               prompt: contexto || undefined,
               durationSeconds: fatias[i].duracaoSec ?? undefined,
               userId: job.userId,
@@ -472,7 +600,23 @@ export class CutsService {
           );
           for (const s of segments ?? []) {
             if (!s.text) continue;
-            todos.push({ inicio: offset + s.start, fim: offset + s.end, texto: s.text });
+            const seg: SegmentoDeFala = {
+              inicio: offset + s.start,
+              fim: offset + s.end,
+              texto: s.text,
+            };
+            if (words?.length) {
+              // As palavras do segmento são as que caem dentro do tempo dele.
+              const dentro = words.filter((w) => w.start >= s.start - 0.05 && w.end <= s.end + 0.05);
+              if (dentro.length) {
+                seg.palavras = dentro.map((w) => ({
+                  inicio: offset + w.start,
+                  fim: offset + w.end,
+                  texto: w.word,
+                }));
+              }
+            }
+            todos.push(seg);
           }
           offset += fatias[i].duracaoSec ?? 0;
           contexto = transcript.slice(-300);

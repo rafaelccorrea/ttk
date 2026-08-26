@@ -146,3 +146,24 @@ Componente: `frontend/src/components/ui/GlobalLoader.tsx` — variante `completo
 2. **Legenda tapando o vídeo** (`srtDoTrecho`): um segmento do Whisper (frase inteira) virava um bloco de 6–8 linhas. Agora cada segmento é fatiado em cues de até 2 linhas × 26 caracteres, com o tempo repartido em proporção ao texto. Teste: job inteligente com legenda — nenhum cue pode ter mais de duas linhas.
 3. **"Gerar cortes" clicável várias vezes** (`pages/Cuts`): a trava era só o estado `enviando`, ligado depois do diálogo de gasto; cliques nesse intervalo criavam jobs (e cobranças) repetidos. Agora trava síncrona por `ref` no primeiro clique, botão desabilitado com spinner e "Enviando…". Teste: clicar 5× rápido — um único job.
 4. **Apagar sem confirmação**: o ícone de lixeira agora abre o `ConfirmDialog` destrutivo ("Apagar este vídeo e os cortes?").
+
+## Rodada "ser melhor" — 2026-08-26 (Fase 0 + Fase 1 do ROADMAP-CORTES-SER-MELHOR)
+
+Migration `1786671400000-CutsScoreStyleReframeUrl` (roda sozinha em prod: `migrationsRun`).
+
+1. **Score + "Por que esse"** (`ai.service.ts#escolherCortes`, `cut-planner.ts#validarSugestoes`, `cut_clips.score`). A IA devolve `score` 0–10 por trecho (saneado: NaN → nulo, >10 → 10). A grade ordena pelo melhor, o card mostra `8/10` (troféu no melhor) e "Por que esse: …"; banner "Encontramos N cortes — o melhor é o #k (nota x/10)". Modo rápido: sem nota, ordem da fonte.
+2. **Estilos de legenda** (`cut_jobs.captionStyle`; `ffmpeg-runner.ts#estiloDeLegenda`; `cut-planner.ts#srtDoTrecho`): `classico`, `karaoke` (palavra ativa em amarelo — Whisper com `timestamp_granularities=word`, mesmo custo), `impacto` (caixa alta amarela), `minimal` (tarja escura, BorderStyle=3), `oferta` (caixa alta + preço/percentual em destaque via `<font color>` no SRT). Seletor com prévia CSS na tela, só com legenda ligada.
+3. **Import por URL** (`video-downloader.service.ts`, `GET /cuts/url-info`, `POST /cuts/from-url`, `cut_jobs.sourceUrl`): yt-dlp baixado do GitHub no primeiro uso para `YT_DLP_DIR` (ou `YT_DLP_PATH` fixo). Prévia com título/duração/capa e checagem de 2–60 min antes de abrir o job; o download acontece no pipeline (batimento já rodando → cron não mata). Formato `bv*[height<=1080]+ba` mesclado pelo nosso ffmpeg. Não usa `getVideoInfo` do wrapper (força `-f best`, que o YouTube não tem mais). `CUTS_URL_IMPORT=0` esconde a aba.
+4. **Seguir o rosto** (`face-tracker.service.ts`, `cut_jobs.reframe`, `ffmpeg-runner.ts#enquadrarNoRosto`): BlazeFace via `@tensorflow/tfjs` puro (CPU, sem binário nativo; modelo ~400 KB do TF Hub, cacheado em memória). 1 quadro/s em 320 px → centro do maior rosto → preenche buracos + média móvel de 5 + zona morta de 4% → `crop` animado com interpolação linear em `t`. Só age quando a fonte é mais larga que o formato (`dimensoes()`, corrigida por `rotate`). Sem rosto em ≥ 50% dos quadros, sem modelo ou sem rede → fundo desfocado. `CUTS_FACE_TRACKING=0` desliga; `CUTS_FACE_MODEL_URL` aponta outro modelo.
+
+### Como testar
+- **Score**: job inteligente → cards ordenados por nota, troféu no melhor, banner verde; passar o mouse no chip mostra o motivo.
+- **Karaokê**: job inteligente + legenda + "Karaokê" → palavra amarela acompanhando a fala. Se o Whisper não devolver palavras, sai como Clássico (sem erro).
+- **Oferta**: falar "por quarenta e nove reais" não destaca (é texto); "R$ 49,90" / "49 reais" / "30%" destacam.
+- **Link**: colar link do YouTube → prévia em ~1 s; vídeo < 2 min ou > 60 min bloqueia o botão com o motivo; live em andamento é recusada. Loader mostra "Carregando seu vídeo" durante o download.
+- **Rosto**: vídeo 16:9 com apresentador andando → o 9:16 acompanha; vídeo de tela (sem rosto) → fundo desfocado (log "Rosto em N/M quadros"). 16:9 → 16:9 não analisa nada.
+- **Degradação**: sem internet no servidor, BlazeFace e yt-dlp falham no primeiro uso e o log avisa; `GET /cuts/capabilities` reflete só as envs (não o resultado do download) — a aba de link aparece e o erro vem na hora de usar.
+
+### Custo / risco
+- Rastreio de rosto: ~1–2 s de CPU por corte de 60 s (tfjs CPU) + o modelo carregado uma vez (~2 s). Roda dentro da fila do ffmpeg? **Não** — a detecção é JS; só a amostragem de quadros passa pelo ffmpeg.
+- YouTube pode bloquear IP de datacenter ("Sign in to confirm you're not a bot"). Se acontecer em prod, o fallback é upload; cookies não foram implementados de propósito.

@@ -59,7 +59,16 @@ describe('cut-planner — modo rápido', () => {
 describe('cut-planner — sugestões da IA', () => {
   it('aceita trechos válidos com título e gancho', () => {
     const aceitos = validarSugestoes(
-      [{ inicio: 10, fim: 50, titulo: ' Preço  imbatível ', gancho: 'Olha isso', motivo: 'oferta' }],
+      [
+        {
+          inicio: 10,
+          fim: 50,
+          titulo: ' Preço  imbatível ',
+          gancho: 'Olha isso',
+          motivo: 'oferta',
+          score: 8.6,
+        },
+      ],
       600,
       5,
       30,
@@ -72,9 +81,24 @@ describe('cut-planner — sugestões da IA', () => {
         title: 'Preço imbatível',
         hook: 'Olha isso',
         reason: 'oferta',
+        score: 9,
         origem: 'ia',
       },
     ]);
+  });
+
+  it('nota fora do esperado vira nula ou é presa a 0–10', () => {
+    const aceitos = validarSugestoes(
+      [
+        { inicio: 10, fim: 50, titulo: 'a', gancho: 'b', motivo: 'c', score: 'alto' },
+        { inicio: 100, fim: 140, titulo: 'a', gancho: 'b', motivo: 'c', score: 42 },
+      ],
+      600,
+      5,
+      30,
+      60,
+    );
+    expect(aceitos.map((a) => a.score)).toEqual([null, 10]);
   });
 
   it('descarta trecho fora da fonte, invertido, fora da faixa ou sobreposto', () => {
@@ -194,5 +218,45 @@ describe('cut-planner — complemento nos espaços livres', () => {
   it('espacosLivres funde trechos sobrepostos e recorta nas bordas', () => {
     expect(espacosLivres(100, [{ inicio: -5, fim: 10 }, { inicio: 5, fim: 20 }, { inicio: 90, fim: 120 }]))
       .toEqual([{ inicio: 20, fim: 90 }]);
+  });
+});
+
+describe('cut-planner — estilos de legenda', () => {
+  it('karaokê: um cue por palavra, com a palavra ativa em destaque', () => {
+    const seg = [
+      {
+        inicio: 0,
+        fim: 2,
+        texto: 'olha esse preço',
+        palavras: [
+          { inicio: 0, fim: 0.5, texto: 'olha' },
+          { inicio: 0.5, fim: 1.2, texto: 'esse' },
+          { inicio: 1.2, fim: 2, texto: 'preço' },
+        ],
+      },
+    ];
+    const srt = srtDoTrecho(seg, 0, 10, 'karaoke');
+    const blocos = srt.trim().split('\n\n');
+    expect(blocos).toHaveLength(3);
+    expect(blocos[0]).toContain('<font color="#FFD500">olha</font> esse preço');
+    expect(blocos[1]).toContain('olha <font color="#FFD500">esse</font> preço');
+    expect(blocos[2]).toContain('00:00:01,200 --> 00:00:02,000');
+  });
+
+  it('karaokê sem palavras cai no comportamento clássico', () => {
+    const srt = srtDoTrecho([{ inicio: 0, fim: 2, texto: 'olha esse preço' }], 0, 10, 'karaoke');
+    expect(srt.trim().split('\n\n')).toHaveLength(1);
+    expect(srt).not.toContain('<font');
+  });
+
+  it('oferta: caixa alta e preço em destaque', () => {
+    const srt = srtDoTrecho([{ inicio: 0, fim: 2, texto: 'só hoje por R$ 49,90' }], 0, 10, 'oferta');
+    expect(srt).toContain('SÓ HOJE POR <font color="#FFD500">R$ 49,90</font>');
+  });
+
+  it('impacto: só caixa alta', () => {
+    const srt = srtDoTrecho([{ inicio: 0, fim: 2, texto: 'olha isso' }], 0, 10, 'impacto');
+    expect(srt).toContain('OLHA ISSO');
+    expect(srt).not.toContain('<font');
   });
 });
