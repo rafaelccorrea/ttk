@@ -555,6 +555,15 @@ export class HiggsfieldCliService implements GeradorDeMidia {
     } catch (erro) {
       const erroDaCli = lerEApagar(arquivoErro);
       lerEApagar(arquivoSaida);
+      /*
+       * "Job not found" não é indisponibilidade: a Higgsfield não tem mais
+       * aquele job (expirou ou foi removido) e nunca mais vai ter. Tratar como
+       * 503 fazia o cron da Fábrica consultar a mesma cena a cada 20 s para
+       * sempre, enchendo o log — o chamador precisa saber que é terminal.
+       */
+      if (/job not found/i.test(erroDaCli)) {
+        throw new JobNaoEncontradoError(erroDaCli.trim().slice(0, 200));
+      }
       if (erroDaCli.trim()) {
         this.logger.error(`CLI reclamou: ${erroDaCli.slice(0, 500)}`);
       }
@@ -737,7 +746,20 @@ export class HiggsfieldCliService implements GeradorDeMidia {
   }
 
   async getStatus(requestId: string): Promise<StatusResult> {
-    const stdout = await this.cli(['generate', 'get', requestId, '--json']);
+    let stdout: string;
+    try {
+      stdout = await this.cli(['generate', 'get', requestId, '--json']);
+    } catch (erro) {
+      if (erro instanceof JobNaoEncontradoError) {
+        // Terminal: o refresh marca `failed`, estorna uma vez e para de consultar.
+        this.logger.warn(`Higgsfield não encontra mais o job ${requestId}; encerrando como falha.`);
+        return {
+          status: 'failed',
+          error: 'A geração expirou na fornecedora antes de ser colhida. Os créditos foram devolvidos.',
+        };
+      }
+      throw erro;
+    }
     const job = JSON.parse(stdout) as {
       status?: string;
       result_url?: string | null;
@@ -907,5 +929,13 @@ export class HiggsfieldCliService implements GeradorDeMidia {
       this.logger.error(`Autenticação da Higgsfield falhou: ${detalhe}`);
       return { ok: false, erro: detalhe };
     }
+  }
+}
+
+/** A CLI respondeu "Job not found": o job não existe mais na Higgsfield — estado terminal. */
+export class JobNaoEncontradoError extends Error {
+  constructor(detalhe: string) {
+    super(detalhe || 'Job not found');
+    this.name = 'JobNaoEncontradoError';
   }
 }
