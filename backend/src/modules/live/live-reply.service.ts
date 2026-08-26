@@ -185,6 +185,9 @@ const LIMIAR_FAQ_DIRETA = 0.6;
  */
 const PLANOS_SEM_REPROCESSO = new Set(['essencial']);
 
+/** Por quanto tempo um texto igual a uma resposta emitida é tratado como eco. */
+const JANELA_DE_ECO_MS = 10 * 60_000;
+
 /** Tamanho máximo, em caracteres, dos campos livres de produto no prompt. */
 const MAX_CARACTERES_CAMPO_LIVRE = 240;
 
@@ -1944,6 +1947,19 @@ export class LiveReplyService {
       if (!mensagem) continue;
       gravadas.push(mensagem);
 
+      /*
+       * A segunda trava contra o eco: o desktop já descarta o que a conta do
+       * vendedor escreve, mas o backend não confia no cliente. Uma "pergunta"
+       * cujo texto é uma resposta recente desta run (com ou sem o "@fulano: "
+       * na frente) é o app lendo a si mesmo — e responder a isso é o laço que
+       * gasta saldo conversando sozinho.
+       */
+      if (pergunta && (await this.ehEcoDeResposta(run.id, entrada.text))) {
+        mensagem.status = 'ignorada';
+        await this.mensagens.save(mensagem);
+        continue;
+      }
+
       if (!pergunta) {
         mensagem.status = 'ignorada';
         await this.mensagens.save(mensagem);
@@ -2841,6 +2857,20 @@ export class LiveReplyService {
       .where('r."liveRunId" = :runId', { runId })
       .andWhere('r."chatMessageId" IN (:...ids)', { ids: idsDasIrmas })
       .andWhere('r."createdAt" >= :desde', { desde })
+      .getCount();
+    return quantas > 0;
+  }
+
+  /** O texto é uma resposta que esta run já emitiu nos últimos minutos? */
+  private async ehEcoDeResposta(runId: string, texto: string): Promise<boolean> {
+    const semPrefixo = (texto ?? '').replace(/^@?[w.]{2,40}:s*/u, '').trim();
+    if (!semPrefixo) return false;
+    const desde = new Date(Date.now() - JANELA_DE_ECO_MS);
+    const quantas = await this.respostas
+      .createQueryBuilder('r')
+      .where('r."liveRunId" = :runId', { runId })
+      .andWhere('r."createdAt" >= :desde', { desde })
+      .andWhere('(r.text = :texto OR r.text = :cru)', { texto: semPrefixo, cru: (texto ?? '').trim() })
       .getCount();
     return quantas > 0;
   }

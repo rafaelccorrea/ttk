@@ -442,10 +442,16 @@ export class Copiloto {
        * booleano: sem ela, um espectador repetindo a nossa frase (e o público
        * repete preço no chat toda hora) confirmaria uma entrega que não houve.
        */
-      this.enviador.observarMensagem(
-        mensagem.text,
-        this.mesmoAutor(mensagem.username, alvo),
-      );
+      const ecoDoProprioApp = this.mesmoAutor(mensagem.username, alvo);
+      this.enviador.observarMensagem(mensagem.text, ecoDoProprioApp);
+      /*
+       * E o eco PARA aqui. O que a conta do vendedor escreve no próprio chat
+       * (a resposta que o app acabou de postar, ou ele mesmo digitando) não é
+       * pergunta de espectador: mandado ao backend, vira "pergunta" para o
+       * modelo, que responde à própria resposta — e o app conversa sozinho
+       * até acabar o saldo (aconteceu em 2026-08-26, três turnos seguidos).
+       */
+      if (ecoDoProprioApp) return;
 
       // Antes de qualquer filtro, como num chat de verdade: até o "kkkk" que o
       // limiar vai descartar aparece na tela — descartá-lo é parte do show.

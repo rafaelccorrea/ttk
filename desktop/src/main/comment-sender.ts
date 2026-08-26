@@ -958,13 +958,21 @@ function scriptDeDigitacao(
       campo.dispatchEvent(new KeyboardEvent('keypress', enter));
       campo.dispatchEvent(new KeyboardEvent('keyup', enter));
 
-      await dormir(400);
+      // Campo vazio é o sinal de que a página aceitou o Enter. O TikTok limpa
+      // o campo de forma assíncrona e, sob carga, leva mais de meio segundo —
+      // esperar 400ms fixos e clicar no botão postava a MESMA frase duas vezes
+      // (Enter entregou, o clique entregou de novo). Agora a espera é uma
+      // sondagem de até 2s: sai no instante em que o campo esvazia.
+      let esvaziou = false;
+      for (let i = 0; i < 10 && !esvaziou; i += 1) {
+        await dormir(200);
+        esvaziou = valorDo(campo).trim() === '';
+      }
 
-      // Campo vazio é o sinal de que a página aceitou o Enter. Continuar cheio
-      // significa que este formulário só envia por clique — acontece em parte
-      // dos layouts de live —, então o botão é o plano B, e não o caminho
-      // padrão: clique sintético é mais visível que tecla.
-      if (valorDo(campo).trim() !== '') {
+      // Continuar cheio depois disso significa que este formulário só envia
+      // por clique — acontece em parte dos layouts de live —, então o botão é
+      // o plano B, e não o caminho padrão: clique sintético é mais visível.
+      if (!esvaziou) {
         let clicou = false;
         for (const s of botoes) {
           try {
