@@ -1,5 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { WebcastPushConnection } from 'tiktok-live-connector';
+import {
+  ControlEvent,
+  TikTokLiveConnection,
+  WebcastEvent,
+} from 'tiktok-live-connector';
 
 /**
  * A leitura do chat da transmissão.
@@ -153,26 +157,53 @@ export function msgIdSintetico(
 const BACKOFF_INICIAL_MS = 1_000;
 const BACKOFF_MAXIMO_MS = 30_000;
 
-/**
- * O que a `tiktok-live-connector` entrega no evento `chat`. A lib publica os
- * tipos como `any`, então o formato fica declarado aqui, no ponto em que ele é
- * lido — assim uma mudança na lib estoura numa linha só.
+/*
+ * OS FORMATOS DA `tiktok-live-connector` 2.x
+ * -----------------------------------------
+ * A 1.x achatava o protobuf num objeto plano (`uniqueId`, `comment`, `msgId`
+ * no topo). A 2.x entrega o protobuf DECODIFICADO como ele é: o id da mensagem
+ * mora em `common.msgId`, o @ do espectador é `user.displayId` e o texto do
+ * chat é `content` — os `.d.ts` da lib ainda chamam de `comment`, mas em
+ * runtime o campo se chama `content`, e é o runtime que vale. Tudo fica
+ * declarado aqui, no ponto em que é lido, para uma mudança na lib estourar
+ * numa linha só.
+ *
+ * A troca de versão não foi capricho: o servidor de assinatura que a 1.x usava
+ * passou a responder 404 e a conexão nunca abria — o app ficava reconectando
+ * em silêncio, com o painel mudo numa live cheia de pergunta (2026-08-26).
  */
-interface WebcastChatPayload {
+
+/** `common` — o cabeçalho que todo evento do webcast carrega. */
+interface WebcastCommon {
   msgId?: string | number;
+}
+
+/** `user` — o espectador; `displayId` é o @ e `nickname` o nome de exibição. */
+interface WebcastUser {
+  displayId?: string;
   uniqueId?: string;
   nickname?: string;
+}
+
+/** `chat` — a mensagem do chat. */
+interface WebcastChatPayload {
+  common?: WebcastCommon;
+  user?: WebcastUser;
+  content?: string;
   comment?: string;
 }
 
-/** `roomUser` — a leitura periódica de quantos assistem. */
+/** `roomUser` — a leitura periódica de quantos assistem (vem como string). */
 interface WebcastRoomUserPayload {
+  total?: string | number;
+  totalUser?: string | number;
   viewerCount?: number;
 }
 
 /** `like` — cada evento traz quantas curtidas aquele toque somou. */
 interface WebcastLikePayload {
   likeCount?: number;
+  count?: number;
 }
 
 /**
@@ -180,27 +211,30 @@ interface WebcastLikePayload {
  * contador subindo; só o que tem `repeatEnd` fecha a conta. Somar cada evento
  * intermediário contaria o mesmo presente dezenas de vezes, e o valor em
  * diamantes é a métrica de dinheiro da live — a que menos pode mentir.
+ * Na 2.x o tipo e o valor do presente moram em `giftDetails`.
  */
 interface WebcastGiftPayload {
-  diamondCount?: number;
   repeatCount?: number;
-  repeatEnd?: boolean;
+  repeatEnd?: boolean | number;
+  giftDetails?: { giftType?: number; diamondCount?: number };
   giftType?: number;
-}
-
-/** `social` — follow e share chegam juntos, separados pelo `displayType`. */
-interface WebcastSocialPayload {
-  displayType?: string;
+  diamondCount?: number;
 }
 
 /**
- * `questionNew` — o cartão de pergunta. A lib ACHATA `questionDetails` no
- * objeto do evento (`Object.assign` no conversor dela), então `questionText`
- * e `user` chegam no topo — e NÃO há `msgId` neste evento.
+ * `questionNew` — o cartão de pergunta. Na 2.x `questionDetails` chega
+ * aninhado (a 1.x achatava) — e continua NÃO havendo `msgId` neste evento.
  */
 interface WebcastQuestionPayload {
+  questionDetails?: { questionText?: string; user?: WebcastUser };
   questionText?: string;
-  user?: { uniqueId?: string; nickname?: string };
+  user?: WebcastUser;
+}
+
+/** `error` — a lib embrulha a exceção com uma descrição do momento. */
+interface WebcastErrorPayload {
+  info?: string;
+  exception?: unknown;
 }
 
 /**
@@ -210,7 +244,7 @@ interface WebcastQuestionPayload {
  * nem token, nem lote. Só entrega mensagem crua e avisa quando cai.
  */
 export class WebcastChatSource implements ChatSource {
-  private conexao: WebcastPushConnection | null = null;
+  private conexao: TikTokLiveConnection | null = null;
   private alvo = '';
 
   private aoReceber: ((m: RawChatMessage) => void) | null = null;
@@ -251,8 +285,9 @@ export class WebcastChatSource implements ChatSource {
       clearTimeout(this.timerReconexao);
       this.timerReconexao = null;
     }
-    this.conexao?.disconnect();
+    const conexao = this.conexao;
     this.conexao = null;
+    if (conexao) void Promise.resolve(conexao.disconnect()).catch(() => {});
   }
 
   /**
@@ -264,16 +299,16 @@ export class WebcastChatSource implements ChatSource {
    * enquanto perder a pergunta que chegou durante a queda custa a venda.
    */
   private async abrir(): Promise<void> {
-    const conexao = new WebcastPushConnection(this.alvo, {
+    const conexao = new TikTokLiveConnection(this.alvo, {
       processInitialData: true,
       enableExtendedGiftInfo: false,
-      enableWebsocketUpgrade: true,
-      // Sem `sessionId` de propósito: ele só serve para POSTAR no chat, e nesta
-      // fase o app não escreve nada no TikTok. Não guardar o cookie de sessão
-      // do vendedor é a diferença entre ler uma live e poder falar por ele.
+      // Sem sessão do vendedor de propósito: ela só serve para POSTAR pelo
+      // webcast, e quem escreve no chat é o enviador, pela própria página.
+      // Não guardar o cookie de sessão aqui é a diferença entre ler uma live e
+      // poder falar por ele.
     });
 
-    conexao.on('chat', (dados: WebcastChatPayload) => {
+    conexao.on(WebcastEvent.CHAT, (dados: WebcastChatPayload) => {
       const mensagem = this.normalizar(dados);
       if (mensagem) this.aoReceber?.(mensagem);
     });
@@ -287,24 +322,28 @@ export class WebcastChatSource implements ChatSource {
      * então o custo de uma reconexão é, no pior caso, uma janela gorda — nunca
      * a live inteira contada duas vezes.
      */
-    conexao.on('roomUser', (dados: WebcastRoomUserPayload) => {
-      if (typeof dados.viewerCount === 'number' && dados.viewerCount >= 0) {
-        this.aoMedir?.({ kind: 'viewers', value: dados.viewerCount });
+    conexao.on(WebcastEvent.ROOM_USER, (dados: WebcastRoomUserPayload) => {
+      const bruto = dados.viewerCount ?? dados.total ?? dados.totalUser;
+      const valor = Number(bruto);
+      if (Number.isFinite(valor) && valor >= 0) {
+        this.aoMedir?.({ kind: 'viewers', value: valor });
       }
     });
-    conexao.on('like', (dados: WebcastLikePayload) => {
-      const valor = Number(dados.likeCount ?? 1);
+    conexao.on(WebcastEvent.LIKE, (dados: WebcastLikePayload) => {
+      const valor = Number(dados.likeCount ?? dados.count ?? 1);
       if (valor > 0) this.aoMedir?.({ kind: 'likes', value: valor });
     });
-    conexao.on('gift', (dados: WebcastGiftPayload) => {
+    conexao.on(WebcastEvent.GIFT, (dados: WebcastGiftPayload) => {
+      const tipo = dados.giftDetails?.giftType ?? dados.giftType;
+      const diamantes = dados.giftDetails?.diamondCount ?? dados.diamondCount ?? 0;
       // Streak (giftType 1) só fecha no `repeatEnd`; os eventos intermediários
       // são o mesmo presente ainda sendo segurado — ver `WebcastGiftPayload`.
-      if (dados.giftType === 1 && !dados.repeatEnd) return;
+      if (tipo === 1 && !dados.repeatEnd) return;
       const vezes = Math.max(1, Number(dados.repeatCount ?? 1));
       this.aoMedir?.({
         kind: 'gift',
         count: vezes,
-        diamonds: Math.max(0, Number(dados.diamondCount ?? 0)) * vezes,
+        diamonds: Math.max(0, Number(diamantes)) * vezes,
       });
     });
     /*
@@ -313,9 +352,14 @@ export class WebcastChatSource implements ChatSource {
      * mensagem normal do funil (anonimizador → lote → backend), só que com a
      * flag e um id sintético, porque este evento não tem `msgId`.
      */
-    conexao.on('questionNew', (dados: WebcastQuestionPayload) => {
-      const texto = (dados.questionText ?? '').trim();
-      const autor = dados.user?.uniqueId ?? dados.user?.nickname ?? '';
+    conexao.on(WebcastEvent.QUESTION_NEW, (bruto: unknown) => {
+      const dados = bruto as WebcastQuestionPayload;
+      const texto = (
+        dados.questionDetails?.questionText ??
+        dados.questionText ??
+        ''
+      ).trim();
+      const autor = this.nomeDoUsuario(dados.questionDetails?.user ?? dados.user);
       if (!texto) return;
       this.aoReceber?.({
         msgId: msgIdSintetico(texto, autor),
@@ -326,26 +370,32 @@ export class WebcastChatSource implements ChatSource {
       });
     });
 
-    conexao.on('social', (dados: WebcastSocialPayload) => {
-      const tipo = dados.displayType ?? '';
-      if (/follow/i.test(tipo)) this.aoMedir?.({ kind: 'follow' });
-      else if (/share/i.test(tipo)) this.aoMedir?.({ kind: 'share' });
+    // Na 2.x follow e share chegam em eventos próprios, não mais no `social`.
+    conexao.on(WebcastEvent.FOLLOW, () => {
+      this.aoMedir?.({ kind: 'follow' });
     });
-    conexao.on('member', () => {
+    conexao.on(WebcastEvent.SHARE, () => {
+      this.aoMedir?.({ kind: 'share' });
+    });
+    conexao.on(WebcastEvent.MEMBER, () => {
       this.aoMedir?.({ kind: 'join' });
     });
 
     // A lib emite `disconnected` sem motivo e `streamEnd` quando a live acaba —
     // só a primeira merece reconexão; a segunda é o fim normal da transmissão.
-    conexao.on('disconnected', () => {
+    // Uma conexão já substituída (disconnect() ou reconexão) não fala mais.
+    conexao.on(ControlEvent.DISCONNECTED, () => {
+      if (this.conexao !== conexao) return;
       this.aoCair?.(new Error('Conexão com o chat caiu.'));
       this.agendarReconexao();
     });
-    conexao.on('streamEnd', () => {
+    conexao.on(WebcastEvent.STREAM_END, () => {
+      if (this.conexao !== conexao) return;
       this.ativo = false;
       this.aoCair?.(new Error('A transmissão foi encerrada.'));
     });
-    conexao.on('error', (erro: unknown) => {
+    conexao.on(ControlEvent.ERROR, (erro: WebcastErrorPayload) => {
+      if (this.conexao !== conexao) return;
       this.aoErrar?.(this.comoErro(erro));
     });
 
@@ -384,23 +434,37 @@ export class WebcastChatSource implements ChatSource {
     }, espera);
   }
 
+  private nomeDoUsuario(usuario: WebcastUser | undefined): string {
+    return usuario?.displayId ?? usuario?.uniqueId ?? usuario?.nickname ?? '';
+  }
+
   private normalizar(dados: WebcastChatPayload): RawChatMessage | null {
-    const texto = (dados.comment ?? '').trim();
-    const msgId = dados.msgId != null ? String(dados.msgId) : '';
+    const texto = (dados.content ?? dados.comment ?? '').trim();
+    const bruto = dados.common?.msgId;
+    const msgId = bruto != null ? String(bruto) : '';
     // Sem id nativo não dá para deduplicar, e sem dedup a reconexão vira
     // resposta repetida; sem texto não há pergunta. Os dois casos são descarte.
     if (!texto || !msgId) return null;
 
     return {
       msgId,
-      username: dados.uniqueId ?? dados.nickname ?? '',
+      username: this.nomeDoUsuario(dados.user),
       text: texto,
       receivedAt: new Date(),
     };
   }
 
   private comoErro(erro: unknown): Error {
-    return erro instanceof Error ? erro : new Error(String(erro));
+    if (erro instanceof Error) return erro;
+    const embrulho = erro as WebcastErrorPayload | null;
+    if (embrulho && typeof embrulho === 'object') {
+      const interno = embrulho.exception;
+      const detalhe =
+        interno instanceof Error ? interno.message : interno ? String(interno) : '';
+      const texto = [embrulho.info, detalhe].filter(Boolean).join(': ');
+      if (texto) return new Error(texto);
+    }
+    return new Error(String(erro));
   }
 }
 

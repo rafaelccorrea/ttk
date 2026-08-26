@@ -21,10 +21,12 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 export default defineConfig({
   main: {
     // `externalizeDepsPlugin` mantém as dependências reais fora do bundle do
-    // main. tiktok-live-connector e electron-store esperam ser resolvidos do
-    // node_modules em tempo de execução; empacotá-los quebra tanto os binários
-    // nativos quanto o `require` dinâmico que eles fazem por dentro.
-    plugins: [externalizeDepsPlugin()],
+    // main: electron-store espera ser resolvido do node_modules em tempo de
+    // execução. A `tiktok-live-connector` 2.x é a EXCEÇÃO — ela é ESM-only, e
+    // o main é CommonJS rodando no Node 20 do Electron 33, que não faz
+    // `require()` de ESM. Fora do bundle ela estoura ERR_REQUIRE_ESM na
+    // primeira live; empacotada, o Rollup a converte junto com o resto.
+    plugins: [externalizeDepsPlugin({ exclude: ['tiktok-live-connector'] })],
     build: {
       rollupOptions: { input: resolve(__dirname, 'src/main/index.ts') },
     },
