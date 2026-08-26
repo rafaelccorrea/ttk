@@ -104,14 +104,26 @@ function Reticencias() {
   );
 }
 
-function VarianteLeve({ fullScreen }: { fullScreen: boolean }) {
+export interface LoaderLeveProps {
+  fullScreen?: boolean;
+  /** Texto pequeno abaixo da marca (ex.: "Carregando produtos…"). */
+  label?: string;
+  /** Altura mínima quando não cobre a tela. */
+  minHeight?: number | string;
+}
+
+/** Marca "PikPok…" pulsando. É o loader padrão do app: rotas, gates e dados de página. */
+export function LoaderLeve({ fullScreen = false, label, minHeight = 240 }: LoaderLeveProps) {
   return (
     <Box
       role="status"
-      aria-label="Carregando"
+      aria-label={label ?? 'Carregando'}
       sx={{
-        display: 'grid',
-        placeItems: 'center',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 1.5,
         ...(fullScreen
           ? {
               position: 'fixed',
@@ -119,7 +131,7 @@ function VarianteLeve({ fullScreen }: { fullScreen: boolean }) {
               zIndex: (t) => t.zIndex.modal + 1,
               bgcolor: 'background.default',
             }
-          : { minHeight: 240, width: '100%' }),
+          : { minHeight, width: '100%' }),
       }}
     >
       <Typography
@@ -127,6 +139,7 @@ function VarianteLeve({ fullScreen }: { fullScreen: boolean }) {
           fontSize: fullScreen ? 40 : 30,
           fontWeight: 800,
           letterSpacing: '-0.03em',
+          lineHeight: 1,
           color: 'text.primary',
           animation: `${pulso} 1.8s ease-in-out infinite`,
           '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
@@ -138,9 +151,16 @@ function VarianteLeve({ fullScreen }: { fullScreen: boolean }) {
         </Box>
         <Reticencias />
       </Typography>
+      {label && (
+        <Typography variant="body2" color="text.secondary">
+          {label}
+        </Typography>
+      )}
     </Box>
   );
 }
+
+const VarianteLeve = LoaderLeve;
 
 function Circulo({ estado, indice, icone }: { estado: 'feita' | 'atual' | 'futura'; indice: number; icone?: ReactNode }) {
   const base = {

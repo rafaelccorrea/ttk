@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
-import { GlobalLoadingProvider } from '@/contexts/GlobalLoadingContext';
 import { captureReferral } from '@/utils/referral';
 import { AppRoutes } from './routes';
 
@@ -14,9 +13,7 @@ export function App() {
 
   return (
     <AuthProvider>
-      <GlobalLoadingProvider>
-        <AppRoutes />
-      </GlobalLoadingProvider>
+      <AppRoutes />
     </AuthProvider>
   );
 }

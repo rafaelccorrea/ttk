@@ -36,7 +36,24 @@
     <meta name="twitter:image" content="https://pikpokviral.com.br/icon-512.png" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Splash estático: cobre o intervalo entre o HTML chegar e o React montar. Some ao montar. -->
+    <style>
+      #splash-pikpok {
+        position: fixed; inset: 0; z-index: 9999; background: #fafafa;
+        display: flex; align-items: center; justify-content: center;
+        font: 800 40px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        letter-spacing: -0.03em; color: #161823;
+        animation: splash-pulso 1.8s ease-in-out infinite;
+      }
+      #splash-pikpok b { color: #fe2c55; font-weight: inherit; }
+      #splash-pikpok i { font-style: normal; animation: splash-pontos 1.4s ease-in-out infinite; }
+      #splash-pikpok i:nth-child(2) { animation-delay: .2s }
+      #splash-pikpok i:nth-child(3) { animation-delay: .4s }
+      @keyframes splash-pulso { 0%,100% { opacity: 1 } 50% { opacity: .7 } }
+      @keyframes splash-pontos { 0%,20% { opacity: 0 } 50%,100% { opacity: 1 } }
+      @media (prefers-reduced-motion: reduce) { #splash-pikpok, #splash-pikpok i { animation: none } }
+    </style>
+    <div id="root"><div id="splash-pikpok" role="status" aria-label="Carregando">Pik<b>Pok</b><span><i>.</i><i>.</i><i>.</i></span></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

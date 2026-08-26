@@ -130,7 +130,7 @@ Observações da rodada:
 
 ## Loader de progresso (GlobalLoader) — como testar
 
-Componente: `frontend/src/components/ui/GlobalLoader.tsx` (variantes `completo` e `leve`); contexto `frontend/src/contexts/GlobalLoadingContext.tsx` (`useGlobalLoading().show()/hide()`), montado em `App.tsx`. O Suspense das rotas usa a variante leve.
+Componente: `frontend/src/components/ui/GlobalLoader.tsx` — variante `completo` (etapas) usada no job de Cortes e `LoaderLeve` ("PikPok…" pulsando). Não existe overlay global: o `BrandLoader` (usado em todas as telas, gates, Suspense das rotas e checagem de sessão) passou a renderizar o `LoaderLeve` inline, então todas as telas mostram o mesmo loader dentro do layout. O `index.html` tem um splash estático com a mesma marca para o intervalo antes do React montar. Teste: recarregar com `Network: Slow 3G` (splash → loader da rota → loader de dados da tela, sem tela vazia).
 
 1. **Variante leve**: navegar entre páginas pesadas (ex.: Estúdio → Cortes) com rede lenta (DevTools › Slow 3G). Deve aparecer "PikPok…" com reticências pulsando em tela cheia, sem etapas.
 2. **Variante completa em Cortes**: enviar um vídeo. Enquanto o job estiver `processando`, o card do job mostra: pill "Tempo estimado 10 min" (Inteligente) ou "4 min" (Rápido), título "Estamos preparando seus cortes…", barra com % e 5 etapas.

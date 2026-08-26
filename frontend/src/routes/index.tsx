@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
-import { GlobalLoader } from "@/components/ui/GlobalLoader";
+import { BrandLoader } from "@/components/ui/BrandLoader";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { FreeSampleGate } from "@/components/ui/FreeSampleGate";
 import { PlanGate } from "@/components/ui/PlanGate";
@@ -117,14 +117,15 @@ const FreeVideosPage = lazy(() =>
 
 function ProtectedRoutes() {
   const { isAuthenticated, isLoading } = useAuth();
-  if (isLoading) return null;
+  // Enquanto a sessão é validada, mostra o loader em vez de tela vazia.
+  if (isLoading) return <BrandLoader minHeight="70vh" />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
 
 export function AppRoutes() {
   return (
-    <Suspense fallback={<GlobalLoader variante="leve" />}>
+    <Suspense fallback={<BrandLoader minHeight="70vh" />}>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />

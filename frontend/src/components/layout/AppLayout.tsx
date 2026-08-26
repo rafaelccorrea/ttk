@@ -40,7 +40,8 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { BrandLoader } from '@/components/ui/BrandLoader';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { SupportFab } from '@/components/ui/SupportFab';
 import { JobsTray } from '@/components/layout/JobsTray';
@@ -1090,7 +1091,10 @@ export function AppLayout() {
 
         {/* Sem maxWidth: o conteúdo ocupa toda a largura, colado às margens */}
         <Box px={{ xs: 2, md: 3 }} py={{ xs: 2.5, md: 3 }} flexGrow={1}>
-          <Outlet />
+          {/* Suspense aqui dentro: a rota lazy carrega sem o layout sumir. */}
+          <Suspense fallback={<BrandLoader minHeight="60vh" />}>
+            <Outlet />
+          </Suspense>
         </Box>
       </Box>
       <SupportFab />
