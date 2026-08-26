@@ -83,6 +83,8 @@ function dubleDoModelo(): Partial<AiService> {
       return {
         model: entrada.modelo,
         cacheReadTokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
         respostas: entrada.perguntas.map((p) => {
           const t = p.texto.toLowerCase();
 

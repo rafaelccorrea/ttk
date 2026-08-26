@@ -399,6 +399,9 @@ export interface LoteDeRespostas {
    * lote e o custo por minuto é outro — ver `live-reply.service.ts`.
    */
   cacheReadTokens: number;
+  /** Tokens de entrada NÃO cacheados e de saída — para o custo por resposta. */
+  inputTokens: number;
+  outputTokens: number;
 }
 
 const LIVE_REPLY_SYSTEM = `Você é o copiloto de um vendedor brasileiro numa live do TikTok Shop. O chat pergunta e você escreve a resposta que o vendedor vai ler em voz alta ou copiar.
@@ -635,6 +638,8 @@ interface RespostaDaIa {
   model: string;
   recusado: boolean;
   cacheReadTokens: number;
+  inputTokens: number;
+  outputTokens: number;
 }
 
 @Injectable()
@@ -758,6 +763,8 @@ export class AiService {
       // nega, `content` vem null e o motivo vem aqui.
       recusado: Boolean(escolha?.message?.refusal),
       cacheReadTokens,
+      inputTokens: Math.max(0, (usage?.prompt_tokens ?? 0) - cacheReadTokens),
+      outputTokens: usage?.completion_tokens ?? 0,
     };
   }
 
@@ -1565,7 +1572,7 @@ export class AiService {
           'Sem OPENAI_API_KEY: copiloto ao vivo devolvendo lote vazio.',
         );
       }
-      return { respostas: [], model: entrada.modelo, cacheReadTokens: 0 };
+      return { respostas: [], model: entrada.modelo, cacheReadTokens: 0, inputTokens: 0, outputTokens: 0 };
     }
 
     const response = await this.chamar(
@@ -1600,7 +1607,7 @@ export class AiService {
 
     if (response.recusado) {
       this.logger.warn('Lote do chat ao vivo recusado pelo modelo; ignorando.');
-      return { respostas: [], model: response.model, cacheReadTokens: 0 };
+      return { respostas: [], model: response.model, cacheReadTokens: 0, inputTokens: 0, outputTokens: 0 };
     }
 
     const dados = this.lerJson<{ replies?: unknown }>(response.texto);
@@ -1612,6 +1619,8 @@ export class AiService {
         : [],
       model: response.model,
       cacheReadTokens: response.cacheReadTokens,
+      inputTokens: response.inputTokens ?? 0,
+      outputTokens: response.outputTokens ?? 0,
     };
   }
 

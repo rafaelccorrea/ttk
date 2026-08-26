@@ -93,7 +93,7 @@ const ENVIO_INICIAL: EstadoEnvio = {
  * envio (oito segundos), então nenhuma resposta espera por causa do intervalo —
  * e não são chamadas demais para uma live de uma hora.
  */
-const INTERVALO_FILA_MS = 3_000;
+const INTERVALO_FILA_MS = 5_000;
 
 const CONEXAO_INICIAL: EstadoConexao = {
   status: 'desconectado',

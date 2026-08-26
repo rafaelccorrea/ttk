@@ -129,6 +129,29 @@ export class LiveReply {
   latencyMs: number;
 
   /**
+   * O custo desta resposta, em tokens — a PARTE dela na chamada do lote
+   * (total do lote dividido pelas perguntas que foram juntas). Nulo quando
+   * não houve modelo (`faq`, `reaproveitada`, `outra_live`). É o que permite
+   * a pergunta "quanto custa uma live, por plano" sem abrir a fatura da OpenAI.
+   */
+  @Column({ type: 'int', nullable: true })
+  promptTokens: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  cachedTokens: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  completionTokens: number | null;
+
+  /**
+   * Hash da base com que a resposta foi gerada. É a chave do reaproveitamento
+   * ENTRE lives: a mesma pergunta, com a mesma base byte a byte, tem a mesma
+   * resposta — em qualquer dia. Base editada muda o hash e invalida tudo.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  baseHash: string | null;
+
+  /**
    * Quando o vendedor copiou a resposta do painel. É a métrica de qualidade
    * desta fase inteira: sem envio automático, a única evidência de que o
    * copiloto acertou é o humano ter escolhido usar o que ele escreveu. Nulo

@@ -95,6 +95,12 @@ export interface BaseDeConhecimento {
   faqs: number;
   /** ISO. Serve para o vendedor reconhecer qual gravação é qual. */
   atualizadaEm: string | null;
+  /**
+   * Tamanho aproximado da base no prompt (~4 caracteres por token). Vai em
+   * TODA chamada da live; é o número que explica por que uma base de 40
+   * produtos com descrição longa custa mais por minuto.
+   */
+  tokensAprox: number;
 }
 
 /** O recorte de live do `GET /billing/wallet`. */
@@ -264,7 +270,10 @@ export interface EstadoEnvio {
 export const MINIMO_SEGUIDORES_LIVE = 1000;
 
 /** Limites que a tela de configurações mostra e o preload não deixa passar. */
-export const LOTE_MINIMO = 1;
+// Mínimo 4: lote de 1 é uma chamada de modelo por mensagem — o pior custo
+// possível, e sem ganho de velocidade real (a janela de 800 ms já junta o
+// que chega junto). Configs antigas com 1 são saneadas para 4 na leitura.
+export const LOTE_MINIMO = 4;
 export const LOTE_MAXIMO = 40;
 
 /** O que o painel enxerga do processo principal. Deve crescer devagar. */

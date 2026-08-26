@@ -160,8 +160,33 @@ const JANELA_DO_CLUSTER_MS = 30 * 60_000;
  */
 const JANELA_DE_DUPLICADA_MS = 3 * 60_000;
 
-/** Marca de modelo das respostas reaproveitadas — não gastaram token. */
+/** Marcas de "modelo" das respostas que NÃO gastaram token. */
 const MODELO_REAPROVEITADO = 'reaproveitada';
+const MODELO_FAQ = 'faq';
+const MODELO_OUTRA_LIVE = 'outra_live';
+
+/**
+ * Similaridade (trigrama) mínima entre a pergunta do chat e a pergunta de
+ * uma FAQ para responder DIRETO com a resposta da FAQ, sem modelo.
+ *
+ * Mais frouxo que `LIMIAR_FAQ_PARECIDA` (0.8), que decide FUNDIR curadoria —
+ * ali errar sobrescreve trabalho humano; aqui errar mostra ao vendedor uma
+ * resposta pronta da própria base dele, que ele revisa como qualquer outra.
+ */
+const LIMIAR_FAQ_DIRETA = 0.6;
+
+/**
+ * Planos em que a pergunta em cima do muro NÃO sobe ao modelo forte.
+ *
+ * O segundo passe custa cerca de dez vezes o primeiro por pergunta. No plano
+ * de entrada a margem não paga isso; a pergunta fica com o número do modelo
+ * rápido e, se ele estiver na faixa de dúvida, vai ao humano — que é o
+ * comportamento de antes do reprocesso existir.
+ */
+const PLANOS_SEM_REPROCESSO = new Set(['essencial']);
+
+/** Tamanho máximo, em caracteres, dos campos livres de produto no prompt. */
+const MAX_CARACTERES_CAMPO_LIVRE = 240;
 
 /**
  * Quando a repetição deixa de ser ruído e vira sinal.
@@ -213,6 +238,36 @@ const MAX_CARACTERES = 140;
  * bases pequenas que NUNCA cacheavam agora passam a cachear.
  */
 const MIN_TOKENS_DE_CACHE = 1024;
+
+/** A parte de cada resposta na conta de tokens de uma chamada de lote. */
+interface UsoDeTokens {
+  prompt: number;
+  cached: number;
+  completion: number;
+}
+
+/** Divide o uso de uma chamada entre as N perguntas que foram juntas. */
+function repartirUso(
+  lote: { inputTokens?: number; cacheReadTokens?: number; outputTokens?: number },
+  quantas: number,
+): UsoDeTokens {
+  const n = Math.max(1, quantas);
+  const cached = lote.cacheReadTokens ?? 0;
+  return {
+    prompt: Math.round(((lote.inputTokens ?? 0) + cached) / n),
+    cached: Math.round(cached / n),
+    completion: Math.round((lote.outputTokens ?? 0) / n),
+  };
+}
+
+/** Corta um campo livre de produto no tamanho que cabe no prompt. */
+function enxugar(texto: string | null | undefined): string | null {
+  const t = (texto ?? '').trim();
+  if (!t) return null;
+  return t.length <= MAX_CARACTERES_CAMPO_LIVRE
+    ? t
+    : t.slice(0, MAX_CARACTERES_CAMPO_LIVRE - 1).trimEnd() + '…';
+}
 
 /** Estimativa grosseira de tokens: ~4 caracteres por token em português. */
 const CHARS_POR_TOKEN = 4;
@@ -410,6 +465,10 @@ interface BaseEmMemoria {
   chamadas: number;
   /** Último uso, em ms — é o que a varredura de ociosas olha para expulsar. */
   usadaEm: number;
+  /** sha256 de `serializada` — a chave do reaproveitamento entre lives. */
+  hash: string;
+  /** Plano do dono da run, lido uma vez: decide o reprocesso no modelo forte. */
+  plano: string;
 }
 
 /* -------------------------------------------------------------------------- *
@@ -461,11 +520,33 @@ export function clusterKeyDe(textoNormalizado: string): string {
  * verdade custa a venda.
  */
 export function ehPergunta(texto: string): boolean {
+  if (ehRuido(texto)) return false;
   if (texto?.includes('?')) return true;
   const normalizado = normalizarTexto(texto);
   if (!normalizado) return false;
   if (PALAVRAS_INTERROGATIVAS.some((p) => normalizado.includes(p))) return true;
+  // Sem interrogativa e com até duas palavras é saudação, elogio ou nome de
+  // cidade ("boa noite", "linda demais", "Belo Horizonte") — não pergunta.
+  if (normalizado.split(' ').filter(Boolean).length <= 2) return false;
   return normalizado.length >= MIN_CARACTERES_DE_PERGUNTA * 3;
+}
+
+/**
+ * O que nunca é pergunta, por forma: só emoji/pontuação, só @menções, ou
+ * "kkkk"/"rsrs" e variações. Barrar aqui é de graça; deixar passar custa
+ * uma linha de lote e, às vezes, uma resposta inventada no painel.
+ */
+export function ehRuido(texto: string): boolean {
+  const cru = (texto ?? '').trim();
+  if (!cru) return true;
+  // Sem letras nem dígitos (emoji, coração, "!!!", "...").
+  if (!/[\p{L}\p{N}]/u.test(cru)) return true;
+  const tokens = cru.split(/\s+/).filter(Boolean);
+  // Só @menções ("@fulano @ciclana").
+  if (tokens.every((t) => /^@[\w.]+$/.test(t))) return true;
+  // Risada e variações, mesmo com pontuação em volta.
+  const semPontuacao = cru.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+  return /^(k{2,}|(rs){2,}|(ha){2,}|(he){2,}|(kk)+)$/.test(semPontuacao);
 }
 
 /** A pergunta é das que decidem a compra e merecem o modelo caro na dúvida? */
@@ -1539,11 +1620,12 @@ export class LiveReplyService {
   private async faqParecida(
     sessionId: string,
     pergunta: string,
+    limiar: number = LIMIAR_FAQ_PARECIDA,
   ): Promise<LiveFaq | null> {
     if (!pergunta) return null;
     const linhas = await this.faq.manager.transaction(async (manager) => {
       await manager.query(
-        `SET LOCAL pg_trgm.similarity_threshold = ${LIMIAR_FAQ_PARECIDA}`,
+        `SET LOCAL pg_trgm.similarity_threshold = ${limiar}`,
       );
       return (await manager.query(
         `
@@ -1922,19 +2004,32 @@ export class LiveReplyService {
           irmas.map((m) => m.id),
         );
         if (anterior) {
-          const reuso = await this.reaproveitarResposta(run, mensagem, anterior, comecou);
+          const reuso = await this.reaproveitarResposta(run, base, mensagem, anterior, comecou);
           if (reuso) {
             reaproveitadas.push(reuso);
             continue;
           }
         }
-        // Nunca respondida (ou só escalada): vai ao modelo, carregando o peso
-        // do cluster — é o `repeatCount` que o prompt usa como pressão.
+        // Nunca respondida (ou só escalada): tenta sem modelo e, no fim, vai
+        // ao modelo carregando o peso do cluster — é o `repeatCount` que o
+        // prompt usa como pressão.
         mensagem.repeatCount = original.repeatCount;
+        const semModelo = await this.responderSemModelo(run, base, mensagem, normalizado, comecou);
+        if (semModelo) {
+          reaproveitadas.push(semModelo);
+          continue;
+        }
         paraResponder.set(mensagem.id, mensagem);
         continue;
       }
 
+      // Pergunta nova nesta live: antes do modelo, a FAQ da base e o que a
+      // mesma base já respondeu em outra live.
+      const semModelo = await this.responderSemModelo(run, base, mensagem, normalizado, comecou);
+      if (semModelo) {
+        reaproveitadas.push(semModelo);
+        continue;
+      }
       paraResponder.set(mensagem.id, mensagem);
     }
 
@@ -2006,6 +2101,16 @@ export class LiveReplyService {
       );
     });
 
+    const usoDoLote = repartirUso(lote, mensagens.length);
+    const usoPorMensagem = new Map(mensagens.map((m) => [m.id, { ...usoDoLote }]));
+
+    if (reprocessar.length && PLANOS_SEM_REPROCESSO.has(base.plano)) {
+      this.logger.log(
+        `Run ${run.id}: ${reprocessar.length} pergunta(s) em cima do muro ficam sem o modelo forte (plano ${base.plano}).`,
+      );
+      reprocessar.length = 0;
+    }
+
     if (reprocessar.length) {
       const segundo = await this.ai.responderChatDaLive({
         baseSerializada: base.serializada,
@@ -2019,6 +2124,14 @@ export class LiveReplyService {
       });
       base.chamadas += 1;
       for (const r of segundo.respostas) porId.set(r.messageId, r);
+      const usoDoSegundo = repartirUso(segundo, reprocessar.length);
+      for (const m of reprocessar) {
+        const uso = usoPorMensagem.get(m.id);
+        if (!uso) continue;
+        uso.prompt += usoDoSegundo.prompt;
+        uso.cached += usoDoSegundo.cached;
+        uso.completion += usoDoSegundo.completion;
+      }
       this.logger.log(
         `Run ${run.id}: ${reprocessar.length} pergunta(s) de alto valor reprocessada(s) no Opus.`,
       );
@@ -2048,6 +2161,7 @@ export class LiveReplyService {
         bruta,
         modeloDe(mensagem.id),
         comecou,
+        usoPorMensagem.get(mensagem.id),
       );
       /*
        * A mensagem vai PENDURADA na resposta, só em memória: o controller
@@ -2075,6 +2189,7 @@ export class LiveReplyService {
     bruta: RespostaAoVivo,
     model: string,
     comecou: number,
+    uso?: UsoDeTokens,
   ): Promise<LiveReply> {
     const normalizado = normalizarTexto(mensagem.text);
     // Só ids que existem na base contam como fonte: um id inventado é o
@@ -2137,19 +2252,99 @@ export class LiveReplyService {
     if (contemMetaLinguagem(texto)) decisao = 'escalar';
     if (!texto) decisao = 'silenciar';
 
-    return this.gravarResposta(run, mensagem, {
+    return this.gravarResposta(run, base, mensagem, {
       texto,
       confianca,
       decisao,
       fontes,
       model,
       comecou,
+      uso,
     });
+  }
+
+  /**
+   * As respostas que não custam token, em ordem de confiança:
+   *
+   *  1. A FAQ da própria base, quando a pergunta do chat é parecida o bastante
+   *     com a pergunta cadastrada — é a resposta que o vendedor ESCREVEU;
+   *  2. O que a MESMA base (byte a byte, pelo hash) já respondeu para o mesmo
+   *     cluster em outra live — "o primeiro preço de cada live" deixa de ser
+   *     uma chamada.
+   *
+   * Lista negra continua indo ao humano, e resposta com marcador, link ou
+   * fala de bastidor não sai daqui — as mesmas regras da resposta gerada.
+   */
+  private async responderSemModelo(
+    run: LiveRun,
+    base: BaseEmMemoria,
+    mensagem: LiveChatMessage,
+    normalizado: string,
+    comecou: number,
+  ): Promise<LiveReply | null> {
+    if (!normalizado || ehListaNegra(normalizado)) return null;
+
+    const faq = await this.faqParecida(run.knowledgeSessionId, mensagem.text, LIMIAR_FAQ_DIRETA);
+    const resposta = (faq?.answer ?? '').trim();
+    if (
+      faq &&
+      resposta &&
+      !resposta.includes('{{') &&
+      !contemLinkOuMencao(resposta) &&
+      !contemMetaLinguagem(resposta)
+    ) {
+      const corte = truncarSeguro(resposta);
+      if (!corte.precoPerdido && corte.texto) {
+        try {
+          return await this.gravarResposta(run, base, mensagem, {
+            texto: corte.texto,
+            confianca: 0.95,
+            decisao: 'enviar',
+            fontes: faq.liveProductId ? [faq.liveProductId] : [],
+            model: MODELO_FAQ,
+            comecou,
+          });
+        } catch (error) {
+          this.logger.warn(`Run ${run.id}: FAQ direta falhou: ${(error as Error).message}`);
+        }
+      }
+    }
+
+    if (!mensagem.clusterKey) return null;
+    const deOutraLive = await this.respostaDeOutraLive(run, base.hash, mensagem.clusterKey);
+    if (!deOutraLive) return null;
+    return this.reaproveitarResposta(run, base, mensagem, deOutraLive, comecou, MODELO_OUTRA_LIVE);
+  }
+
+  /** A resposta aprovada mais recente do mesmo cluster, com a mesma base, em OUTRA live. */
+  private async respostaDeOutraLive(
+    run: LiveRun,
+    baseHash: string,
+    clusterKey: string,
+  ): Promise<LiveReply | null> {
+    const linhas = (await this.respostas.query(
+      `
+      SELECT r.*
+      FROM live_replies r
+      JOIN live_chat_messages m ON m.id = r."chatMessageId"
+      WHERE r."userId" = $1
+        AND r."baseHash" = $2
+        AND m."clusterKey" = $3
+        AND r.decision = 'enviar'
+        AND r."liveRunId" <> $4
+        AND r.text <> ''
+      ORDER BY r."createdAt" DESC
+      LIMIT 1
+      `,
+      [run.userId, baseHash, clusterKey, run.id],
+    )) as LiveReply[];
+    return linhas[0] ?? null;
   }
 
   /** A persistência da resposta — gerada pelo modelo ou reaproveitada. */
   private async gravarResposta(
     run: LiveRun,
+    base: BaseEmMemoria,
     mensagem: LiveChatMessage,
     dados: {
       texto: string;
@@ -2158,9 +2353,10 @@ export class LiveReplyService {
       fontes: string[];
       model: string;
       comecou: number;
+      uso?: UsoDeTokens;
     },
   ): Promise<LiveReply> {
-    const { texto, confianca, decisao, fontes, model, comecou } = dados;
+    const { texto, confianca, decisao, fontes, model, comecou, uso } = dados;
     mensagem.status = decisao === 'enviar' ? 'respondida' : 'escalada';
     if (decisao === 'silenciar') mensagem.status = 'ignorada';
     await this.mensagens.save(mensagem);
@@ -2193,6 +2389,10 @@ export class LiveReplyService {
           decision: decisao,
           sourceProductIds: fontes,
           latencyMs: Date.now() - comecou,
+          promptTokens: uso ? uso.prompt : null,
+          cachedTokens: uso ? uso.cached : null,
+          completionTokens: uso ? uso.completion : null,
+          baseHash: base.hash,
           // A fila do modo automático nasce aqui, e só aqui: quem entra é o que
           // a decisão já aprovou, com o modo lido da run e não de um parâmetro
           // do cliente.
@@ -2424,7 +2624,7 @@ export class LiveReplyService {
       return cacheada;
     }
 
-    const [produtos, faq, sessao] = await Promise.all([
+    const [produtos, faq, sessao, dono] = await Promise.all([
       this.produtos.find({
         where: { userId: run.userId, liveSessionId: run.knowledgeSessionId, active: true },
         order: { id: 'ASC' },
@@ -2436,6 +2636,10 @@ export class LiveReplyService {
       this.sessoes.findOne({
         where: { id: run.knowledgeSessionId, userId: run.userId },
         select: { id: true, title: true, context: true },
+      }),
+      this.usuarios.findOne({
+        where: { id: run.userId },
+        select: { id: true, plan: true },
       }),
     ]);
 
@@ -2454,9 +2658,12 @@ export class LiveReplyService {
         // sentido — voltaríamos a depender de o modelo transcrever certo.
         preco: `{{PRECO:${p.id}}}`,
         variantes: p.variants,
-        frete: p.shippingInfo,
-        promo: p.promo,
-        detalhes: p.details,
+        // Campos livres entram ENXUTOS: cada caractere aqui vai em toda
+        // chamada da live. O que o vendedor escreveu além disso continua na
+        // base (e nos valores permitidos) — só não cabe no prompt.
+        frete: enxugar(p.shippingInfo),
+        promo: enxugar(p.promo),
+        detalhes: enxugar(p.details),
         aliases: p.aliases,
       })),
       faq: faq.map((f) => ({
@@ -2498,6 +2705,8 @@ export class LiveReplyService {
       }),
       chamadas: 0,
       usadaEm: Date.now(),
+      hash: createHash('sha256').update(serializada).digest('hex'),
+      plano: dono?.plan ?? 'free',
     };
     this.bases.set(run.id, base);
     return base;
@@ -2664,17 +2873,19 @@ export class LiveReplyService {
    */
   private async reaproveitarResposta(
     run: LiveRun,
+    base: BaseEmMemoria,
     mensagem: LiveChatMessage,
     anterior: LiveReply,
     comecou: number,
+    model: string = MODELO_REAPROVEITADO,
   ): Promise<LiveReply | null> {
     try {
-      return await this.gravarResposta(run, mensagem, {
+      return await this.gravarResposta(run, base, mensagem, {
         texto: anterior.text,
         confianca: Number(anterior.confidence) || 0,
         decisao: 'enviar',
         fontes: anterior.sourceProductIds ?? [],
-        model: MODELO_REAPROVEITADO,
+        model,
         comecou,
       });
     } catch (error) {

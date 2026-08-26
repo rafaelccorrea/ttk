@@ -189,3 +189,20 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 - Passados os 3 min, a pergunta volta ao painel **com a resposta anterior do cluster copiada** (`model = 'reaproveitada'`, mesmo texto/fontes/confiança) — **sem chamada ao modelo**. Só vai ao modelo se o cluster nunca teve resposta aprovada (`decision = 'enviar'`).
 - Antes, a re-resposta chamava o modelo e o banco descartava o resultado (uma resposta por mensagem). Não existe mais esse gasto.
 - Como testar: perguntar o preço, esperar 3 min, perguntar de novo com outro @ → nova linha em `live_replies` com `model='reaproveitada'` e nenhuma chamada na OpenAI.
+
+## Custo de IA: o que não chama o modelo (2026-08-26)
+
+Ordem no `processarLote`, por mensagem:
+1. **Ruído** (`ehRuido`): só emoji/pontuação, só `@menção`, "kkkk/rsrs/haha" → `ignorada`, custo zero. Até 2 palavras sem interrogativa ("boa noite", "linda demais") também não é pergunta. Spec: `live-ruido.spec.ts`.
+2. **Cluster já respondido há < 3 min** → só `repeatCount`.
+3. **Cluster respondido há > 3 min** → resposta anterior copiada (`model='reaproveitada'`).
+4. **FAQ direta**: pergunta com similaridade trigrama ≥ 0,6 com uma FAQ da base → resposta da FAQ, `model='faq'`, confiança 0,95, fonte = produto da FAQ. Não sai daqui se: lista negra, marcador `{{`, link/menção, fala de bastidor, corte comeu preço.
+5. **Outra live**: mesmo `clusterKey` + mesmo `baseHash` (sha256 da base serializada) + `decision='enviar'` em run anterior do mesmo usuário → copiada, `model='outra_live'`. Editar a base muda o hash e invalida.
+6. Só então o modelo rápido; o **reprocesso no modelo forte** (faixa 0,55–0,70, pergunta de dinheiro) fica **desligado no plano `essencial`** (`PLANOS_SEM_REPROCESSO`).
+
+Outros:
+- Campos livres de produto (`details`, `shippingInfo`, `promo`) entram no prompt cortados em 240 caracteres (`enxugar`).
+- `POST /live/sessions/:id/faq` com pergunta parecida (≥ 0,8) **e** resposta igual devolve a FAQ existente em vez de criar outra.
+- `live_replies` ganhou `promptTokens/cachedTokens/completionTokens` (parte da resposta na chamada do lote; nulo sem modelo) e `baseHash`. Migração `1786671300000-AddLiveReplyCostAndBaseHash`. Custo por live: `select "liveRunId", model, sum("promptTokens"-"cachedTokens") entrada, sum("cachedTokens") cache, sum("completionTokens") saida from live_replies group by 1,2`.
+- Desktop: lote mínimo **4** (configs com 1 são saneadas), padrão 12; fila do envio consultada a cada 5 s; a tela de conectar mostra "~N tokens/chamada" por base.
+- Como testar a FAQ direta: cadastrar FAQ "Qual o valor do plano?" → perguntar "valor do plano?" na live → `live_replies.model = 'faq'` e nenhuma chamada na OpenAI.

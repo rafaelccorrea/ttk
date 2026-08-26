@@ -443,7 +443,7 @@ export function ConectarLive({
                   {base.title}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {base.produtos} produtos · {base.faqs} respostas prontas
+                  {base.produtos} produtos · {base.faqs} respostas prontas · ~{base.tokensAprox} tokens/chamada
                 </Typography>
               </Stack>
             </MenuItem>

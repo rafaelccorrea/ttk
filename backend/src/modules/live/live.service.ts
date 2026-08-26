@@ -935,6 +935,14 @@ export class LiveService {
   // -------------------------------------------------------------------- FAQ
   async criarFaq(userId: string, sessionId: string, dto: CriarFaqDto) {
     await this.acharSessao(userId, sessionId);
+    /*
+     * A mesma pergunta com a MESMA resposta não vira segunda linha: cada FAQ
+     * repetida é prompt maior em toda chamada da live, e a base cresce sem o
+     * vendedor perceber. Resposta diferente continua criando — pode ser a
+     * correção que ele quer ao lado da antiga.
+     */
+    const repetida = await this.faqRepetida(sessionId, dto.question, dto.answer);
+    if (repetida) return repetida;
     return this.faq.save(
       this.faq.create({
         userId,
@@ -947,6 +955,27 @@ export class LiveService {
         priority: dto.priority ?? 0,
       }),
     );
+  }
+
+  /** Uma FAQ da sessão com pergunta parecida (trigrama) e resposta igual. */
+  private async faqRepetida(
+    sessionId: string,
+    pergunta: string,
+    resposta: string,
+  ): Promise<LiveFaq | null> {
+    const normal = (t: string) =>
+      (t ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    const alvo = normal(resposta);
+    if (!alvo) return null;
+    const linhas = (await this.faq.manager.transaction(async (manager) => {
+      await manager.query('SET LOCAL pg_trgm.similarity_threshold = 0.8');
+      return manager.query(
+        `SELECT id, answer FROM live_faq WHERE "liveSessionId" = $1 AND question % $2 LIMIT 5`,
+        [sessionId, pergunta.trim()],
+      );
+    })) as Array<{ id: string; answer: string }>;
+    const igual = linhas.find((l) => normal(l.answer) === alvo);
+    return igual ? this.faq.findOneBy({ id: igual.id }) : null;
   }
 
   async atualizarFaq(userId: string, id: string, dto: AtualizarFaqDto) {

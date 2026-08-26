@@ -102,8 +102,16 @@ interface LiveSessionResposta {
 
 /** `GET /live/sessions/:id`, que é onde os produtos e o FAQ vêm juntos. */
 interface LiveSessionDetalhe extends LiveSessionResposta {
-  produtos: unknown[];
-  faq: unknown[];
+  context?: string | null;
+  produtos: Array<{
+    name?: string | null;
+    details?: string | null;
+    shippingInfo?: string | null;
+    promo?: string | null;
+    variants?: unknown;
+    aliases?: unknown;
+  }>;
+  faq: Array<{ question?: string | null; answer?: string | null }>;
 }
 
 /** `GET /live/termo-envio-automatico`. */
@@ -338,6 +346,7 @@ export class ApiClient {
       produtos: d.produtos?.length ?? 0,
       faqs: d.faq?.length ?? 0,
       atualizadaEm: d.updatedAt,
+      tokensAprox: estimarTokensDaBase(d),
     }));
   }
 
@@ -912,4 +921,20 @@ export class ApiClient {
   private comoErro(erro: unknown): Error {
     return erro instanceof Error ? erro : new Error(String(erro));
   }
+}
+
+/**
+ * Quanto a base pesa no prompt, em tokens aproximados (~4 caracteres por
+ * token em português). Mesmos campos que o backend serializa; a conta é
+ * grosseira de propósito — serve para o vendedor comparar bases, não para
+ * fechar fatura.
+ */
+function estimarTokensDaBase(d: LiveSessionDetalhe): number {
+  const campos: unknown[] = [d.title, d.context];
+  for (const p of d.produtos ?? []) {
+    campos.push(p.name, p.details, p.shippingInfo, p.promo, JSON.stringify(p.variants ?? null), JSON.stringify(p.aliases ?? null));
+  }
+  for (const f of d.faq ?? []) campos.push(f.question, f.answer);
+  const caracteres = campos.reduce<number>((n, c) => n + (typeof c === 'string' ? c.length : 0), 0);
+  return Math.round(caracteres / 4);
 }
