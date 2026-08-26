@@ -2,6 +2,14 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { access, mkdir, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+
+/**
+ * O YouTube exige que o yt-dlp resolva um desafio em JavaScript; sem runtime
+ * ele não lista os formatos e o download falha. O próprio Node que roda o
+ * backend serve — apontado explicitamente, porque no host o PATH do processo
+ * filho não necessariamente inclui a pasta do node.
+ */
+const JS_RUNTIME = ['--js-runtimes', `node:${dirname(process.execPath)}`];
 import { FfmpegRunner } from '../../common/media/ffmpeg-runner';
 
 export interface InfoDoLink {
@@ -45,6 +53,7 @@ export class VideoDownloaderService {
        * público. Só os metadados, sem escolher formato.
        */
       const json = await cli.execPromise([
+        ...JS_RUNTIME,
         '--no-playlist',
         '--no-warnings',
         '--skip-download',
@@ -80,6 +89,7 @@ export class VideoDownloaderService {
     await mkdir(pasta, { recursive: true });
     const ffmpegDir = this.ffmpeg.binario ? dirname(this.ffmpeg.binario) : null;
     const args = [
+      ...JS_RUNTIME,
       '--no-playlist',
       '--no-warnings',
       '--no-progress',
@@ -155,6 +165,12 @@ export class VideoDownloaderService {
 /** As mensagens do yt-dlp são para dev; o usuário vê uma frase em português. */
 function traduzirErro(error: unknown): string {
   const texto = String((error as Error)?.message ?? error);
+  if (/confirm you.re not a bot|sign in to confirm/i.test(texto)) {
+    return 'O YouTube bloqueou o download a partir do nosso servidor. Baixe o vídeo e envie o arquivo.';
+  }
+  if (/javascript runtime|js runtime/i.test(texto)) {
+    return 'O servidor não conseguiu preparar o download do YouTube agora. Envie o arquivo do vídeo.';
+  }
   if (/private video|login required|sign in/i.test(texto)) {
     return 'Esse vídeo é privado ou exige login. Use um vídeo público ou envie o arquivo.';
   }
