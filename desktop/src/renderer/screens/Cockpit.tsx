@@ -166,7 +166,9 @@ export function Cockpit({
     void ponte.obterConexao().then(setConexao).catch(() => undefined);
     void ponte
       .obterCarteiraLive()
-      .then((c) => setSaldoInicial(c.minutos))
+      // Conta interna nunca é cobrada: Infinity mantém a conta "restante"
+      // válida e a barra mostra "∞" em vez de um zero que lê como bloqueio.
+      .then((c) => setSaldoInicial(c.ilimitada ? Number.POSITIVE_INFINITY : c.minutos))
       .catch(() => undefined);
     return ponte.aoMudarConexao(setConexao);
   }, [ponte]);

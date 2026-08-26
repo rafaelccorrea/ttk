@@ -153,7 +153,13 @@ export function BarraDeStatus({
         </Stack>
 
         <Indicador
-          valor={minutosRestantes === null ? '—' : `${minutosRestantes}`}
+          valor={
+            minutosRestantes === null
+              ? '—'
+              : Number.isFinite(minutosRestantes)
+                ? `${minutosRestantes}`
+                : '∞'
+          }
           rotulo="min"
           // Dois degraus: âmbar avisa com tempo de comprar; vermelho é urgência.
           tom={

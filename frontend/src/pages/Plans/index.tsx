@@ -329,7 +329,7 @@ export function PlansPage() {
                         Horas de live
                       </Typography>
                       <Typography variant="h4" lineHeight={1.1}>
-                        {formatarSaldoDeLive(wallet.liveCopilot.minutes)}
+                        {wallet.unlimited ? '∞' : formatarSaldoDeLive(wallet.liveCopilot.minutes)}
                       </Typography>
                     </Box>
                   </Stack>
@@ -647,7 +647,9 @@ export function PlansPage() {
                 {semPlano
                   ? '; você tem 10 minutos de cortesia para conhecer; assinando, o plano vem com 15, 40 ou 60 horas.'
                   : ', e cada plano já começa com horas de live inclusas na adesão.'}
-                {wallet.liveCopilot.trialAvailable
+                {wallet.unlimited
+                  ? ' Conta interna: as horas de live são ilimitadas.'
+                  : wallet.liveCopilot.trialAvailable
                   ? ` Você ainda tem ${wallet.liveCopilot.trialMinutes} minutos de cortesia para testar antes de comprar.`
                   : ` Saldo atual: ${formatarSaldoDeLive(wallet.liveCopilot.minutes)}.`}
               </>
