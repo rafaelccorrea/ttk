@@ -955,6 +955,11 @@ function DetalheDoJob({ job }: { job: CutJobDetail }) {
             {job.error ?? 'O processamento falhou.'}
           </Alert>
         )}
+        {job.status === 'pronto' && job.error && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            {job.error}
+          </Alert>
+        )}
         {job.status === 'processando' && <LoaderDoJob job={job} />}
 
         {job.status === 'pronto' && prontos > 0 && (
