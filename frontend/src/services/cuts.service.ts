@@ -201,6 +201,50 @@ export function lerDuracaoDoVideo(file: File): Promise<number | null> {
   });
 }
 
+/**
+ * Captura UM quadro do vídeo escolhido (a ~10% da duração, para pular a
+ * vinheta) como data URL. É o que alimenta o preview de formato antes de
+ * gerar: sem quadro real, o usuário só vê um retângulo e não entende o que
+ * "9:16 com fundo desfocado" faz com o vídeo DELE.
+ */
+export function capturarQuadroDoVideo(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    let terminou = false;
+    const fim = (valor: string | null) => {
+      if (terminou) return;
+      terminou = true;
+      URL.revokeObjectURL(url);
+      resolve(valor);
+    };
+    video.onloadedmetadata = () => {
+      const alvo = Number.isFinite(video.duration) ? Math.min(video.duration * 0.1, 5) : 0;
+      video.currentTime = alvo;
+    };
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const escala = Math.min(1, 480 / Math.max(video.videoWidth, 1));
+        canvas.width = Math.round(video.videoWidth * escala);
+        canvas.height = Math.round(video.videoHeight * escala);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return fim(null);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        fim(canvas.toDataURL('image/jpeg', 0.8));
+      } catch {
+        fim(null);
+      }
+    };
+    video.onerror = () => fim(null);
+    setTimeout(() => fim(null), 8000);
+    video.src = url;
+  });
+}
+
 export function formatarTempo(seg: number): string {
   const total = Math.max(0, Math.round(seg));
   const m = Math.floor(total / 60);

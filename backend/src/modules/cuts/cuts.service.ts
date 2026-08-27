@@ -71,6 +71,13 @@ export class CutsService {
   private readonly logger = new Logger(CutsService.name);
   /** Jobs cujo pipeline está vivo NESTE processo (segunda barreira do cron). */
   private readonly emAndamento = new Set<string>();
+  /**
+   * Jobs que o usuário pediu para cancelar. O cancelamento é cooperativo: o
+   * pipeline olha este conjunto nos pontos seguros (depois do download, depois
+   * do planejamento e antes de cada corte) e para ali — um ffmpeg no meio não
+   * é interrompido, porque o corte já foi cobrado e vale mais entregue.
+   */
+  private readonly cancelados = new Set<string>();
 
   constructor(
     @InjectRepository(CutJob) private readonly jobs: Repository<CutJob>,
@@ -175,6 +182,40 @@ export class CutsService {
     }
     if (job.sourcePath) await unlink(job.sourcePath).catch(() => undefined);
     await this.jobs.delete({ id, userId });
+  }
+
+  /**
+   * Cancela um job em processamento: o que ainda não foi gerado é estornado;
+   * os cortes já prontos ficam. Se o pipeline está vivo neste processo, ele
+   * para no próximo ponto seguro; se não está (o servidor reiniciou), o job
+   * é um órfão e resolve-se na hora, como o cron faria.
+   */
+  async cancelar(userId: string, id: string): Promise<void> {
+    const job = await this.achar(userId, id);
+    if (job.status !== 'processando') {
+      throw new ConflictException('Este job já terminou; não há o que cancelar.');
+    }
+    if (this.emAndamento.has(id)) {
+      this.cancelados.add(id);
+      return;
+    }
+    await this.estornarPendentes(id, 'Cortes: cancelado a pedido');
+    if (job.sourcePath) await unlink(job.sourcePath).catch(() => undefined);
+    await this.jobs.update(
+      { id },
+      {
+        status: 'falhou',
+        processingStartedAt: null,
+        sourcePath: null,
+        error: 'Cancelado a pedido. Os créditos dos cortes não gerados foram devolvidos.',
+      },
+    );
+  }
+
+  private checarCancelamento(id: string): void {
+    if (this.cancelados.has(id)) {
+      throw new Error('Cancelado a pedido. Os créditos dos cortes não gerados foram devolvidos.');
+    }
   }
 
   // ------------------------------------------------------------------- upload

@@ -57,6 +57,7 @@ import {
   cutsService,
   formatarTempo,
   lerDuracaoDoVideo,
+  capturarQuadroDoVideo,
   LIMITE_POR_BLOCO,
   LIMITES_DE_CORTE,
   NOME_DO_BLOCO,
@@ -134,6 +135,108 @@ const ESTILOS_DE_LEGENDA: Array<{
   },
 ];
 
+const PROPORCAO: Record<CutFormat, string> = { '9:16': '9 / 16', '1:1': '1 / 1', '16:9': '16 / 9' };
+
+/**
+ * Preview de como o corte vai sair na dimensão escolhida — com o quadro do
+ * vídeo do usuário (arquivo ou thumb do link), o reenquadramento e a legenda.
+ *
+ * É uma aproximação: o servidor decide o corte exato (o rastreio de rosto
+ * segue quem fala; aqui a "câmera" fica no centro). O que o preview responde é
+ * a pergunta que fazia a pessoa gerar só para ver: "o que 9:16 faz com o meu
+ * vídeo horizontal?" — o fundo desfocado com faixas ou o zoom no meio.
+ */
+function PreviewDoFormato({
+  format,
+  reframe,
+  quadro,
+  legenda,
+}: {
+  format: CutFormat;
+  reframe: ReframeMode;
+  quadro: string | null;
+  legenda: { exemplo: string; preview: Record<string, string | number> } | null;
+}) {
+  const semQuadro = !quadro;
+  const fundo = quadro
+    ? `url(${quadro})`
+    : 'linear-gradient(135deg, #3a3f63 0%, #6b4a7a 60%, #2a4a5c 100%)';
+  // 16:9 é o formato de origem mais comum: sai sem reenquadrar.
+  const modo: 'contain' | 'blur' | 'cover' =
+    format === '16:9' ? 'contain' : reframe === 'blur' ? 'blur' : 'cover';
+  return (
+    <Stack direction="row" spacing={2} alignItems="center">
+      <Box
+        sx={{
+          aspectRatio: PROPORCAO[format],
+          height: 180,
+          flexShrink: 0,
+          borderRadius: 1.5,
+          overflow: 'hidden',
+          position: 'relative',
+          bgcolor: '#000',
+          border: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        {modo === 'blur' && (
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: -12,
+              backgroundImage: fundo,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              filter: 'blur(10px) brightness(0.6)',
+            }}
+          />
+        )}
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: fundo,
+            backgroundSize: modo === 'cover' ? 'cover' : 'contain',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+            // Sem quadro real, o gradiente ocupa a área que o vídeo ocuparia.
+            ...(semQuadro && modo !== 'cover'
+              ? { inset: modo === 'blur' ? '30% 0' : 0 }
+              : {}),
+          }}
+        />
+        {legenda && (
+          <Box
+            sx={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: '12%',
+              px: 1,
+              textAlign: 'center',
+              fontSize: format === '16:9' ? 11 : 12,
+              lineHeight: 1.15,
+              fontFamily: '"DejaVu Sans", Arial, sans-serif',
+              ...legenda.preview,
+            }}
+          >
+            {legenda.exemplo}
+          </Box>
+        )}
+      </Box>
+      <Typography variant="caption" color="text.secondary">
+        {semQuadro
+          ? 'Escolha um vídeo para ver o preview com o seu quadro.'
+          : modo === 'contain'
+            ? 'Sai como foi gravado, sem reenquadrar.'
+            : modo === 'blur'
+              ? 'O vídeo inteiro no meio, sobre o fundo desfocado.'
+              : 'Zoom no centro; na geração, a câmera segue quem fala.'}
+      </Typography>
+    </Stack>
+  );
+}
+
 const STATUS_LABEL: Record<CutJobSummary['status'], string> = {
   pendente: 'Na fila',
   processando: 'Cortando…',
@@ -152,6 +255,8 @@ export function CutsPage() {
   const [faixa, setFaixa] = useState<[number, number]>([30, 60]);
   const [file, setFile] = useState<File | null>(null);
   const [duracao, setDuracao] = useState<number | null>(null);
+  // Quadro do arquivo escolhido, só para o preview de formato.
+  const [quadro, setQuadro] = useState<string | null>(null);
   // Fonte por arquivo ou por link — só um dos dois vale na hora de gerar.
   const [origem, setOrigem] = useState<'arquivo' | 'link'>('arquivo');
   const [url, setUrl] = useState('');
@@ -264,6 +369,7 @@ export function CutsPage() {
     setErro(null);
     setFile(f);
     setDuracao(f ? await lerDuracaoDoVideo(f) : null);
+    setQuadro(f ? await capturarQuadroDoVideo(f) : null);
   }
 
   const duracaoFora =
@@ -305,6 +411,7 @@ export function CutsPage() {
           ? await cutsService.createFromUrl({ ...pedido, url: url.trim() })
           : await cutsService.create(pedido, file as File, setProgresso);
       setFile(null);
+      setQuadro(null);
       setDuracao(null);
       setUrl('');
       setInfoLink(null);
@@ -551,6 +658,16 @@ export function CutsPage() {
                       <ToggleButton value="1:1">1:1</ToggleButton>
                       <ToggleButton value="16:9">16:9</ToggleButton>
                     </ToggleButtonGroup>
+                    <PreviewDoFormato
+                      format={format}
+                      reframe={capacidades.faceTracking ? reframe : 'blur'}
+                      quadro={origem === 'link' ? (infoLink?.thumb ?? null) : quadro}
+                      legenda={
+                        mode === 'inteligente' && captions
+                          ? (ESTILOS_DE_LEGENDA.find((e) => e.id === captionStyle) ?? null)
+                          : null
+                      }
+                    />
                     {format !== '16:9' && (
                       <Box>
                         <Typography variant="body2" sx={{ mb: 0.5 }}>
