@@ -172,7 +172,7 @@ export const FAQ = [
   },
   {
     q: 'Preciso de cartão para testar?',
-    a: 'Não. O plano Free é permanente e você ainda ganha 25 créditos de boas-vindas no cadastro para experimentar as ferramentas de IA, além de 10 minutos de Live Copilot de cortesia para ver o copiloto respondendo o seu chat de verdade.',
+    a: 'Não. O plano Free é permanente e você ainda ganha 250 créditos de boas-vindas no cadastro para experimentar as ferramentas de IA, além de 10 minutos de Live Copilot de cortesia para ver o copiloto respondendo o seu chat de verdade.',
   },
   {
     q: 'Os roteiros gerados são originais?',
@@ -213,10 +213,10 @@ export const PRICING: PricingPlan[] = [
     id: 'essencial',
     name: 'Essencial',
     price: 39.9,
-    annual: { price: 399.9, credits: '4.600 créditos no ano' },
+    annual: { price: 399.9, credits: '6.670 créditos no ano' },
     tagline: 'Para começar a garimpar',
     perks: [
-      '450 créditos/mês',
+      '650 créditos/mês',
       'Descoberta completa: produtos, vídeos e criadores',
       'Roteiros e análises com IA',
       'Transcrição de vídeos',
@@ -228,11 +228,11 @@ export const PRICING: PricingPlan[] = [
     id: 'pro',
     name: 'Pro',
     price: 89.9,
-    annual: { price: 899.9, credits: '10.400 créditos no ano' },
+    annual: { price: 899.9, credits: '15.080 créditos no ano' },
     tagline: 'Para quem publica toda semana',
     highlight: true,
     perks: [
-      '1.000 créditos/mês',
+      '1.450 créditos/mês',
       'Tudo do Essencial',
       'Vídeos com IA',
       'Multiplicador de conteúdo',
@@ -243,10 +243,10 @@ export const PRICING: PricingPlan[] = [
     id: 'business',
     name: 'Business',
     price: 249.9,
-    annual: { price: 2499.9, credits: '28.800 créditos no ano' },
+    annual: { price: 2499.9, credits: '41.760 créditos no ano' },
     tagline: 'Para times e agências',
     perks: [
-      '2.800 créditos/mês',
+      '4.060 créditos/mês',
       'Tudo do Pro',
       'Live Copilot: o plano vem com 60 horas de live',
       'Envio automático: a IA responde no chat da live (exclusivo)',

@@ -54,7 +54,7 @@ function repositorioDeUsuarios(estado: {
 /**
  * Só os lançamentos de COBRANÇA.
  *
- * A cortesia de cadastro (`signup_bonus`, 25 créditos) é concedida na primeira
+ * A cortesia de cadastro (`signup_bonus`, 250 créditos) é concedida na primeira
  * vez que a conta passa por `charge`/`assertSaldo`/`getWallet`, então ela
  * aparece na lista de lançamentos junto com o que o teste quer observar.
  * Filtrar por aqui deixa cada teste falando do que ele realmente afirma —

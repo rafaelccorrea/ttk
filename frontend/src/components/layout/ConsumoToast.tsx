@@ -30,7 +30,7 @@ function marcar(k: string) {
 /**
  * Avisa quando o consumo do ciclo cruza 50%, 75% e 100%.
  *
- * O caso que motivou: uma conta free gastou os 25 créditos de boas-vindas em
+ * O caso que motivou: uma conta free gastou os 250 créditos de boas-vindas em
  * três roteiros seguidos e só percebeu no 402. O saldo estava no cabeçalho o
  * tempo todo — mas um número que ninguém mandou olhar é um número invisível.
  *

@@ -63,7 +63,7 @@ interface Props {
 /**
  * O primeiro login da conta gratuita: o que ela tem de graça, dito de uma vez.
  *
- * Sem isto a cortesia é invisível — os 25 créditos aparecem como um número no
+ * Sem isto a cortesia é invisível — os 250 créditos aparecem como um número no
  * canto, o vídeo de cortesia só se descobre abrindo a tela certa, e os dez
  * minutos de live só quando a primeira transmissão começa. Um presente que
  * ninguém sabe que ganhou não converte ninguém. O modal existe para transformar

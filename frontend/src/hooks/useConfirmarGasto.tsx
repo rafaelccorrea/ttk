@@ -80,7 +80,7 @@ export function useConfirmarGasto(): {
   const [pedido, setPedido] = useState<PedidoDeGasto | null>(null);
   const [custo, setCusto] = useState<number | null>(null);
   const [saldo, setSaldo] = useState<number | null>(null);
-  // Conta free tem 25 créditos: três roteiros. Dispensar o aviso ali é
+  // Conta free tem 250 créditos: trinta roteiros. Dispensar o aviso ali é
   // exatamente como alguém gasta tudo sem ver — a caixa só aparece com plano.
   const [semPlano, setSemPlano] = useState(false);
   const [naoPerguntar, setNaoPerguntar] = useState(false);

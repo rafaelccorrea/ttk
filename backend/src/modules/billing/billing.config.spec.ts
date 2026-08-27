@@ -78,17 +78,17 @@ describe('billing.config — a fronteira da conta gratuita', () => {
   });
 
   it('dá a cortesia de boas-vindas, e ela cabe no custo de aquisição', () => {
-    // 25 créditos × R$ 0,06 (pior custo por crédito) = R$ 1,50 por conta, no
+    // 250 créditos × R$ 0,06 (pior custo por crédito) = R$ 15,00 por conta, no
     // pior caso. Subir isto é subir o custo de todo cadastro que nunca pagar.
-    expect(SIGNUP_BONUS_CREDITS).toBe(25);
+    expect(SIGNUP_BONUS_CREDITS).toBe(250);
     const custoMaximo = SIGNUP_BONUS_CREDITS * worstCostPerCredit();
-    expect(Number(custoMaximo.toFixed(2))).toBeLessThanOrEqual(1.5);
+    expect(Number(custoMaximo.toFixed(2))).toBeLessThanOrEqual(15);
   });
 
-  it('dá um vídeo de cortesia, e o custo de aquisição total cabe em R$ 5,10', () => {
+  it('dá um vídeo de cortesia, e o custo de aquisição total cabe em R$ 19,00', () => {
     // A cortesia é um VÍDEO, não créditos: a carteira não infla, e o que a
     // conta gratuita vê é a cena — a única coisa que o Pro vende e os 25
-    // créditos não alcançam. Pior caso: 25 × R$ 0,06 + 1 × R$ 3,60 = R$ 5,10
+    // créditos não alcançam. Pior caso: 250 × R$ 0,06 + 1 × R$ 3,60 + roteiro = R$ 18,99
     // por cadastro confirmado que nunca paga. Subir qualquer um dos dois é
     // subir o CAC de todo mundo — inclusive de quem cadastra em série.
     expect(SAMPLE_VIDEOS_PER_ACCOUNT).toBe(1);
@@ -98,7 +98,7 @@ describe('billing.config — a fronteira da conta gratuita', () => {
       SIGNUP_BONUS_CREDITS * worstCostPerCredit() +
       sampleVideoWorstCostBrl() +
       ACTION_PRICES.script.worstCaseCostBrl;
-    expect(Number(cac.toFixed(2))).toBeLessThanOrEqual(5.5);
+    expect(Number(cac.toFixed(2))).toBeLessThanOrEqual(19);
   });
 
   it('não vende plano de preço zero', () => {

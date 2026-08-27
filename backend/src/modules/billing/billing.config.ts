@@ -15,6 +15,19 @@ export const CREDIT_VALUE_BRL = 0.1;
 export const MIN_MARGIN = 1.4;
 
 /**
+ * Margem mínima dos PLANOS (assinaturas), separada da das ações e dos packs.
+ *
+ * Decisão de 2026-08-27: nenhuma assinatura desde o lançamento. A cota de
+ * créditos de todos os planos subiu 45% SEM mexer no preço, e no pior caso
+ * teórico (todo crédito gasto na ação mais cara) o anual do Pro fica ~0,5%
+ * abaixo do custo. É prejuízo aceito de propósito para conquistar os
+ * primeiros clientes — o pior caso não acontece na prática, e a checagem do
+ * boot continua existindo para impedir que o buraco cresça sem ninguém ver.
+ * Quando a base pagar, volta para `MIN_MARGIN`.
+ */
+export const PLAN_MIN_MARGIN = 0.95;
+
+/**
  * Quanto custa, em BRL, UM crédito do PLANO da Higgsfield — a carteira que a
  * CLI gasta ao renderizar cena da Fábrica. Plano Ultra mensal: US$ 129 por
  * 3.000 créditos = US$ 0,043; no anual (US$ 99) cai para US$ 0,033. Fica o
@@ -437,12 +450,13 @@ export function planSignupLiveMinutes(planId: string): number {
  * não só mais créditos.
  *
  * Preço por crédito (o piso com a margem mínima é R$ 0,084):
- *   Essencial       R$ 39,90 / 450 cr    = R$ 0,0887/cr → 1,48× o pior custo
- *   Essencial anual R$ 399,90 / 4.600 cr = R$ 0,0869/cr → 1,45× o pior custo
- *   Pro             R$ 89,90 / 1.000 cr  = R$ 0,0899/cr → 1,50× o pior custo
- *   Pro anual       R$ 899,90 / 10.400 cr= R$ 0,0865/cr → 1,44× o pior custo
- *   Business        R$ 249,90 / 2.800 cr = R$ 0,0892/cr → 1,49× o pior custo
- *   Business anual  R$ 2.499,90 / 28.800 cr = R$ 0,0868/cr → 1,45× o pior custo
+ *   (cotas +45% em 2026-08-27, preço mantido — ver PLAN_MIN_MARGIN)
+ *   Essencial       R$ 39,90 / 650 cr    = R$ 0,0614/cr → 1,02× o pior custo
+ *   Essencial anual R$ 399,90 / 6.670 cr = R$ 0,0600/cr → 1,00× o pior custo
+ *   Pro             R$ 89,90 / 1.450 cr  = R$ 0,0620/cr → 1,03× o pior custo
+ *   Pro anual       R$ 899,90 / 15.080 cr= R$ 0,0597/cr → 0,99× o pior custo
+ *   Business        R$ 249,90 / 4.060 cr = R$ 0,0616/cr → 1,03× o pior custo
+ *   Business anual  R$ 2.499,90 / 41.760 cr = R$ 0,0599/cr → 1,00× o pior custo
  * Nenhum plano inclui hora MENSAL de live: as horas do plano (15/40/60h) são
  * bônus único de adesão (`signupLiveHours`), custo de aquisição que não entra
  * nesta conta. O desconto de volume (e o anual) sai da margem, nunca do
@@ -453,13 +467,13 @@ export const PLANS: Plan[] = [
     id: 'essencial',
     name: 'Essencial',
     priceBrl: 39.9,
-    monthlyCredits: 450,
+    monthlyCredits: 650,
     // "Já começa com 15 horas": o degrau de entrada entra transmitindo de
     // verdade, sem segunda compra no primeiro mês.
     signupLiveHours: 15,
-    annual: { priceBrl: 399.9, credits: 4600 },
+    annual: { priceBrl: 399.9, credits: 6670 },
     perks: [
-      '450 créditos/mês (ou 4.600 no plano anual)',
+      '650 créditos/mês (ou 6.670 no plano anual)',
       'Descoberta completa: produtos, vídeos e criadores',
       'Roteiros e análises com IA',
       'Transcrição de vídeos',
@@ -471,7 +485,7 @@ export const PLANS: Plan[] = [
     id: 'pro',
     name: 'Pro',
     priceBrl: 89.9,
-    monthlyCredits: 1000,
+    monthlyCredits: 1450,
     // 6 horas por live: um turno inteiro de venda cabe; o que não cabe é o
     // esquecimento de madrugada. O Business, que opera de verdade, tem 24h.
     maxLiveDurationMinutes: 360,
@@ -479,9 +493,9 @@ export const PLANS: Plan[] = [
     // mensal: acabou, é pack — simples de anunciar e de cobrar.
     signupLiveHours: 40,
     highlight: true,
-    annual: { priceBrl: 899.9, credits: 10400 },
+    annual: { priceBrl: 899.9, credits: 15080 },
     perks: [
-      '1.000 créditos/mês (ou 10.400 no plano anual)',
+      '1.450 créditos/mês (ou 15.080 no plano anual)',
       'Tudo do Essencial',
       'Vídeos com IA',
       'Multiplicador de conteúdo',
@@ -508,7 +522,7 @@ export const PLANS: Plan[] = [
      * e não entra na conta mensal — então o preço volta ao seu valor base.
      */
     priceBrl: 249.9,
-    monthlyCredits: 2800,
+    monthlyCredits: 4060,
     // 24 horas — o teto do próprio TikTok para uma transmissão contínua.
     maxLiveDurationMinutes: 1440,
     // O plano VEM com 60 horas de live (uma vez, na adesão): o topo entra
@@ -527,9 +541,9 @@ export const PLANS: Plan[] = [
      * ano — `assertProfitability` soma as duas moedas na checagem. Mexer
      * nestes números sem refazer essa conta derruba o servidor no boot.
      */
-    annual: { priceBrl: 2499.9, credits: 28800 },
+    annual: { priceBrl: 2499.9, credits: 41760 },
     perks: [
-      '2.800 créditos/mês (ou 28.800 no plano anual)',
+      '4.060 créditos/mês (ou 41.760 no plano anual)',
       'Tudo do Pro',
       'Live Copilot: o plano vem com 60 horas de live',
       'Envio automático: a IA responde no chat da live (exclusivo)',
@@ -550,8 +564,8 @@ export const LEGACY_PLANS: Plan[] = [
     id: 'starter',
     name: 'Starter',
     priceBrl: 49.9,
-    monthlyCredits: 500,
-    perks: ['500 créditos/mês', 'Plano descontinuado'],
+    monthlyCredits: 725,
+    perks: ['725 créditos/mês', 'Plano descontinuado'],
   },
 ];
 
@@ -570,8 +584,10 @@ export function findPlan(id: string): Plan | undefined {
  * roteiro, ou duas imagens. Dá para conhecer; não dá para operar.
  *
  * **Isto é dinheiro nosso saindo, e o número é o teto do prejuízo por conta.**
- * No pior caso (R$ 0,06 por crédito, ver `worstCostPerCredit`), 25 créditos
- * custam até R$ 1,50. É o preço de aquisição que estamos dispostos a pagar por
+ * (2026-08-27: subiu de 25 para 250 — sem assinatura desde o lançamento, a
+ * cortesia virou argumento de venda: dá para operar uma semana de verdade.)
+ * No pior caso (R$ 0,06 por crédito, ver `worstCostPerCredit`), 250 créditos
+ * custam até R$ 15,00. É o preço de aquisição que estamos dispostos a pagar por
  * cadastro confirmado — e o que impede isso de virar torneira aberta é ser
  * concedido UMA VEZ POR CONTA (`ensureSignupBonus` grava a transação
  * `signup_bonus` e nunca repete) e não renovar no mês seguinte. Quem quiser
@@ -581,7 +597,7 @@ export function findPlan(id: string): Plan | undefined {
  * de todo mundo que se cadastrar e nunca pagar, inclusive de quem se cadastrar
  * duas vezes.
  */
-export const SIGNUP_BONUS_CREDITS = 25;
+export const SIGNUP_BONUS_CREDITS = 250;
 
 /**
  * Vídeos com IA de cortesia por conta — a prova de valor que os 25 créditos
@@ -1009,9 +1025,9 @@ export function assertProfitability(): string[] {
       const worstSpend =
         credits * perCredit +
         planLiveMinutes(plan, cycleId) * LIVE_COST_PER_MINUTE_BRL;
-      if (price < worstSpend * MIN_MARGIN) {
+      if (price < worstSpend * PLAN_MIN_MARGIN) {
         problems.push(
-          `Plano "${plan.id}" (${cycle}): R$ ${price} não cobre pior gasto R$ ${worstSpend.toFixed(2)} × margem ${MIN_MARGIN}`,
+          `Plano "${plan.id}" (${cycle}): R$ ${price} não cobre pior gasto R$ ${worstSpend.toFixed(2)} × margem ${PLAN_MIN_MARGIN}`,
         );
       }
     }

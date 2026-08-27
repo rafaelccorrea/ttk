@@ -41,9 +41,9 @@ const DIGITAL = 'Produto digital: acesso imediato após o pagamento, sem frete.'
  * qualidade de vídeo?", "quantos tamanhos de pacote?".
  */
 const VARIANTES: Record<string, string[]> = {
-  'Plano Essencial': ['Mensal R$ 39,90 (450 créditos/mês)', 'Anual R$ 399,90 (4.600 créditos, 2 meses grátis)'],
-  'Plano Pro': ['Mensal R$ 89,90 (1.000 créditos/mês)', 'Anual R$ 899,90 (10.400 créditos, 2 meses grátis)', 'Oferta da live com código "mestre": 2.000 créditos + 80 h de live'],
-  'Plano Business': ['Mensal R$ 249,90 (2.800 créditos/mês)', 'Anual R$ 2.499,90 (28.800 créditos, 2 meses grátis)'],
+  'Plano Essencial': ['Mensal R$ 39,90 (650 créditos/mês)', 'Anual R$ 399,90 (6.670 créditos, 2 meses grátis)'],
+  'Plano Pro': ['Mensal R$ 89,90 (1.450 créditos/mês)', 'Anual R$ 899,90 (15.080 créditos, 2 meses grátis)', 'Oferta da live com código "mestre": 2.000 créditos + 80 h de live'],
+  'Plano Business': ['Mensal R$ 249,90 (4.060 créditos/mês)', 'Anual R$ 2.499,90 (41.760 créditos, 2 meses grátis)'],
   'Pacotes extras de créditos': ['100 créditos — R$ 14,90', '300 créditos — R$ 39,90', '1.000 créditos — R$ 119,90'],
   'Horas de live avulsas': ['1 hora — R$ 9,90', '5 horas — R$ 39,90', '15 horas — R$ 99,90', '40 horas — R$ 219,90'],
   'Live Copilot (copiloto da live)': ['Modo painel (todos os planos): a resposta aparece pra você copiar/falar', 'Modo automático (só Business, com termo): o app envia no chat', 'Teto por live: Essencial e Pro 6 h, Business 24 h', 'App Windows (Mac em breve)'],
@@ -63,7 +63,7 @@ const PRODUTOS: P[] = [
     priceBrl: '39.90',
     aliases: ['essencial', 'plano básico', 'plano de 39', '39,90', 'plano mais barato', 'plano inicial'],
     details:
-      'Mensal R$ 39,90: 450 créditos de IA por mês. Anual R$ 399,90: 4.600 créditos (equivale a 2 meses grátis). Vem com 15 horas de live creditadas uma vez na adesão (não é mensal). Inclui Descoberta completa (produtos, vídeos e criadores que mais vendem), roteiros e análises com IA, transcrição de vídeos, imagens com IA e o Live Copilot no modo painel. Não inclui vídeo com IA, Multiplicador nem Cortes (esses são do Pro).',
+      'Mensal R$ 39,90: 650 créditos de IA por mês. Anual R$ 399,90: 6.670 créditos (equivale a 2 meses grátis). Vem com 15 horas de live creditadas uma vez na adesão (não é mensal). Inclui Descoberta completa (produtos, vídeos e criadores que mais vendem), roteiros e análises com IA, transcrição de vídeos, imagens com IA e o Live Copilot no modo painel. Não inclui vídeo com IA, Multiplicador nem Cortes (esses são do Pro).',
     shippingInfo: DIGITAL,
   },
   {
@@ -71,7 +71,7 @@ const PRODUTOS: P[] = [
     priceBrl: '89.90',
     aliases: ['pro', 'plano pró', 'plano de 89', '89,90', 'plano do meio', 'plano recomendado', 'plano da oferta'],
     details:
-      'Mensal R$ 89,90: 1.000 créditos de IA por mês. Anual R$ 899,90: 10.400 créditos. Vem com 40 horas de live creditadas uma vez na adesão. Tudo do Essencial mais vídeos com IA (Fábrica de criativos com apresentador), Multiplicador de conteúdo e Cortes automáticos de vídeo longo. Teto de 6 horas por live. É o plano mais escolhido.',
+      'Mensal R$ 89,90: 1.450 créditos de IA por mês. Anual R$ 899,90: 15.080 créditos. Vem com 40 horas de live creditadas uma vez na adesão. Tudo do Essencial mais vídeos com IA (Fábrica de criativos com apresentador), Multiplicador de conteúdo e Cortes automáticos de vídeo longo. Teto de 6 horas por live. É o plano mais escolhido.',
     promo:
       'OFERTA DA LIVE: quem assinar o Pro de R$ 89,90 e chamar no direct do TikTok com o código "mestre" ("mestre, vi o vídeo na live") ganha o dobro — 2.000 créditos e 80 horas de live. Vale só pra quem está assistindo esta live.',
     shippingInfo: DIGITAL,
@@ -81,7 +81,7 @@ const PRODUTOS: P[] = [
     priceBrl: '249.90',
     aliases: ['business', 'plano top', 'plano de 249', '249,90', 'plano completo', 'plano empresa', 'plano avançado'],
     details:
-      'Mensal R$ 249,90: 2.800 créditos de IA por mês. Anual R$ 2.499,90: 28.800 créditos. Vem com 60 horas de live creditadas uma vez na adesão. Tudo do Pro mais ENVIO AUTOMÁTICO (a IA responde sozinha no chat da live — exclusivo do Business), coleta de dados automatizada, onboarding dedicado e suporte prioritário. Teto de 24 horas por live.',
+      'Mensal R$ 249,90: 4.060 créditos de IA por mês. Anual R$ 2.499,90: 41.760 créditos. Vem com 60 horas de live creditadas uma vez na adesão. Tudo do Pro mais ENVIO AUTOMÁTICO (a IA responde sozinha no chat da live — exclusivo do Business), coleta de dados automatizada, onboarding dedicado e suporte prioritário. Teto de 24 horas por live.',
     shippingInfo: DIGITAL,
   },
   {
@@ -213,7 +213,7 @@ const FAQ: F[] = [
   { q: 'O que são os cortes?', a: 'Sobe um vídeo longo e a IA transcreve e devolve vários cortes verticais prontos pra postar, com legenda. Acabou ficar editando.', produto: 'Cortes automáticos de vídeo longo' },
   { q: 'Quanto custa o corte?', a: 'Corte rápido 2 créditos; corte inteligente (a IA escolhe os melhores trechos) 6 créditos por corte. A partir do Pro.', produto: 'Cortes automáticos de vídeo longo' },
   { q: 'O que é o multiplicador de vídeo?', a: 'Você coloca um vídeo e ele gera dezenas de variações (até 150) recombinando gancho, corpo e CTA. Simples, direto, sem fórmula mágica.', produto: 'Multiplicador de conteúdo' },
-  { q: 'Quanto custa multiplicar?', a: '1 crédito por vídeo montado. Com 1.000 créditos do Pro dá pra fazer muito volume.', produto: 'Multiplicador de conteúdo' },
+  { q: 'Quanto custa multiplicar?', a: '1 crédito por vídeo montado. Com 1.450 créditos do Pro dá pra fazer muito volume.', produto: 'Multiplicador de conteúdo' },
   { q: 'O que é a análise de vídeo?', a: 'Sobe ou cola um vídeo que vende: a IA transcreve, explica por que funciona e gera um roteiro adaptado pro seu produto. 12 créditos.', produto: 'Estúdio: roteiros e análise de vídeo' },
   { q: 'Faz roteiro pra mim?', a: 'Faz: roteiro de vídeo curto, de live ou peças pro multiplicador, a partir do seu produto ou de um produto da Descoberta. 8 créditos por roteiro.', produto: 'Estúdio: roteiros e análise de vídeo' },
   { q: 'O que é a fábrica de criativos?', a: 'Cadastra o produto com fotos, cria um apresentador com IA e ela gera o vídeo cena a cena, com fala sincronizada, e junta tudo num vídeo só.', produto: 'Fábrica de criativos (vídeo com IA e apresentador)' },
@@ -235,25 +235,25 @@ const FAQ: F[] = [
   { q: 'Funciona pra Instagram, Reels, Kwai?', a: 'Os vídeos e cortes saem em vertical e você posta onde quiser. A Descoberta e o Copiloto são do TikTok Shop.', produto: 'Cortes automáticos de vídeo longo' },
 
   // -------------------------------------------------------------- preço
-  { q: 'Quanto custa? Quais são os planos?', a: 'Essencial R$ 39,90 (450 créditos), Pro R$ 89,90 (1.000 créditos) e Business R$ 249,90 (2.800 créditos). Todos já vêm com horas de live.', produto: 'Plano Pro' },
-  { q: 'Qual plano você recomenda?', a: 'O Pro: 1.000 créditos, 40 h de live, vídeo com IA, multiplicador e cortes. E hoje com o código "mestre" ele dobra.', produto: 'Plano Pro' },
+  { q: 'Quanto custa? Quais são os planos?', a: 'Essencial R$ 39,90 (650 créditos), Pro R$ 89,90 (1.450 créditos) e Business R$ 249,90 (4.060 créditos). Todos já vêm com horas de live.', produto: 'Plano Pro' },
+  { q: 'Qual plano você recomenda?', a: 'O Pro: 1.450 créditos, 40 h de live, vídeo com IA, multiplicador e cortes. E hoje com o código "mestre" ele dobra.', produto: 'Plano Pro' },
   { q: 'Qual a oferta da live? Como uso o código mestre?', a: 'Assina o Pro de R$ 89,90, chama no direct do TikTok e fala "mestre, vi o vídeo na live": a gente dobra pra 2.000 créditos e 80 horas de live.', produto: 'Plano Pro' },
   { q: 'Até quando vale a oferta / o código?', a: 'Vale pra quem está assistindo esta live e chamar no direct depois de assinar o Pro. Não deixa pra depois.', produto: 'Plano Pro' },
   { q: 'O código mestre vale pro Essencial ou pro Business?', a: 'A oferta é do Pro de R$ 89,90. Com ela o Pro fica com 2.000 créditos e 80 h — mais horas que o Business.', produto: 'Plano Pro' },
-  { q: 'O que tem no Essencial?', a: 'R$ 39,90: 450 créditos/mês, 15 h de live, descoberta completa, roteiros, análises, transcrição, imagens e o Copiloto no painel.', produto: 'Plano Essencial' },
-  { q: 'O que tem no Pro?', a: 'R$ 89,90: 1.000 créditos/mês, 40 h de live, tudo do Essencial + vídeo com IA, multiplicador e cortes. Até 6 h por live.', produto: 'Plano Pro' },
-  { q: 'O que tem no Business?', a: 'R$ 249,90: 2.800 créditos/mês, 60 h de live, envio automático no chat, coleta automatizada, onboarding dedicado e suporte prioritário.', produto: 'Plano Business' },
-  { q: 'Qual a diferença do Essencial pro Pro?', a: 'O Pro tem vídeo com IA (Fábrica), multiplicador e cortes, 1.000 créditos e 40 h de live. O Essencial é roteiro, análise, imagem e copiloto.', produto: 'Plano Pro' },
-  { q: 'Qual a diferença do Pro pro Business?', a: 'O Business tem 2.800 créditos, 60 h de live, envio automático no chat, coleta automatizada, onboarding dedicado e suporte prioritário.', produto: 'Plano Business' },
+  { q: 'O que tem no Essencial?', a: 'R$ 39,90: 650 créditos/mês, 15 h de live, descoberta completa, roteiros, análises, transcrição, imagens e o Copiloto no painel.', produto: 'Plano Essencial' },
+  { q: 'O que tem no Pro?', a: 'R$ 89,90: 1.450 créditos/mês, 40 h de live, tudo do Essencial + vídeo com IA, multiplicador e cortes. Até 6 h por live.', produto: 'Plano Pro' },
+  { q: 'O que tem no Business?', a: 'R$ 249,90: 4.060 créditos/mês, 60 h de live, envio automático no chat, coleta automatizada, onboarding dedicado e suporte prioritário.', produto: 'Plano Business' },
+  { q: 'Qual a diferença do Essencial pro Pro?', a: 'O Pro tem vídeo com IA (Fábrica), multiplicador e cortes, 1.450 créditos e 40 h de live. O Essencial é roteiro, análise, imagem e copiloto.', produto: 'Plano Pro' },
+  { q: 'Qual a diferença do Pro pro Business?', a: 'O Business tem 4.060 créditos, 60 h de live, envio automático no chat, coleta automatizada, onboarding dedicado e suporte prioritário.', produto: 'Plano Business' },
   { q: 'Quantas horas de live vêm em cada plano?', a: 'Essencial 15 h, Pro 40 h e Business 60 h — creditadas uma vez na adesão. Hora de live não expira.', produto: 'Horas de live avulsas' },
   { q: 'As horas de live renovam todo mês?', a: 'Não, são um bônus único da adesão. Quando acabar, tem hora avulsa a partir de R$ 9,90 a hora.', produto: 'Horas de live avulsas' },
   { q: 'Quanto custa a hora de live extra?', a: '1 h R$ 9,90; 5 h R$ 39,90; 15 h R$ 99,90; 40 h R$ 219,90. Não expira.', produto: 'Horas de live avulsas' },
   { q: 'O que é crédito? O que gasta crédito?', a: 'Crédito é a moeda das gerações: roteiro 8, análise 12, imagem 12, vídeo com IA 60 por cena, corte 2 ou 6, transcrição 6 a cada 10 min.', produto: 'Pacotes extras de créditos' },
-  { q: 'Quantos vídeos faço com 1.000 créditos?', a: 'Uns 5 vídeos de 3 cenas com IA (~180 cada), ou 125 roteiros, ou 160 cortes inteligentes — mistura como quiser.', produto: 'Plano Pro' },
+  { q: 'Quantos vídeos faço com 1.450 créditos?', a: 'Uns 8 vídeos de 3 cenas com IA (~180 cada), ou 180 roteiros, ou 240 cortes inteligentes — mistura como quiser.', produto: 'Plano Pro' },
   { q: 'Crédito vira hora de live?', a: 'Não, são separados de propósito: sua live nunca consome os créditos que você guardou pra criar vídeos.', produto: 'Pacotes extras de créditos' },
   { q: 'Acabou o crédito, e aí?', a: 'Compra um pacote: 100 por R$ 14,90, 300 por R$ 39,90 ou 1.000 por R$ 119,90. Créditos de pacote não vencem.', produto: 'Pacotes extras de créditos' },
   { q: 'Crédito acumula pro mês seguinte?', a: 'Os do plano renovam todo mês e não acumulam; os de pacote extra ficam até você usar.', produto: 'Pacotes extras de créditos' },
-  { q: 'Tem plano anual? Tem desconto?', a: 'Tem: Essencial R$ 399,90/ano (4.600 créditos), Pro R$ 899,90/ano (10.400) e Business R$ 2.499,90/ano (28.800) — dois meses grátis.', produto: 'Plano Pro' },
+  { q: 'Tem plano anual? Tem desconto?', a: 'Tem: Essencial R$ 399,90/ano (6.670 créditos), Pro R$ 899,90/ano (15.080) e Business R$ 2.499,90/ano (41.760) — dois meses grátis.', produto: 'Plano Pro' },
   { q: 'Tem plano grátis ou teste?', a: 'Hoje não tem teste grátis: começa pelo Essencial de R$ 39,90, que já vem com 15 horas de live pra testar o Copiloto de verdade.', produto: 'Plano Essencial' },
   { q: 'Tem desconto pra pagar no ano?', a: 'Tem — o anual sai com 2 meses grátis: Pro R$ 899,90 em vez de 12 × 89,90.', produto: 'Plano Pro' },
   { q: 'Tem cupom?', a: 'O cupom de hoje é o código "mestre" no direct, depois de assinar o Pro: dobra créditos e horas.', produto: 'Plano Pro' },
@@ -273,7 +273,7 @@ const FAQ: F[] = [
   { q: 'Emite nota fiscal?', a: 'Emite — a assinatura é pela Stripe e a nota vai no seu e-mail. Dúvida de cobrança, fala com o suporte no chat.', produto: 'Conta, pagamento e suporte' },
 
   // ----------------------------------------------------------- objeções
-  { q: 'Tá caro.', a: 'Pensa no que custa uma hora sua ao vivo: por R$ 89,90 são 40 h de live respondida e 1.000 créditos de vídeo. Uma venda paga o mês.', kind: 'objecao', produto: 'Plano Pro' },
+  { q: 'Tá caro.', a: 'Pensa no que custa uma hora sua ao vivo: por R$ 89,90 são 40 h de live respondida e 1.450 créditos de vídeo. Uma venda paga o mês.', kind: 'objecao', produto: 'Plano Pro' },
   { q: 'Faz um precinho melhor aí', a: 'O precinho é o código "mestre": assina o Pro de R$ 89,90 e ganha o dobro — 2.000 créditos e 80 h de live.', kind: 'objecao', produto: 'Plano Pro' },
   { q: 'Não sei mexer com isso, é complicado?', a: 'É subir a gravação da live, revisar a lista que a IA montou e ligar o app. Se travar, o suporte te acompanha.', kind: 'objecao', produto: 'Conta, pagamento e suporte' },
   { q: 'Não tenho tempo de aprender', a: 'O sistema existe pra te devolver tempo: roteiro, vídeo e chat feitos pela IA. Em uma noite você monta a primeira base.', kind: 'objecao', produto: 'Conta, pagamento e suporte' },
@@ -319,7 +319,7 @@ const FAQ: F[] = [
   { q: 'Dá pra gerar roteiro direto de um produto da descoberta?', a: 'Dá, com um clique: escolhe o produto (ou o vídeo que vende) e pede roteiro ou análise.', produto: 'Estúdio: roteiros e análise de vídeo' },
   { q: 'Posso colar link de vídeo do TikTok pra analisar?', a: 'Pode colar o vídeo ou a transcrição; a IA analisa e adapta pro seu produto.', produto: 'Estúdio: roteiros e análise de vídeo' },
   { q: 'Tem programa de afiliados do PikPok?', a: 'Ainda não tem programa de afiliados público. Quer indicar? Chama no direct que a gente conversa.', produto: 'Conta, pagamento e suporte' },
-  { q: 'Tem plano pra agência ou vários vendedores?', a: 'O Business atende equipe (2.800 créditos, 60 h, onboarding). Pra várias contas, chama no direct pra montar.', produto: 'Plano Business' },
+  { q: 'Tem plano pra agência ou vários vendedores?', a: 'O Business atende equipe (4.060 créditos, 60 h, onboarding). Pra várias contas, chama no direct pra montar.', produto: 'Plano Business' },
   { q: 'O que é onboarding dedicado?', a: 'No Business a gente monta sua primeira base e configura o app junto com você, numa chamada.', produto: 'Plano Business' },
   { q: 'O que é coleta de dados automatizada?', a: 'No Business o sistema coleta e atualiza os dados de produtos e concorrência pra você, sem você buscar à mão.', produto: 'Plano Business' },
   { q: 'Meus dados ficam onde? É seguro?', a: 'Servidores na nuvem com backup; sua senha do TikTok nunca sai do seu computador; o chat é anonimizado. Segue a LGPD.', produto: 'Conta, pagamento e suporte' },

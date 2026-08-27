@@ -164,17 +164,26 @@ R$ 1,20 — prejuízo. Teto de sanidade: `TRANSCRIBE_MAX_MINUTES = 300`.
 
 ### 4.2 Planos (`PLANS` e `LEGACY_PLANS`)
 
-Piso com a margem mínima: R$ 0,084 por crédito.
+Piso dos PLANOS com `PLAN_MIN_MARGIN = 0,95`: R$ 0,057 por crédito (ações e packs seguem `MIN_MARGIN = 1,4`).
+
+> **Decisão de 2026-08-27 — cotas +45%, preço mantido.** Nenhuma assinatura desde o lançamento;
+> a cota de créditos de todos os planos subiu 45% sem tocar no preço, e a cortesia do cadastro
+> foi de 25 para 250. Os planos passaram a rodar em ~1,0× o pior custo (o Pro anual fica 0,5%
+> abaixo no pior caso teórico). É prejuízo aceito de propósito para conquistar os primeiros
+> clientes. Por isso a checagem do boot ganhou uma margem própria para planos
+> (`PLAN_MIN_MARGIN = 0,95`) — ela continua impedindo que o buraco cresça, mas não bloqueia esta
+> decisão. As tabelas e contas abaixo que citam 1,4× para PLANOS descrevem o cenário anterior.
+> Quando a base pagar, volte `PLAN_MIN_MARGIN` para 1,4 (ou suba os preços).
 
 | Plano | Ciclo | Preço (R$) | Créditos | R$/crédito | Margem sobre o pior custo |
 |---|---|---:|---:|---:|---:|
-| Essencial | mensal | 39,90 | 450 | 0,0887 | 1,48× |
-| Essencial | anual | 399,90 | 4.600 | 0,0869 | 1,45× |
-| Pro | mensal | 89,90 | 1.000 | 0,0899 | 1,50× |
-| Pro | anual | 899,90 | 10.400 | 0,0865 | **1,44×** |
-| Business | mensal | 249,90 | 2.800 | 0,0892 | 1,49× |
-| Business | anual | 2.499,90 | 28.800 | 0,0868 | 1,45× |
-| Starter (legado) | mensal | 49,90 | 500 | 0,0998 | 1,66× |
+| Essencial | mensal | 39,90 | 650 | 0,0614 | 1,02× |
+| Essencial | anual | 399,90 | 6.670 | 0,0600 | 1,00× |
+| Pro | mensal | 89,90 | 1.450 | 0,0620 | 1,03× |
+| Pro | anual | 899,90 | 15.080 | 0,0597 | **0,99×** |
+| Business | mensal | 249,90 | 4.060 | 0,0616 | 1,03× |
+| Business | anual | 2.499,90 | 41.760 | 0,0599 | 1,00× |
+| Starter (legado) | mensal | 49,90 | 725 | 0,0688 | 1,15× |
 
 Nenhum plano inclui hora MENSAL de live (a moeda recorrente do plano é só o crédito) — por isso
 a conta de margem volta a ser preço ÷ créditos, e o teste `cobra mais caro por crédito no plano
@@ -211,7 +220,7 @@ do Live Copilot (`live_copilot = 'free'`) abre em qualquer conta, inclusive na f
 envio vive em `trocarModo`, não no gate de feature. Isso está travado em teste
 (`vende três degraus, e cada um destrava algo novo`). `free` não é um plano vendável, é o estado
 "conta criada, pagamento pendente", com rank 0 — mas rank 0 já não significa "nenhum recurso":
-as ferramentas de IA limitáveis por saldo abrem ali, com `SIGNUP_BONUS_CREDITS = 25` de cortesia
+as ferramentas de IA limitáveis por saldo abrem ali, com `SIGNUP_BONUS_CREDITS = 250` de cortesia
 (seção 6 e [CONTA-FREE.md](CONTA-FREE.md)).
 
 ### 4.3 Pacotes avulsos (`CREDIT_PACKS`)
@@ -470,10 +479,10 @@ custo**. Esta seção existe para que esse custo não vire surpresa.
 |---|---|
 | Amostra de produtos e vídeos | **zero** — conjunto fixo e global, servido do que já está ingerido. Nenhuma consulta ao fornecedor |
 | Minutos de live | **zero** — o copiloto é Pro+ |
-| Créditos de IA | **até R$ 1,50** — a cortesia de cadastro |
+| Créditos de IA | **até R$ 15,00** — a cortesia de cadastro (250 cr) |
 | Vídeo com IA de cortesia | **até R$ 3,60** — um por conta, sem entrar no saldo |
 
-A cortesia de créditos (`SIGNUP_BONUS_CREDITS = 25`) existe porque uma conta que só olha não
+A cortesia de créditos (`SIGNUP_BONUS_CREDITS = 250`) existe porque uma conta que só olha não
 vira cliente: o vendedor precisa ver o roteiro sair com o produto dele. Vinte e cinco créditos
 dão três roteiros — dá para conhecer, não dá para operar.
 
@@ -499,8 +508,8 @@ cortesia existe para dar.
 
 ### 8.2 A conta do pior caso
 
-25 créditos × R$ 0,06 (o `worstCostPerCredit()` de hoje, seção 3) = **R$ 1,50**, mais um vídeo
-a R$ 3,60 (`sampleVideoWorstCostBrl()`) = **R$ 5,10 por conta gratuita**, no cenário em que a
+250 créditos × R$ 0,06 (o `worstCostPerCredit()` de hoje, seção 3) = **R$ 15,00**, mais um vídeo
+a R$ 3,60 (`sampleVideoWorstCostBrl()`) e o roteiro de cortesia = **~R$ 19,00 por conta gratuita**, no cenário em que a
 pessoa gasta tudo na ação mais cara que alcança e ainda usa o vídeo. Na prática é menos — um
 roteiro custa 8 créditos e sai por ~R$ 0,39 —, mas o número que se planeja é o do teto.
 
@@ -524,7 +533,7 @@ R$ 5,10 de IA**, e a defesa passa a ser outra. O que segura hoje:
 - o vídeo de cortesia é **um por conta** (`sampleVideoUsedAt`), não entra no saldo e só cobre o
   vídeo de tabela — não dá para juntar dez vouchers numa campanha;
 - o cadastro exige **confirmação de e-mail**;
-- 25 créditos e um vídeo não montam operação nenhuma: quem quer volume assina.
+- 250 créditos e um vídeo não montam operação nenhuma: quem quer volume assina.
 
 O que **não** existe hoje: limite por IP, por dispositivo ou por domínio de e-mail. Se a
 telemetria mostrar cadastros em série, é aqui que a trava entra — e o lugar dela é o

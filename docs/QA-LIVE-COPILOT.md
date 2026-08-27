@@ -10,13 +10,13 @@ banco quando a tela não basta. Marque ✅/❌ na coluna "OK".
 | Regra | Valor |
 |---|---|
 | Preços mensais / anuais | Essencial 39,90 / 399,90 · Pro 89,90 / 899,90 · Business 249,90 / 2.499,90 |
-| Créditos | 450 (4.600 anual) · 1.000 (10.400) · 2.800 (28.800) |
+| Créditos | 650 (6.670 anual) · 1.450 (15.080) · 4.060 (41.760) |
 | **O plano VEM com horas de live** (bônus único na adesão) | Essencial **15h** · Pro **40h** · Business **60h** — renovação não repete, upgrade concede a diferença |
 | Hora mensal recorrente | **não existe** em nenhum plano |
 | Cortesia de 10 min de live | **exclusiva da conta free** (assinante não ganha); painel do copiloto abre no free |
 | Packs de live | 1h 9,90 · 5h 39,90 · 15h 99,90 · 40h 219,90 — qualquer conta com a feature |
 | Packs de crédito | 100 cr 14,90 · 300 cr 39,90 · 1.000 cr 119,90 (só assinante) |
-| Bônus de cadastro | 25 créditos + 1 vídeo com IA de cortesia |
+| Bônus de cadastro | 250 créditos + 1 vídeo com IA de cortesia |
 | Envio automático no chat | só Business (`trocarModo`) |
 | Freios de tempo | bloco mínimo 10 min por live; duração máx. 6h (Essencial/Pro) / 24h (Business) |
 | UI | nunca nomear fornecedor/modelo de IA ("IA", nunca Claude/GPT/Whisper) |
@@ -62,7 +62,7 @@ node -e "require('dotenv').config();const{Client}=require('pg');(async()=>{const
 | 2.1 | Abrir `/` **deslogado** (logado redireciona para `/produtos`) | Seção **Live Copilot** presente (4 cards: respostas com a sua base, envio automático no Business, detector de aviso do TikTok, fixar produto), sem preço e sem nome de IA | ✅ 24/08 deslogado (5175): seção Live Copilot com 4 cards, sem preço/nome de IA |
 | 2.2 | Cards de plano | 39,90 / **89,90** / **249,90**; anual 399,90 / 899,90 / 2.499,90 (Business com anual) | ✅ 24/08 39,90 / 89,90 / 249,90; anuais 399,90 / 899,90 / 2.499,90 |
 | 2.3 | Perks | Essencial "…o plano vem com 15 horas de live"; Pro "…40 horas"; Business "…60 horas" + "Envio automático (exclusivo)". **Nenhum** "por mês" em horas | ✅ 24/08 'o plano vem com 15/40/60 horas' + envio automático só no Business |
-| 2.4 | FAQ "Preciso de cartão?" e CTA final | "25 créditos de boas-vindas" + "10 minutos de Live Copilot de cortesia" (não "30 créditos") | ✅ 24/08 CTA final: 25 créditos + 10 min de Live Copilot |
+| 2.4 | FAQ "Preciso de cartão?" e CTA final | "250 créditos de boas-vindas" + "10 minutos de Live Copilot de cortesia" (não "25") | ✅ 24/08 CTA final: 250 créditos + 10 min de Live Copilot |
 | 2.5 | FAQ "Como funcionam os créditos?" | Explica a moeda de horas de live (separada), horas de adesão 15/40/60 e packs 9,90 / 39,90 / 99,90 / 219,90 | ✅ (FAQ recolhida na página; texto conferido em Landing/data.tsx) |
 | 2.6 | Buscar na página por "Claude", "GPT", "Whisper", "OpenAI" | Zero ocorrências | ✅ 24/08 texto da página sem Claude/GPT/Whisper/OpenAI |
 

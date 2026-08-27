@@ -36,7 +36,7 @@ Esta é a frase que decide tudo o que vem abaixo, e ela separa os dois custos do
 |---|---|---|
 | Como custa | por consulta ao fornecedor | por chamada, e a chamada já é medida em crédito |
 | Tem teto natural? | **não** | **sim: o saldo** |
-| No gratuito | só a **amostra** fixa | **abertas**, com 25 créditos de cortesia + **1 cena de produto na Fábrica** pelo vídeo de cortesia (`campaigns_sample`) + **10 minutos de Live Copilot** (painel) de cortesia, exclusivos do free |
+| No gratuito | só a **amostra** fixa | **abertas**, com 250 créditos de cortesia + **1 cena de produto na Fábrica** pelo vídeo de cortesia (`campaigns_sample`) + **10 minutos de Live Copilot** (painel) de cortesia, exclusivos do free |
 
 Abrir o roteiro, a análise, a transcrição e a imagem para quem não paga não abre torneira
 nenhuma: o teto é o saldo, o saldo é concedido uma vez e não renova. E é o que faz a conta
@@ -64,7 +64,7 @@ Do lado do dado, portanto, não há o que ganhar burlando: a décima conta de um
 vê os mesmos 20 produtos que a primeira.
 
 **Isso vale para o dado, e não para a cortesia de créditos.** Desde que a conta gratuita
-passou a receber 25 créditos de IA e um vídeo com IA de cortesia (seção 1.1), uma conta nova
+passou a receber 250 créditos de IA e um vídeo com IA de cortesia (seção 1.1), uma conta nova
 vale até R$ 5,10 — e aí o incentivo a criar contas em série existe de verdade. O que segura é
 cada cortesia ser concedida **uma vez por conta**, não renovar, o vídeo não entrar no saldo
 (dez contas não somam dez vídeos numa campanha) e o cadastro exigir confirmação de e-mail; o
@@ -274,13 +274,13 @@ números exatos, série diária, criadores, IA) em vez de dizer "assine para ver
 
 ### 8.1 O gasto é dito antes, durante e no fim
 
-Caso de 2026-08-24: uma conta free gastou os 25 créditos em três roteiros iguais em 72 s e
+Caso de 2026-08-24: uma conta free gastou os 250 créditos em três roteiros iguais em 72 s e
 só percebeu no 402. O saldo estava no cabeçalho o tempo todo — um número que ninguém mandou
 olhar é invisível. Regras (valem para todo plano; a free é onde doem):
 
 - **Preço no botão.** "Gerar roteiro de live · 8 créditos" no Estúdio, como já era na Fábrica.
 - **Confirmação sem atalho na free.** O diálogo de gasto (`useConfirmarGasto`) esconde o
-  "não perguntar de novo nesta sessão" quando `plan === 'free'` — 25 créditos são três
+  "não perguntar de novo nesta sessão" quando `plan === 'free'` — 250 créditos são trinta
   cliques; dispensar o aviso ali é como se gasta tudo sem ver.
 - **Regerar é uma escolha.** Se existe roteiro do mesmo produto e tipo nos últimos 30 min, o
   Estúdio mostra "você gerou um roteiro deste produto há N min; gerar outro custa +8; editar
