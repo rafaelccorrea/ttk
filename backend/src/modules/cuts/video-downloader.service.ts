@@ -13,6 +13,19 @@ import { FfmpegRunner } from '../../common/media/ffmpeg-runner';
  */
 const JS_RUNTIME = ['--js-runtimes', `node:${dirname(process.execPath)}`];
 
+/**
+ * O YouTube bloqueia IP de datacenter ("Sign in to confirm you're not a bot" —
+ * confirmado em produção na Hostinger, 2026-08-26). A saída é um proxy
+ * residencial em `YT_DLP_PROXY` (http(s)/socks5). `YT_DLP_COOKIES` (arquivo
+ * Netscape) também passa, mas conta logada pode ser banida — última opção.
+ */
+function argsDeRede(): string[] {
+  const args: string[] = [];
+  if (process.env.YT_DLP_PROXY) args.push('--proxy', process.env.YT_DLP_PROXY);
+  if (process.env.YT_DLP_COOKIES) args.push('--cookies', process.env.YT_DLP_COOKIES);
+  return args;
+}
+
 export interface InfoDoLink {
   titulo: string;
   duracaoSeg: number | null;
@@ -55,6 +68,8 @@ export class VideoDownloaderService {
        */
       const json = await cli.execPromise([
         ...JS_RUNTIME,
+      ...argsDeRede(),
+        ...argsDeRede(),
         '--no-playlist',
         '--no-warnings',
         '--skip-download',
@@ -92,6 +107,7 @@ export class VideoDownloaderService {
     const ffmpegDir = this.ffmpeg.binario ? dirname(this.ffmpeg.binario) : null;
     const args = [
       ...JS_RUNTIME,
+      ...argsDeRede(),
       '--no-playlist',
       '--no-warnings',
       '--no-progress',
