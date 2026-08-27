@@ -60,7 +60,7 @@ export class VideoDownloaderService {
         '--skip-download',
         '--dump-single-json',
         url,
-      ]);
+      ], await this.opcoesDeExecucao());
       info = JSON.parse(json);
     } catch (error) {
       // A frase para o usuário é genérica de propósito; a causa real vai para o log.
@@ -107,7 +107,7 @@ export class VideoDownloaderService {
       url,
     ];
     try {
-      await cli.execPromise(args);
+      await cli.execPromise(args, await this.opcoesDeExecucao());
     } catch (error) {
       // A frase para o usuário é genérica de propósito; a causa real vai para o log.
       // ERROR de propósito: o painel da Hostinger só mostra stderr.
@@ -120,6 +120,17 @@ export class VideoDownloaderService {
       throw new BadRequestException('Não consegui baixar o vídeo desse link.');
     }
     return join(pasta, mp4);
+  }
+
+  /**
+   * Opções de spawn: TMPDIR numa pasta EXECUTÁVEL. O binário standalone
+   * (PyInstaller) se descompacta em TMPDIR para carregar as libs e, com /tmp
+   * montado noexec no host, morre em "libz.so.1: failed to map segment".
+   */
+  private async opcoesDeExecucao() {
+    const tmp = join(pastaDosBinarios(), 'tmp');
+    await mkdir(tmp, { recursive: true }).catch(() => undefined);
+    return { env: { ...process.env, TMPDIR: tmp }, maxBuffer: 64 * 1024 * 1024 };
   }
 
   private async cli() {
@@ -143,7 +154,7 @@ export class VideoDownloaderService {
          * spawn morre com EACCES mesmo com o arquivo lá. A home do usuário
          * sobrevive aos deploys (cada versão vai para uma pasta nova) e executa.
          */
-        const pasta = process.env.YT_DLP_DIR || join(homedir() || tmpdir(), '.pikpok-bin');
+        const pasta = pastaDosBinarios();
         /*
          * No Linux o asset chamado só `yt-dlp` é um SCRIPT Python (zipimport)
          * que exige Python 3.9+ — o host tem 3.6 e ele morre num traceback.
@@ -226,4 +237,9 @@ async function baixarAsset(asset: string, destino: string): Promise<void> {
     throw new Error(`download do ${asset} falhou: HTTP ${resposta.status}`);
   }
   await writeFile(destino, Buffer.from(await resposta.arrayBuffer()));
+}
+
+/** Onde ficam binários baixados em runtime — fora de /tmp (ver acima). */
+function pastaDosBinarios(): string {
+  return process.env.YT_DLP_DIR || join(homedir() || tmpdir(), '.pikpok-bin');
 }
