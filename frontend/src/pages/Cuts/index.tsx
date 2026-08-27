@@ -26,6 +26,7 @@ import BoltRoundedIcon from '@mui/icons-material/BoltRounded';
 import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded';
 import ContentCutRoundedIcon from '@mui/icons-material/ContentCutRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
+import StopCircleRoundedIcon from '@mui/icons-material/StopCircleRounded';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import DynamicFeedRoundedIcon from '@mui/icons-material/DynamicFeedRounded';
 import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
@@ -428,6 +429,24 @@ export function CutsPage() {
   async function abrir(id: string) {
     try {
       setSelecionado(await cutsService.get(id));
+    } catch (error) {
+      setErro(mensagemDeErro(error));
+    }
+  }
+
+  async function cancelar(id: string) {
+    const ok = await confirmarApagar({
+      titulo: 'Cancelar os cortes que ainda não saíram?',
+      mensagem:
+        'Os cortes já prontos ficam. Os que não foram gerados são estornados para a sua carteira. O corte que estiver no meio termina antes de parar.',
+      textoConfirmar: 'Cancelar cortes',
+      destrutivo: true,
+    });
+    if (!ok) return;
+    try {
+      await cutsService.cancel(id);
+      await carregarJobs();
+      if (selecionado?.id === id) setSelecionado(await cutsService.get(id));
     } catch (error) {
       setErro(mensagemDeErro(error));
     }
@@ -863,6 +882,19 @@ export function CutsPage() {
                               : STATUS_LABEL[j.status]
                           }
                         />
+                        {j.status === 'processando' && (
+                          <Tooltip title="Cancelar os cortes que ainda não saíram">
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void cancelar(j.id);
+                              }}
+                            >
+                              <StopCircleRoundedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         {j.status !== 'processando' && (
                           <Tooltip title="Apagar este vídeo e os cortes">
                             <IconButton
