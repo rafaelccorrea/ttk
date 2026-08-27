@@ -39,7 +39,7 @@ import {
 import { CutClip } from './entities/cut-clip.entity';
 import { CutJob } from './entities/cut-job.entity';
 import { CreateCutJobDto, CreateCutJobFromUrlDto } from './dto/create-cut-job.dto';
-import { FaceTrackerService } from './face-tracker.service';
+import { FaceTrackerService, RastreioDemorouError } from './face-tracker.service';
 import { VideoDownloaderService } from './video-downloader.service';
 
 /**
@@ -479,7 +479,7 @@ export class CutsService {
        * formato pedido (16:9 → 9:16 ou 1:1); numa fonte já vertical o
        * enquadramento sem crop é igual e não vale a análise.
        */
-      const seguirRosto =
+      let seguirRosto =
         job.reframe === 'rosto' &&
         job.format !== '16:9' &&
         this.faces.enabled &&
@@ -502,6 +502,9 @@ export class CutsService {
                 this.logger.warn(
                   `Rastreio de rosto do corte ${clip.position} (job ${id}) falhou; usando fundo desfocado: ${error}`,
                 );
+                // Estourou o teto: o host não dá conta; o resto do job sai
+                // com fundo desfocado em vez de esperar 6× por isso.
+                if (error instanceof RastreioDemorouError) seguirRosto = false;
               }
             }
             const opcoes: OpcoesDeCorte = { estilo: job.captionStyle, rosto };

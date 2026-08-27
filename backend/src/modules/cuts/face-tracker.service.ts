@@ -1,25 +1,30 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { readFile } from 'node:fs/promises';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { join } from 'node:path';
+import { Worker } from 'node:worker_threads';
 import { FfmpegRunner, PontoDeRosto } from '../../common/media/ffmpeg-runner';
 
 /**
- * Onde está o rosto de quem fala, segundo a segundo, para o corte 9:16 seguir.
+ * Onde está o rosto de quem fala, para o corte 9:16 seguir.
  *
- * Amostra 1 quadro por segundo em 320 px (ffmpeg), roda o BlazeFace (modelo
- * de ~400 KB, tfjs puro em CPU — sem binário nativo, cabe no host
- * compartilhado) e devolve a trilha do centro horizontal do MAIOR rosto de
- * cada quadro, suavizada. Os quadros sem rosto herdam o vizinho mais próximo;
- * se a maioria não tem rosto, não há o que seguir e o chamador cai para o
- * fundo desfocado.
+ * Amostra quadros em 320 px (ffmpeg) e roda o BlazeFace (tfjs puro em CPU,
+ * sem binário nativo) num WORKER THREAD — ver `face-worker.ts` para o porquê:
+ * a inferência é síncrona e no processo principal travava o batimento do job
+ * e derrubava o processo no host compartilhado. Cada corte tem um teto de
+ * tempo; estourou, o worker é morto e o chamador recebe `RastreioDemorouError`
+ * para desistir do rastreio no resto do job.
  *
- * O modelo é baixado do TF Hub no primeiro uso e fica em memória. Sem rede
- * (ou com `CUTS_FACE_TRACKING=0`) o serviço só devolve `null` — o corte sai
- * com o enquadramento antigo, nunca falha por causa disto.
+ * Sem modelo, sem rede ou com `CUTS_FACE_TRACKING=0` devolve `null` — o corte
+ * sai com o fundo desfocado, nunca falha por causa disto.
  */
 @Injectable()
-export class FaceTrackerService {
+export class FaceTrackerService implements OnModuleDestroy {
   private readonly logger = new Logger(FaceTrackerService.name);
-  private modelo: Promise<BlazeFaceModel | null> | null = null;
+  private worker: Worker | null = null;
+  private proximoId = 1;
+  private readonly pendentes = new Map<
+    number,
+    { resolve: (v: Array<number | null>) => void; reject: (e: Error) => void }
+  >();
 
   constructor(private readonly ffmpeg: FfmpegRunner) {}
 
@@ -27,9 +32,14 @@ export class FaceTrackerService {
     return process.env.CUTS_FACE_TRACKING !== '0';
   }
 
+  onModuleDestroy() {
+    void this.derrubarWorker(new Error('encerrando'));
+  }
+
   /**
    * Trilha do rosto em `[inicioSeg, inicioSeg + duracaoSeg]` da fonte, com `t`
    * relativo ao início do trecho. `null` = sem rosto suficiente / sem modelo.
+   * Lança `RastreioDemorouError` se passar de `TEMPO_MAXIMO_MS`.
    */
   async rastrear(
     fonte: string,
@@ -37,8 +47,6 @@ export class FaceTrackerService {
     duracaoSeg: number,
   ): Promise<PontoDeRosto[] | null> {
     if (!this.enabled) return null;
-    const modelo = await this.carregar();
-    if (!modelo) return null;
 
     return this.ffmpeg.comTmp('pikpok-faces-', async (pasta) => {
       const quadros = await this.ffmpeg.amostrarQuadros(fonte, pasta, inicioSeg, duracaoSeg, {
@@ -47,9 +55,15 @@ export class FaceTrackerService {
       });
       if (!quadros.length) return null;
 
-      const centros: Array<number | null> = [];
-      for (const caminho of quadros) {
-        centros.push(await this.centroDoRosto(modelo, caminho));
+      let centros: Array<number | null>;
+      try {
+        centros = await this.noWorker(quadros, TEMPO_MAXIMO_MS);
+      } catch (error) {
+        if (error instanceof RastreioDemorouError) throw error;
+        this.logger.warn(
+          `BlazeFace não rodou (${(error as Error).message}); corte sai com fundo desfocado.`,
+        );
+        return null;
       }
       const comRosto = centros.filter((c): c is number => c !== null).length;
       if (comRosto < Math.ceil(centros.length * MINIMO_COM_ROSTO)) {
@@ -62,58 +76,84 @@ export class FaceTrackerService {
     });
   }
 
-  /** Centro horizontal (0–1) do maior rosto do quadro, ou null. */
-  private async centroDoRosto(modelo: BlazeFaceModel, caminho: string): Promise<number | null> {
-    const { decode } = await import('jpeg-js');
-    const tf = await import('@tensorflow/tfjs');
-    const jpeg = decode(await readFile(caminho), { useTArray: true, formatAsRGBA: false });
-    const entrada = tf.tensor3d(jpeg.data, [jpeg.height, jpeg.width, 3], 'int32');
-    try {
-      const rostos = await modelo.estimateFaces(entrada as never, false);
-      if (!rostos.length) return null;
-      let melhor = rostos[0];
-      let area = 0;
-      for (const r of rostos) {
-        const [x1, y1] = r.topLeft as [number, number];
-        const [x2, y2] = r.bottomRight as [number, number];
-        const a = Math.abs((x2 - x1) * (y2 - y1));
-        if (a > area) {
-          area = a;
-          melhor = r;
-        }
-      }
-      const [x1] = melhor.topLeft as [number, number];
-      const [x2] = melhor.bottomRight as [number, number];
-      return Math.max(0, Math.min(1, (x1 + x2) / 2 / jpeg.width));
-    } finally {
-      entrada.dispose();
-    }
+  private noWorker(quadros: string[], limiteMs: number): Promise<Array<number | null>> {
+    const worker = this.obterWorker();
+    const id = this.proximoId++;
+    return new Promise<Array<number | null>>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendentes.delete(id);
+        this.logger.warn(
+          `Rastreio de rosto passou de ${limiteMs / 1000}s em ${quadros.length} quadros; matando o worker.`,
+        );
+        void this.derrubarWorker(new RastreioDemorouError());
+        reject(new RastreioDemorouError());
+      }, limiteMs);
+      this.pendentes.set(id, {
+        resolve: (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      });
+      worker.postMessage({ id, quadros });
+    });
   }
 
-  private carregar(): Promise<BlazeFaceModel | null> {
-    if (!this.modelo) {
-      this.modelo = (async () => {
-        try {
-          await import('@tensorflow/tfjs');
-          const blazeface = await import('@tensorflow-models/blazeface');
-          const modelUrl = process.env.CUTS_FACE_MODEL_URL || undefined;
-          const modelo = await blazeface.load({ maxFaces: 3, scoreThreshold: 0.7, modelUrl });
-          this.logger.log('BlazeFace carregado (rastreio de rosto nos cortes ativo).');
-          return modelo as unknown as BlazeFaceModel;
-        } catch (error) {
-          this.logger.warn(
-            `BlazeFace não carregou (${error}); cortes saem com fundo desfocado em vez de seguir o rosto.`,
-          );
-          return null;
-        }
-      })();
+  private obterWorker(): Worker {
+    if (this.worker) return this.worker;
+    const worker = new Worker(join(__dirname, 'face-worker.js'), {
+      env: process.env,
+      resourceLimits: { maxOldGenerationSizeMb: 512 },
+    });
+    worker.on('message', (msg: { id: number; centros?: Array<number | null>; erro?: string }) => {
+      const p = this.pendentes.get(msg.id);
+      if (!p) return;
+      this.pendentes.delete(msg.id);
+      if (msg.centros) p.resolve(msg.centros);
+      else p.reject(new Error(msg.erro ?? 'worker sem resposta'));
+    });
+    worker.on('error', (e) => void this.derrubarWorker(e));
+    worker.on('exit', (code) => {
+      if (this.worker === worker) this.worker = null;
+      this.rejeitarPendentes(new Error(`worker de rosto saiu (código ${code})`));
+    });
+    this.worker = worker;
+    return worker;
+  }
+
+  private async derrubarWorker(motivo: Error): Promise<void> {
+    const w = this.worker;
+    this.worker = null;
+    this.rejeitarPendentes(motivo);
+    if (w) await w.terminate().catch(() => undefined);
+  }
+
+  private rejeitarPendentes(motivo: Error): void {
+    for (const [id, p] of this.pendentes) {
+      this.pendentes.delete(id);
+      p.reject(motivo);
     }
-    return this.modelo;
   }
 }
 
-/** Uma amostra por segundo basta: a cabeça não atravessa o quadro em menos. */
-const FPS_DE_AMOSTRA = 1;
+/** O rastreio de um corte passou do teto — o chamador desiste no resto do job. */
+export class RastreioDemorouError extends Error {
+  constructor() {
+    super('Rastreio de rosto demorou demais');
+    this.name = 'RastreioDemorouError';
+  }
+}
+
+/**
+ * Teto por corte. Num host compartilhado, um corte de 90 s a 0,5 fps são 45
+ * inferências; passou disto, o rastreio está custando mais que o corte.
+ */
+const TEMPO_MAXIMO_MS = 45_000;
+/** Uma amostra a cada 2 s basta: a cabeça não atravessa o quadro em menos. */
+const FPS_DE_AMOSTRA = 0.5;
 const LARGURA_DE_AMOSTRA = 320;
 /** Fração mínima de quadros com rosto para valer a pena seguir. */
 const MINIMO_COM_ROSTO = 0.5;
@@ -156,9 +196,3 @@ export function suavizar(centros: number[], janela = 5, zonaMorta = 0.04): numbe
   return saida;
 }
 
-interface BlazeFaceModel {
-  estimateFaces(
-    entrada: unknown,
-    returnTensors: boolean,
-  ): Promise<Array<{ topLeft: unknown; bottomRight: unknown; probability?: unknown }>>;
-}
