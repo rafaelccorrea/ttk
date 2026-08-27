@@ -193,6 +193,13 @@ export interface SugestaoDaIa {
  * melhor deixar o modo rápido preencher a vaga com uma janela honesta.
  * Ordem de aceitação = ordem da IA (ela devolve do melhor para o pior).
  */
+/**
+ * Nota mínima para um trecho da IA virar corte. Abaixo disto é o que a própria
+ * IA chamou de enchimento — e um corte que "não fala nada com nada" custa
+ * crédito e a confiança no modo inteligente. Melhor entregar menos e devolver.
+ */
+export const NOTA_MINIMA_DA_IA = 5;
+
 export function validarSugestoes(
   sugestoes: SugestaoDaIa[],
   duracaoFonte: number,
@@ -214,6 +221,8 @@ export function validarSugestoes(
       inicio: arred(Math.max(0, inicio)),
       fim: arred(Math.min(duracaoFonte, fim)),
     };
+    const pontuacao = nota(s.score);
+    if (pontuacao !== null && pontuacao < NOTA_MINIMA_DA_IA) continue;
     if (sobrepoe(trecho, aceitos)) continue;
     aceitos.push({
       ...trecho,

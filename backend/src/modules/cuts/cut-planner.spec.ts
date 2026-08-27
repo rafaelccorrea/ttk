@@ -1,4 +1,5 @@
 import {
+  NOTA_MINIMA_DA_IA,
   ajustarAoSilencio,
   blocosDeTranscricao,
   espacosLivres,
@@ -57,6 +58,24 @@ describe('cut-planner — modo rápido', () => {
 });
 
 describe('cut-planner — sugestões da IA', () => {
+  it('descarta trecho com nota abaixo da mínima — enchimento não vira corte', () => {
+    const base = { titulo: 't', gancho: 'g', motivo: 'm' };
+    const aceitos = validarSugestoes(
+      [
+        { ...base, inicio: 10, fim: 50, score: NOTA_MINIMA_DA_IA - 1 },
+        { ...base, inicio: 100, fim: 140, score: NOTA_MINIMA_DA_IA },
+        // Sem nota (modelo antigo / campo ausente) continua aceito: a barra é
+        // contra o que a própria IA chamou de fraco, não contra a ausência.
+        { ...base, inicio: 200, fim: 240 },
+      ],
+      600,
+      5,
+      30,
+      60,
+    );
+    expect(aceitos.map((a) => a.inicio)).toEqual([100, 200]);
+  });
+
   it('aceita trechos válidos com título e gancho', () => {
     const aceitos = validarSugestoes(
       [

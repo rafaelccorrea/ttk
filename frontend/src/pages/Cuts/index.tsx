@@ -82,7 +82,7 @@ const MODOS: Array<{
     id: 'inteligente',
     titulo: 'Inteligente',
     descricao:
-      'Transcreve o vídeo e a IA escolhe os melhores momentos, com título e gancho prontos para cada corte.',
+      'Transcreve o vídeo e a IA escolhe só os momentos que se sustentam sozinhos, com título e gancho. Se o vídeo não render a quantidade pedida, saem menos e o resto é devolvido.',
     icone: <AutoAwesomeRoundedIcon />,
   },
 ];

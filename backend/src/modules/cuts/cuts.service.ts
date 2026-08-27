@@ -448,6 +448,18 @@ export class CutsService {
       if (faltantes > 0) {
         await this.billing.refund(userId, acao, 'Cortes: o vídeo não rendeu todos os cortes pedidos', faltantes);
         await this.jobs.decrement({ id }, 'pendingCutCharges', faltantes);
+        // Vai aparecer no detalhe do job pronto (a tela mostra `error` de job
+        // pronto como aviso): melhor dizer por que vieram menos do que deixar
+        // a pessoa contar.
+        await this.jobs.update(
+          { id },
+          {
+            error:
+              job.mode === 'inteligente'
+                ? `A IA achou ${trechos.length} trecho${trechos.length === 1 ? '' : 's'} bom${trechos.length === 1 ? '' : 's'} o bastante de ${job.quantity} pedidos; os ${faltantes * ACTION_PRICES[acao].credits} créditos dos outros ${faltantes} foram devolvidos.`
+                : `O vídeo rendeu ${trechos.length} de ${job.quantity} cortes na faixa pedida; os ${faltantes * ACTION_PRICES[acao].credits} créditos dos outros ${faltantes} foram devolvidos.`,
+          },
+        );
       }
       if (!trechos.length) {
         throw new Error('Não encontrei nenhum trecho que caiba na faixa de duração pedida.');
@@ -600,7 +612,7 @@ export class CutsService {
       }
       await this.jobs.update(
         { id },
-        { status: 'pronto', processingStartedAt: null, error: null, pendingCutCharges: 0 },
+        { status: 'pronto', processingStartedAt: null, pendingCutCharges: 0 },
       );
     } catch (error) {
       const mensagem = (error as Error).message ?? String(error);
@@ -708,18 +720,24 @@ export class CutsService {
       this.logger.warn(`Job ${job.id}: transcrição vazia, caindo para o modo rápido.`);
     }
 
-    const faltam = job.quantity - daIa.length;
-    if (faltam <= 0) return { trechos: daIa, fala: segmentos };
-    const silencios = await this.ffmpeg.silencios(fonte);
-    const complemento = planejarRapido(
-      duracao,
-      faltam,
-      job.minSeconds,
-      job.maxSeconds,
-      silencios,
-      daIa,
-    );
-    return { trechos: [...daIa, ...complemento], fala: segmentos };
+    /*
+     * Sem complemento do modo rápido. Ele existia para "fechar a conta" quando
+     * a IA devolvia menos que o pedido — e fechava com trechos espalhados a
+     * esmo, que saíam ao lado dos escolhidos como se fossem iguais. Um corte
+     * que "não fala nada com nada" no modo inteligente é pior que corte a
+     * menos: quem pediu 6 e recebeu 4 bons com 2 créditos de volta entende;
+     * quem recebeu 6 com 2 sem sentido desconfia dos outros 4. O estorno dos
+     * que faltaram já acontece em `executar` (`faltantes`).
+     */
+    if (!daIa.length && segmentos.length) {
+      this.logger.warn(`Job ${job.id}: nenhum trecho da IA passou; caindo para o modo rápido.`);
+      const silencios = await this.ffmpeg.silencios(fonte);
+      return {
+        trechos: planejarRapido(duracao, job.quantity, job.minSeconds, job.maxSeconds, silencios),
+        fala: segmentos,
+      };
+    }
+    return { trechos: daIa, fala: segmentos };
   }
 
   // ------------------------------------------------------ → Multiplicador

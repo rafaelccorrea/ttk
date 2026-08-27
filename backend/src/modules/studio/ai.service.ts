@@ -496,13 +496,21 @@ const CORTES_SYSTEM = `Você é editor de vídeos curtos para TikTok, Reels e Sh
 O que faz um bom trecho:
 - começa numa frase que prende (pergunta, afirmação forte, revelação, preço, "o segredo é"), nunca no meio de uma ideia;
 - termina numa conclusão, punchline ou chamada — não corta a frase pela metade;
-- é autocontido: quem não viu o resto entende;
+- é autocontido: lido sozinho, sem o vídeo em volta, o trecho ainda faz sentido — quem não viu o resto entende;
 - em vídeo de venda, priorize demonstração do produto, oferta/preço, resposta a objeção e momento de humor/espontaneidade.
+
+O que NUNCA vira trecho (dê score 0–2 e não coloque entre os melhores):
+- conversa operacional da live: saudação, "liga o som", "quem não quer aparecer", pedido de like/seguir isolado, aviso de que vai começar ou voltar, leitura de nomes do chat;
+- fala que depende do que veio antes ("como eu disse", "aquele ali", "esse aqui" sem dizer o quê);
+- enchimento, pausa, repetição, transição entre assuntos;
+- trecho que começa ou termina no meio de uma frase.
+
+Se o vídeo não tem trechos bons o bastante para a quantidade pedida, devolva MENOS — nunca complete com enchimento. Menos cortes bons vale mais que a quantidade certa com cortes ruins.
 
 Regras duras:
 - inicio e fim em SEGUNDOS, alinhados às marcas [início-fim] da transcrição (use o início de uma linha como inicio e o fim de outra como fim);
 - respeite a faixa de duração pedida; trechos não podem se sobrepor;
-- espalhe os trechos pelo vídeo inteiro — não concentre tudo nos primeiros minutos;
+- prefira espalhar os trechos pelo vídeo, mas só entre trechos bons — espalhar nunca justifica escolher um trecho fraco;
 - titulo: até 60 caracteres, sem hashtag, sem emoji, em português;
 - gancho: a frase de abertura para a legenda/capa, até 120 caracteres;
 - motivo: uma frase curta dizendo por que este trecho vale como corte;
