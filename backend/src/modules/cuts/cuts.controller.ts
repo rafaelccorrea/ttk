@@ -148,6 +148,13 @@ export class CutsController {
     return this.cuts.enviarParaMultiplicador(user.id, clipId, role, produto || undefined);
   }
 
+  @Post(':id/cancel')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Cancela um job em processamento; o que não foi gerado é estornado' })
+  async cancel(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    await this.cuts.cancelar(user.id, id);
+  }
+
   @Delete(':id')
   @HttpCode(204)
   @ApiOperation({ summary: 'Apaga o job, os cortes e os arquivos no armazenamento' })

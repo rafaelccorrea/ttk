@@ -179,6 +179,11 @@ export const cutsService = {
     await api.post(`/cuts/clips/${clipId}/multiplier`, { role, produto });
   },
 
+  /** Cancela um job em processamento; o que não saiu é estornado. */
+  async cancel(id: string): Promise<void> {
+    await api.post(`/cuts/${id}/cancel`);
+  },
+
   async remove(id: string): Promise<void> {
     await api.delete(`/cuts/${id}`);
   },

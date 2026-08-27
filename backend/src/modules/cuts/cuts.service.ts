@@ -378,6 +378,7 @@ export class CutsService {
         await this.jobs.update({ id }, { sourcePath: fonte });
       }
       if (!fonte) throw new Error('Este job não tem vídeo de origem.');
+      this.checarCancelamento(id);
 
       // 1. O arquivo é vídeo mesmo? Quanto dura?
       const streams = await this.ffmpeg.streamsDe(fonte);
@@ -438,6 +439,7 @@ export class CutsService {
         const silencios = streams.audio ? await this.ffmpeg.silencios(fonte) : [];
         trechos = planejarRapido(duracao, job.quantity, job.minSeconds, job.maxSeconds, silencios);
       }
+      this.checarCancelamento(id);
       trechos.sort((a, b) => a.inicio - b.inicio);
 
       // Cortes que não couberam (fonte curta, IA + rápido não completaram):
@@ -484,6 +486,7 @@ export class CutsService {
         (await this.fonteMaisLargaQue(fonte, job.format as CutFormat));
       await this.ffmpeg.comTmp('pikpok-cuts-', async (pasta) => {
         for (const clip of registros) {
+          if (this.cancelados.has(id)) break;
           const saida = join(pasta, `${clip.position}.mp4`);
           try {
             let rosto: PontoDeRosto[] | undefined;
@@ -572,6 +575,23 @@ export class CutsService {
         }
       });
 
+      if (this.cancelados.has(id)) {
+        const naoGerados = registros.length - prontos;
+        await this.estornarPendentes(id, 'Cortes: cancelado a pedido');
+        await this.clips.update(
+          { jobId: id, status: 'pendente' },
+          { status: 'falhou', error: 'Cancelado a pedido.' },
+        );
+        await this.jobs.update(
+          { id },
+          {
+            status: prontos ? 'pronto' : 'falhou',
+            processingStartedAt: null,
+            error: `Cancelado a pedido: ${naoGerados} corte${naoGerados === 1 ? '' : 's'} não gerado${naoGerados === 1 ? '' : 's'}, créditos devolvidos.`,
+          },
+        );
+        return;
+      }
       if (!prontos) {
         throw new Error('Nenhum corte pôde ser gerado. Os créditos foram devolvidos.');
       }
@@ -592,6 +612,7 @@ export class CutsService {
     } finally {
       clearInterval(batimento);
       this.emAndamento.delete(id);
+      this.cancelados.delete(id);
       if (fonte) await unlink(fonte).catch(() => undefined);
       if (pastaDoDownload) await rm(pastaDoDownload, { recursive: true, force: true }).catch(() => undefined);
       await this.jobs.update({ id }, { sourcePath: null }).catch(() => undefined);
