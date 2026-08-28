@@ -33,6 +33,9 @@ import {
 import { LiveRun } from './entities/live-run.entity';
 import { LiveEventsService } from './live-events.service';
 import { LiveReplyService } from './live-reply.service';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
+import { Throttle } from '@nestjs/throttler';
+import { LIMITE_LIVE } from '../../common/throttler/limites';
 
 /**
  * A transmissão ao vivo.
@@ -76,7 +79,8 @@ import { LiveReplyService } from './live-reply.service';
  */
 @ApiTags('live')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard, UserThrottlerGuard)
+@Throttle(LIMITE_LIVE)
 @RequiresPlanFeature('live_copilot')
 @Controller('live')
 export class LiveRunController {

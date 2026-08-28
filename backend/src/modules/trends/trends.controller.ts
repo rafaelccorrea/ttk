@@ -15,12 +15,13 @@ import {
 } from '../billing/plan-feature.guard';
 import { CreateTrendDto } from './dto/create-trend.dto';
 import { TrendsService } from './trends.service';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
 
 // Era o único controller sem guard: POST /trends aceitava escrita anônima e
 // os GETs entregavam dados do produto sem login.
 @ApiTags('trends')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard, UserThrottlerGuard)
 @RequiresPlanFeature('discovery')
 @Controller('trends')
 export class TrendsController {

@@ -19,6 +19,7 @@ import {
   ReportarFalhaDeSeletorDto,
 } from './dto/live-config.dto';
 import { LiveConfigService } from './live-config.service';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
 
 /**
  * A configuração remota do envio automático.
@@ -30,7 +31,7 @@ import { LiveConfigService } from './live-config.service';
  */
 @ApiTags('live')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard, UserThrottlerGuard)
 @RequiresPlanFeature('live_copilot')
 @Controller('live')
 export class LiveConfigController {

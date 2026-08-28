@@ -17,14 +17,20 @@ import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { SingleFlightInterceptor } from '../../common/interceptors/single-flight.interceptor';
 import { GenerateMediaDto } from './dto/generate-media.dto';
 import { VideogenService } from './videogen.service';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
+import { Throttle } from '@nestjs/throttler';
+import {
+  LIMITE_IA,
+} from '../../common/throttler/limites';
 
 @ApiTags('videogen')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(SupabaseAuthGuard, UserThrottlerGuard)
 @Controller('videogen')
 export class VideogenController {
   constructor(private readonly videogenService: VideogenService) {}
 
+  @Throttle(LIMITE_IA)
   @Post()
   @UseInterceptors(SingleFlightInterceptor)
   @ApiOperation({ summary: 'Gera imagem ou vídeo por IA (Higgsfield)' })

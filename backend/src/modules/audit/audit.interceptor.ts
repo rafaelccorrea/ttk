@@ -114,9 +114,21 @@ export class AuditInterceptor implements NestInterceptor {
         .file;
       if (arquivo) detalhe.arquivo = { nome: arquivo.originalname, bytes: arquivo.size };
 
-      const xff = req.headers['x-forwarded-for'];
-      const ip =
-        (Array.isArray(xff) ? xff[0] : xff)?.split(',')[0]?.trim() || req.ip || null;
+      /*
+       * `req.ip`, e não o `X-Forwarded-For` cru.
+       *
+       * Ler o cabeçalho na mão registrava o que o CLIENTE escreveu: sem proxy
+       * na frente, qualquer um mandava `X-Forwarded-For: 1.2.3.4` e a trilha de
+       * auditoria — que existe para dizer de onde partiu uma ação
+       * administrativa — passava a guardar o endereço que o atacante escolheu.
+       * Um log forjável é pior que log nenhum, porque parece prova.
+       *
+       * O Express já faz essa conta corretamente a partir de `trust proxy`
+       * (configurado no boot, ver `main.ts`): com proxy declarado ele pula os
+       * saltos confiáveis e devolve o cliente; sem proxy declarado ele ignora o
+       * cabeçalho e devolve quem de fato conectou.
+       */
+      const ip = req.ip || req.socket?.remoteAddress || null;
 
       this.audit.registrar({
         userId,

@@ -29,3 +29,55 @@
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
 </IfModule>
+
+# ---------------------------------------------------------------- segurança
+#
+# O `helmet` do backend só põe cabeçalho na resposta da API. Estas páginas são
+# servidas pelo Apache da hospedagem, que não passa por lá — e é justamente
+# aqui que mora o HTML, o JavaScript e o token no `localStorage`. Sem estas
+# linhas, o app roda sem defesa nenhuma do lado do navegador.
+<IfModule mod_headers.c>
+  # Clickjacking: sem isto, qualquer site embute o app num <iframe> invisível
+  # sobre a própria página e colhe cliques do usuário já logado ("assinar",
+  # "excluir"). `frame-ancestors` no CSP abaixo é a versão moderna; o
+  # X-Frame-Options fica para o navegador que não a implementa.
+  Header always set X-Frame-Options "DENY"
+
+  # Impede o navegador de adivinhar o tipo do conteúdo. Um arquivo enviado por
+  # um usuário e servido como texto não pode virar script por sniffing.
+  Header always set X-Content-Type-Options "nosniff"
+
+  # A URL completa vaza em Referer para todo domínio de terceiro que o app
+  # carrega. Com token no caminho ou id na querystring, isso é vazamento.
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+  # Desliga o que o app não usa. Se um script injetado tentar ligar a câmera ou
+  # pedir a localização, o navegador recusa antes de perguntar ao usuário.
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+
+  # HSTS: uma vez visitado por https, o navegador se recusa a voltar por http
+  # neste domínio — fecha a janela do primeiro acesso interceptado.
+  # Só é aplicado quando a resposta já é https, para não travar o dev local.
+  <If "%{HTTPS} == 'on'">
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  </If>
+
+  # CSP: a última linha contra XSS, e o motivo dela ser tão importante aqui é
+  # que o token de sessão vive no `localStorage` — qualquer script que execute
+  # na origem consegue lê-lo (ver "Pendências conhecidas" no SECURITY.md).
+  #
+  # `'unsafe-inline'` em style-src é exigido pelo Emotion/MUI, que injeta CSS
+  # em <style> em tempo de execução; em script-src NÃO está, que é o que
+  # importa — é ele que impede um `<script>` injetado de rodar.
+  #
+  # `accounts.google.com` em script-src é o único terceiro autorizado a
+  # executar código: o botão "Continuar com Google" carrega o GIS sob demanda
+  # (`GoogleLoginButton.tsx`). Sem ele na lista, o login social para de
+  # funcionar em produção e o sintoma não aparece em desenvolvimento, onde o
+  # Vite serve sem estes cabeçalhos.
+  #
+  # `connect-src` é aberto porque a URL da API muda por ambiente
+  # (VITE_API_URL) e o Supabase entra pelo domínio do projeto — restringir aqui
+  # exigiria gerar o .htaccess no build, o que é o próximo passo natural.
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https:; frame-src https://www.tiktok.com https://accounts.google.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+</IfModule>

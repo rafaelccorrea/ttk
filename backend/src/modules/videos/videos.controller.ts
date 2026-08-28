@@ -17,10 +17,11 @@ import {
 } from '../billing/plan-feature.guard';
 import { QueryVideosDto } from './dto/query-videos.dto';
 import { VideosService } from './videos.service';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
 
 @ApiTags('videos')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard, UserThrottlerGuard)
 @RequiresPlanFeature('discovery')
 @Controller('videos')
 export class VideosController {

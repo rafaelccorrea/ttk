@@ -19,10 +19,20 @@ import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UsersService } from './users.service';
+import { limiteDeUpload } from '../../common/uploads';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
+import { Throttle } from '@nestjs/throttler';
+import {
+  LIMITE_UPLOAD,
+} from '../../common/throttler/limites';
+
+/** Foto de perfil: 5 MB cobre qualquer foto de celular sem folga para abuso. */
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+
 
 @ApiTags('users')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(SupabaseAuthGuard, UserThrottlerGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -43,14 +53,15 @@ export class UsersController {
     return this.usersService.updateProfile(user.id, dto.displayName);
   }
 
+  @Throttle(LIMITE_UPLOAD)
   @Post('me/avatar')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', limiteDeUpload(MAX_AVATAR_BYTES)))
   @ApiOperation({ summary: 'Troca a foto de perfil' })
   avatar(
     @CurrentUser() user: AuthUser,
     @UploadedFile(
       new ParseFilePipe({
-        validators: [new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 })],
+        validators: [new MaxFileSizeValidator({ maxSize: MAX_AVATAR_BYTES })],
       }),
     )
     file: Express.Multer.File,

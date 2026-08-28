@@ -10,7 +10,11 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
-import * as ipaddr from 'ipaddr.js';
+import {
+  baixarExterno,
+  OrigemRecusadaError,
+  RespostaGrandeDemaisError,
+} from './download-externo';
 import { MediaMirrorService } from './media-mirror.service';
 
 /** Tipo pela extensão, para CDNs que respondem octet-stream. */
@@ -28,42 +32,6 @@ const MIME_BY_EXT: Record<string, string> = {
 function mimeFromExtension(pathname: string): string | null {
   const ext = /\.([a-z0-9]+)$/i.exec(pathname)?.[1]?.toLowerCase();
   return ext ? (MIME_BY_EXT[ext] ?? null) : null;
-}
-
-/**
- * Anti-SSRF. O proxy é anônimo e busca uma URL que o cliente escolhe, então
- * ele é um pedido HTTP feito de dentro da rede — exatamente o que um atacante
- * quer para alcançar o metadata da cloud (169.254.169.254) ou serviços que só
- * escutam em localhost.
- *
- * A verificação é sobre o IP RESOLVIDO, não sobre o texto do host: qualquer
- * domínio público pode ter um registro A apontando para 127.0.0.1, e uma
- * blocklist de strings não vê isso.
- */
-async function assertPublicHost(hostname: string): Promise<void> {
-  const { lookup } = await import('dns/promises');
-  let addresses: { address: string }[];
-  try {
-    addresses = await lookup(hostname, { all: true });
-  } catch {
-    throw new BadRequestException('Host não permitido');
-  }
-  for (const { address } of addresses) {
-    const ip = ipaddr.parse(address);
-    const range = ip.range();
-    // 'unicast' é o único intervalo roteável na internet pública. Todo o
-    // resto (loopback, private, linkLocal — onde vive o metadata —, uniqueLocal,
-    // carrierGradeNat, reserved) fica de fora.
-    if (range !== 'unicast') {
-      throw new BadRequestException('Host não permitido');
-    }
-    // IPv4 mapeado em IPv6 (::ffff:127.0.0.1) passa como unicast no IPv6.
-    if (ip.kind() === 'ipv6' && (ip as ipaddr.IPv6).isIPv4MappedAddress()) {
-      if ((ip as ipaddr.IPv6).toIPv4Address().range() !== 'unicast') {
-        throw new BadRequestException('Host não permitido');
-      }
-    }
-  }
 }
 
 /** Teto de resposta: sem ele, uma URL de 5 GB derruba o processo por memória. */
@@ -179,50 +147,41 @@ export class MediaController {
   @ApiOperation({ summary: 'Proxy de imagem externa (contorna bloqueio de hotlink)' })
   @Throttle({ default: { ttl: 60_000, limit: 40 } })
   async proxy(@Query('url') url: string, @Res() res: Response) {
-    let parsed = this.parseTarget(url);
-    await assertPublicHost(parsed.hostname);
-
-    // `redirect: 'manual'`: com 'follow', o fetch segue o 302 sozinho e todas
-    // as checagens acima valem só para o primeiro salto — um host público
-    // redirecionando para http://169.254.169.254/ passaria direto. Cada salto
-    // é revalidado aqui.
-    let upstream: globalThis.Response | undefined;
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-      upstream = await fetch(parsed.toString(), {
-        headers: {
-          'user-agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
-          accept: 'image/avif,image/webp,image/*,*/*;q=0.8',
-        },
-        redirect: 'manual',
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    // Todas as defesas contra SSRF (https, host público, IP fixado na conexão,
+    // redirect revalidado, teto de bytes e de tempo) vivem em
+    // `download-externo`, compartilhado com o espelhamento no S3 — ver o
+    // cabeçalho daquele arquivo.
+    let externo;
+    try {
+      externo = await baixarExterno(url, {
+        maxBytes: MAX_BYTES,
+        timeoutMs: FETCH_TIMEOUT_MS,
+        maxRedirects: MAX_REDIRECTS,
+        headers: { accept: 'image/avif,image/webp,image/*,*/*;q=0.8' },
       });
-      const location = upstream.headers.get('location');
-      if (upstream.status < 300 || upstream.status >= 400 || !location) {
-        break;
+    } catch (erro) {
+      if (erro instanceof RespostaGrandeDemaisError) {
+        res.status(413).end();
+        return;
       }
-      parsed = this.parseTarget(new URL(location, parsed).toString());
-      await assertPublicHost(parsed.hostname);
-      upstream = undefined;
+      if (erro instanceof OrigemRecusadaError) {
+        // URL inválida e host proibido são erro de quem pediu (400); origem que
+        // não respondeu é falha de terceiro (502). A mensagem não diferencia
+        // "host bloqueado" de "host inexistente" de propósito: responder
+        // diferente para cada um transformaria a rota num varredor de rede
+        // interna, que é exatamente o que ela não pode ser.
+        res.status(erro.message.startsWith('Origem') ? 502 : 400).end();
+        return;
+      }
+      throw erro;
     }
-    if (!upstream || !upstream.ok || !upstream.body) {
-      res.status(502).end();
-      return;
-    }
-    // Content-Length é uma dica do upstream, não garantia — o corte real é
-    // feito na leitura do corpo, abaixo.
-    const declared = Number(upstream.headers.get('content-length') ?? 0);
-    if (declared > MAX_BYTES) {
-      res.status(413).end();
-      return;
-    }
-    const upstreamType = upstream.headers.get('content-type') ?? '';
+
     // Alguns CDNs (o do EchoTik, por exemplo) servem imagem como
     // "binary/octet-stream". Recusar por isso deixava o produto sem foto, então
     // caímos para a extensão do arquivo antes de desistir.
-    const contentType = /^(image|video)\//.test(upstreamType)
-      ? upstreamType
-      : mimeFromExtension(parsed.pathname);
+    const contentType = /^(image|video)\//.test(externo.contentType)
+      ? externo.contentType
+      : mimeFromExtension(externo.urlFinal.pathname);
     if (!contentType) {
       res.status(415).end();
       return;
@@ -232,51 +191,6 @@ export class MediaController {
     // Impede que o navegador interprete a resposta como outro tipo caso o
     // upstream sirva algo que não é imagem sob um content-type de imagem.
     res.setHeader('X-Content-Type-Options', 'nosniff');
-
-    const buffer = await this.readCapped(upstream);
-    if (!buffer) {
-      res.status(413).end();
-      return;
-    }
-    res.send(buffer);
-  }
-
-  /** Aceita só https em host público — nunca IP literal nem outro esquema. */
-  private parseTarget(raw: string): URL {
-    let parsed: URL;
-    try {
-      parsed = new URL(raw);
-    } catch {
-      throw new BadRequestException('URL inválida');
-    }
-    if (parsed.protocol !== 'https:') {
-      throw new BadRequestException('Host não permitido');
-    }
-    // IP literal não tem por que aparecer numa CDN legítima, e é a forma mais
-    // direta de pedir um alvo interno.
-    if (ipaddr.isValid(parsed.hostname.replace(/^\[|\]$/g, ''))) {
-      throw new BadRequestException('Host não permitido');
-    }
-    return parsed;
-  }
-
-  /** Lê o corpo em pedaços e aborta ao passar do teto. */
-  private async readCapped(
-    upstream: globalThis.Response,
-  ): Promise<Buffer | null> {
-    const chunks: Buffer[] = [];
-    let total = 0;
-    const reader = upstream.body!.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > MAX_BYTES) {
-        await reader.cancel();
-        return null;
-      }
-      chunks.push(Buffer.from(value));
-    }
-    return Buffer.concat(chunks);
+    res.send(externo.buffer);
   }
 }

@@ -12,11 +12,12 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { JobsService } from './jobs.service';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
 
 /** Progresso global: o que está rodando em background para este usuário. */
 @ApiTags('jobs')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(SupabaseAuthGuard, UserThrottlerGuard)
 @Controller('jobs')
 export class JobsController {
   constructor(private readonly jobs: JobsService) {}

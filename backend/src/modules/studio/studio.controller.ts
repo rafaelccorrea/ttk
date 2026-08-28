@@ -37,6 +37,21 @@ import {
 import { PromptRefreshService } from './prompt-refresh.service';
 import { StudioService } from './studio.service';
 import { TranscriptionService } from './transcription.service';
+import { limiteDeUpload } from '../../common/uploads';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
+import { Throttle } from '@nestjs/throttler';
+import {
+  LIMITE_IA,
+  LIMITE_IA_PESADA,
+  LIMITE_OPERACAO,
+  LIMITE_UPLOAD,
+} from '../../common/throttler/limites';
+
+/** Limite do Whisper para o arquivo enviado. */
+const MAX_TRANSCRICAO_BYTES = 25 * 1024 * 1024;
+/** Foto do produto que vai junto no prompt do roteirizador. */
+const MAX_FOTO_BYTES = 10 * 1024 * 1024;
+
 
 /**
  * O Estúdio inteiro é de plano pago.
@@ -52,7 +67,7 @@ import { TranscriptionService } from './transcription.service';
  */
 @ApiTags('studio')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard, UserThrottlerGuard)
 @RequiresPlanFeature('studio_templates')
 @Controller('studio')
 export class StudioController {
@@ -76,8 +91,12 @@ export class StudioController {
    * R$ 1,88 de custo contra R$ 1,20 cobrados. O arquivo mais leve de enviar era
    * o mais caro de atender.
    */
+  @Throttle(LIMITE_IA_PESADA)
   @Post('transcribe')
-  @UseInterceptors(FileInterceptor('file'), SingleFlightInterceptor)
+  @UseInterceptors(
+    FileInterceptor('file', limiteDeUpload(MAX_TRANSCRICAO_BYTES)),
+    SingleFlightInterceptor,
+  )
   @ApiOperation({
     summary: 'Transcreve um vídeo/áudio (Whisper, máx. 25MB; cobra por 10 min)',
   })
@@ -85,7 +104,7 @@ export class StudioController {
     @CurrentUser() user: AuthUser,
     @UploadedFile(
       new ParseFilePipe({
-        validators: [new MaxFileSizeValidator({ maxSize: 25 * 1024 * 1024 })],
+        validators: [new MaxFileSizeValidator({ maxSize: MAX_TRANSCRICAO_BYTES })],
       }),
     )
     file: Express.Multer.File,
@@ -142,9 +161,10 @@ export class StudioController {
     );
   }
 
+  @Throttle(LIMITE_UPLOAD)
   @Post('product-image')
   @RequiresPlanFeature('uploads')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', limiteDeUpload(MAX_FOTO_BYTES)))
   @ApiOperation({
     summary: 'Envia a foto do produto que o roteirizador manda para a IA ver',
   })
@@ -152,7 +172,7 @@ export class StudioController {
     @CurrentUser() user: AuthUser,
     @UploadedFile(
       new ParseFilePipe({
-        validators: [new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 })],
+        validators: [new MaxFileSizeValidator({ maxSize: MAX_FOTO_BYTES })],
       }),
     )
     file: Express.Multer.File,
@@ -166,6 +186,7 @@ export class StudioController {
   }
 
   @UseInterceptors(SingleFlightInterceptor)
+  @Throttle(LIMITE_IA)
   @Post('analyze')
   @ApiOperation({
     summary: 'Decompõe a transcrição de um vídeo viral e adapta ao produto',
@@ -188,6 +209,7 @@ export class StudioController {
   }
 
   @UseInterceptors(SingleFlightInterceptor)
+  @Throttle(LIMITE_IA)
   @Post('scripts/generate')
   @ApiOperation({ summary: 'Gera um roteiro de live ou vídeo com IA' })
   async generate(@CurrentUser() user: AuthUser, @Body() dto: GenerateScriptDto) {
@@ -246,6 +268,7 @@ export class StudioController {
    * altera o catálogo de todo mundo) e o mesmo público — sem isso, qualquer
    * conta grátis dispararia N chamadas ao Claude por clique.
    */
+  @Throttle(LIMITE_OPERACAO)
   @Post('prompts/refresh')
   @RequiresPlanFeature('ingestion')
   @ApiOperation({ summary: 'Atualiza o Cofre de Prompts agora (manual)' })

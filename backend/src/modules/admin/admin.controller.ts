@@ -32,6 +32,7 @@ import { AdminService } from './admin.service';
 import { AdminGuard } from './admin.guard';
 import { SupportService } from '../support/support.service';
 import { AuditService } from '../audit/audit.service';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
 
 class SupportReplyDto {
   @IsString()
@@ -189,7 +190,7 @@ class ListAuditDto {
  */
 @ApiTags('admin')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, AdminGuard)
+@UseGuards(SupabaseAuthGuard, AdminGuard, UserThrottlerGuard)
 @Controller('admin')
 export class AdminController {
   constructor(

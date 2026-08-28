@@ -13,6 +13,7 @@ import { AuthUser } from '../auth/auth-user';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { FreeSampleService } from './free-sample.service';
 import { FreePlanGuard } from './free-plan.guard';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
 
 /**
  * A API da conta gratuita — ver `docs/CONTA-FREE.md`.
@@ -35,7 +36,7 @@ import { FreePlanGuard } from './free-plan.guard';
  */
 @ApiTags('free')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, FreePlanGuard)
+@UseGuards(SupabaseAuthGuard, FreePlanGuard, UserThrottlerGuard)
 @Throttle({ default: { limit: 60, ttl: 60_000 } })
 @Controller('free')
 export class FreeController {

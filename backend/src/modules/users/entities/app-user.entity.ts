@@ -83,6 +83,26 @@ export class AppUser {
   @Column({ type: 'timestamptz', nullable: true })
   resetSentAt: Date;
 
+  /*
+   * Geração das sessões desta conta. É o que torna um JWT revogável.
+   *
+   * O token é stateless e vale 7 dias (30 no app de desktop): sem esta coluna,
+   * trocar a senha não derrubava sessão nenhuma. Quem tivesse roubado um token
+   * continuava dentro da conta pela semana inteira — inclusive DEPOIS de a
+   * vítima perceber o problema e trocar a senha, que é justamente o momento em
+   * que ela acha que resolveu. O único remédio era trocar o `JWT_SECRET`, o que
+   * desconecta todos os clientes de uma vez.
+   *
+   * O número entra no token como a claim `tv` e é conferido no guard contra o
+   * valor atual da conta. Incrementar aqui invalida, na hora, todo token já
+   * emitido para este usuário — e só para ele.
+   *
+   * Vale só para os tokens que a API emite. Token do Supabase Auth é assinado
+   * lá e não carrega a claim; quem revoga aquele é o Supabase.
+   */
+  @Column('int', { default: 0 })
+  tokenVersion: number;
+
   // Lista de espera (soft launch). Preenchido no cadastro enquanto
   // WAITLIST_MODE=true: a conta é criada e o token de confirmação fica
   // guardado, mas o e-mail só sai quando a vez do usuário chega.
