@@ -21,6 +21,14 @@ import { MailService } from './mail.service';
 const RESEND_COOLDOWN_MS = 60_000;
 const RESET_TOKEN_TTL_MS = 60 * 60_000; // 1 hora
 
+/**
+ * Hash de uma senha que não é de ninguém, usado só para gastar o mesmo tempo
+ * de bcrypt quando o e-mail não existe — ver `login`. É um valor público de
+ * propósito: ele nunca protege nada, só ocupa o relógio.
+ */
+const HASH_DESCARTAVEL =
+  '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -424,7 +432,24 @@ export class AuthService {
     const user = await this.users.findOneBy({
       email: email.toLowerCase().trim(),
     });
-    if (!user?.passwordHash || !(await compare(password, user.passwordHash))) {
+    /*
+     * O bcrypt roda MESMO quando a conta não existe.
+     *
+     * A mensagem já é genérica ("e-mail ou senha incorretos"), mas o tempo de
+     * resposta não era: sem `passwordHash`, o `||` curto-circuitava e a
+     * resposta voltava em microssegundos; com a conta existindo, o bcrypt
+     * custava ~100 ms. Essa diferença é grande, estável e mensurável por
+     * qualquer cliente — ou seja, a rota respondia "esse e-mail tem conta aqui"
+     * para quem soubesse cronometrar, que é exatamente o que a mensagem
+     * genérica existe para não dizer.
+     *
+     * Comparar contra um hash descartável iguala os dois caminhos. O custo é
+     * um bcrypt a mais em tentativa de e-mail inexistente — que o limite de
+     * 10 por 5 min já mantém raro.
+     */
+    const hashParaComparar = user?.passwordHash ?? HASH_DESCARTAVEL;
+    const senhaConfere = await compare(password, hashParaComparar);
+    if (!user?.passwordHash || !senhaConfere) {
       throw new UnauthorizedException('E-mail ou senha incorretos.');
     }
     // Quem está na fila ainda não recebeu link nenhum — mandar "confirme

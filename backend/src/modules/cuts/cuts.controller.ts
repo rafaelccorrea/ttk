@@ -61,6 +61,12 @@ export class CutsController {
     return this.cuts.capacidades();
   }
 
+  /*
+   * Tem teto porque não é uma leitura barata: cada chamada dispara o `yt-dlp`,
+   * que é um processo novo mais uma ida à rede. Sem limite, um laço aqui é um
+   * jeito de esgotar processo e banda do servidor gastando um GET.
+   */
+  @Throttle(LIMITE_IA)
   @Get('url-info')
   @ApiOperation({ summary: 'Título, duração e capa de um link antes de confirmar' })
   urlInfo(@Query('url') url?: string) {
