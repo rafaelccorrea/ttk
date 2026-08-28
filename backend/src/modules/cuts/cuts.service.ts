@@ -41,6 +41,7 @@ import { CutJob } from './entities/cut-job.entity';
 import { CreateCutJobDto, CreateCutJobFromUrlDto } from './dto/create-cut-job.dto';
 import { FaceTrackerService, RastreioDemorouError } from './face-tracker.service';
 import { VideoDownloaderService } from './video-downloader.service';
+import { assertDestinoPublico } from '../media/download-externo';
 
 /**
  * Um job de cortes por vez neste processo.
@@ -242,6 +243,19 @@ export class CutsService {
   async inspecionarLink(url: string) {
     if (!this.downloader.enabled) {
       throw new BadRequestException('Importar por link está desligado neste servidor.');
+    }
+    /*
+     * O link vai para o yt-dlp, que faz o pedido HTTP de dentro da nossa rede.
+     * Quem conecta é outro processo, então não dá para fixar o IP como no
+     * proxy de mídia — o que dá é recusar o destino antes de entregar o link.
+     * Ver `assertDestinoPublico`.
+     */
+    try {
+      await assertDestinoPublico(url);
+    } catch {
+      throw new BadRequestException(
+        'Não reconheci esse link. Cole o endereço público de um vídeo.',
+      );
     }
     const info = await this.downloader.inspecionar(url);
     const dur = info.duracaoSeg;

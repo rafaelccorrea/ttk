@@ -6,6 +6,7 @@ import { compare, hash } from 'bcryptjs';
 import { createHash } from 'crypto';
 import { AppUser } from '../users/entities/app-user.entity';
 import { NovaContaService } from '../users/nova-conta.service';
+import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 import { MailService } from './mail.service';
 
@@ -53,6 +54,9 @@ describe('AuthService — recuperação de senha', () => {
         { provide: MailService, useValue: mailMock },
         { provide: getRepositoryToken(AppUser), useValue: usersMock },
         { provide: NovaContaService, useValue: { avisar: jest.fn() } },
+        // O AuthService só usa `invalidar()` daqui: é o que apaga a cópia em
+        // memória da conta quando a troca de senha revoga as sessões.
+        { provide: UsersService, useValue: { invalidar: jest.fn() } },
       ],
     }).compile();
 

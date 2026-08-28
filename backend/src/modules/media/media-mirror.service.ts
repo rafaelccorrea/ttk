@@ -9,10 +9,17 @@ import { DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
+import { baixarExterno } from './download-externo';
 
 /** Formato único das capas: 9:16, o mesmo do card da vitrine. */
 const IMAGE_WIDTH = 540;
 const IMAGE_HEIGHT = 960;
+
+/**
+ * Tempo máximo esperando a origem. Sem isto, um CDN que aceita a conexão e
+ * não responde prende a execução do cron de ingestão para sempre.
+ */
+const ESPELHAMENTO_TIMEOUT_MS = 20_000;
 
 /** Quantos objetos manter em memória (imagens tratadas pesam ~40KB). */
 const OBJECT_CACHE_MAX = 600;
@@ -119,28 +126,45 @@ export class MediaMirrorService {
     }
 
     try {
-      const response = await fetch(sourceUrl, {
-        headers: {
-          'user-agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-            '(KHTML, like Gecko) Chrome/126.0 Safari/537.36',
-        },
-        redirect: 'follow',
-      });
-      if (!response.ok) {
-        this.logger.warn(`Espelhamento: origem respondeu ${response.status}`);
+      /*
+       * O download passa por `baixarExterno`, e não por um `fetch` solto.
+       *
+       * Esta é uma requisição HTTP saindo de dentro da nossa rede para uma URL
+       * que veio de FORA — do fornecedor, sim, mas também do cadastro do
+       * cliente: `CampaignsService.espelharFotos` recebe as URLs de fotos do
+       * corpo da requisição e chega aqui. O `fetch` que estava neste lugar
+       * seguia redirect sozinho, não olhava para onde estava conectando, não
+       * tinha tempo limite e lia o corpo inteiro com `arrayBuffer()` ANTES de
+       * comparar com `maxBytes` — ou seja, o teto de tamanho só era conferido
+       * depois de o arquivo já estar todo na memória.
+       *
+       * Na prática: um cliente cadastrava uma foto apontando para um serviço
+       * interno e usava a nossa API para alcançá-lo (o resultado não volta para
+       * ele, mas a diferença entre "espelhou" e "falhou" já mapeia a rede), ou
+       * apontava para um arquivo enorme e derrubava o processo.
+       *
+       * As defesas estão todas num lugar só, junto com as do proxy de imagem —
+       * ver o cabeçalho de `download-externo.ts`.
+       */
+      let externo;
+      try {
+        externo = await baixarExterno(sourceUrl, {
+          maxBytes: this.maxBytes,
+          timeoutMs: ESPELHAMENTO_TIMEOUT_MS,
+          maxRedirects: 3,
+        });
+      } catch (erro) {
+        this.logger.warn(
+          `Espelhamento recusado (${sourceUrl.slice(0, 70)}): ${
+            erro instanceof Error ? erro.message : erro
+          }`,
+        );
         return null;
       }
 
-      const contentType =
-        response.headers.get('content-type') ?? 'application/octet-stream';
+      const contentType = externo.contentType || 'application/octet-stream';
       const ehVideo = contentType.startsWith('video/');
-
-      const original = Buffer.from(await response.arrayBuffer());
-      if (original.byteLength > this.maxBytes) {
-        this.logger.warn(`Espelhamento: arquivo grande demais (${original.byteLength}b)`);
-        return null;
-      }
+      const original = externo.buffer;
 
       /**
        * A validação é por DECODIFICAÇÃO, não pelo `content-type`.

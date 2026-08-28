@@ -39,6 +39,18 @@ import {
   UpdatePersonaDto,
   UpdateSceneDto,
 } from './dto/campaigns.dto';
+import { limiteDeUpload } from '../../common/uploads';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
+import { Throttle } from '@nestjs/throttler';
+import {
+  LIMITE_IA,
+  LIMITE_IA_PESADA,
+  LIMITE_UPLOAD,
+} from '../../common/throttler/limites';
+
+/** Foto de produto e de persona: entra em memória e vai para o espelho. */
+const MAX_FOTO_BYTES = 8 * 1024 * 1024;
+
 
 /**
  * Campanhas é recurso do Pro, e o gate precisa estar aqui.
@@ -51,7 +63,7 @@ import {
  */
 @ApiTags('campaigns')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard, UserThrottlerGuard)
 /*
  * A porta da Fábrica é o MODO AMOSTRA (free): entrar, cadastrar produto,
  * roteirizar e gerar UMA cena de produto pelo vídeo de cortesia. O que produz
@@ -109,9 +121,10 @@ export class CampaignsController {
     return this.campaigns.listarProdutos(user.id);
   }
 
+  @Throttle(LIMITE_UPLOAD)
   @Post('products/:id/photos')
   @RequiresPlanFeature('uploads')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', limiteDeUpload(MAX_FOTO_BYTES)))
   @ApiOperation({ summary: 'Anexa uma foto do produto (vira frame das cenas)' })
   addPhoto(
     @CurrentUser() user: AuthUser,
@@ -151,6 +164,7 @@ export class CampaignsController {
   }
 
   // ---------------------------------------------------------------- personas
+  @Throttle(LIMITE_IA)
   @Post('personas')
   @UseInterceptors(SingleFlightInterceptor)
   @ApiOperation({ summary: 'Cria a persona e gera o retrato-semente (cobra créditos)' })
@@ -158,9 +172,10 @@ export class CampaignsController {
     return this.campaigns.criarPersona(user.id, dto);
   }
 
+  @Throttle(LIMITE_UPLOAD)
   @Post('personas/from-photo')
   @RequiresPlanFeature('uploads')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', limiteDeUpload(MAX_FOTO_BYTES)))
   @ApiOperation({
     summary: 'Cria a persona a partir de uma foto de referência (sem cobrar retrato)',
   })
@@ -251,12 +266,14 @@ export class CampaignsController {
     return this.campaigns.clonarCampanha(user.id, id, dto);
   }
 
+  @Throttle(LIMITE_IA)
   @Post(':id/storyboard')
   @ApiOperation({ summary: 'Cria um storyboard em branco para escrever à mão — grátis' })
   manualStoryboard(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.campaigns.criarStoryboardManual(user.id, id);
   }
 
+  @Throttle(LIMITE_IA)
   @Post(':id/script')
   @UseInterceptors(SingleFlightInterceptor)
   @ApiOperation({ summary: 'Gera roteiro e storyboard (cobra créditos)' })
@@ -277,6 +294,7 @@ export class CampaignsController {
     );
   }
 
+  @Throttle(LIMITE_IA_PESADA)
   @Post(':id/assemble')
   @RequiresPlanFeature('campaigns')
   @UseInterceptors(SingleFlightInterceptor)
@@ -299,6 +317,7 @@ export class CampaignsController {
     );
   }
 
+  @Throttle(LIMITE_IA_PESADA)
   @Post(':id/render-all')
   @RequiresPlanFeature('campaigns')
   @UseInterceptors(SingleFlightInterceptor)
@@ -349,6 +368,7 @@ export class CampaignsController {
     return this.campaigns.editarCena(user.id, sceneId, dto);
   }
 
+  @Throttle(LIMITE_IA)
   @Post('scenes/:sceneId/redub')
   @RequiresPlanFeature('campaigns')
   @UseInterceptors(SingleFlightInterceptor)
@@ -371,6 +391,7 @@ export class CampaignsController {
     return this.campaigns.reabrirCena(user.id, sceneId);
   }
 
+  @Throttle(LIMITE_IA)
   @Post('scenes/:sceneId/render')
   @UseInterceptors(SingleFlightInterceptor)
   @ApiOperation({ summary: 'Renderiza uma cena (cobra créditos)' })

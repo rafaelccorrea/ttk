@@ -7,6 +7,7 @@ import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { BillingCycle } from './billing.config';
 import { BillingService } from './billing.service';
 import { StripeService } from './stripe.service';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
 
 class PurchasePackDto {
   @IsString()
@@ -49,7 +50,7 @@ class ConfirmDto {
 
 @ApiTags('billing')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(SupabaseAuthGuard, UserThrottlerGuard)
 @Controller('billing')
 export class BillingController {
   constructor(

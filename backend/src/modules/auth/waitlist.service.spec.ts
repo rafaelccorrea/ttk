@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { AppUser } from '../users/entities/app-user.entity';
 import { NovaContaService } from '../users/nova-conta.service';
+import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 import { MailService } from './mail.service';
 
@@ -34,7 +35,8 @@ describe('AuthService — lista de espera', () => {
         { provide: ConfigService, useValue: config },
         { provide: MailService, useValue: mailMock },
         { provide: getRepositoryToken(AppUser), useValue: usersMock },
-        { provide: NovaContaService, useValue: novaContaMock }],
+        { provide: NovaContaService, useValue: novaContaMock },
+        { provide: UsersService, useValue: { invalidar: jest.fn() } }],
     }).compile();
     service = m.get(AuthService); saved = null; waitlistOn = true; jest.clearAllMocks();
   });

@@ -31,6 +31,18 @@ import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdateClipDto } from './dto/update-clip.dto';
 import { FolderDto, MoveVideosDto } from './dto/folder.dto';
 import { BulkVideoResultDto, VideoResultDto } from './dto/video-result.dto';
+import { limiteDeUpload } from '../../common/uploads';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
+import { Throttle } from '@nestjs/throttler';
+import {
+  LIMITE_IA,
+  LIMITE_IA_PESADA,
+  LIMITE_UPLOAD,
+} from '../../common/throttler/limites';
+
+/** Clipe de gancho/corpo/CTA: são cortes de poucos segundos. */
+const MAX_CLIPE_BYTES = 40 * 1024 * 1024;
+
 
 /**
  * O multiplicador é recurso de plano pago, e o gate precisa estar AQUI.
@@ -42,7 +54,7 @@ import { BulkVideoResultDto, VideoResultDto } from './dto/video-result.dto';
  */
 @ApiTags('combinations')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard, UserThrottlerGuard)
 @RequiresPlanFeature('multiplier')
 @Controller('combinations')
 export class CombinationsController {
@@ -54,8 +66,9 @@ export class CombinationsController {
     return this.combinationsService.create(user.id, dto);
   }
 
+  @Throttle(LIMITE_UPLOAD)
   @Post('clips')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', limiteDeUpload(MAX_CLIPE_BYTES)))
   @ApiOperation({ summary: 'Envia um clipe de vídeo (gancho, corpo ou CTA)' })
   uploadClip(
     @CurrentUser() user: AuthUser,
@@ -63,7 +76,7 @@ export class CombinationsController {
     @Query('produto') produto: string | undefined,
     @UploadedFile(
       new ParseFilePipe({
-        validators: [new MaxFileSizeValidator({ maxSize: 40 * 1024 * 1024 })],
+        validators: [new MaxFileSizeValidator({ maxSize: MAX_CLIPE_BYTES })],
       }),
     )
     file: Express.Multer.File,
@@ -210,6 +223,7 @@ export class CombinationsController {
     return this.combinationsService.findOne(user.id, id);
   }
 
+  @Throttle(LIMITE_IA_PESADA)
   @Post(':id/render')
   @ApiOperation({ summary: 'Monta em vídeo todas as combinações do plano' })
   render(
@@ -230,6 +244,7 @@ export class CombinationsController {
     return this.combinationsService.insights(user.id, id);
   }
 
+  @Throttle(LIMITE_IA)
   @Post(':id/derive')
   @ApiOperation({
     summary: 'Cria um plano novo só com as peças vencedoras deste',

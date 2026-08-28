@@ -15,6 +15,7 @@ import { JwksClient } from 'jwks-rsa';
 import { IsNull, Not, Repository } from 'typeorm';
 import { AppUser } from '../users/entities/app-user.entity';
 import { NovaContaService } from '../users/nova-conta.service';
+import { UsersService } from '../users/users.service';
 import { MailService } from './mail.service';
 
 const RESEND_COOLDOWN_MS = 60_000;
@@ -40,6 +41,9 @@ export class AuthService {
     @InjectRepository(AppUser)
     private readonly users: Repository<AppUser>,
     private readonly novaConta: NovaContaService,
+    // Só para `invalidar()`: o guard mantém o registro da conta em memória por
+    // 30 s, e uma revogação que espera esse prazo não é uma revogação.
+    private readonly usersService: UsersService,
   ) {}
 
   /** Aviso à equipe de que uma linha nova de `app_users` acabou de nascer. */
@@ -74,14 +78,22 @@ export class AuthService {
     return secret;
   }
 
-  private issueToken(user: Pick<AppUser, 'id' | 'email'>): string {
-    return sign({ sub: user.id, email: user.email }, this.jwtSecret, {
-      expiresIn: this.config.get('JWT_EXPIRES_IN', '7d'),
-      algorithm: 'HS256',
-      // Marca a origem do token: o guard só aceita HS256 emitido por nós.
-      issuer: 'pikpok-api',
-      audience: 'pikpok-app',
-    });
+  private issueToken(
+    user: Pick<AppUser, 'id' | 'email' | 'tokenVersion'>,
+  ): string {
+    // `tv`: a geração da sessão. O guard compara com o valor guardado na conta
+    // e recusa o token quando eles divergem — ver `AppUser.tokenVersion`.
+    return sign(
+      { sub: user.id, email: user.email, tv: user.tokenVersion ?? 0 },
+      this.jwtSecret,
+      {
+        expiresIn: this.config.get('JWT_EXPIRES_IN', '7d'),
+        algorithm: 'HS256',
+        // Marca a origem do token: o guard só aceita HS256 emitido por nós.
+        issuer: 'pikpok-api',
+        audience: 'pikpok-app',
+      },
+    );
   }
 
   /**
@@ -98,11 +110,16 @@ export class AuthService {
    * o contrapeso é a autorização ser de uso único e revogável no banco.
    */
   issueDeviceToken(
-    user: Pick<AppUser, 'id' | 'email'>,
+    user: Pick<AppUser, 'id' | 'email' | 'tokenVersion'>,
     expiresInSeconds: number,
   ): string {
     return sign(
-      { sub: user.id, email: user.email, device: true },
+      {
+        sub: user.id,
+        email: user.email,
+        device: true,
+        tv: user.tokenVersion ?? 0,
+      },
       this.jwtSecret,
       {
         expiresIn: expiresInSeconds,
@@ -551,7 +568,25 @@ export class AuthService {
     user.resetTokenExpiresAt = null as unknown as Date;
     // Quem provou ter acesso à caixa de entrada confirmou o e-mail na prática.
     user.emailConfirmedAt ??= new Date();
+    /*
+     * Trocar a senha DERRUBA as sessões abertas.
+     *
+     * Este é o ponto do sistema em que alguém age por desconfiança — "acho que
+     * mexeram na minha conta". Antes disto, a troca de senha não fazia nada
+     * contra quem já estava dentro: o JWT roubado continuava válido por dias,
+     * porque é stateless e não consulta a senha. A pessoa fazia exatamente a
+     * coisa certa e o invasor não perdia o acesso.
+     *
+     * Incrementar a geração invalida todo token emitido antes deste instante —
+     * incluindo o do app de desktop, que vale 30 dias. O token novo devolvido
+     * abaixo já sai com a geração nova, então quem trocou a senha continua
+     * conectado nesta aba e só nela.
+     */
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await this.users.save(user);
+    // O guard guarda o registro da conta por 30 s; sem isto a sessão antiga
+    // sobreviveria essa janela.
+    this.usersService.invalidar(user.id);
 
     return {
       message: 'Senha alterada! Você já está conectado.',
@@ -564,7 +599,9 @@ export class AuthService {
    * Modo demo (dev): emite um JWT local sem cadastro nem confirmação.
    * O id é derivado do e-mail — cada e-mail é um usuário distinto.
    */
-  devLogin(email: string): { accessToken: string; userId: string } {
+  async devLogin(
+    email: string,
+  ): Promise<{ accessToken: string; userId: string }> {
     // Duas travas, não uma. A rota emite um token válido para QUALQUER e-mail
     // sem senha: uma variável de ambiente marcada por engano em produção seria
     // account takeover de todo mundo. NODE_ENV desliga isso incondicionalmente.
@@ -584,6 +621,20 @@ export class AuthService {
       '8' + digest.slice(17, 20),
       digest.slice(20, 32),
     ].join('-');
-    return { accessToken: this.issueToken({ id: userId, email }), userId };
+    // A geração vem da conta quando ela já existe: emitir sempre `tv: 0` faria
+    // o guard recusar o token de um usuário de desenvolvimento que já passou
+    // por uma troca de senha.
+    const existente = await this.users.findOne({
+      where: { id: userId },
+      select: { id: true, tokenVersion: true },
+    });
+    return {
+      accessToken: this.issueToken({
+        id: userId,
+        email,
+        tokenVersion: existente?.tokenVersion ?? 0,
+      }),
+      userId,
+    };
   }
 }

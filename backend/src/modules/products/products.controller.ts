@@ -17,10 +17,11 @@ import {
 } from '../billing/plan-feature.guard';
 import { QueryProductsDto } from './dto/query-products.dto';
 import { ProductsService } from './products.service';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
 
 @ApiTags('products')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard, UserThrottlerGuard)
 @RequiresPlanFeature('discovery')
 @Controller('products')
 export class ProductsController {

@@ -95,3 +95,77 @@ jobs:
             echo "::error::As entidades divergem do schema criado pelas migrations."
             exit 1
           fi
+
+  # ---------------------------------------------------------------- segurança
+  # Duas perguntas que ninguém lembra de fazer à mão, e que só ficam caras
+  # quando a resposta demora: "entrou segredo no commit?" e "alguma dependência
+  # que VAI PARA PRODUÇÃO ficou vulnerável?".
+  seguranca:
+    name: Segredos e dependências
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # O escaneamento de segredo precisa dos commits, não só da árvore.
+          fetch-depth: 0
+
+      # Este repositório já perdeu credenciais uma vez: dois snapshots do
+      # backend/.env entraram por uma extensão do editor e continuam
+      # recuperáveis no histórico (ver SECURITY.md). O `.gitignore` não
+      # protegeu, e não protege — ele não vale contra `git add -f` nem contra
+      # a próxima ferramenta que resolva gravar em outro diretório. Um
+      # escaneador no CI vale.
+      - name: Baixar gitleaks
+        run: |
+          VERSAO=8.28.0
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSAO}/gitleaks_${VERSAO}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      # Só os commits NOVOS. Varrer o histórico inteiro faria o CI falhar para
+      # sempre por causa do vazamento antigo, e um job que sempre falha é um
+      # job que alguém desliga — o que deixaria de pegar o próximo vazamento,
+      # que é o que ainda dá para evitar. A limpeza do histórico é outro
+      # trabalho, descrito no SECURITY.md.
+      - name: Procurar segredos nos commits novos
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            FAIXA="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          else
+            FAIXA="${{ github.event.before }}..${{ github.sha }}"
+          fi
+          echo "Faixa: $FAIXA"
+          # Push inicial de branch vem com base zerada: aí não há o que comparar.
+          if echo "$FAIXA" | grep -q '^0\{40\}'; then
+            echo "Sem base para comparar; nada a varrer."
+            exit 0
+          fi
+          gitleaks detect --no-banner --redact --log-opts="$FAIXA"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # O gate é sobre o que VAI PARA O CLIENTE E PARA O SERVIDOR: `--omit=dev`
+      # tira o ferramental de build, que não roda em produção e cujas falhas
+      # (ReDoS num plugin de bundler) não são alcançáveis por ninguém de fora.
+      #
+      # `critical` é o que barra o merge. Deixar em `high` transformaria isto
+      # num vermelho permanente — hoje as pendências altas do backend só saem
+      # com uma migração de major do NestJS, que é um trabalho à parte e não
+      # cabe dentro de um PR de segurança. O relatório completo continua sendo
+      # impresso abaixo, para a decisão ser tomada com o número na frente em
+      # vez de por lembrança.
+      - name: Auditar dependências de produção (backend)
+        working-directory: backend
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Auditar dependências de produção (frontend)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Relatório completo (não bloqueia)
+        if: always()
+        run: |
+          echo '### Backend'  && (cd backend  && npm audit --omit=dev || true)
+          echo '### Frontend' && (cd frontend && npm audit --omit=dev || true)

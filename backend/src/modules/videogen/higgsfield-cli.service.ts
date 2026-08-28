@@ -748,7 +748,21 @@ export class HiggsfieldCliService implements GeradorDeMidia {
   async getStatus(requestId: string): Promise<StatusResult> {
     let stdout: string;
     try {
-      stdout = await this.cli(['generate', 'get', requestId, '--json']);
+      /*
+       * O `requestId` vai CITADO como todo o resto.
+       *
+       * `executar` monta uma linha de comando de texto e a entrega ao shell —
+       * argumento que chega aqui sem passar por `citar` é injeção de shell
+       * esperando um valor com espaço, aspa ou `;`. Este id vem da resposta da
+       * fornecedora e viaja pelo banco antes de voltar; "é sempre um hex" é uma
+       * suposição sobre um sistema de terceiros, e não uma garantia nossa.
+       */
+      stdout = await this.cli([
+        'generate',
+        'get',
+        HiggsfieldCliService.citar(requestId),
+        '--json',
+      ]);
     } catch (erro) {
       if (erro instanceof JobNaoEncontradoError) {
         // Terminal: o refresh marca `failed`, estorna uma vez e para de consultar.

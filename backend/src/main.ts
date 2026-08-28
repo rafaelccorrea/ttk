@@ -31,11 +31,82 @@ function assertSecrets() {
   }
 }
 
+/**
+ * Quantos saltos de proxy confiar para descobrir o IP do cliente.
+ *
+ * Isto não é afinação de performance: é o que decide se o rate limit existe.
+ * O Express só usa o `X-Forwarded-For` quando `trust proxy` está ligado — sem
+ * ele, `req.ip` é o IP do reverse proxy, e como TODA requisição chega por ele,
+ * o app inteiro compartilha um único balde. Na prática o teto global de 120/min
+ * vira um teto de 120/min para o mundo todo, e o limite de 10 tentativas de
+ * login por 5 min tranca a porta de todos os clientes assim que um varredor
+ * aparece: o rate limit deixa de proteger e passa a ser o ataque.
+ *
+ * O erro inverso é pior e é por isso que o padrão é NÃO confiar: `trust proxy`
+ * ligado sem proxy na frente faz o Express aceitar o `X-Forwarded-For` que o
+ * próprio cliente mandou. Aí qualquer um forja um IP diferente por requisição e
+ * não existe mais limite nenhum — nem no login, nem no reset de senha.
+ *
+ * Por isso o valor é explícito e por ambiente, não adivinhado:
+ *
+ *   TRUST_PROXY=1              → um proxy na frente (o caso comum: Nginx, o
+ *                                proxy da hospedagem). Confia no ÚLTIMO salto.
+ *   TRUST_PROXY=2              → dois (ex.: Cloudflare + Nginx).
+ *   TRUST_PROXY=loopback       → só 127.0.0.1/::1.
+ *   TRUST_PROXY=10.0.0.0/8,... → lista de IPs/CIDR dos seus proxies.
+ *   TRUST_PROXY=false / ausente→ não confia em cabeçalho nenhum (padrão).
+ *
+ * Contar saltos e não usar `true` é deliberado: `true` confia no cabeçalho
+ * inteiro e pega o primeiro item da lista, que é justamente a parte que o
+ * cliente controla.
+ */
+function configurarProxyConfiavel(app: {
+  getHttpAdapter: () => { getInstance: () => { set: (k: string, v: unknown) => void } };
+}): void {
+  const bruto = (process.env.TRUST_PROXY ?? '').trim();
+  const express = app.getHttpAdapter().getInstance();
+
+  if (!bruto || bruto === 'false' || bruto === '0') {
+    if (isProduction) {
+      // Não derruba o boot: uma API que atende direto na porta 3000 está
+      // correta assim. Mas se houver proxy, o operador precisa saber que os
+      // limites estão contando o IP errado.
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[segurança] TRUST_PROXY não configurado: os limites de requisição vão ' +
+          'contar o IP de quem conecta. Se a API está atrás de um proxy/CDN, ' +
+          'defina TRUST_PROXY com o número de saltos (ex.: TRUST_PROXY=1).',
+      );
+    }
+    express.set('trust proxy', false);
+    return;
+  }
+
+  const saltos = Number(bruto);
+  if (Number.isInteger(saltos) && saltos > 0) {
+    express.set('trust proxy', saltos);
+    return;
+  }
+  // Nomes ('loopback', 'uniquelocal') e listas de IP/CIDR o Express entende
+  // direto. `true` fica de fora de propósito — ver o comentário acima.
+  if (bruto === 'true') {
+    throw new Error(
+      'TRUST_PROXY=true confia no X-Forwarded-For inteiro, inclusive na parte ' +
+        'que o cliente escreve — e isso desliga o rate limit. Use o número de ' +
+        'saltos (TRUST_PROXY=1) ou a lista de IPs dos seus proxies.',
+    );
+  }
+  express.set('trust proxy', bruto);
+}
+
 async function bootstrap() {
   assertSecrets();
 
   // rawBody: necessário para verificar a assinatura do webhook do Stripe.
   const app = await NestFactory.create(AppModule, { rawBody: true });
+
+  // Antes de qualquer coisa que leia `req.ip` (rate limit, auditoria).
+  configurarProxyConfiavel(app);
 
   // Cabeçalhos de segurança. crossOriginResourcePolicy relaxado porque o
   // proxy de mídia (/media/*) é consumido em <img> a partir do domínio do

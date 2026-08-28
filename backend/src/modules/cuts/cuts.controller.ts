@@ -28,6 +28,12 @@ import { PlanFeatureGuard, RequiresPlanFeature } from '../billing/plan-feature.g
 import { CutsService } from './cuts.service';
 import { CreateCutJobDto, CreateCutJobFromUrlDto } from './dto/create-cut-job.dto';
 import { LIMITES } from './cut-planner';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
+import { Throttle } from '@nestjs/throttler';
+import {
+  LIMITE_IA,
+  LIMITE_IA_PESADA,
+} from '../../common/throttler/limites';
 
 /** Mesmo teto do Live Copilot: 60 min em 1080p cabem com folga. */
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
@@ -43,7 +49,7 @@ mkdirSync(PASTA_DE_UPLOAD, { recursive: true });
  */
 @ApiTags('cuts')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard, UserThrottlerGuard)
 @RequiresPlanFeature('cuts')
 @Controller('cuts')
 export class CutsController {
@@ -64,6 +70,7 @@ export class CutsController {
     return this.cuts.inspecionarLink(url.trim());
   }
 
+  @Throttle(LIMITE_IA_PESADA)
   @Post('from-url')
   @ApiOperation({ summary: 'Cria o job a partir de um link (YouTube); baixa no pipeline' })
   createFromUrl(@CurrentUser() user: AuthUser, @Body() dto: CreateCutJobFromUrlDto) {
@@ -102,6 +109,7 @@ export class CutsController {
     return this.cuts.detalhe(user.id, id);
   }
 
+  @Throttle(LIMITE_IA_PESADA)
   @Post()
   @UseInterceptors(
     FileInterceptor('file', {
@@ -131,6 +139,7 @@ export class CutsController {
     return this.cuts.criar(user.id, dto, file);
   }
 
+  @Throttle(LIMITE_IA)
   @Post('clips/:clipId/multiplier')
   @ApiOperation({
     summary: 'Manda um corte pronto para o Multiplicador como gancho, corpo ou CTA',

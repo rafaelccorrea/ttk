@@ -37,6 +37,17 @@ import {
   CriarProdutoDto,
 } from './dto/live.dto';
 import { LiveService } from './live.service';
+import { limiteDeUpload } from '../../common/uploads';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
+import { Throttle } from '@nestjs/throttler';
+import {
+  LIMITE_IA_PESADA,
+  LIMITE_UPLOAD,
+} from '../../common/throttler/limites';
+
+/** Foto do produto da base — mesmo teto de `CampaignsController.addPhoto`. */
+const MAX_FOTO_BYTES = 8 * 1024 * 1024;
+
 
 /**
  * Teto do upload da gravação.
@@ -91,7 +102,7 @@ const MAX_CSV_BYTES = 2 * 1024 * 1024;
 
 @ApiTags('live')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard, UserThrottlerGuard)
 @RequiresPlanFeature('live_copilot')
 @Controller('live')
 export class LiveController {
@@ -133,6 +144,7 @@ export class LiveController {
     return this.live.apagarSessao(user.id, id);
   }
 
+  @Throttle(LIMITE_IA_PESADA)
   @Post('sessions/:id/upload')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -177,6 +189,7 @@ export class LiveController {
    * planilha mal exportada, não expectativa. Nada a ver com o upload da
    * gravação, que são gigabytes e por isso vai para disco.
    */
+  @Throttle(LIMITE_UPLOAD)
   @Post('sessions/:id/products/import')
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: MAX_CSV_BYTES } }),
@@ -225,8 +238,9 @@ export class LiveController {
    * (`CampaignsController.addPhoto`): teto de 8MB, e quem valida de verdade é
    * a decodificação da imagem, dentro do espelhamento.
    */
+  @Throttle(LIMITE_UPLOAD)
   @Post('products/:id/photo')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', limiteDeUpload(MAX_FOTO_BYTES)))
   @ApiOperation({ summary: 'Troca a foto do produto (aparece na lista de fixar do app)' })
   addPhoto(
     @CurrentUser() user: AuthUser,

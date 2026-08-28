@@ -9,10 +9,11 @@ import {
 } from '../billing/plan-feature.guard';
 import { IngestionService } from '../ingestion/ingestion.service';
 import { AnalyticsService } from './analytics.service';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
 
 @ApiTags('analytics')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard, UserThrottlerGuard)
 @Controller('analytics')
 export class AnalyticsController {
   constructor(

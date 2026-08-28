@@ -7,10 +7,11 @@ import {
 } from '../billing/plan-feature.guard';
 import { CreatorsService } from './creators.service';
 import { QueryCreatorsDto } from './dto/query-creators.dto';
+import { UserThrottlerGuard } from '../../common/throttler/user-throttler.guard';
 
 @ApiTags('creators')
 @ApiBearerAuth()
-@UseGuards(SupabaseAuthGuard, PlanFeatureGuard)
+@UseGuards(SupabaseAuthGuard, PlanFeatureGuard, UserThrottlerGuard)
 @RequiresPlanFeature('discovery')
 @Controller('creators')
 export class CreatorsController {
